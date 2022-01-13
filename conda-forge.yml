@@ -1,2 +1,3 @@
 os_version:
   linux_64: cos7
+conda_forge_output_validation: true
