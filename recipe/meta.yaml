@@ -1,6 +1,6 @@
 {% set name = "zig" %}
-{% set version = "0.8.1" %}
-{% set llvm_version = "12.0.1" %}
+{% set version = "0.9.0" %}
+{% set llvm_version = "13.0.1" %}
 
 package:
   name: {{ name|lower }}
@@ -8,11 +8,11 @@ package:
 
 source:
   url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
-  sha256: 88983c3c8b462f155bf98794548712cda0b9f545de61b40a0309dbc39207ed3f
+  sha256: 5a01d7ae22b1bee1292a8688e8847c07bb31279d1a496808675002237ad0f7e5
 
 build:
   number: 0
-  skip: True  # [not linux]
+  skip: true  # [not linux]
 
 requirements:
   build:
@@ -40,7 +40,7 @@ about:
   license: MIT
   license_family: MIT
   license_file: LICENSE
-  summary: 'Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.'
+  summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
   description: |
     Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
     Robust: Behavior is correct even for edge cases such as out of memory.
