@@ -1,6 +1,6 @@
 {% set name = "zig" %}
 {% set version = "0.10.0" %}
-{% set llvm_version = "13.0.1" %}
+{% set llvm_version = "15.0.4" %}
 
 package:
   name: {{ name|lower }}
@@ -12,7 +12,7 @@ source:
 
 build:
   number: 0
-  skip: true  # [not linux]
+  skip: true  # [win]
 
 requirements:
   build:
