@@ -6,3 +6,6 @@ github:
   tooling_branch_name: main
 conda_build:
   pkg_format: '2'
+azure:
+  settings_linux:
+    swapfile_size: 10GiB
