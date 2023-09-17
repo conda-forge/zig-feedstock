@@ -29,9 +29,11 @@ requirements:
     - libclang-cpp {{ llvm_version }}
     - zlib
     - zstd
+    - __glibc >=2.25
   run:
     - zlib
     - zstd
+    - __glibc >=2.25
 
 
 test:
