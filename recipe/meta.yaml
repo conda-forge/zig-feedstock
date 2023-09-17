@@ -27,6 +27,11 @@ requirements:
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
+    - zlib
+    - zstd
+  run:
+    - zlib
+    - zstd
 
 
 test:
