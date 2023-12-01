@@ -12,7 +12,7 @@ source:
 
 build:
   number: 0
-  skip: true  # [not linux]
+  skip: true  # [win]
 
 requirements:
   build:
@@ -29,11 +29,11 @@ requirements:
     - libclang-cpp {{ llvm_version }}
     - zlib
     - zstd
-    - __glibc >=2.25
+    - __glibc >=2.25  # [linux]
   run:
     - zlib
     - zstd
-    - __glibc >=2.25
+    - __glibc >=2.25  # [linux]
 
 
 test:
