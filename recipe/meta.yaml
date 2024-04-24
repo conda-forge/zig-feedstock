@@ -1,6 +1,6 @@
 {% set name = "zig" %}
-{% set version = "0.9.1" %}
-{% set llvm_version = "13.0.1" %}
+{% set version = "0.12.0" %}
+{% set llvm_version = "17" %}
 
 package:
   name: {{ name|lower }}
@@ -8,7 +8,7 @@ package:
 
 source:
   url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
-  sha256: 2a6ba6a72b9619b83dab77f5b6e2b6f0958bb0f85cded055be2c632386e0ff2d
+  sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
 
 build:
   number: 0
@@ -17,10 +17,11 @@ build:
 requirements:
   build:
     - {{ compiler('c') }}
+    - {{ stdlib("c") }}
     - {{ compiler('cxx') }}
-    - sysroot_linux-64 2.17  # [linux64]
     - cmake >=2.8.12
     - make
+    - zlib
   host:
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
