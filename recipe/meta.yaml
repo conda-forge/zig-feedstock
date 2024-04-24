@@ -21,6 +21,7 @@ requirements:
     - {{ compiler('cxx') }}
     - cmake >=2.8.12
     - make
+    - zlib
   host:
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
