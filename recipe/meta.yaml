@@ -21,13 +21,13 @@ requirements:
     - {{ compiler('cxx') }}
     - cmake >=2.8.12
     - make
-    - zlib
   host:
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
+    - zlib
 
 
 test:
@@ -56,3 +56,4 @@ extra:
   recipe-maintainers:
     - MementoRC
     - xmnlab
+    - pavelzw
