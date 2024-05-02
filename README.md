@@ -175,5 +175,6 @@ Feedstock Maintainers
 =====================
 
 * [@MementoRC](https://github.com/MementoRC/)
+* [@pavelzw](https://github.com/pavelzw/)
 * [@xmnlab](https://github.com/xmnlab/)
 
