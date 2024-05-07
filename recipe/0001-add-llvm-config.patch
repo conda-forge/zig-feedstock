@@ -1,0 +1,15 @@
+--- CMakeLists.txt      2024-04-19 16:00:35.000000000 -0500
++++ CMakeLists.txt      2024-04-26 17:36:53.597701056 -0500
+@@ -114,11 +115,7 @@
+ set(ZIG_SINGLE_THREADED off CACHE BOOL "limit the zig compiler to use only 1 thread")
+ set(ZIG_AR_WORKAROUND off CACHE BOOL "append 'ar' subcommand to CMAKE_AR")
+
+-if("${ZIG_TARGET_TRIPLE}" STREQUAL "native")
+-    set(ZIG_USE_LLVM_CONFIG ON CACHE BOOL "use llvm-config to find LLVM libraries")
+-else()
+-    set(ZIG_USE_LLVM_CONFIG OFF CACHE BOOL "use llvm-config to find LLVM libraries")
+-endif()
++set(ZIG_USE_LLVM_CONFIG ON CACHE BOOL "use llvm-config to find LLVM libraries")
+
+ if(ZIG_AR_WORKAROUND)
+   string(REPLACE "<CMAKE_AR>" "<CMAKE_AR> ar" CMAKE_C_ARCHIVE_CREATE ${CMAKE_C_ARCHIVE_CREATE})
