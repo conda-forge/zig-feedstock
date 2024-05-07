@@ -1,4 +1,4 @@
-$TARGET = "$($Env:ARCH)-windows-gnu"
+$TARGET = "x86_64-windows-gnu"
 $ZIG_LLVM_CLANG_LLD_NAME = "zig+llvm+lld+clang-$TARGET-0.12.0-dev.2073+402fe565a"
 $MCPU = "baseline"
 $CONDA_PREFIX = "$PREFIX"
