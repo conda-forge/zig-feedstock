@@ -17,7 +17,7 @@ source:
   #   sha256: c7ae866b8a76a568e2d5cfd31fe89cdb629bdd161fdd5018b29a4a0a17045cad
 
 build:
-  number: 1
+  number: 2
   skip: true  # [not unix]
   script_env:
     - LIBC_CONDA_VERSION=2.28
