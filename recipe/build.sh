@@ -33,8 +33,6 @@ function configure_macos_x86_64() {
 }
 
 ARCH="$(uname -m)"
-TARGET="$ARCH-linux-gnu"
-MCPU="baseline"
 
 mkdir -p ${SRC_DIR}/build-release
 cd build-release
@@ -54,5 +52,13 @@ cd build-release
 
   cmake --install .
 
-  patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
+  case "$(uname)" in
+    Linux)
+      patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
+      ;;
+    Darwin)
+      echo "macOS"
+      ;;
+  esac
+
 cd ..
