@@ -3,7 +3,7 @@ $ZIG_LLVM_CLANG_LLD_NAME = "zig+llvm+lld+clang-$TARGET-0.12.0-dev.2073+402fe565a
 $MCPU = "baseline"
 $CONDA_PREFIX = "$PREFIX"
 $PREFIX_PATH = "$($Env:USERPROFILE)\$ZIG_LLVM_CLANG_LLD_NAME"
-$ZIG = "$SRC_DIR\zig-bootstrap\zig.exe"
+$ZIG = "$($Env:SRC_DIR)\zig-bootstrap\zig.exe"
 $ZIG_LIB_DIR = "$(Get-Location)\lib"
 
 function CheckLastExitCode {
