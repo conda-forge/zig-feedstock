@@ -16,7 +16,6 @@ function configure_linux_64() {
     -DZIG_TARGET_TRIPLE="$TARGET" \
     -DZIG_TARGET_MCPU="$MCPU" \
     -DZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
-    -DZIG_PREFER_CLANG_CPP_DYLIB=yes \
     -GNinja
 }
 
@@ -30,7 +29,6 @@ function configure_macos_x86_64() {
     -DCMAKE_BUILD_TYPE=Release \
     -DZIG_TARGET_TRIPLE="$TARGET" \
     -DZIG_TARGET_MCPU="$MCPU" \
-    -DZIG_PREFER_CLANG_CPP_DYLIB=yes \
     -GNinja
 }
 
