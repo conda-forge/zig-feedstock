@@ -174,5 +174,6 @@ In order to produce a uniquely identifiable distribution:
 Feedstock Maintainers
 =====================
 
+* [@MementoRC](https://github.com/MementoRC/)
 * [@xmnlab](https://github.com/xmnlab/)
 
