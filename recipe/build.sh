@@ -39,6 +39,7 @@ function bootstrap_macos_x86_64() {
   TARGET="x86_64-macos-none"
   MCPU="baseline"
 
+  export HTTP_PROXY=http://localhost
   $ZIG build \
       --prefix "${PREFIX}" \
       -Dstatic-llvm \
