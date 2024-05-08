@@ -1,6 +1,6 @@
 {% set name = "zig" %}
 {% set version = "0.12.0" %}
-{% set llvm_version = "17" %}
+{% set llvm_version = "17.0.6" %}
 
 package:
   name: {{ name|lower }}
@@ -25,9 +25,8 @@ build:
 requirements:
   build:
     - {{ compiler('c') }}
-    - {{ stdlib("c") }}
     - {{ compiler('cxx') }}
-    - {{ stdlib('c') }}
+    - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
   host:

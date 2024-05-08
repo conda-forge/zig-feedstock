@@ -1,13 +1,13 @@
 MACOSX_DEPLOYMENT_TARGET:
-- '12.3'
+- '11'
 c_compiler:
 - clang
 c_compiler_version:
-- '16'
+- 17.0.6
 c_stdlib:
 - macosx_deployment_target
 c_stdlib_version:
-- '12.3'
+- '11'
 channel_sources:
 - conda-forge
 channel_targets:
