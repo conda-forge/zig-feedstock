@@ -16,10 +16,13 @@ source:
   - folder: zig-bootstrap  # [win]
     url: https://ziglang.org/download/0.12.0/zig-windows-x86_64-0.12.0.zip  # [win and x86_64]
     sha256: 2199eb4c2000ddb1fba85ba78f1fcf9c1fb8b3e57658f6a627a8e513131893f5  # [win and x86_64]
+    url: https://ziglang.org/download/0.12.0/zig-macos-x86_64-0.12.0.tar.xz  # [osx and x86_64]
+    sha256: 4d411bf413e7667821324da248e8589278180dbc197f4f282b7dbb599a689311  # [osx and x86_64]
 
 build:
   number: 2
-  script_env:  # [linux and x86_64]
+  script_env:
+    - ZIG_VERSION={{ version }}
     - LIBC_CONDA_VERSION=2.28  # [linux and x86_64]
 
 requirements:
