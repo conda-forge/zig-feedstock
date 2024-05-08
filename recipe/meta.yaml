@@ -13,7 +13,7 @@ source:
       - 0001-add-llvm-config.patch  # [not win]
       - 0002-add-patchelf-zig2.patch  # [linux and x86_64]
 
-  - folder: zig-bootstrap  # [win]
+  - folder: zig-bootstrap  # [(win or osx) and x86_64]
     url: https://ziglang.org/download/0.12.0/zig-windows-x86_64-0.12.0.zip  # [win and x86_64]
     sha256: 2199eb4c2000ddb1fba85ba78f1fcf9c1fb8b3e57658f6a627a8e513131893f5  # [win and x86_64]
     url: https://ziglang.org/download/0.12.0/zig-macos-x86_64-0.12.0.tar.xz  # [osx and x86_64]
