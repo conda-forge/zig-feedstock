@@ -4,7 +4,7 @@
 :: Try using bootstrapped ZIG to build ZIG for Conda environment
 set "TARGET=x86_64-windows-gnu"
 set "MCPU=native"
-set "ZIG = "%SRC_DIR%\zig-bootstrap\zig.exe"
+set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 
 %ZIG% build ^
   --prefix "%PREFIX%" ^
