@@ -10,7 +10,7 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
   --prefix "%PREFIX%" ^
   --search-prefix "%PREFIX%\Library" ^
   -Dflat ^
-  -Denable-llvm ^
+  -Dstatic-llvm ^
   -Doptimize=ReleaseFast ^
   -Dstrip ^
   -Dtarget="%TARGET%" ^

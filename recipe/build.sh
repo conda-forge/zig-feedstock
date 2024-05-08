@@ -19,30 +19,43 @@ function configure_linux_64() {
     -GNinja
 }
 
+function configure_macos_x86_64() {
+  TARGET="x86_64-macos-none"
+  MCPU="baseline"
+
+  cmake .. \
+    ${CMAKE_ARGS} \
+    -DCMAKE_PREFIX_PATH="${PREFIX}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="${ZIG};cc;-target;${TARGET};-mcpu=${MCPU}" \
+    -DCMAKE_CXX_COMPILER="${ZIG};c++;-target;${TARGET};-mcpu=${MCPU}" \
+    -DZIG_TARGET_TRIPLE="${TARGET}" \
+    -DZIG_TARGET_MCPU="${MCPU}" \
+    -DZIG_NO_LIB=ON \
+    -GNinja
+}
+
 function bootstrap_macos_x86_64() {
   TARGET="x86_64-macos-none"
   MCPU="baseline"
 
-  ZIG="${SRC_DIR}/zig-bootstrap/zig"
-
   $ZIG build \
-      --prefix "$PREFIX" \
-      --search-prefix "$PREFIX" \
-      -Dflat \
-      -Denable-llvm \
+      --prefix "${PREFIX}" \
+      -Dstatic-llvm \
+      -Dno-lib \
       -Doptimize=ReleaseFast \
       -Dstrip \
-      -Dtarget="$TARGET" \
-      -Dcpu="$MCPU" \
-      -Dversion-string="$ZIG_VERSION"
+      -Dtarget="${TARGET}" \
+      -Dcpu="${MCPU}" \
+      -Dversion-string="${ZIG_VERSION}"
 }
 
 case "$(uname)" in
   Linux)
     mkdir -p ${SRC_DIR}/build-release
     cd build-release
-      export ZIG_GLOBAL_CACHE_DIR="$PWD/zig-global-cache"
-      export ZIG_LOCAL_CACHE_DIR="$PWD/zig-local-cache"
+      export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
+      export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
       configure_linux_64
       cmake --build .
       cmake --install .
@@ -50,6 +63,7 @@ case "$(uname)" in
     cd ..
     ;;
   Darwin)
+    ZIG="${SRC_DIR}/zig-bootstrap/zig"
     bootstrap_macos_x86_64
     ;;
 esac
