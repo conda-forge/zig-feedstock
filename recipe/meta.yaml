@@ -42,7 +42,9 @@ test:
   commands:
     - zig version
     - zig zen
-    - zig init && zig test test/behavior.zig
+    - zig init
+    - zig test test/behavior.zig  # [not win]
+    - test test\\behavior.zig  # [win]
   source_files:
     - test
 
