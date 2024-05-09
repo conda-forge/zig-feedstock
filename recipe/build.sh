@@ -39,18 +39,31 @@ function bootstrap_macos_x86_64() {
   TARGET="x86_64-macos-none"
   MCPU="baseline"
 
+  mkdir build
+  cd build
+    cmake .. \
+      ${CMAKE_ARGS} \
+      -DCMAKE_PREFIX_PATH="${PREFIX}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DZIG_TARGET_TRIPLE="${TARGET}" \
+      -DZIG_TARGET_MCPU="${MCPU}" \
+      -DZIG_NO_LIB=ON \
+      -GNinja
+  cd ..
+
+  cat "build/config.h"
+
   export HTTP_PROXY=http://localhost
   export HTTPS_PROXY=https://localhost
-  export NO_PROXY=localhost,
   export http_proxy=http://localhost
 
   $ZIG build \
       --prefix "${PREFIX}" \
-      --search-prefix "${PREFIX}" \
-      -Denable-llvm \
+      -Dconfg_h="build/config.h" \
       -Doptimize=ReleaseFast \
       -Dstrip \
       -Dversion-string="${ZIG_VERSION}"
+::      -Denable-llvm \
 }
 
 case "$(uname)" in
