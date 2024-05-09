@@ -46,12 +46,10 @@ function bootstrap_macos_x86_64() {
 
   $ZIG build \
       --prefix "${PREFIX}" \
-      -Dstatic-llvm \
-      -Dno-lib \
+      --search-prefix "${PREFIX};${PREFIX}/lib" \
+      -Denable-llvm \
       -Doptimize=ReleaseFast \
       -Dstrip \
-      -Dtarget="${TARGET}" \
-      -Dcpu="${MCPU}" \
       -Dversion-string="${ZIG_VERSION}"
 }
 

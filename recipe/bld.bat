@@ -10,10 +10,10 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
   --prefix "%PREFIX%" ^
   --search-prefix "%PREFIX%\Library" ^
   -Dflat ^
-  -Dstatic-llvm ^
+  -Denable-llvm ^
   -Doptimize=ReleaseFast ^
   -Dstrip ^
-  -Dtarget="%TARGET%" ^
-  -Dcpu="%MCPU%" ^
   -Dversion-string="%ZIG_VERSION%"
+::  -Dtarget="%TARGET%" ^
+::  -Dcpu="%MCPU%" ^
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
