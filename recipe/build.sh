@@ -46,7 +46,7 @@ function bootstrap_macos_x86_64() {
 
   $ZIG build \
       --prefix "${PREFIX}" \
-      --search-prefix "${PREFIX};${PREFIX}/lib" \
+      --search-prefix "${PREFIX}" \
       -Denable-llvm \
       -Doptimize=ReleaseFast \
       -Dstrip \
