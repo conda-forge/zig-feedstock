@@ -59,7 +59,7 @@ function bootstrap_macos_x86_64() {
 
   $ZIG build \
       --prefix "${PREFIX}" \
-      -Dconfg_h="build/config.h" \
+      -Dconfig_h="build/config.h" \
       -Doptimize=ReleaseFast \
       -Dstrip \
       -Dversion-string="${ZIG_VERSION}"
