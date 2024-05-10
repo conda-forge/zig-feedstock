@@ -54,7 +54,9 @@ function bootstrap_macos_x86_64() {
       -GNinja
   cd ..
 
+  grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h ||
   sed -i '' 's/^#define ZIG_LLVM_LIBRARIES "\(.*\)"$/#define ZIG_LLVM_LIBRARIES "\1;-lxml2;-headerpad_max_install_names"/' build/config.h
+  grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h ||
 
   export HTTP_PROXY=http://localhost
   export HTTPS_PROXY=https://localhost
