@@ -5,6 +5,7 @@ set -ex
 function configure_linux_64() {
   local build_dir=$1
 
+  mkdir -p "${build_dir}"
   cd "${build_dir}"
     TARGET="x86_64-linux-gnu"
     MCPU="baseline"
@@ -26,6 +27,7 @@ function configure_linux_64() {
 function configure_osx_64() {
   local build_dir=$1
 
+  mkdir -p "${build_dir}"
   cd "${build_dir}"
     TARGET="x86_64-macos-none"
     MCPU="baseline"
