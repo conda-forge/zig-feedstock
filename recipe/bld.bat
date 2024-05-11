@@ -26,7 +26,7 @@ cd ..
   -Dflat ^
   -Doptimize=ReleaseFast ^
   -Dstrip ^
-  -Dversion-string="%ZIG_VERSION%"
+  -Dversion-string="%PKG_VERSION%"
 ::  -Denable-llvm ^
 ::  -Dtarget="%TARGET%" ^
 ::  -Dcpu="%MCPU%" ^
