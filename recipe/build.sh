@@ -33,15 +33,15 @@ function configure_osx_64() {
     MCPU="baseline"
 
     cmake .. \
-      ${CMAKE_ARGS} \
       -DCMAKE_PREFIX_PATH="${PREFIX}" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
-      -DCMAKE_CXX_COMPILER="$ZIG;c++;-target;$TARGET;-mcpu=$MCPU" \
       -DZIG_TARGET_TRIPLE="${TARGET}" \
       -DZIG_TARGET_MCPU="${MCPU}" \
       -GNinja
+      # ${CMAKE_ARGS} \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
+      # -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
+      # -DCMAKE_CXX_COMPILER="$ZIG;c++;-target;$TARGET;-mcpu=$MCPU" \
   cd ..
 }
 
