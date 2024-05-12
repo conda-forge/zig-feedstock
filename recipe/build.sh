@@ -83,7 +83,7 @@ function bootstrap_osx_64() {
 function cmake_build_install() {
   local build_dir=$1
   cd "${build_dir}"
-    cmake --build . -target install
+    cmake --build . --target install
   cd ..
 }
 
