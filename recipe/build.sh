@@ -36,8 +36,7 @@ function configure_osx_64() {
       ${CMAKE_ARGS} \
       -DCMAKE_PREFIX_PATH="${PREFIX}" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_COMPILER="${ZIG};cc;-target;${TARGET};-mcpu=${MCPU}" \
-      -DCMAKE_CXX_COMPILER="${ZIG};c++;-target;${TARGET};-mcpu=${MCPU}" \
+      -DCMAKE_SYSTEM_NAME="Darwin" \
       -DZIG_TARGET_TRIPLE="${TARGET}" \
       -DZIG_TARGET_MCPU="${MCPU}" \
       -GNinja
@@ -55,7 +54,7 @@ function bootstrap_osx_64() {
       -DCMAKE_PREFIX_PATH="${PREFIX}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_SYSTEM_NAME="Darwin" \
-      -DNATIVE_LLVM_DIR="${BUILD_PREFIX}/lib/cmake/llvm" \
+      -DCMAKE_STATIC_LINKER_FLAGS="-headerpad_max_install_names" \
       -DCMAKE_SHARED_LINKER_FLAGS="-headerpad_max_install_names" \
       -DZIG_TARGET_TRIPLE="${TARGET}" \
       -DZIG_TARGET_MCPU="${MCPU}" \
@@ -75,17 +74,16 @@ function bootstrap_osx_64() {
       --prefix "${PREFIX}" \
       -Dconfig_h="build/config.h" \
       -Denable-macos-sdk \
+      -Denable-llvm \
       -Doptimize=ReleaseFast \
       -Dstrip \
       -Dversion-string="${PKG_VERSION}"
-#       -Denable-llvm \
 }
 
 function cmake_build_install() {
   local build_dir=$1
   cd "${build_dir}"
-    cmake --build .
-    cmake --install .
+    cmake --build . -target install
   cd ..
 }
 
@@ -93,12 +91,14 @@ export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
   Linux)
-      configure_linux_64 "${SRC_DIR}/build-release"
-      cmake_build_install "${SRC_DIR}/build-release"
-      patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
+    configure_linux_64 "${SRC_DIR}/build-release"
+    cmake_build_install "${SRC_DIR}/build-release"
+    patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
     ;;
   Darwin)
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
-    bootstrap_osx_64
+    # Not working due to headerpad: bootstrap_osx_64
+    configure_osx_64 "${SRC_DIR}/build-release"
+    cmake_build_install "${SRC_DIR}/build-release"
     ;;
 esac
