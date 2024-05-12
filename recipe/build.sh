@@ -14,16 +14,17 @@ function configure_linux_64() {
     MCPU="baseline"
 
     cmake ${SRC_DIR}/zig-source \
-      ${CMAKE_ARGS} \
-      -DCMAKE_PREFIX_PATH="${PREFIX};${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DLIBC_CONDA_VERSION="${LIBC_CONDA_VERSION-2.28}" \
-      -DLIBC_INTERPRETER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
-      -DLIBC_RPATH="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64:${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib:${PREFIX}/lib64:${PREFIX}/lib" \
-      -DZIG_TARGET_TRIPLE="$TARGET" \
-      -DZIG_TARGET_MCPU="$MCPU" \
-      -DZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
-      -GNinja
+      "${CMAKE_ARGS}" \
+      -D CMAKE_INSTALL_PREFIX="${PREFIX}" \
+      -D CMAKE_PREFIX_PATH="${PREFIX};${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      -D CMAKE_BUILD_TYPE=Release \
+      -D LIBC_CONDA_VERSION="${LIBC_CONDA_VERSION-2.28}" \
+      -D LIBC_INTERPRETER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
+      -D LIBC_RPATH="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64:${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib:${PREFIX}/lib64:${PREFIX}/lib" \
+      -D ZIG_TARGET_TRIPLE="$TARGET" \
+      -D ZIG_TARGET_MCPU="$MCPU" \
+      -D ZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
+      -G Ninja
   cd "${current_dir}"
 }
 
@@ -38,12 +39,14 @@ function configure_osx_64() {
     TARGET="x86_64-macos-none"
     MCPU="baseline"
 
-    cmake ${SRC_DIR}/zig-source \
-      -DCMAKE_PREFIX_PATH="${PREFIX}" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DZIG_TARGET_TRIPLE="${TARGET}" \
-      -DZIG_TARGET_MCPU="${MCPU}" \
-      -GNinja
+    cmake "${SRC_DIR}"/zig-source \
+      "${CMAKE_ARGS}" \
+      -D CMAKE_INSTALL_PREFIX="${PREFIX}" \
+      -D CMAKE_PREFIX_PATH="${PREFIX};${BUILD_PREFIX}" \
+      -D CMAKE_BUILD_TYPE=Release \
+      -D ZIG_TARGET_TRIPLE="${TARGET}" \
+      -D ZIG_TARGET_MCPU="${MCPU}" \
+      -G Ninja
       # ${CMAKE_ARGS} \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
       # -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
@@ -60,17 +63,17 @@ function bootstrap_osx_64() {
 
   mkdir build
   cd build
-    cmake ${SRC_DIR}/zig-source \
-      ${CMAKE_ARGS} \
-      -DCMAKE_PREFIX_PATH="${PREFIX}" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_SYSTEM_NAME="Darwin" \
-      -DCMAKE_STATIC_LINKER_FLAGS="-headerpad_max_install_names" \
-      -DCMAKE_SHARED_LINKER_FLAGS="-headerpad_max_install_names" \
-      -DZIG_TARGET_TRIPLE="${TARGET}" \
-      -DZIG_TARGET_MCPU="${MCPU}" \
-      -DZIG_NO_LIB=ON \
-      -GNinja
+    cmake "${SRC_DIR}"/zig-source \
+      "${CMAKE_ARGS}" \
+      -D CMAKE_PREFIX_PATH="${PREFIX}" \
+      -D CMAKE_BUILD_TYPE=Release \
+      -D CMAKE_SYSTEM_NAME="Darwin" \
+      -D CMAKE_STATIC_LINKER_FLAGS="-headerpad_max_install_names" \
+      -D CMAKE_SHARED_LINKER_FLAGS="-headerpad_max_install_names" \
+      -D ZIG_TARGET_TRIPLE="${TARGET}" \
+      -D ZIG_TARGET_MCPU="${MCPU}" \
+      -D ZIG_NO_LIB=ON \
+      -G Ninja
   cd "${current_dir}"
 
   #grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
@@ -129,12 +132,13 @@ case "$(uname)" in
     configure_linux_64 "${SRC_DIR}/build-release"
     cmake_build_install "${SRC_DIR}/build-release"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
-    self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/build-release"
+    self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
   Darwin)
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
     # Not working due to headerpad: bootstrap_osx_64
     configure_osx_64 "${SRC_DIR}/build-release"
     cmake_build_install "${SRC_DIR}/build-release"
+    self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
 esac
