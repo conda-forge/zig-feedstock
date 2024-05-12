@@ -10,7 +10,7 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 :: Configure CMake in build directory
 mkdir build
 cd build
-cmake .. ^
+cmake %SRC_DIR%/zig-source ^
   -G "Ninja" ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_INSTALL_PREFIX="%PREFIX%" ^
