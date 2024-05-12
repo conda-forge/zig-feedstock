@@ -55,15 +55,17 @@ function bootstrap_osx_64() {
       -DCMAKE_PREFIX_PATH="${PREFIX}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_SYSTEM_NAME="Darwin" \
+      -DNATIVE_LLVM_DIR="${BUILD_PREFIX}/lib/cmake/llvm" \
+      -DCMAKE_SHARED_LINKER_FLAGS="-headerpad_max_install_names" \
       -DZIG_TARGET_TRIPLE="${TARGET}" \
       -DZIG_TARGET_MCPU="${MCPU}" \
       -DZIG_NO_LIB=ON \
       -GNinja
   cd ..
 
-  grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
-  sed -i '' 's/^#define ZIG_LLVM_LIBRARIES "\(.*\)"$/#define ZIG_LLVM_LIBRARIES "\1;-lxml2;-headerpad;-headerpad_max_install_names"/' build/config.h
-  grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
+  #grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
+  #sed -i '' 's/^#define ZIG_LLVM_LIBRARIES "\(.*\)"$/#define ZIG_LLVM_LIBRARIES "\1;-lxml2;-headerpad;-headerpad_max_install_names"/' build/config.h
+  #grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
 
   export HTTP_PROXY=http://localhost
   export HTTPS_PROXY=https://localhost
