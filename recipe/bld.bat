@@ -22,7 +22,9 @@ cd ..
 
 mkdir %SRC_DIR%\_stage1
 cd %SRC_DIR%\_stage1
-  copy %SRC_DIR%\zig-source\* .
+  xcopy /E %SRC_DIR%\zig-source\* .
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
   %ZIG% build ^
     --prefix "%PREFIX%" ^
     -Dconfig_h="build/config.h" ^
@@ -38,8 +40,10 @@ cd ..
 
 mkdir %SRC_DIR%\_stage2
 cd %SRC_DIR%\_stage2
-  copy %SRC_DIR%\zig-source\* .
+  xcopy /E %SRC_DIR%\zig-source\* .
   set "ZIG=%PREFIX%\bin\zig.exe"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
   %ZIG% build ^
     --prefix "%PREFIX%" ^
     -Dconfig_h="build/config.h" ^
