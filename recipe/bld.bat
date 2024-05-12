@@ -20,14 +20,35 @@ cmake %SRC_DIR%/zig-source ^
   -DZIG_VERSION="%PKG_VERSION%"
 cd ..
 
-%ZIG% build ^
-  --prefix "%PREFIX%" ^
-  -Dconfig_h="build/config.h" ^
-  -Dflat ^
-  -Doptimize=ReleaseFast ^
-  -Dstrip ^
-  -Dversion-string="%PKG_VERSION%"
-::  -Denable-llvm ^
-::  -Dtarget="%TARGET%" ^
-::  -Dcpu="%MCPU%" ^
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+mkdir %SRC_DIR%\_stage1
+cd %SRC_DIR%\_stage1
+  copy %SRC_DIR%\zig-source\* .
+  %ZIG% build ^
+    --prefix "%PREFIX%" ^
+    -Dconfig_h="build/config.h" ^
+    -Dflat ^
+    -Doptimize=ReleaseFast ^
+    -Dstrip ^
+    -Dversion-string="%PKG_VERSION%"
+  ::  -Denable-llvm ^
+  ::  -Dtarget="%TARGET%" ^
+  ::  -Dcpu="%MCPU%" ^
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd ..
+
+mkdir %SRC_DIR%\_stage2
+cd %SRC_DIR%\_stage2
+  copy %SRC_DIR%\zig-source\* .
+  set "ZIG=%PREFIX%\bin\zig.exe"
+  %ZIG% build ^
+    --prefix "%PREFIX%" ^
+    -Dconfig_h="build/config.h" ^
+    -Dflat ^
+    -Doptimize=ReleaseFast ^
+    -Dstrip ^
+    -Dversion-string="%PKG_VERSION%"
+  ::  -Denable-llvm ^
+  ::  -Dtarget="%TARGET%" ^
+  ::  -Dcpu="%MCPU%" ^
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd ..
