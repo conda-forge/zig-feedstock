@@ -31,6 +31,7 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ stdlib("c") }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - cmake >=3.5
     - libclang-cpp {{ llvm_version }}
     - ninja
@@ -40,8 +41,11 @@ requirements:
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - zlib
     - zstd
+  run:
+    - llvmdev {{ llvm_version }}
 
 test:
   commands:
