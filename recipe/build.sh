@@ -47,6 +47,7 @@ function configure_osx_64() {
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="${TARGET}" \
       -D ZIG_TARGET_MCPU="${MCPU}" \
+      -D ZIG_USE_CCACHE=OFF \
       -G Ninja
       # ${CMAKE_ARGS} \
       # -DCMAKE_SYSTEM_NAME="Darwin" \

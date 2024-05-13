@@ -11,6 +11,7 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
+set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 echo "Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%"
@@ -37,21 +38,24 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   echo "   Building ..."
+  mkdir %ZIG_INSTALL_DIR%
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
-    --prefix "%PREFIX%" ^
+    --prefix "%ZIG_INSTALL_DIR%" ^
     -Dconfig_h="%CONFIG_DIR%/config.h" ^
+    -Denable-llvm ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
-  ::  -Denable-llvm ^
   ::  -Dtarget="%TARGET%" ^
   ::  -Dcpu="%MCPU%" ^
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   echo "   Built."
+  dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
 
-echo "Building ZIG with: %PREFIX%\bin\zig.exe in %ZIG_TEST_DIR%"
+echo "Testing self-build ZIG with: %ZIG_INSTALL_DIR%\zig.exe in %ZIG_TEST_DIR%"
 mkdir %ZIG_TEST_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %ZIG_TEST_DIR%
@@ -59,10 +63,7 @@ cd %ZIG_TEST_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  set "ZIG=%PREFIX%\bin\zig.exe"
-  dir %PREFIX%
-  dir %PREFIX%\bin
-  dir %ZIG%
+  set "ZIG=%ZIG_INSTALL_DIR%\zig.exe"
 
   echo "   Building ..."
   mkdir %SRC_DIR%\_self-test
@@ -75,3 +76,9 @@ cd %ZIG_TEST_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
+
+echo "ZIG built and tested successfully."
+echo "Copying ZIG to %PREFIX%"
+copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe > nul
+xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib > nul
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
