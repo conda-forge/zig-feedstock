@@ -32,7 +32,7 @@ cd %ZIG_BUILD_DIR%
 
   %ZIG% build ^
     --prefix "%PREFIX%" ^
-    -Dconfig_h="%CONFIG_DIR%\config.h" ^
+    -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
@@ -50,8 +50,8 @@ cd %ZIG_TEST_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   %ZIG% build ^
-    --prefix "%SRC_DIR%\_self-test" ^
-    -Dconfig_h="%CONFIG_DIR%\config.h" ^
+    --prefix "%SRC_DIR%/_self-test" ^
+    -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^

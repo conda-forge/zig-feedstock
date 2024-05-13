@@ -84,7 +84,6 @@ function self_build_x86_64() {
     cp -r "${SRC_DIR}"/zig-source/* .
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${PREFIX}/lib" \
       --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
       --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
@@ -110,8 +109,6 @@ function self_build_osx_64() {
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
-      --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
-      --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
 }
