@@ -43,7 +43,7 @@ function configure_osx_64() {
 
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_PREFIX_PATH="${PREFIX};${BUILD_PREFIX}" \
+      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX};${PREFIX}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="${TARGET}" \
       -D ZIG_TARGET_MCPU="${MCPU}" \
@@ -107,13 +107,17 @@ function cmake_build_install() {
   cd "${current_dir}"
 }
 
-function self_build() {
+function self_build_x86_64() {
   local build_dir=$1
   local installed_dir=$2
   local install_dir=$3
 
   local current_dir
   current_dir=$(pwd)
+
+  export HTTP_PROXY=http://localhost
+  export HTTPS_PROXY=https://localhost
+  export http_proxy=http://localhost
 
   mkdir -p "${build_dir}"
   cd "${build_dir}"
@@ -126,6 +130,28 @@ function self_build() {
   cd "${current_dir}"
 }
 
+function self_build_osx_64() {
+  local build_dir=$1
+  local installed_dir=$2
+  local install_dir=$3
+
+  local current_dir
+  current_dir=$(pwd)
+
+  export HTTP_PROXY=http://localhost
+  export HTTPS_PROXY=https://localhost
+  export http_proxy=http://localhost
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}"
+    cp -r "${SRC_DIR}"/zig-source/* .
+    "${installed_dir}/bin/zig" build \
+      --prefix "${install_dir}" \
+      --search-prefix "${PREFIX};${PREFIX}/lib;${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      -Dversion-string="${PKG_VERSION}"
+  cd "${current_dir}"
+}
+
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
@@ -134,7 +160,7 @@ case "$(uname)" in
     cmake_build_install "${SRC_DIR}/build-release"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
     export LD_LIBRARY_PATH="${PREFIX}/lib"
-    self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
+    self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
   Darwin)
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
@@ -142,6 +168,6 @@ case "$(uname)" in
     configure_osx_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release"
     export DYLD_LIBRARY_PATH="${PREFIX}/lib"
-    self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
+    self_build_osx_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
 esac
