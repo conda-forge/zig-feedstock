@@ -55,46 +55,6 @@ function configure_osx_64() {
   cd "${current_dir}"
 }
 
-function bootstrap_osx_64() {
-  local current_dir
-  current_dir=$(pwd)
-
-  TARGET="x86_64-macos-none"
-  MCPU="baseline"
-
-  mkdir build
-  cd build
-    cmake "${SRC_DIR}"/zig-source \
-      "${CMAKE_ARGS}" \
-      -D CMAKE_PREFIX_PATH="${PREFIX}" \
-      -D CMAKE_BUILD_TYPE=Release \
-      -D CMAKE_SYSTEM_NAME="Darwin" \
-      -D CMAKE_STATIC_LINKER_FLAGS="-headerpad_max_install_names" \
-      -D CMAKE_SHARED_LINKER_FLAGS="-headerpad_max_install_names" \
-      -D ZIG_TARGET_TRIPLE="${TARGET}" \
-      -D ZIG_TARGET_MCPU="${MCPU}" \
-      -D ZIG_NO_LIB=ON \
-      -G Ninja
-  cd "${current_dir}"
-
-  #grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
-  #sed -i '' 's/^#define ZIG_LLVM_LIBRARIES "\(.*\)"$/#define ZIG_LLVM_LIBRARIES "\1;-lxml2;-headerpad;-headerpad_max_install_names"/' build/config.h
-  #grep -q '^#define ZIG_LLVM_LIBRARIES' build/config.h
-
-  export HTTP_PROXY=http://localhost
-  export HTTPS_PROXY=https://localhost
-  export http_proxy=http://localhost
-
-  $ZIG build \
-      --prefix "${PREFIX}" \
-      -Dconfig_h="build/config.h" \
-      -Denable-macos-sdk \
-      -Denable-llvm \
-      -Doptimize=ReleaseFast \
-      -Dstrip \
-      -Dversion-string="${PKG_VERSION}"
-}
-
 function cmake_build_install() {
   local build_dir=$1
 
@@ -124,7 +84,9 @@ function self_build_x86_64() {
     cp -r "${SRC_DIR}"/zig-source/* .
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${PREFIX};${PREFIX}/lib;${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      --search-prefix "${PREFIX}/lib" \
+      --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
+      --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
@@ -147,7 +109,9 @@ function self_build_osx_64() {
     cp -r "${SRC_DIR}"/zig-source/* .
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${PREFIX};${PREFIX}/lib;${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      --search-prefix "${PREFIX}/lib" \
+      --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
+      --search-prefix "${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
 }

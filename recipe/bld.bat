@@ -33,11 +33,11 @@ cd %ZIG_BUILD_DIR%
   %ZIG% build ^
     --prefix "%PREFIX%" ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
-    -Denable-llvm ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
+  ::  -Denable-llvm ^
   ::  -Dtarget="%TARGET%" ^
   ::  -Dcpu="%MCPU%" ^
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
