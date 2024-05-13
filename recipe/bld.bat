@@ -33,13 +33,10 @@ mkdir %ZIG_BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %ZIG_BUILD_DIR%
   echo "   Copying sources ..."
-  dir %SOURCE_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   echo "   Building ..."
-  dir %CONFIG_DIR%
-  dir %CONFIG_DIR%/config.h
   %ZIG% build ^
     --prefix "%PREFIX%" ^
     -Dconfig_h="%CONFIG_DIR%/config.h" ^
@@ -51,6 +48,7 @@ cd %ZIG_BUILD_DIR%
   ::  -Dtarget="%TARGET%" ^
   ::  -Dcpu="%MCPU%" ^
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+  echo "   Built."
 cd %SRC_DIR%
 
 echo "Building ZIG with: %PREFIX%\bin\zig.exe in %ZIG_TEST_DIR%"
@@ -62,8 +60,12 @@ cd %ZIG_TEST_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   set "ZIG=%PREFIX%\bin\zig.exe"
+  dir %PREFIX%
+  dir %PREFIX%\bin
+  dir %ZIG%
 
   echo "   Building ..."
+  mkdir %SRC_DIR%\_self-test
   %ZIG% build ^
     --prefix "%SRC_DIR%/_self-test" ^
     -Dconfig_h="%CONFIG_DIR%/config.h" ^
