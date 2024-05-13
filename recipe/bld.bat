@@ -32,7 +32,7 @@ cd %ZIG_BUILD_DIR%
 
   %ZIG% build ^
     --prefix "%PREFIX%" ^
-    -Dconfig_h="build/config.h" ^
+    -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Denable-llvm ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
@@ -51,7 +51,7 @@ cd %ZIG_TEST_DIR%
 
   %ZIG% build ^
     --prefix "%SRC_DIR%\_self-test" ^
-    -Dconfig_h="build/config.h" ^
+    -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^

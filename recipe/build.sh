@@ -4,6 +4,7 @@ set -ex
 
 function configure_linux_64() {
   local build_dir=$1
+  local install_dir=$2
 
   local current_dir
   current_dir=$(pwd)
@@ -14,8 +15,8 @@ function configure_linux_64() {
     MCPU="baseline"
 
     cmake "${SRC_DIR}"/zig-source \
-      -D CMAKE_INSTALL_PREFIX="${PREFIX}" \
-      -D CMAKE_PREFIX_PATH="${PREFIX};${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      -D CMAKE_INSTALL_PREFIX="${install_dir}" \
+      -D CMAKE_PREFIX_PATH="${PREFIX};${PREFIX}/lib;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       -D CMAKE_BUILD_TYPE=Release \
       -D LIBC_CONDA_VERSION="${LIBC_CONDA_VERSION-2.28}" \
       -D LIBC_INTERPRETER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
@@ -30,6 +31,7 @@ function configure_linux_64() {
 
 function configure_osx_64() {
   local build_dir=$1
+  local install_dir=$2
 
   local current_dir
   current_dir=$(pwd)
@@ -40,7 +42,7 @@ function configure_osx_64() {
     MCPU="baseline"
 
     cmake "${SRC_DIR}"/zig-source \
-      -D CMAKE_INSTALL_PREFIX="${PREFIX}" \
+      -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${PREFIX};${BUILD_PREFIX}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="${TARGET}" \
@@ -128,7 +130,7 @@ export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
   Linux)
-    configure_linux_64 "${SRC_DIR}/build-release"
+    configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
     export LD_LIBRARY_PATH="${PREFIX}/lib"
@@ -137,7 +139,7 @@ case "$(uname)" in
   Darwin)
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
     # Not working due to headerpad: bootstrap_osx_64
-    configure_osx_64 "${SRC_DIR}/build-release"
+    configure_osx_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release"
     export DYLD_LIBRARY_PATH="${PREFIX}/lib"
     self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
