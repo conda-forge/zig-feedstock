@@ -118,7 +118,7 @@ function self_build() {
     cp -r "${SRC_DIR}"/zig-source/* .
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${BUILD_PREFIX};${BUILD_PREFIX}/lib;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      --search-prefix "${PREFIX};${PREFIX}/lib;${PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
