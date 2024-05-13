@@ -131,6 +131,7 @@ case "$(uname)" in
     configure_linux_64 "${SRC_DIR}/build-release"
     cmake_build_install "${SRC_DIR}/build-release"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
+    export LD_LIBRARY_PATH="${PREFIX}/lib"
     self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
   Darwin)
@@ -138,6 +139,7 @@ case "$(uname)" in
     # Not working due to headerpad: bootstrap_osx_64
     configure_osx_64 "${SRC_DIR}/build-release"
     cmake_build_install "${SRC_DIR}/build-release"
+    export DYLD_LIBRARY_PATH="${PREFIX}/lib"
     self_build "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
 esac
