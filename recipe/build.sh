@@ -71,8 +71,8 @@ case "$(uname)" in
     configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
-    # export LD_LIBRARY_PATH="${PREFIX}/lib"
-    # self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
+    self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
+    self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/_self-built" "${SRC_DIR}/_self-built1"
     ;;
   Darwin)
     echo "macOS is not supported yet."
