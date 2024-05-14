@@ -53,7 +53,7 @@ cd %ZIG_BUILD_DIR%
     --search-prefix "%PREFIX%\Library\lib" ^
     --search-prefix "%PREFIX%\Library\bin" ^
     -Denable-llvm ^
-    -Dflat ^
+    -Duse-llvm ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
