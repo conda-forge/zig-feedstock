@@ -29,6 +29,14 @@ cd %CONFIG_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 
+:: echo "Building ZIG from source in %CONFIG_DIR%
+:: cd %CONFIG_DIR%
+::   echo "   Building ..."
+::   cmake --build . --config Release --target install -- -j %NUMBER_OF_PROCESSORS%
+::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+::   echo "   Built."
+:: cd %SRC_DIR%
+
 echo "Building ZIG with: %ZIG% in %ZIG_BUILD_DIR%"
 mkdir %ZIG_BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -42,8 +50,8 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    --search-prefix "%PREFIX%/Library/lib" ^
     --search-prefix "%PREFIX%\Library\lib" ^
+    --search-prefix "%PREFIX%\Library\bin" ^
     -Denable-llvm ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
