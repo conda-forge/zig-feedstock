@@ -42,17 +42,16 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    --search-prefix "%PREFIX%/lib" ^
     --search-prefix "%PREFIX%/Library/lib" ^
     -Denable-llvm ^
     -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   ::  -Dconfig_h="%CONFIG_DIR%/config.h" ^
   ::  -Dtarget="%TARGET%" ^
   ::  -Dcpu="%MCPU%" ^
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   echo "   Built."
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
