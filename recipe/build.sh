@@ -14,6 +14,7 @@ function configure_linux_64() {
     TARGET="x86_64-linux-gnu"
     MCPU="baseline"
 
+    echo "${CMAKE_ARGS}"
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${PREFIX};${PREFIX}/lib;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
@@ -23,6 +24,8 @@ function configure_linux_64() {
       -D LIBC_RPATH="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64:${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib:${PREFIX}/lib64:${PREFIX}/lib" \
       -D ZIG_TARGET_TRIPLE="$TARGET" \
       -D ZIG_TARGET_MCPU="$MCPU" \
+      -D ZIG_SHARED_LLVM=ON \
+      -D ZIG_USE_LLVM_CONFIG=ON \
       -D ZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -G Ninja
       # "${CMAKE_ARGS}" \
@@ -41,13 +44,16 @@ function configure_osx_64() {
     TARGET="x86_64-macos-none"
     MCPU="baseline"
 
+    echo "${CMAKE_ARGS}"
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX};${PREFIX}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="${TARGET}" \
       -D ZIG_TARGET_MCPU="${MCPU}" \
-      -D ZIG_USE_CCACHE=OFF \
+      -D ZIG_SHARED_LLVM=ON \
+      -D ZIG_USE_LLVM_CONFIG=ON \
+      -D ZIG_SYSTEM_LIBCXX:STRING=c++ \
       -G Ninja
       # ${CMAKE_ARGS} \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
@@ -63,7 +69,7 @@ function cmake_build_install() {
   current_dir=$(pwd)
 
   cd "${build_dir}"
-    cmake --build .
+    cmake --build . -- -j"${CPU_COUNT}"
     cmake --install .
   cd "${current_dir}"
 }
@@ -112,6 +118,7 @@ function self_build_osx_64() {
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
+      -Duse-zig-libcxx \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
 }
