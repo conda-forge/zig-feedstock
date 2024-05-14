@@ -20,12 +20,14 @@ if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DCMAKE_INSTALL_PREFIX="%PREFIX%" ^
-    -DCMAKE_PREFIX_PATH="%PREFIX%" ^
-    -DZIG_TARGET_TRIPLE="%HOST_TARGET%" ^
-    -DZIG_TARGET_MCPU=baseline ^
-    -DZIG_VERSION="%PKG_VERSION%"
+    -D CMAKE_BUILD_TYPE=Release ^
+    -D CMAKE_INSTALL_PREFIX="%PREFIX%" ^
+    -D CMAKE_PREFIX_PATH="%PREFIX%" ^
+    -D ZIG_TARGET_TRIPLE="%HOST_TARGET%" ^
+    -D ZIG_TARGET_MCPU=baseline ^
+    -D ZIG_SHARED_LLVM=ON \
+    -D ZIG_USE_LLVM_CONFIG=ON \
+    -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 
@@ -50,13 +52,9 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    --search-prefix "%PREFIX%" ^
-    --search-prefix "%BUILD_PREFIX%" ^
     -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Denable-llvm ^
-    -Duse-llvm ^
     -Doptimize=ReleaseFast ^
-    -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   ::  -Dtarget="%TARGET%" ^
