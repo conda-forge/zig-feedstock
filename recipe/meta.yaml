@@ -10,9 +10,7 @@ source:
   - url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
     sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
     patches:
-      # - patches/0001-add-llvm-config.patch  # [not win]
-      # - patches/0002-add-patchelf-zig2.patch  # [linux and x86_64]
-      - patches/0003-remove-abi-error.patch  # [linux and x86_64]
+      - patches/0001-remove-abi-error.patch  # [linux and x86_64]
     folder: zig-source
 
   - folder: zig-bootstrap  # [(win or osx) and x86_64]
@@ -24,8 +22,6 @@ source:
 build:
   number: 2
   skip: true  # [not linux]
-  script_env:
-    - LIBC_CONDA_VERSION=2.28  # [linux and x86_64]
 
 requirements:
   build:
