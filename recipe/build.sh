@@ -61,7 +61,7 @@ function self_build_osx_64() {
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
-      -Dconfig_h"${SRC_DIR}/build-release/config.h" \
+      -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Denable-llvm \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
