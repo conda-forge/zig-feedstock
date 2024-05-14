@@ -14,6 +14,7 @@ function configure_linux_64() {
     TARGET="x86_64-linux-gnu"
     MCPU="baseline"
 
+    echo "${CMAKE_ARGS}"
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
@@ -77,7 +78,7 @@ case "$(uname)" in
     configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
-    export LD_LIBRARY_PATH="${PREFIX}/lib"
+    # export LD_LIBRARY_PATH="${PREFIX}/lib"
     # self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
   Darwin)
