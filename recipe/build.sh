@@ -15,8 +15,6 @@ function configure_linux_64() {
     MCPU="baseline"
 
     cmake "${SRC_DIR}"/zig-source \
-      "${CMAKE_ARGS}" \
-      -D CMAKE_PROGRAM_PATH="${PREFIX}" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
       -D CMAKE_BUILD_TYPE=Release \
@@ -29,6 +27,8 @@ function configure_linux_64() {
       -D ZIG_USE_LLVM_CONFIG=ON \
       -D ZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -G Ninja
+      # "${CMAKE_ARGS}" \
+      # -D CMAKE_PROGRAM_PATH="${PREFIX}" \
   cd "${current_dir}"
 }
 
