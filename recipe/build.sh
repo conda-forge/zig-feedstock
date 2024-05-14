@@ -14,7 +14,6 @@ function configure_osx_64() {
     TARGET="x86_64-macos-none"
     MCPU="baseline"
 
-    echo "${CMAKE_ARGS}"
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX};${PREFIX}" \
@@ -62,7 +61,8 @@ function self_build_osx_64() {
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
-      -Dstatic-llvm \
+      -Dconfig_h"${SRC_DIR}/build-release/config.h" \
+      -Denable-llvm \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
 }
