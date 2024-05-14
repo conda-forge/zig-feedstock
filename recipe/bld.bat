@@ -52,13 +52,13 @@ cd %ZIG_BUILD_DIR%
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%" ^
     --search-prefix "%BUILD_PREFIX%" ^
+    -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Denable-llvm ^
     -Duse-llvm ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-  ::  -Dconfig_h="%CONFIG_DIR%/config.h" ^
   ::  -Dtarget="%TARGET%" ^
   ::  -Dcpu="%MCPU%" ^
   echo "   Built."
