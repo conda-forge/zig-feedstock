@@ -52,8 +52,7 @@ cd %ZIG_BUILD_DIR%
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     --search-prefix "%PREFIX%\Library\bin" ^
-    -Dskip-native ^
-    -Denable-llvm ^
+    -Dstatic-llvm ^
     -Duse-llvm ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
