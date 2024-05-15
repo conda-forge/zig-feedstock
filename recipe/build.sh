@@ -58,6 +58,7 @@ function self_build_x86_64() {
     # It seems that the libmvec_nonsh.a is a MUSL issue, specifying 'gnu'
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
+      --search-prefix "${PREFIX}/lib" \
       --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Dversion-string="${PKG_VERSION}"
