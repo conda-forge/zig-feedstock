@@ -58,6 +58,8 @@ function self_build_x86_64() {
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
 
+    patchelf --add-rpath "${PREFIX}/lib" "${installed_dir}/bin/zig"
+
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
