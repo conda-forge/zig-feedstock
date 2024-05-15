@@ -18,6 +18,7 @@ echo "Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%"
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
+  set "PATH=%PREFIX%\bin;%PATH%"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
