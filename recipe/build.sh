@@ -32,7 +32,7 @@ function configure_linux_64() {
 
 function cmake_build_install() {
   local build_dir=$1
-  local install_dir=$1
+  local install_dir=$2
 
   local current_dir
   current_dir=$(pwd)
@@ -77,10 +77,10 @@ export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
   Linux)
     configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
-    cmake_build_install "${SRC_DIR}/build-release"
+    cmake_build_install "${SRC_DIR}/build-release" "${PREFIX}"
     patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 --remove-rpath "${PREFIX}/bin/zig"
-    self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
-    self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/_self-built" "${SRC_DIR}/_self-built1"
+    # self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
+    # self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/_self-built" "${SRC_DIR}/_self-built1"
     ;;
   Darwin)
     echo "macOS is not supported yet."
