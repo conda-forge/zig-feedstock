@@ -58,7 +58,7 @@ cd %ZIG_BUILD_DIR%
     -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Denable-llvm ^
     -Doptimize=ReleaseFast ^
-    -Dtarget="%TARGET%" ^
+    -Dtarget="%HOST_TARGET%" ^
     -Dcpu="%MCPU%" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
