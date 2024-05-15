@@ -62,7 +62,7 @@ function self_build_x86_64() {
 
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${PREFIX}/lib" \
+      --search-prefix "${PREFIX}x86_64-conda-linux-gnu/usr/lib" \
       --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Dversion-string="${PKG_VERSION}"
