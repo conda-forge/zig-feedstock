@@ -39,8 +39,6 @@ function cmake_build_install() {
   cd "${build_dir}"
     cmake --build . -- -j"${CPU_COUNT}"
     cmake --install .
-
-    patchelf --add-rpath "${PREFIX}/lib" "${installed_dir}/bin/zig"
   cd "${current_dir}"
 }
 
@@ -59,6 +57,8 @@ function self_build_x86_64() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
+
+    patchelf --add-rpath "${PREFIX}/lib" "${installed_dir}/bin/zig"
 
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
