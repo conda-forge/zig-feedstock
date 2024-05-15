@@ -56,6 +56,7 @@ function self_build_osx_64() {
   export http_proxy=http://localhost
 
   mkdir -p "${build_dir}"
+  mkdir -p "${install_dir}"
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
     "${installed_dir}/bin/zig" build \
@@ -78,6 +79,6 @@ case "$(uname)" in
     configure_osx_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release"
     export DYLD_LIBRARY_PATH="${PREFIX}/lib"
-    self_build_osx_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${PREFIX}"
+    self_build_osx_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     ;;
 esac
