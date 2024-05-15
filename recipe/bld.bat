@@ -27,11 +27,11 @@ cd %CONFIG_DIR%
     -D ZIG_TARGET_TRIPLE="%HOST_TARGET%" ^
     -D ZIG_TARGET_MCPU=baseline ^
     -D ZIG_VERSION="%PKG_VERSION%"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
     :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
     :: -D ZIG_SHARED_LLVM=ON ^
     :: -D ZIG_USE_LLVM_CONFIG=ON ^
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 
 :: echo "Building ZIG from source in %CONFIG_DIR%
@@ -55,14 +55,14 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Denable-llvm ^
     -Doptimize=ReleaseFast ^
+    -Dtarget="%TARGET%" ^
+    -Dcpu="%MCPU%" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-  ::  -Dtarget="%TARGET%" ^
-  ::  -Dcpu="%MCPU%" ^
   echo "   Built."
+  ::  -Dconfig_h="%CONFIG_DIR%/config.h" ^
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
 
