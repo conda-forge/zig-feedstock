@@ -25,6 +25,8 @@ function configure_linux_64() {
       -D ZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -G Ninja
       # "${CMAKE_ARGS}" \
+    cat config.h
+
   cd "${current_dir}"
 }
 
@@ -55,7 +57,7 @@ function self_build_x86_64() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
-    # It seems that the libmvec_nonsh.a is a MUSL issue, specifying 'gnu'
+
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
