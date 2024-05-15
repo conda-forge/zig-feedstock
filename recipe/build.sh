@@ -16,7 +16,7 @@ function configure_linux_64() {
 
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64;${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      -D CMAKE_PREFIX_PATH="${PREFIX}/lib" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="$TARGET" \
       -D ZIG_TARGET_MCPU="$MCPU" \
