@@ -26,9 +26,11 @@ cd %CONFIG_DIR%
     -D CMAKE_PREFIX_PATH="%PREFIX%" ^
     -D ZIG_TARGET_TRIPLE="%HOST_TARGET%" ^
     -D ZIG_TARGET_MCPU=baseline ^
-    -D ZIG_SHARED_LLVM=ON ^
-    -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_VERSION="%PKG_VERSION%"
+
+    :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
+    :: -D ZIG_SHARED_LLVM=ON ^
+    :: -D ZIG_USE_LLVM_CONFIG=ON ^
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 
