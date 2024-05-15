@@ -32,6 +32,7 @@ function configure_linux_64() {
 
 function cmake_build_install() {
   local build_dir=$1
+  local install_dir=$1
 
   local current_dir
   current_dir=$(pwd)
@@ -39,6 +40,8 @@ function cmake_build_install() {
   cd "${build_dir}"
     cmake --build . -- -j"${CPU_COUNT}"
     cmake --install .
+
+    patchelf --add-rpath "${PREFIX}/lib" "${install_dir}/bin/zig"
   cd "${current_dir}"
 }
 
@@ -58,7 +61,7 @@ function self_build_x86_64() {
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
 
-    patchelf --add-rpath "${PREFIX}/lib" "${installed_dir}/bin/zig"
+    ldd "${installed_dir}/bin/zig"
 
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
