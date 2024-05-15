@@ -18,11 +18,11 @@ function configure_osx_64() {
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX};${PREFIX}" \
       -D CMAKE_BUILD_TYPE=Release \
+      -D CMAKE_CXX_IMPLICIT_LINK_LIBRARIES="c++" \
       -D ZIG_TARGET_TRIPLE="${TARGET}" \
       -D ZIG_TARGET_MCPU="${MCPU}" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
-      -D ZIG_SYSTEM_LIBCXX="stdc++" \
       -G Ninja
       # ${CMAKE_ARGS} \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
