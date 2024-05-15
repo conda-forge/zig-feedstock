@@ -22,7 +22,7 @@ function configure_osx_64() {
       -D ZIG_TARGET_MCPU="${MCPU}" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
-      -D ZIG_SYSTEM_LIBCXX="c++" \
+      -D ZIG_SYSTEM_LIBCXX="stdc++" \
       -G Ninja
       # ${CMAKE_ARGS} \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
