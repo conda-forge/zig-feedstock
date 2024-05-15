@@ -55,6 +55,7 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
+    -Dconfig_h="%CONFIG_DIR%/config.h" ^
     -Denable-llvm ^
     -Doptimize=ReleaseFast ^
     -Dtarget="%TARGET%" ^
@@ -62,7 +63,6 @@ cd %ZIG_BUILD_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   echo "   Built."
-  ::  -Dconfig_h="%CONFIG_DIR%/config.h" ^
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
 
