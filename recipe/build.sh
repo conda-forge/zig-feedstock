@@ -28,6 +28,7 @@ function configure_osx_64() {
       # -DCMAKE_SYSTEM_NAME="Darwin" \
       # -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
       # -DCMAKE_CXX_COMPILER="$ZIG;c++;-target;$TARGET;-mcpu=$MCPU" \
+      cat config.h
   cd "${current_dir}"
 }
 
