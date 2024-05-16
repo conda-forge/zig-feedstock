@@ -14,26 +14,27 @@ set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
 set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
-:: echo "Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%"
-:: mkdir %CONFIG_DIR%
-:: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-:: cd %CONFIG_DIR%
-::   set "PATH=%PREFIX%\bin;%PATH%"
-::   cmake %SOURCE_DIR% ^
-::     -G "Ninja" ^
-::     -D CMAKE_BUILD_TYPE=Release ^
-::     -D CMAKE_INSTALL_PREFIX="%PREFIX%" ^
-::     -D CMAKE_PREFIX_PATH="%PREFIX%" ^
-::     -D ZIG_TARGET_TRIPLE="%TARGET%" ^
-::     -D ZIG_TARGET_MCPU=baseline ^
-::     -D ZIG_SHARED_LLVM=ON ^
-::     -D ZIG_VERSION="%PKG_VERSION%"
-::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-::
-::     :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
-::     :: -D ZIG_SHARED_LLVM=ON ^
-::     :: -D ZIG_USE_LLVM_CONFIG=ON ^
-:: cd %SRC_DIR%
+:: We need this so zig can find the libraies (apparently, --search-prefix does not work)
+echo "Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%"
+mkdir %CONFIG_DIR%
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %CONFIG_DIR%
+  set "PATH=%PREFIX%\bin;%PATH%"
+  cmake %SOURCE_DIR% ^
+    -G "Ninja" ^
+    -D CMAKE_BUILD_TYPE=Release ^
+    -D CMAKE_INSTALL_PREFIX="%PREFIX%" ^
+    -D CMAKE_PREFIX_PATH="%PREFIX%" ^
+    -D ZIG_TARGET_TRIPLE="%TARGET%" ^
+    -D ZIG_TARGET_MCPU=baseline ^
+    -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_VERSION="%PKG_VERSION%"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+    :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
+    :: -D ZIG_SHARED_LLVM=ON ^
+    :: -D ZIG_USE_LLVM_CONFIG=ON ^
+cd %SRC_DIR%
 
 :: echo "Building ZIG from source in %CONFIG_DIR%
 :: cd %CONFIG_DIR%
@@ -56,13 +57,14 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    --search-prefix "%BUILD_PREFIX%\Library\lib" ^
-    --search-prefix "%PREFIX%\Library\lib" ^
+    -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
     -Denable-llvm ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+    :: --search-prefix "%BUILD_PREFIX%\Library\lib" ^
+    :: --search-prefix "%PREFIX%\Library\lib" ^
     :: -Dtarget="%HOST_TARGET%" ^
     :: -Dcpu="%MCPU%" ^
   echo "   Built."
