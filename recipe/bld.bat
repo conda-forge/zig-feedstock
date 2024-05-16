@@ -76,7 +76,7 @@ cd %ZIG_TEST_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  set "ZIG=%ZIG_INSTALL_DIR%\zig.exe"
+  set "ZIG=%ZIG_INSTALL_DIR%\bin\zig.exe"
 
   echo "   Building ..."
   mkdir %SRC_DIR%\_self-test
