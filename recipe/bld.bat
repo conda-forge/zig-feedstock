@@ -59,6 +59,7 @@ cd %ZIG_BUILD_DIR%
     --search-prefix "%BUILD_PREFIX%" ^
     --search-prefix "%PREFIX%" ^
     -Doptimize=ReleaseFast ^
+    -Denable-llvm ^
     -Dstrip ^
     -Dtarget="%HOST_TARGET%" ^
     -Dcpu="%MCPU%" ^
@@ -82,9 +83,10 @@ cd %ZIG_TEST_DIR%
   mkdir %SRC_DIR%\_self-test
   %ZIG% build ^
     --prefix "%SRC_DIR%/_self-test" ^
-    -Dflat ^
     -Doptimize=ReleaseFast ^
     -Dstrip ^
+    -Dtarget="%HOST_TARGET%" ^
+    -Dcpu="%MCPU%" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
