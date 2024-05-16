@@ -56,8 +56,8 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    --search-prefix "%BUILD_PREFIX%" ^
-    --search-prefix "%PREFIX%" ^
+    --search-prefix "%BUILD_PREFIX%\Library\lib" ^
+    --search-prefix "%PREFIX%\Library\lib" ^
     -Doptimize=ReleaseFast ^
     -Denable-llvm ^
     -Dstrip ^
