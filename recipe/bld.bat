@@ -61,10 +61,10 @@ cd %ZIG_BUILD_DIR%
     -Doptimize=ReleaseFast ^
     -Denable-llvm ^
     -Dstrip ^
-    -Dtarget="%HOST_TARGET%" ^
-    -Dcpu="%MCPU%" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+    :: -Dtarget="%HOST_TARGET%" ^
+    :: -Dcpu="%MCPU%" ^
   echo "   Built."
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
