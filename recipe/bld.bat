@@ -20,31 +20,40 @@ mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
   set "PATH=%PREFIX%\bin;%PATH%"
+
+  set "_prefix=%PREFIX:\=\\%"
+  set "_zig_install_dir=%ZIG_INSTALL_DIR:\=\\%"
+  set "_zig=%ZIG:\=\\%"
   cmake %SOURCE_DIR% ^
-    -G "Visual Studio 17 2022" ^
-    -D CMAKE_INSTALL_PREFIX="%PREFIX%" ^
-    -D CMAKE_PREFIX_PATH="%PREFIX%" ^
-    -D ZIG_TARGET_TRIPLE="%HOST_TARGET%" ^
-    -D ZIG_TARGET_MCPU=baseline ^
-    -D ZIG_SYSTEM_LIBCXX="c++" ^
+    -G "Ninja" ^
+    -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
+    -D CMAKE_PREFIX_PATH="%_prefix%\\Library" ^
+    -D CMAKE_C_COMPILER="%_zig%;cc" ^
+    -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
+    -D CMAKE_AR_COMPILER="%_zig%" ^
+    -D ZIG_AR_WORKAROUND=ON ^
+    -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
+    :: -G "Visual Studio 17 2022" ^
     :: -D CMAKE_BUILD_TYPE=Release ^
     :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
     :: -D ZIG_SHARED_LLVM=ON ^
     :: -D ZIG_USE_LLVM_CONFIG=ON ^
 cd %SRC_DIR%
 
-:: echo "Building ZIG from source in %CONFIG_DIR%
-:: cd %CONFIG_DIR%
-::   echo "   Building ..."
-::   :: cmake --build . --config Release --target install -- -j %NUMBER_OF_PROCESSORS%
-::   cmake --build . --config Release --target install
-::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-::   echo "   Built."
-:: cd %SRC_DIR%
+echo "Building ZIG from source in %CONFIG_DIR%
+cd %CONFIG_DIR%
+  echo "   Building ..."
+  cmake --build . --config Release --target install -- -j %NUMBER_OF_PROCESSORS%
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+  echo "   Built."
+
+  echo "   Testing ..."
+  %ZIG_INSTALL_DIR%\bin\zig.exe build test
+cd %SRC_DIR%
 
 echo "Building ZIG with: %ZIG% in %ZIG_BUILD_DIR%"
 mkdir %ZIG_BUILD_DIR%
