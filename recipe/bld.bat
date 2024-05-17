@@ -22,7 +22,6 @@ cd %CONFIG_DIR%
   set "PATH=%PREFIX%\bin;%PATH%"
   cmake %SOURCE_DIR% ^
     -G "Visual Studio 17 2022" ^
-    -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%PREFIX%" ^
     -D CMAKE_PREFIX_PATH="%PREFIX%" ^
     -D ZIG_TARGET_TRIPLE="%HOST_TARGET%" ^
@@ -32,6 +31,7 @@ cd %CONFIG_DIR%
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
+    :: -D CMAKE_BUILD_TYPE=Release ^
     :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
     :: -D ZIG_SHARED_LLVM=ON ^
     :: -D ZIG_USE_LLVM_CONFIG=ON ^
