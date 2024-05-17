@@ -21,7 +21,7 @@ if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
   set "PATH=%PREFIX%\bin;%PATH%"
   cmake %SOURCE_DIR% ^
-    -G "\Visual Studio 16 2019" ^
+    -G "Visual Studio 16 2019" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%PREFIX%" ^
     -D CMAKE_PREFIX_PATH="%PREFIX%" ^
