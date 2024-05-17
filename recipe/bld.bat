@@ -60,7 +60,7 @@ cd %ZIG_BUILD_DIR%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%" ^
-    --zig-lib-dir "%PREFIX%\lib" ^
+    --zig-lib-dir "%PREFIX%\Library\lib" ^
     -Doptimize=ReleaseSafe ^
     -Dstatic-llvm ^
     -Duse-zig-libcxx ^
