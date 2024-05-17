@@ -47,6 +47,7 @@ requirements:
     - zlib
     - zstd
   run:
+    - {{ pin_compatible("libcxx", max_pin=None) }}  # [osx]
     - llvmdev {{ llvm_version }}
 
 test:
