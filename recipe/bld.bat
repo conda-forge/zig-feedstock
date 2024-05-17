@@ -64,12 +64,12 @@ cd %ZIG_BUILD_DIR%
     -Doptimize=ReleaseSafe ^
     -Dstatic-llvm ^
     -Duse-zig-libcxx ^
+    -Dtarget="%TARGET%" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: -Dconfig_h="%CONFIG_DIR%\config.h" ^
     :: --search-prefix "%BUILD_PREFIX%\Library\lib" ^
     :: --search-prefix "%PREFIX%\Library\lib" ^
-    :: -Dtarget="%HOST_TARGET%" ^
     :: -Dcpu="%MCPU%" ^
   echo "   Built."
   dir %ZIG_INSTALL_DIR%
