@@ -60,7 +60,7 @@ cd %ZIG_BUILD_DIR%
     --prefix "%ZIG_INSTALL_DIR%" ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
-    -Denable-llvm ^
+    -Dstatic-llvm ^
     -Dstrip ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
