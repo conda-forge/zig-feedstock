@@ -19,12 +19,12 @@ function configure_osx_64() {
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX};${PREFIX}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_CXX_IMPLICIT_LINK_LIBRARIES="c++" \
-      -D ZIG_TARGET_TRIPLE="${TARGET}" \
-      -D ZIG_TARGET_MCPU="${MCPU}" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
       # ${CMAKE_ARGS} \
+      # -D ZIG_TARGET_TRIPLE="${TARGET}" \
+      # -D ZIG_TARGET_MCPU="${MCPU}" \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
       # -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
       # -DCMAKE_CXX_COMPILER="$ZIG;c++;-target;$TARGET;-mcpu=$MCPU" \
@@ -41,6 +41,7 @@ function cmake_build_install() {
   cd "${build_dir}"
     cmake --build . -- -j"${CPU_COUNT}"
     cmake --install .
+    "${install_dir}"/bin/zig build test
   cd "${current_dir}"
 }
 
