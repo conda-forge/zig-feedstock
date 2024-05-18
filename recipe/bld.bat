@@ -30,7 +30,7 @@ cd %CONFIG_DIR%
     -D CMAKE_PREFIX_PATH="%_prefix%\\Library" ^
     -D CMAKE_C_COMPILER="%_zig%;cc" ^
     -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
-    -D CMAKE_AR_COMPILER="%_zig%" ^
+    -D CMAKE_AR="%_zig%" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
