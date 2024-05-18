@@ -18,7 +18,7 @@ source:
 
   - folder: zig-bootstrap  # [(win or osx) and x86_64]
     url: https://ziglang.org/builds/zig-windows-x86_64-0.13.0-dev.211+6a65561e3.zip  # [win and x86_64]
-    sha256: aa6a2c2275122b64126ee2498a44f3a968eb5fe4ba8c4fe02840b7c6caf779c2
+    sha256: aa6a2c2275122b64126ee2498a44f3a968eb5fe4ba8c4fe02840b7c6caf779c2  # [win and x86_64]
     # sha256: 7f85c518fffc96f83f7c10067824fb9f8d5690e5a3df621cfbb914ce26f9461f  # [win and x86_64]
     # url: https://ziglang.org/download/0.12.0/zig-windows-x86_64-0.12.0.zip  # [win and x86_64]
     # sha256: 2199eb4c2000ddb1fba85ba78f1fcf9c1fb8b3e57658f6a627a8e513131893f5  # [win and x86_64]
