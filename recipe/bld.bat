@@ -32,7 +32,7 @@ cd %CONFIG_DIR%
     -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     -D CMAKE_AR="%_zig%" ^
     -D ZIG_AR_WORKAROUND=ON ^
-    -D ZIG_USE_LLVM_CONFIG=ON ^
+    -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
