@@ -41,7 +41,6 @@ function cmake_build_install() {
   cd "${build_dir}"
     cmake --build . -- -j"${CPU_COUNT}"
     cmake --install .
-    "${install_dir}"/bin/zig build test
   cd "${current_dir}"
 }
 
@@ -61,6 +60,8 @@ function self_build_osx_64() {
   mkdir -p "${install_dir}"
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
+    "${installed_dir}/bin/zig" build test
+
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
