@@ -1,5 +1,5 @@
 {% set name = "zig" %}
-{% set version = "0.13.0-dev.211+6a65561e3" %}
+{% set version = "0.13.0" %}
 {% set llvm_version = "17.0.6" %}
 
 package:
@@ -7,7 +7,7 @@ package:
   version: {{ version }}
 
 source:
-  - url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
+  - url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}-dev.211+6a65561e3.tar.gz
     sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
     patches:
       - 0001-add-llvm-config.patch  # [not win]
