@@ -1,6 +1,5 @@
 {% set name = "zig" %}
 {% set version = "0.13.0-dev.211+6a65561e3" %}
-  https://ziglang.org/builds/zig-0.13.0-dev.211+6a65561e3.tar.xz
 {% set llvm_version = "17.0.6" %}
 
 package:
