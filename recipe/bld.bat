@@ -26,6 +26,7 @@ cd %CONFIG_DIR%
   set "_zig=%ZIG:\=\\%"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
+    -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D CMAKE_PREFIX_PATH="%_prefix%\\Library" ^
     -D CMAKE_C_COMPILER="%_zig%;cc" ^
@@ -38,7 +39,6 @@ cd %CONFIG_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
     :: -G "Visual Studio 17 2022" ^
-    :: -D CMAKE_BUILD_TYPE=Release ^
     :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
     :: -D ZIG_SHARED_LLVM=ON ^
     :: -D ZIG_USE_LLVM_CONFIG=ON ^
