@@ -60,10 +60,12 @@ function self_build_osx_64() {
   mkdir -p "${install_dir}"
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
-    "${installed_dir}/bin/zig" build test
+    # "${installed_dir}/bin/zig" build test
+    ${installed_dir}/bin/zig --version
 
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
+      --verbose-link \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Denable-llvm \
       -Dversion-string="${PKG_VERSION}"
