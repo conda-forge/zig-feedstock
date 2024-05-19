@@ -16,7 +16,7 @@ function configure_osx_64() {
 
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX};${PREFIX}" \
+      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_CXX_IMPLICIT_LINK_LIBRARIES="c++" \
       -D ZIG_SHARED_LLVM=ON \
@@ -28,7 +28,9 @@ function configure_osx_64() {
       # -DCMAKE_SYSTEM_NAME="Darwin" \
       # -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
       # -DCMAKE_CXX_COMPILER="$ZIG;c++;-target;$TARGET;-mcpu=$MCPU" \
-      cat config.h
+
+    sed -i '' 's/\$PREFIX/\$BUILD_PREFIX/' config.h
+    cat config.h
   cd "${current_dir}"
 }
 
