@@ -61,7 +61,7 @@ function self_build_osx_64() {
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
     # "${installed_dir}/bin/zig" build test
-    ${installed_dir}/bin/zig --version
+    ${installed_dir}/bin/zig version
 
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
