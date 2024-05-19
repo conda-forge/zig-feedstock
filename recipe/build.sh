@@ -42,6 +42,7 @@ function cmake_build_install() {
     _prefix="${PREFIX}"
     export PREFIX="${BUILD_PREFIX}"
     cmake --build . -- -j"${CPU_COUNT}"
+    export PREFIX="${_prefix}"
     cmake --install .
   cd "${current_dir}"
 }
