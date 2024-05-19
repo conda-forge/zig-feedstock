@@ -31,6 +31,7 @@ cd %CONFIG_DIR%
   set freemem_int=%freemem_int:~1%
   echo Available Physical Memory: %freemem%
 
+  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
@@ -42,9 +43,6 @@ cd %CONFIG_DIR%
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
-    -D LLVM_PARALLEL_LINK_JOBS=1 ^
-    -D LLVM_OPTIMIZED_TABLEGEN=OFF ^
-    -D LLVM_ENABLE_ASSERTIONS=OFF ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -57,6 +55,7 @@ cd %SRC_DIR%
 echo "Building ZIG from source in %CONFIG_DIR%
 cd %CONFIG_DIR%
   echo "   Building ..."
+  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake --build . --config Release --target install -- -j 1
   :: cmake --build . --config Release --target install
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
