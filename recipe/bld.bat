@@ -54,8 +54,8 @@ cd %SRC_DIR%
 echo "Building ZIG from source in %CONFIG_DIR%
 cd %CONFIG_DIR%
   echo "   Building ..."
-  :: cmake --build . --config Release --target install -- -j %NUMBER_OF_PROCESSORS%
-  cmake --build . --config Release --target install
+  cmake --build . --config Release --target install -- -j 1
+  :: cmake --build . --config Release --target install
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   echo "   Built."
 
