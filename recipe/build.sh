@@ -16,18 +16,17 @@ function configure_linux_64() {
 
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_PREFIX_PATH="${PREFIX}/lib" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="$TARGET" \
       -D ZIG_TARGET_MCPU="$MCPU" \
-      -D ZIG_STATIC_LIB=ON \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -D ZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -G Ninja
       # "${CMAKE_ARGS}" \
+      # -D CMAKE_PREFIX_PATH="${PREFIX}/lib" \
     cat config.h
-
+    export PREFIX="${_prefix}"
   cd "${current_dir}"
 }
 
@@ -39,7 +38,10 @@ function cmake_build_install() {
   current_dir=$(pwd)
 
   cd "${build_dir}"
+    _prefix="${PREFIX}"
+    export PREFIX="${BUILD_PREFIX}"
     cmake --build . -- -j"${CPU_COUNT}"
+    export PREFIX="${_prefix}"
     cmake --install .
 
     patchelf \
@@ -101,10 +103,12 @@ function self_build_x86_64() {
       --prefix "${install_dir}" \
       --search-prefix "${BUILD_PREFIX}/lib" \
       --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib" \
-      --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
+      --verbose-link \
+      -Denable-llvm \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Ddynamic-linker="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -Dversion-string="${PKG_VERSION}"
+      # --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
   cd "${current_dir}"
 }
 
@@ -116,6 +120,7 @@ case "$(uname)" in
     cmake_build_install "${SRC_DIR}/build-release" "${PREFIX}"
     # test_build "${PREFIX}"
 
+    rm -rf ${ZIG_GLOBAL_CACHE_DIR} ${ZIG_LOCAL_CACHE_DIR}
     self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
     self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/_self-built" "${SRC_DIR}/_self-built1"
     ;;
