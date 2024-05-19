@@ -22,19 +22,25 @@ cd %CONFIG_DIR%
   set "PATH=%PREFIX%\bin;%PATH%"
 
   set "_prefix=%PREFIX:\=\\%"
+  set "_build_prefix=%BUILD_PREFIX:\=\\%"
   set "_zig_install_dir=%ZIG_INSTALL_DIR:\=\\%"
   set "_zig=%ZIG:\=\\%"
+
+  for /F "tokens=2 delims=:" %%a in ('systeminfo ^| findstr /C:"Available Physical Memory"') do set "freemem=%%a"
+  for /F "tokens=1 delims=MB" %%a in ("%freemem%") do set /A "freemem_int=%%a"
+  set freemem_int=%freemem_int:~1%
+  echo Available Physical Memory: %freemem%
+
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_PREFIX_PATH="%_prefix%\\Library" ^
+    -D CMAKE_PREFIX_PATH="%_build_prefix%\\Library" ^
     -D CMAKE_C_COMPILER="%_zig%;cc" ^
     -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     -D CMAKE_AR="%_zig%" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_STATIC_LIB=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
