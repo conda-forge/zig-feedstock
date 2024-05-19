@@ -43,6 +43,7 @@ requirements:
     - zstd
   run:
     - llvmdev {{ llvm_version }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
 
 test:
   commands:
