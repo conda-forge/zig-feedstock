@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -ex
+ZIG=${SRC_DIR}\zig-bootstrap\zig
 
 function configure_osx_64() {
   local build_dir=$1
@@ -15,10 +16,13 @@ function configure_osx_64() {
     MCPU="baseline"
 
     cmake "${SRC_DIR}"/zig-source \
+      -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}" \
-      -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_CXX_IMPLICIT_LINK_LIBRARIES="c++" \
+      -D CMAKE_C_COMPILER="$ZIG;cc" \
+      -D CMAKE_CXX_COMPILER="$ZIG;c++" \
+      -D LLVM_ENABLE_LIBCXX=ON \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
@@ -26,8 +30,6 @@ function configure_osx_64() {
       # -D ZIG_TARGET_TRIPLE="${TARGET}" \
       # -D ZIG_TARGET_MCPU="${MCPU}" \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
-      # -DCMAKE_C_COMPILER="$ZIG;cc;-target;$TARGET;-mcpu=$MCPU" \
-      # -DCMAKE_CXX_COMPILER="$ZIG;c++;-target;$TARGET;-mcpu=$MCPU" \
 
     sed -i '' 's/\$PREFIX/\$BUILD_PREFIX/' config.h
     cat config.h
