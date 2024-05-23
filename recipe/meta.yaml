@@ -8,8 +8,8 @@ package:
   version: {{ version }}
 
 source:
-  - url: https://ziglang.org/builds/zig-0.13.0-dev.211+6a65561e3.tar.xz
-    sha256: aa6a2c2275122b64126ee2498a44f3a968eb5fe4ba8c4fe02840b7c6caf779c2
+  - url: https://ziglang.org/builds/zig-0.13.0-dev.249+ed75f6256.tar.xz
+    sha256: b5e49be1277da06710875f4aa6a3adf86efc27a724052d68b3fca59781eae39e
   # - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
   #   sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
   #   patches:
