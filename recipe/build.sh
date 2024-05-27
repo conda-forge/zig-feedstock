@@ -26,8 +26,42 @@ function configure_linux_64() {
       # "${CMAKE_ARGS}" \
       # -D CMAKE_PREFIX_PATH="${PREFIX}/lib" \
     cat config.h
-    export PREFIX="${_prefix}"
   cd "${current_dir}"
+}
+
+function patchelf_installed_zig() {
+  local install_dir=$1
+
+  patchelf --remove-rpath                                                              "${install_dir}/bin/zig"
+  patchelf --set-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64"     "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${BUILD_PREFIX}/lib"                                      "${install_dir}/bin/zig"
+
+#  patchelf --remove-needed  libc.so.6                                                  "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libm.so.6                                                  "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libdl-2.28.so                                              "${install_dir}/bin/zig"
+#  patchelf --remove-needed  librt-2.28.so                                              "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libpthread-2.28.so                                         "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libzstd.so.1                                               "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libstdc++.so.6                                             "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libz.so.1                                                  "${install_dir}/bin/zig"
+#  patchelf --remove-needed  libgcc_s.so.1                                              "${install_dir}/bin/zig"
+#
+#  patchelf \
+#    --add-needed libc-2.28.so \
+#    --add-needed libm-2.28.so \
+#    --add-needed libdl-2.28.so \
+#    --add-needed librt-2.28.so \
+#    --add-needed libpthread-2.28.so \
+#    --add-needed libzstd.so.1 \
+#    --add-needed libstdc++.so.6 \
+#    --add-needed libz.so.1 \
+#    --add-needed libgcc_s.so.1 \
+#    "${install_dir}/bin/zig"
+
+  readelf -d "${install_dir}/bin/zig"
+  ldd "${install_dir}/bin/zig"
 }
 
 function cmake_build_install() {
@@ -44,27 +78,7 @@ function cmake_build_install() {
     export PREFIX="${_prefix}"
     cmake --install .
 
-    patchelf \
-      --remove-rpath \
-      "${install_dir}/bin/zig"
-    patchelf \
-      --add-rpath "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib" \
-      --add-rpath "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
-      --add-rpath "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
-      --add-rpath "${BUILD_PREFIX}/lib" \
-      "${install_dir}/bin/zig"
-    patchelf \
-      --add-needed libc-2.28.so \
-      --add-needed libm-2.28.so \
-      --add-needed libdl-2.28.so \
-      --add-needed librt-2.28.so \
-      --add-needed libpthread-2.28.so \
-      --add-needed libclang-cpp.so.17 \
-      --add-needed libzstd.so.1 \
-      --add-needed libstdc++.so.6 \
-      --add-needed libz.so.1 \
-      --add-needed libgcc_s.so.1 \
-      "${install_dir}/bin/zig"
+    patchelf_installed_zig "${install_dir}"
   cd "${current_dir}"
 }
 
@@ -78,9 +92,7 @@ function test_build() {
   export HTTPS_PROXY=https://localhost
   export http_proxy=http://localhost
 
-  cd "${SRC_DIR}"/zig-source
-    "${installed_dir}"/bin/zig build test
-  cd "${current_dir}"
+  cd "${SRC_DIR}"/zig-source && "${installed_dir}"/bin/zig build test && cd "${current_dir}"
 }
 
 function self_build_x86_64() {
@@ -99,16 +111,35 @@ function self_build_x86_64() {
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
 
-    LD_LIBRARY_PATH="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" "${installed_dir}/bin/zig" build \
+    cat > _libc_file <<EOF
+include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
+sys_include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
+crt_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64
+msvc_lib_dir=
+kernel32_lib_dir=
+gcc_dir=
+EOF
+
+    rm \
+      doc/langref/test_comptime_unwrap_null.zig \
+      doc/langref/test_variadic_function.zig \
+      doc/langref/cImport_builtin.zig \
+      doc/langref/verbose_cimport_flag.zig
+
+    "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${BUILD_PREFIX}/lib" \
+      --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
       --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib" \
-      --verbose-link \
-      -Denable-llvm \
+      --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+      --search-prefix "${BUILD_PREFIX}/lib" \
+      --libc _libc_file \
+      --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
+      -Denable-llvm \
       -Ddynamic-linker="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -Dversion-string="${PKG_VERSION}"
-      # --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
+
+    patchelf_installed_zig "${install_dir}"
   cd "${current_dir}"
 }
 
@@ -116,7 +147,7 @@ export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
   Linux)
-    configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
+    configure_linux_64 "${SRC_DIR}/build-release" "${SRC_DIR}/_bootstrapped"
     cmake_build_install "${SRC_DIR}/build-release" "${PREFIX}"
     # test_build "${PREFIX}"
 

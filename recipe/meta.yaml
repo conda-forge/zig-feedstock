@@ -1,16 +1,21 @@
 {% set name = "zig" %}
 {% set version = "0.12.0" %}
-{% set llvm_version = "17.0.6" %}
+{% set llvm_version = "18.1.5" %}
+# {% set llvm_version = "17.0.6" %}
 
 package:
   name: {{ name|lower }}
   version: {{ version }}
 
 source:
-  - url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
-    sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
+  - url: https://ziglang.org/builds/zig-0.13.0-dev.267+793f820b3.tar.xz
+    sha256: 4e1c93c403049432f1635a18915ae6068f55a41a44e90f2d88555135b9d26845
     patches:
-      - patches/0001-remove-abi-error.patch  # [linux and x86_64]
+      - patches/0001-remove-link-libc.patch
+  # - url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
+  #   sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
+  #   patches:
+  #     - patches/0001-remove-abi-error.patch  # [linux and x86_64]
     folder: zig-source
 
   - folder: zig-bootstrap  # [(win or osx) and x86_64]
@@ -33,7 +38,10 @@ requirements:
     - libclang-cpp {{ llvm_version }}
     - lld {{ llvm_version }}
     - ninja
+    - zlib
+    - zstd
   host:
+    - {{ stdlib("c") }}
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
