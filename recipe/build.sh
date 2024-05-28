@@ -32,7 +32,7 @@ function configure_osx_64() {
       # -DCMAKE_SYSTEM_NAME="Darwin" \
 
     sed -i '' 's@\$PREFIX@\$BUILD_PREFIX@g' config.h
-    sed -i '' 's@lxml2@lxml2;\$PREFIX/lib/libstdc++.so.6;\$PREFIX/lib/libc++.so.6@' config.h
+    sed -i '' 's@lxml2@lxml2;\$PREFIX/lib/libc++.so.6@' config.h
     cat config.h
   cd "${current_dir}"
 }
