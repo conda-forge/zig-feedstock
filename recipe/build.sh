@@ -66,7 +66,6 @@ function patchelf_installed_zig() {
 
 function cmake_build_install() {
   local build_dir=$1
-  local install_dir=$2
 
   local current_dir
   current_dir=$(pwd)
@@ -77,8 +76,6 @@ function cmake_build_install() {
     cmake --build . -- -j"${CPU_COUNT}"
     export PREFIX="${_prefix}"
     cmake --install .
-
-    patchelf_installed_zig "${install_dir}"
   cd "${current_dir}"
 }
 
@@ -147,13 +144,15 @@ export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
   Linux)
-    configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
-    cmake_build_install "${SRC_DIR}/build-release" "${PREFIX}"
-    # test_build "${PREFIX}"
+    install_dir="${PREFIX}"
 
-    rm -rf ${ZIG_GLOBAL_CACHE_DIR} ${ZIG_LOCAL_CACHE_DIR}
-    self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/_self-built"
-    self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/_self-built" "${SRC_DIR}/_self-built1"
+    configure_linux_64 "${SRC_DIR}/build-release" "${install_dir}"
+    cmake_build_install "${SRC_DIR}/build-release"
+    patchelf_installed_zig "${install_dir}"
+    # test_build "${install_dir}"
+
+    # Self-built zig generates MemoryError std::badAlloc
+    self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/self-built-install"
     ;;
   Darwin)
     echo "macOS is not supported yet."
