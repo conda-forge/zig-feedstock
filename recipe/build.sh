@@ -147,7 +147,7 @@ export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 case "$(uname)" in
   Linux)
-    configure_linux_64 "${SRC_DIR}/build-release" "${SRC_DIR}/_bootstrapped"
+    configure_linux_64 "${SRC_DIR}/build-release" "${PREFIX}"
     cmake_build_install "${SRC_DIR}/build-release" "${PREFIX}"
     # test_build "${PREFIX}"
 
