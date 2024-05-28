@@ -31,7 +31,8 @@ function configure_osx_64() {
       # -D ZIG_TARGET_MCPU="${MCPU}" \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
 
-    sed -i '' 's/\$PREFIX/\$BUILD_PREFIX/' config.h
+    sed -i '' 's@\$PREFIX@\$BUILD_PREFIX@g' config.h
+    sed -i '' 's@lxml2@lxml2;\$PREFIX/lib/libstdc++.so.6;\$PREFIX/lib/libc++.so.6@' config.h
     cat config.h
   cd "${current_dir}"
 }
