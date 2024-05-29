@@ -37,6 +37,7 @@ cd %CONFIG_DIR%
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D CMAKE_PREFIX_PATH="%_build_prefix%\\Library" ^
+    -D ZIG_TARGET_TRIPLE="x86_64-windows-msvc" ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_VERSION="%PKG_VERSION%"
