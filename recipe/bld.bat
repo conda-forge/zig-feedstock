@@ -37,8 +37,6 @@ cd %CONFIG_DIR%
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D CMAKE_PREFIX_PATH="%_build_prefix%\\Library" ^
-    -D CMAKE_C_COMPILER="%_zig%;cc" ^
-    -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     -D CMAKE_AR="%_zig%" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
@@ -46,6 +44,8 @@ cd %CONFIG_DIR%
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
+    :: -D CMAKE_C_COMPILER="%_zig%;cc" ^
+    :: -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     :: -G "Visual Studio 17 2022" ^
     :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
     :: -D ZIG_SHARED_LLVM=ON ^
