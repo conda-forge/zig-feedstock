@@ -15,9 +15,6 @@ function configure_osx_64() {
     TARGET="x86_64-macos-none"
     MCPU="baseline"
 
-    find ${BUILD_PREFIX} -name libc++.dylib -or -name libc++.a -or -name libstdc++.a
-    find ${PREFIX} -name libc++.a -or -name libc++.a -or -name libstdc++.a
-
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
@@ -34,8 +31,8 @@ function configure_osx_64() {
       # -D ZIG_TARGET_MCPU="${MCPU}" \
       # -DCMAKE_SYSTEM_NAME="Darwin" \
 
-    sed -i '' 's@PREFIX@BUILD_PREFIX@g' config.h
-    sed -i '' 's@;-lm@l\$PREFIX/lib/libc++.dylib;-lm@' config.h
+    #sed -i '' 's@\$PREFIX@\$BUILD_PREFIX@g' config.h
+    sed -i '' 's@;-lm@;\$PREFIX/lib/libc++.dylib;-lm@' config.h
     cat config.h
   cd "${current_dir}"
 }
