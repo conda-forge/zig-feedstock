@@ -33,9 +33,7 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ stdlib("c") }}
-    - libcxx {{ cxx_compiler_version }}  # [osx]
     - cmake >=3.5
-    - libclang-cpp {{ llvm_version }}
     - ninja
   host:
     - clangdev {{ llvm_version }}
