@@ -18,11 +18,10 @@ function configure_osx_64() {
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}" \
+      -D CMAKE_PREFIX_PATH="${PREFIX}" \
       -D CMAKE_CXX_IMPLICIT_LINK_LIBRARIES="c++" \
       -D CMAKE_C_COMPILER="$ZIG;cc" \
       -D CMAKE_CXX_COMPILER="$ZIG;c++" \
-      -D LLVM_ENABLE_LIBCXX=ON \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
