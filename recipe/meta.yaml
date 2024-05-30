@@ -9,7 +9,7 @@ package:
 
 source:
   - url: https://ziglang.org/builds/zig-0.13.0-dev.344+b2588de6c.tar.xz
-    sha256: 4e1c93c403049432f1635a18915ae6068f55a41a44e90f2d88555135b9d26845
+    sha256: 365b82567a52efd5a4339a030e79f83c06100ce7fc709f125c44df3bba835f2f
   # - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
   #   sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
   #   patches:
