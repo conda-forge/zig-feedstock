@@ -1,30 +1,19 @@
 {% set name = "zig" %}
-{% set version = "0.12.0" %}
-{% set llvm_version = "18.1.5" %}
-# {% set llvm_version = "17.0.6" %}
+{% set version = "0.13.0" %}
+{% set llvm_version = "18" %}
 
 package:
   name: {{ name|lower }}
   version: {{ version }}
 
 source:
-  - url: https://ziglang.org/builds/zig-0.13.0-dev.344+b2588de6c.tar.xz
-    sha256: 365b82567a52efd5a4339a030e79f83c06100ce7fc709f125c44df3bba835f2f
-  #- url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
-  #  sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
-  #  patches:
-  #    - 0001-add-llvm-config.patch  # [not win]
-  #    - 0002-add-patchelf-zig2.patch  # [linux and x86_64]
-  #    - 0003-remove-abi-error.patch  # [linux and x86_64]
+  - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
+    sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     folder: zig-source
 
   - folder: zig-bootstrap  # [(win or osx) and x86_64]
-    url: https://ziglang.org/download/0.12.0/zig-windows-x86_64-0.12.0.zip  # [win and x86_64]
-    sha256: 2199eb4c2000ddb1fba85ba78f1fcf9c1fb8b3e57658f6a627a8e513131893f5  # [win and x86_64]
-    url: https://ziglang.org/builds/zig-macos-x86_64-0.13.0-dev.344+b2588de6c.tar.xz  # [osx and x86_64]
-    sha256: 1c91d9962c135f694639ca69eed9f63b605c093a9b26978bdf093333dfc14bb0  # [osx and x86_64]
-    # url: https://ziglang.org/download/0.12.0/zig-macos-x86_64-0.12.0.tar.xz  # [osx and x86_64]
-    # sha256: 4d411bf413e7667821324da248e8589278180dbc197f4f282b7dbb599a689311  # [osx and x86_64]
+    url: https://ziglang.org/builds/zig-macos-x86_64-0.13.0.tar.xz  # [osx and x86_64]
+    sha256: 8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd  # [osx and x86_64]
 
 build:
   number: 2
