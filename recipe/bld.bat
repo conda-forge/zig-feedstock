@@ -91,7 +91,6 @@ cd %ZIG_BUILD_DIR%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --zig-lib-dir "%PREFIX%\Library\lib" ^
     -Dconfig_h=%CONFIG_DIR%\config.h ^
     -Doptimize=ReleaseSafe ^
     -Denable-llvm ^
