@@ -14,7 +14,10 @@ set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
 set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
-:: We need this so zig can find the libraies (apparently, --search-prefix does not work)
+call :buildZigWithZIG
+
+:: --- Functions ---
+
 :configZigCmakeBuild
 echo "Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%"
 mkdir %CONFIG_DIR%
@@ -94,8 +97,6 @@ cd %ZIG_BUILD_DIR%
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
 GOTO :EOF
-
-call :buildZigWithZIG
 
 :: echo "Testing self-build ZIG with: %ZIG_INSTALL_DIR%\zig.exe in %ZIG_TEST_DIR%"
 :: mkdir %ZIG_TEST_DIR%
