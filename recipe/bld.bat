@@ -1,6 +1,4 @@
 @echo off
-:: powershell -File "%RECIPE_DIR%\x86_64-windows.ps1"
-
 :: Try using bootstrapped ZIG to build ZIG for Conda environment
 set "HOST_TARGET=x86_64-windows-msvc"
 set "TARGET=x86_64-windows-gnu"
@@ -15,6 +13,10 @@ set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 call :buildZigWithZIG
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+:: Exit main script
+GOTO :EOF
 
 :: --- Functions ---
 
@@ -87,7 +89,7 @@ cd %ZIG_BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
-    --search-prefix "%PREFIX%" ^
+    --search-prefix "%PREFIX%\Library\lib" ^
     -Doptimize=ReleaseSafe ^
     -Denable-llvm ^
     -Dtarget="%TARGET%" ^
