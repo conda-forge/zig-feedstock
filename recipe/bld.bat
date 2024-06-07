@@ -12,7 +12,6 @@ set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
 set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
-call :configZigCmakeBuild
 call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -87,11 +86,12 @@ cd %ZIG_BUILD_DIR%
 
   echo "   Building ..."
   mkdir %ZIG_INSTALL_DIR%
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  %ZIG% build --help
+
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    -Dconfig_h=%CONFIG_DIR%\config.h ^
     -Doptimize=ReleaseSafe ^
     -Denable-llvm ^
     -Dversion-string="%PKG_VERSION%"
