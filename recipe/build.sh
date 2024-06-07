@@ -15,16 +15,14 @@ function configure_linux_64() {
     MCPU="baseline"
 
     cmake "${SRC_DIR}"/zig-source \
+      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_TARGET_TRIPLE="$TARGET" \
       -D ZIG_TARGET_MCPU="$MCPU" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
-      -D ZIG_TARGET_DYNAMIC_LINKER="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -G Ninja
-      # "${CMAKE_ARGS}" \
-      # -D CMAKE_PREFIX_PATH="${PREFIX}/lib" \
     cat config.h
   cd "${current_dir}"
 }
@@ -38,28 +36,6 @@ function patchelf_installed_zig() {
   patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
   patchelf --add-rpath      "${BUILD_PREFIX}/lib"                                      "${install_dir}/bin/zig"
 
-#  patchelf --remove-needed  libc.so.6                                                  "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libm.so.6                                                  "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libdl-2.28.so                                              "${install_dir}/bin/zig"
-#  patchelf --remove-needed  librt-2.28.so                                              "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libpthread-2.28.so                                         "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libzstd.so.1                                               "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libstdc++.so.6                                             "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libz.so.1                                                  "${install_dir}/bin/zig"
-#  patchelf --remove-needed  libgcc_s.so.1                                              "${install_dir}/bin/zig"
-#
-#  patchelf \
-#    --add-needed libc-2.28.so \
-#    --add-needed libm-2.28.so \
-#    --add-needed libdl-2.28.so \
-#    --add-needed librt-2.28.so \
-#    --add-needed libpthread-2.28.so \
-#    --add-needed libzstd.so.1 \
-#    --add-needed libstdc++.so.6 \
-#    --add-needed libz.so.1 \
-#    --add-needed libgcc_s.so.1 \
-#    "${install_dir}/bin/zig"
-
   readelf -d "${install_dir}/bin/zig"
   ldd "${install_dir}/bin/zig"
 }
@@ -71,10 +47,7 @@ function cmake_build_install() {
   current_dir=$(pwd)
 
   cd "${build_dir}"
-    _prefix="${PREFIX}"
-    export PREFIX="${BUILD_PREFIX}"
     cmake --build . -- -j"${CPU_COUNT}"
-    export PREFIX="${_prefix}"
     cmake --install .
   cd "${current_dir}"
 }
