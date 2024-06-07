@@ -65,6 +65,46 @@ function test_build() {
   cd "${SRC_DIR}"/zig-source && "${installed_dir}"/bin/zig build test && cd "${current_dir}"
 }
 
+function bootstrap_zig() {
+  local build_dir=$1
+  local install_dir=$2
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mamba install zig
+
+  export HTTP_PROXY=http://localhost
+  export HTTPS_PROXY=https://localhost
+  export http_proxy=http://localhost
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}"
+    cp -r "${SRC_DIR}"/zig-source/* .
+
+    cat > _libc_file <<EOF
+include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
+sys_include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
+crt_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64
+msvc_lib_dir=
+kernel32_lib_dir=
+gcc_dir=
+EOF
+     "${BUILD_PREFIX}"/bin/zig build \
+        --prefix "${install_dir}" \
+        --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
+        --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib" \
+        --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+        --search-prefix "${BUILD_PREFIX}/lib" \
+        --libc _libc_file \
+        --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
+        -Dconfig_h="${SRC_DIR}/build-release/config.h" \
+        -Denable-llvm \
+        -Ddynamic-linker="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
+        -Dversion-string="${PKG_VERSION}"
+  cd "${current_dir}"
+}
+
 function self_build_x86_64() {
   local build_dir=$1
   local installed_dir=$2
