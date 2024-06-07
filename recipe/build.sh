@@ -146,6 +146,7 @@ EOF
       --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Denable-llvm \
+      -Dstrip \
       -Ddynamic-linker="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
       -Dversion-string="${PKG_VERSION}"
 
@@ -159,13 +160,12 @@ case "$(uname)" in
   Linux)
     install_dir="${PREFIX}"
 
-    configure_linux_64 "${SRC_DIR}/build-release" "${install_dir}"
+    configure_linux_64 "${SRC_DIR}/build-release" "${SRC_DIR}/cmake-built-install"
     cmake_build_install "${SRC_DIR}/build-release"
-    patchelf_installed_zig "${install_dir}"
-    # test_build "${install_dir}"
 
     # Self-built zig generates MemoryError std::badAlloc
-    self_build_x86_64 "${SRC_DIR}/self-built-source" "${PREFIX}" "${SRC_DIR}/self-built-install"
+    patchelf_installed_zig "${SRC_DIR}/cmake-built-install"
+    self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/cmake-built-install" "${install_dir}"
     ;;
   Darwin)
     echo "macOS is not supported yet."
