@@ -12,6 +12,8 @@ set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
 set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
+call :configZigCmakeBuild
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -49,6 +51,7 @@ cd %CONFIG_DIR%
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_SYSTEM_LIBCXX="c++" ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -93,6 +96,7 @@ cd %ZIG_BUILD_DIR%
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     -Doptimize=ReleaseSafe ^
+    -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Denable-llvm ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
