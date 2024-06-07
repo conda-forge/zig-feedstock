@@ -92,9 +92,9 @@ cd %ZIG_BUILD_DIR%
     --search-prefix "%PREFIX%\Library\lib" ^
     -Doptimize=ReleaseSafe ^
     -Denable-llvm ^
-    -Dtarget="%TARGET%" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+    :: -Dtarget="%TARGET%" ^
   echo "   Built."
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
