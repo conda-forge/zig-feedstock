@@ -39,6 +39,8 @@ cd %CONFIG_DIR%
   set freemem_int=%freemem_int:~1%
   echo Available Physical Memory: %freemem%
 
+  dir %PREFIX%\Library\lib\*++* > nul
+
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
