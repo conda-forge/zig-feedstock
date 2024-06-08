@@ -35,9 +35,7 @@ function patchelf_installed_zig() {
   patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
   patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
   patchelf --add-rpath      "${BUILD_PREFIX}/lib"                                      "${install_dir}/bin/zig"
-
-  readelf -d "${install_dir}/bin/zig"
-  ldd "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${PREFIX}/lib"                                            "${install_dir}/bin/zig"
 }
 
 function cmake_build_install() {
@@ -121,15 +119,9 @@ function self_build_x86_64() {
   cd "${build_dir}"
     cp -r "${SRC_DIR}"/zig-source/* .
 
-    cat > _libc_file <<EOF
-include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
-sys_include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
-crt_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64
-msvc_lib_dir=
-kernel32_lib_dir=
-gcc_dir=
-EOF
-
+    # These langerf code snippets fails with lld.ld failing to find /usr/lib64/libmvec_nonshared.a
+    # No idea why this comes up, there is no -lmvec_nonshared.a on the link command
+    # there seems to be no way to redirect to sysroot/usr/lib64/libmvec_nonshared.a
     rm \
       doc/langref/test_comptime_unwrap_null.zig \
       doc/langref/test_variadic_function.zig \
@@ -138,19 +130,11 @@ EOF
 
     "${installed_dir}/bin/zig" build \
       --prefix "${install_dir}" \
-      --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
-      --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib" \
-      --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
-      --search-prefix "${BUILD_PREFIX}/lib" \
-      --libc _libc_file \
-      --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Denable-llvm \
       -Dstrip \
-      -Ddynamic-linker="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
+      --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
       -Dversion-string="${PKG_VERSION}"
-
-    patchelf_installed_zig "${install_dir}"
   cd "${current_dir}"
 }
 
