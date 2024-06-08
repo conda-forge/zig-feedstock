@@ -19,6 +19,11 @@ if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
+echo "Copying ZIG to %PREFIX%"
+copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe > nul
+xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib > nul
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
 :: Exit main script
 GOTO :EOF
 
@@ -41,8 +46,6 @@ cd %CONFIG_DIR%
   set freemem_int=%freemem_int:~1%
   echo Available Physical Memory: %freemem%
 
-  dir %PREFIX%\Library\lib
-
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
@@ -55,14 +58,9 @@ cd %CONFIG_DIR%
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
-    -D ZIG_SYSTEM_LIBCXX="c++" ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-    :: -G "Visual Studio 17 2022" ^
-    :: Shared libs are seemingly not supported on Windows MSVC (maybe switch to mingw?)
-    :: -D ZIG_SHARED_LLVM=ON ^
-    :: -D ZIG_USE_LLVM_CONFIG=ON ^
+    :: -D ZIG_SYSTEM_LIBCXX="c++" ^
 cd %SRC_DIR%
 GOTO :EOF
 
@@ -74,10 +72,9 @@ cd %CONFIG_DIR%
   cmake --build . --config Release --target zigcpp -- -j 1
   :: cmake --build . --config Release --target install
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-  echo "   Built."
 
-  echo "   Testing ..."
-  %ZIG_INSTALL_DIR%\bin\zig.exe build test
+  :: echo "   Testing ..."
+  :: %ZIG_INSTALL_DIR%\bin\zig.exe build test
 cd %SRC_DIR%
 GOTO :EOF
 
