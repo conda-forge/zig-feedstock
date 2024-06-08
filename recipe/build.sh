@@ -68,7 +68,7 @@ function self_build_osx_64() {
 
     "${ZIG}" build \
       --prefix "${install_dir}" \
-      --verbose-link \
+      --search-prefix "${PREFIX}/lib" \
       -Denable-llvm \
       -Dversion-string="${PKG_VERSION}"
       # -Dconfig_h="${SRC_DIR}/build-release/config.h" \
