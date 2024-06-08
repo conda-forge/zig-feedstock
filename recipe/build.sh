@@ -69,9 +69,9 @@ function self_build_osx_64() {
     "${ZIG}" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}/lib" \
+      -Dconfig_h="${SRC_DIR}/build-release/config.h" \
       -Denable-llvm \
       -Dversion-string="${PKG_VERSION}"
-      # -Dconfig_h="${SRC_DIR}/build-release/config.h" \
   cd "${current_dir}"
 }
 
@@ -85,7 +85,7 @@ case "$(uname)" in
   Darwin)
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
     # Not working due to headerpad: bootstrap_osx_64
-    # configure_osx_64 "${SRC_DIR}/build-release" "${SRC_DIR}/_self-built"
+    configure_osx_64 "${SRC_DIR}/build-release" "${SRC_DIR}/_self-built"
     # cmake_build_install "${SRC_DIR}/build-release"
     export DYLD_LIBRARY_PATH="${PREFIX}/lib"
     self_build_osx_64 "${SRC_DIR}/self-built-source" "${PREFIX}"
