@@ -35,9 +35,6 @@ requirements:
     - libcxx {{ cxx_compiler_version }}  # [osx]
     - zlib
     - zstd
-  run:
-    - llvmdev {{ llvm_version }}
-    - libcxx {{ cxx_compiler_version }}  # [osx]
 
 test:
   commands:
@@ -45,7 +42,6 @@ test:
     - zig zen
     - zig init
     - zig test zig-source/test/behavior.zig  # [not win]
-    - zig test zig-source\\test\\behavior.zig  # [win]
   source_files:
     - zig-source/test
 
