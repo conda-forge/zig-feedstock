@@ -14,6 +14,8 @@ set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+call :buildZigCmake
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -46,7 +48,7 @@ cd %CONFIG_DIR%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_PREFIX_PATH="%_build_prefix%\\Library" ^
+    -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib" ^
     -D CMAKE_C_COMPILER="%_zig%;cc" ^
     -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     -D CMAKE_AR="%_zig%" ^
@@ -69,7 +71,7 @@ echo "Building ZIG from source in %CONFIG_DIR%
 cd %CONFIG_DIR%
   echo "   Building ..."
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
-  cmake --build . --config Release --target install -- -j 1
+  cmake --build . --config Release --target zigcpp -- -j 1
   :: cmake --build . --config Release --target install
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
   echo "   Built."
