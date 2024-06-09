@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-set -ex
+# --- Functions ---
 
-function configure_linux_64() {
+function configure_linux() {
   local build_dir=$1
   local install_dir=$2
 
@@ -11,9 +11,6 @@ function configure_linux_64() {
 
   mkdir -p "${build_dir}"
   cd "${build_dir}"
-    TARGET="x86_64-linux-gnu"
-    MCPU="baseline"
-
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
@@ -50,63 +47,12 @@ function cmake_build_install() {
   cd "${current_dir}"
 }
 
-function test_build() {
-  local installed_dir=$1
-
-  local current_dir
-  current_dir=$(pwd)
-
-  export HTTP_PROXY=http://localhost
-  export HTTPS_PROXY=https://localhost
-  export http_proxy=http://localhost
-
-  cd "${SRC_DIR}"/zig-source && "${installed_dir}"/bin/zig build test && cd "${current_dir}"
-}
-
-function bootstrap_zig() {
+function self_build() {
   local build_dir=$1
-  local install_dir=$2
-
-  local current_dir
-  current_dir=$(pwd)
-
-  mamba install zig
-
-  export HTTP_PROXY=http://localhost
-  export HTTPS_PROXY=https://localhost
-  export http_proxy=http://localhost
-
-  mkdir -p "${build_dir}"
-  cd "${build_dir}"
-    cp -r "${SRC_DIR}"/zig-source/* .
-
-    cat > _libc_file <<EOF
-include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
-sys_include_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include
-crt_dir=${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64
-msvc_lib_dir=
-kernel32_lib_dir=
-gcc_dir=
-EOF
-     "${BUILD_PREFIX}"/bin/zig build \
-        --prefix "${install_dir}" \
-        --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64" \
-        --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib" \
-        --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
-        --search-prefix "${BUILD_PREFIX}/lib" \
-        --libc _libc_file \
-        --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
-        -Dconfig_h="${SRC_DIR}/build-release/config.h" \
-        -Denable-llvm \
-        -Ddynamic-linker="${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-${LIBC_CONDA_VERSION-2.28}.so" \
-        -Dversion-string="${PKG_VERSION}"
-  cd "${current_dir}"
-}
-
-function self_build_x86_64() {
-  local build_dir=$1
-  local installed_dir=$2
-  local install_dir=$3
+  local zig=$2
+  local config_h=$3
+  local install_dir=$4
+  local target=${5:-$TARGET}
 
   local current_dir
   current_dir=$(pwd)
@@ -128,28 +74,55 @@ function self_build_x86_64() {
       doc/langref/cImport_builtin.zig \
       doc/langref/verbose_cimport_flag.zig
 
-    "${installed_dir}/bin/zig" build \
+    "${zig}" build \
       --prefix "${install_dir}" \
-      -Dconfig_h="${SRC_DIR}/build-release/config.h" \
+      -Dtarget="${target}" \
+      -Dconfig_h="${config_h}" \
       -Denable-llvm \
       -Dstrip \
-      --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
+      --sysroot "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
 }
 
+# --- Main ---
+
+set -ex
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
+
+MCPU="baseline"
+
+cmake_build_dir="${SRC_DIR}/build-release"
+cmake_install_dir="${SRC_DIR}/cmake-built-install"
+self_build_dir="${SRC_DIR}/self-built-source"
+
 case "$(uname)" in
   Linux)
-    install_dir="${PREFIX}"
+    if [[ "${target_platform}" == "linux-64" ]]; then
+      TARGET="x86_64-linux-gnu"
+    elif [[ "${target_platform}" == "linux-aarch64" ]]; then
+      TARGET="aarch64-linux-gnu"
+    elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
+      TARGET="powerpc64le-linux-gnu"
+    fi
 
-    configure_linux_64 "${SRC_DIR}/build-release" "${SRC_DIR}/cmake-built-install"
-    cmake_build_install "${SRC_DIR}/build-release"
+    configure_linux "${cmake_build_dir}" "${cmake_install_dir}"
 
-    # Self-built zig generates MemoryError std::badAlloc
-    patchelf_installed_zig "${SRC_DIR}/cmake-built-install"
-    self_build_x86_64 "${SRC_DIR}/self-built-source" "${SRC_DIR}/cmake-built-install" "${install_dir}"
+    if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
+      cmake_build_install "${cmake_build_dir}"
+      patchelf_installed_zig "${cmake_install_dir}"
+      zig="${cmake_install_dir}/bin/zig"
+    else
+      cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+      zig="${SRC_DIR}/zig-bootstrap/zig"
+    fi
+
+    self_build \
+      "${self_build_dir}" \
+      "${zig}" \
+      "${cmake_build_dir}/config.h" \
+      "${PREFIX}"
     ;;
   Darwin)
     echo "macOS is not supported yet."

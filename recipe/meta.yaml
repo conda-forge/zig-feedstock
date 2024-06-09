@@ -11,13 +11,16 @@ source:
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
       - patches/0001-remove-failing-langref.patch
+      - patches/0002-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
     folder: zig-source
 
-  - folder: zig-bootstrap  # [(win or osx) and x86_64]
+  - folder: zig-bootstrap
     url: https://ziglang.org/download/0.12.0/zig-windows-x86_64-0.12.0.zip  # [win and x86_64]
     sha256: 2199eb4c2000ddb1fba85ba78f1fcf9c1fb8b3e57658f6a627a8e513131893f5  # [win and x86_64]
     url: https://ziglang.org/download/0.12.0/zig-macos-x86_64-0.12.0.tar.xz  # [osx and x86_64]
     sha256: 4d411bf413e7667821324da248e8589278180dbc197f4f282b7dbb599a689311  # [osx and x86_64]
+    url: https://ziglang.org/download/0.13.0/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
+    sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
   number: 0
@@ -44,6 +47,26 @@ requirements:
 
 test:
   commands:
+    - test -f ${PREFIX}/bin/zig  # [unix]
+    - test -f ${PREFIX}/doc/langref.html  # [unix]
+    - test -f ${PREFIX}/lib/c.zig  # [unix]
+    - test -f ${PREFIX}/lib/compiler_rt.zig  # [unix]
+    - test -f ${PREFIX}/lib/zig.h  # [unix]
+    - if not exist %PREFIX%\\bin\\zig.exe exit 1  # [win]
+    - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
+    - if not exist %PREFIX%\\lib\\c.zig exit 1  # [win]
+    - if not exist %PREFIX%\\lib\\compiler_rt.zig exit 1  # [win]
+    - if not exist %PREFIX%\\lib\\zig.h exit 1  # [win]
+    {% set lib_dirs = [
+      "compiler", "compiler_rt", "docs", "include", "init", "libc",
+      "libcxx", "libcxxabi", "libunwind", "std", "tsan"
+    ] %}
+    {% for lib_dir in lib_dirs %}
+    - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not (osx and arm64 or win)]
+    - if not exist %PREFIX%\\lib\\zig\\{{ lib_dir }} exit 1  # [win]
+    {% endfor %}
+
+    # Functionality tests
     - zig version
     - zig zen
     - zig init
