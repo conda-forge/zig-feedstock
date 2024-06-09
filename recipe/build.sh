@@ -95,13 +95,19 @@ case "$(uname)" in
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
     # Not working due to headerpad: bootstrap_osx_64
     configure_osx_64 "${cmake_build_dir}" "${cmake_install_dir}"
-    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-    # cmake_build_install "${SRC_DIR}/build-release"
+    cmake_build_install "${SRC_DIR}/build-release"
     export DYLD_LIBRARY_PATH="${PREFIX}/lib"
     self_build_osx_64 \
       "${self_build_dir}" \
-      "${SRC_DIR}/zig-bootstrap/zig" \
+      "${cmake_install_dir}/bin/zig" \
       "${cmake_build_dir}/config.h" \
       "${PREFIX}"
+    # Bootstrap
+    # cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    # self_build_osx_64 \
+    #   "${self_build_dir}" \
+    #   "${SRC_DIR}/zig-bootstrap/zig" \
+    #   "${cmake_build_dir}/config.h" \
+    #   "${PREFIX}"
     ;;
 esac
