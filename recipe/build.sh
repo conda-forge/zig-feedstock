@@ -19,6 +19,7 @@ function configure_osx_64() {
       -D CMAKE_C_COMPILER="$ZIG;cc" \
       -D CMAKE_CXX_COMPILER="$ZIG;c++" \
       -D ZIG_SHARED_LLVM=ON \
+      -D ZIG_SYSTEM_LIBCXX="c++" \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
       # ${CMAKE_ARGS} \
