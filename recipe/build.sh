@@ -2,7 +2,7 @@
 
 # --- Functions ---
 
-function configure_linux() {
+function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
@@ -20,7 +20,6 @@ function configure_linux() {
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
-    cat config.h
   cd "${current_dir}"
 }
 
@@ -97,34 +96,38 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
-case "$(uname)" in
-  Linux)
-    if [[ "${target_platform}" == "linux-64" ]]; then
-      TARGET="x86_64-linux-gnu"
-    elif [[ "${target_platform}" == "linux-aarch64" ]]; then
-      TARGET="aarch64-linux-gnu"
-    elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
-      TARGET="powerpc64le-linux-gnu"
-    fi
+if [[ "${target_platform}" == "linux-64" ]]; then
+  TARGET="x86_64-linux-gnu"
+elif [[ "${target_platform}" == "linux-aarch64" ]]; then
+  TARGET="aarch64-linux-gnu"
+elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  TARGET="powerpc64le-linux-gnu"
+elif [[ "${target_platform}" == "osx-64" ]]; then
+  TARGET="x86_64-macos-none"
+elif [[ "${target_platform}" == "osx-arm64" ]]; then
+  TARGET="arm64-linux-gnu"
+fi
 
-    configure_linux "${cmake_build_dir}" "${cmake_install_dir}"
+configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
+if [[ "${target_platform}" == "osx-64" ]]; then
+  sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_install_dir}/config.h"
+fi
 
-    if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
-      cmake_build_install "${cmake_build_dir}"
-      patchelf_installed_zig "${cmake_install_dir}"
-      zig="${cmake_install_dir}/bin/zig"
-    else
-      cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-      zig="${SRC_DIR}/zig-bootstrap/zig"
-    fi
+if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
+  cmake_build_install "${cmake_build_dir}"
 
-    self_build \
-      "${self_build_dir}" \
-      "${zig}" \
-      "${cmake_build_dir}/config.h" \
-      "${PREFIX}"
-    ;;
-  Darwin)
-    echo "macOS is not supported yet."
-    ;;
-esac
+  if [[ "${target_platform}" == "linux-64" ]]; then
+    patchelf_installed_zig "${cmake_install_dir}"
+  fi
+
+  zig="${cmake_install_dir}/bin/zig"
+else
+  cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+  zig="${SRC_DIR}/zig-bootstrap/zig"
+fi
+
+self_build \
+  "${self_build_dir}" \
+  "${zig}" \
+  "${cmake_build_dir}/config.h" \
+  "${PREFIX}"
