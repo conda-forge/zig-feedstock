@@ -32,6 +32,7 @@ requirements:
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - zlib
     - zstd
 

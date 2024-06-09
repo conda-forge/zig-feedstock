@@ -17,7 +17,7 @@ function configure_osx_64() {
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_PREFIX_PATH="${PREFIX}" \
       -D CMAKE_C_COMPILER="$ZIG;cc" \
-      -D CMAKE_CXX_COMPILER="$ZIG;c++;-lstdc++" \
+      -D CMAKE_CXX_COMPILER="$ZIG;c++" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
@@ -28,7 +28,7 @@ function configure_osx_64() {
       # -DCMAKE_SYSTEM_NAME="Darwin" \
 
     #sed -i '' 's@\$PREFIX@\$BUILD_PREFIX@g' config.h
-    #sed -i '' 's@;-lm@;-lc++;-lm@' config.h
+    sed -i '' "s@;-lm@;$PREFIX/lib/libc++.so;-lm@" config.h
     cat config.h
   cd "${current_dir}"
 }
