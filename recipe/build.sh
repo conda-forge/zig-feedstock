@@ -9,20 +9,17 @@ function configure_osx_64() {
 
   mkdir -p "${build_dir}"
   cd "${build_dir}"
-    TARGET="x86_64-macos-none"
-    MCPU="baseline"
-
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_BUILD_TYPE=Debug \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_PREFIX_PATH="${PREFIX}" \
-      -D CMAKE_C_COMPILER="$ZIG;cc" \
-      -D CMAKE_CXX_COMPILER="$ZIG;c++" \
+      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_SYSTEM_LIBCXX="c++" \
       -D ZIG_USE_LLVM_CONFIG=ON \
       -G Ninja
       # ${CMAKE_ARGS} \
+      # -D CMAKE_C_COMPILER="$ZIG;cc" \
+      # -D CMAKE_CXX_COMPILER="$ZIG;c++" \
       # -D CMAKE_CXX_IMPLICIT_LINK_LIBRARIES="c++" \
       # -D ZIG_TARGET_TRIPLE="${TARGET}" \
       # -D ZIG_TARGET_MCPU="${MCPU}" \
@@ -92,6 +89,7 @@ case "$(uname)" in
     echo "Linux not supported yet"
     ;;
   Darwin)
+    TARGET="x86_64-macos-none"
     ZIG="${SRC_DIR}/zig-bootstrap/zig"
     # Not working due to headerpad: bootstrap_osx_64
     configure_osx_64 "${cmake_build_dir}" "${cmake_install_dir}"
