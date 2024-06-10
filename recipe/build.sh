@@ -12,13 +12,11 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     cmake "${SRC_DIR}"/zig-source \
-      -D CMAKE_PREFIX_PATH="${BUILD_PREFIX}/lib" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
-      -D ZIG_TARGET_TRIPLE="$TARGET" \
-      -D ZIG_TARGET_MCPU="$MCPU" \
       -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
+      "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
   cd "${current_dir}"
 }
@@ -77,7 +75,6 @@ function self_build() {
       --prefix "${install_dir}" \
       --sysroot "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot" \
       -Doptimize=ReleaseSafe \
-      -Dtarget="${target}" \
       -Dconfig_h="${config_h}" \
       -Denable-llvm \
       -Dstrip \
@@ -98,19 +95,32 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
+EXTRA_CMAKE_ARGS=()
 EXTRA_ZIG_ARGS=()
 if [[ "${target_platform}" == "linux-64" ]]; then
-  TARGET="x86_64-linux-gnu"
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_TRIPLE='x86_64-linux-gnu'")
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_MCPU='baseline'")
+
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
-  TARGET="aarch64-linux-gnu"
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_TRIPLE='aarch64-linux-gnu'")
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_MCPU='baseline'")
+  EXTRA_ZIG_ARGS+=("-Dtarget='aarch64-linux-gnu'")
+
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  TARGET="powerpc64le-linux-gnu"
-  EXTRA_ZIG_ARGS+=("-Dpie=false" "-Dpic=false")
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_TRIPLE='powerpc64le-linux-gnu'")
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_MCPU='baseline'")
+  EXTRA_ZIG_ARGS+=("-Dpie=false")
+  EXTRA_ZIG_ARGS+=("-Dtarget='powerpc64le-linux-gnu'")
+
 elif [[ "${target_platform}" == "osx-64" ]]; then
-  TARGET="x86_64-macos-none"
+  # EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_TRIPLE='x86_64-macos-none'")
+  # EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_MCPU='baseline'")
   export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
-  TARGET="arm64-linux-gnu"
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_TRIPLE='arm64-linux-gnu'")
+  EXTRA_CMAKE_ARGS+=("-D ZIG_TARGET_MCPU='baseline'")
+  EXTRA_ZIG_ARGS+=("-Dtarget='arm64-linux-gnu'")
 fi
 
 configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
