@@ -75,12 +75,13 @@ function self_build() {
 
     "${zig}" build \
       --prefix "${install_dir}" \
+      --sysroot "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot" \
       -Doptimize=ReleaseSafe \
       -Dtarget="${target}" \
-      -Dconfig_h="${config_h}" "${QEMU}" "${PIE}" \
+      -Dconfig_h="${config_h}" \
       -Denable-llvm \
       -Dstrip \
-      --sysroot "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot" \
+      "${EXTRA_ZIG_ARGS[@]}" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
 }
@@ -97,14 +98,14 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
-PIE=
+EXTRA_ZIG_ARGS=()
 if [[ "${target_platform}" == "linux-64" ]]; then
   TARGET="x86_64-linux-gnu"
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   TARGET="aarch64-linux-gnu"
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   TARGET="powerpc64le-linux-gnu"
-  PIE="-Dpie=false -Dpic=false"
+  EXTRA_ZIG_ARGS+=("-Dpie=false" "-Dpic=false")
 elif [[ "${target_platform}" == "osx-64" ]]; then
   TARGET="x86_64-macos-none"
   export DYLD_LIBRARY_PATH="${PREFIX}/lib"
@@ -127,11 +128,10 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   fi
 
   zig="${cmake_install_dir}/bin/zig"
-  QEMU=
 else
   cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   zig="${SRC_DIR}/zig-bootstrap/zig"
-  QEMU="-fqemu"
+  EXTRA_ZIG_ARGS+=("-fqemu")
 fi
 
 self_build \
