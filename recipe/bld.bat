@@ -95,7 +95,7 @@ cd %ZIG_BUILD_DIR%
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     --maxrss 24696061952 \
-    -Doptimize=ReleaseSafe ^
+    -DReleaseSafe ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Denable-llvm ^
     -Dskip-non-native `
