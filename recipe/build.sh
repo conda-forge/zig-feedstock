@@ -77,7 +77,7 @@ function self_build() {
       --prefix "${install_dir}" \
       -Doptimize=ReleaseSafe \
       -Dtarget="${target}" \
-      -Dconfig_h="${config_h}" "$QEMU" "$PIE" \
+      -Dconfig_h="${config_h}" "${QEMU}" "${PIE}" \
       -Denable-llvm \
       -Dstrip \
       --sysroot "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot" \
@@ -97,7 +97,7 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
-PIE=""
+PIE=
 if [[ "${target_platform}" == "linux-64" ]]; then
   TARGET="x86_64-linux-gnu"
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
@@ -127,7 +127,7 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   fi
 
   zig="${cmake_install_dir}/bin/zig"
-  QEMU=""
+  QEMU=
 else
   cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   zig="${SRC_DIR}/zig-bootstrap/zig"
