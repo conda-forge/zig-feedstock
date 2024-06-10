@@ -45,3 +45,9 @@ CMAKE_CROSSCOMPILING_EMULATOR:
 - /usr/bin/qemu-aarch64-static
 CROSSCOMPILING_EMULATOR: 
 - /usr/bin/qemu-aarch64-static
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-aarch64-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-aarch64-static
