@@ -98,7 +98,7 @@ cd %ZIG_BUILD_DIR%
     -OReleaseSmall ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Denable-llvm ^
-    -Dskip-non-native `
+    -Dskip-non-native ^
     -Denable-symlinks-windows ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
