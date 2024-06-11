@@ -1,7 +1,7 @@
 @echo off
 :: Try using bootstrapped ZIG to build ZIG for Conda environment
-set "HOST_TARGET=x86_64-windows-msvc"
-set "TARGET=x86_64-windows-gnu"
+set "MSVC_TARGET=x86_64-windows-msvc"
+set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
 set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 
@@ -55,7 +55,7 @@ cd %CONFIG_DIR%
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
-    -D ZIG_STATIC=OFF ^
+    -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: -D CMAKE_C_COMPILER="%_zig%;cc" ^
@@ -102,7 +102,7 @@ cd %ZIG_BUILD_DIR%
     -Denable-symlinks-windows ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-    :: -Dtarget="%TARGET%" ^
+    :: -Dtarget="%GNU_TARGET%" ^
   echo "   Built."
   dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
@@ -124,7 +124,7 @@ GOTO :EOF
 ::     --prefix "%SRC_DIR%/_self-test" ^
 ::     -Doptimize=ReleaseFast ^
 ::     -Dstrip ^
-::     -Dtarget="%HOST_TARGET%" ^
+::     -Dtarget="%MSVC_TARGET%" ^
 ::     -Dcpu="%MCPU%" ^
 ::     -Dversion-string="%PKG_VERSION%"
 ::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
