@@ -153,5 +153,5 @@ if [[ "${target_platform}" == "linux-64" ]] || \
    [[ "${target_platform}" == "linux-aarch64" ]] || \
    [[ "${target_platform}" == "linux-ppc64le" ]]
 then
-  patchelf_installed_zig "${cmake_install_dir}" "${PREFIX}"
+  patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
