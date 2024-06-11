@@ -14,7 +14,6 @@ function configure_cmake() {
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
-      -D ZIG_SHARED_LLVM=ON \
       -D ZIG_USE_LLVM_CONFIG=ON \
       "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
@@ -93,8 +92,9 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
-EXTRA_CMAKE_ARGS=()
+EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
 EXTRA_ZIG_ARGS=()
+
 if [[ "${target_platform}" == "linux-64" ]]; then
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=x86_64-linux-gnu")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot")
@@ -105,7 +105,8 @@ elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   EXTRA_ZIG_ARGS+=("-Dtarget=aarch64-linux-gnu")
 
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=powerpc64le-linux-gnu")
+  # Replace default cmake arguments for powerpc64le-linux-gnu
+  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=powerpc64le-linux-gnu" "-DZIG_STATIC_LLVM=ON")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/powerpc64le-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=powerpc64le-linux-gnu")
