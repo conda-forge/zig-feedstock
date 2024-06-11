@@ -14,8 +14,8 @@ set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-:: call :buildZigCmake
-:: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+call :buildZigCmake
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -55,6 +55,7 @@ cd %CONFIG_DIR%
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_STATIC=OFF ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: -D CMAKE_C_COMPILER="%_zig%;cc" ^
