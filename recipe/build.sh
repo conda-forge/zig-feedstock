@@ -95,26 +95,28 @@ self_build_dir="${SRC_DIR}/self-built-source"
 EXTRA_CMAKE_ARGS=()
 EXTRA_ZIG_ARGS=()
 if [[ "${target_platform}" == "linux-64" ]]; then
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=\"x86_64-linux-gnu\"")
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=x86_64-linux-gnu")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot")
 
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=\"aarch64-linux-gnu\"")
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=aarch64-linux-gnu")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/aarch64-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dtarget=aarch64-linux-gnu")
 
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=\"powerpc64le-linux-gnu\"")
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=powerpc64le-linux-gnu")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/powerpc64le-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=powerpc64le-linux-gnu")
+  export CFLAGS="${CFLAGS//-fno-plt/}"
+  export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
 
 elif [[ "${target_platform}" == "osx-64" ]]; then
   # Specifying the TARGET prevents using SDKROOT?
   export DYLD_LIBRARY_PATH="${PREFIX}/lib"
 
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=\"arm64-linux-gnu\"")
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=arm64-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Dtarget=arm64-linux-gnu")
 fi
 
