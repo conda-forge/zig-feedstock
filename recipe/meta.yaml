@@ -73,6 +73,7 @@ test:
     {% endfor %}
 
     # Functionality tests
+    # - patchelf --set-rpath ${PREFIX}/{{ arch }}-conda-linux-gnu/sysroot/lib64 ${PREFIX}/bin/zig  # [linux and aarch64]
     - zig version
     - zig zen
     - zig init
