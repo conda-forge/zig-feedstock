@@ -47,8 +47,8 @@ requirements:
     - libcxx {{ cxx_compiler_version }}  # [osx]
     - zlib
     - zstd
-  run:
-    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
+  # run:
+  #   - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
   commands:
