@@ -29,7 +29,7 @@ requirements:
     - gcc_impl_{{ build_platform }}   # [win]
     - gcc_impl_{{ target_platform }}  # [win]
     - cmake >=3.5
-    - libxml2  # [win]
+    - libxml2  # [win and build_platform != target_platform]
     - ninja
   host:
     - clangdev {{ llvm_version }}
