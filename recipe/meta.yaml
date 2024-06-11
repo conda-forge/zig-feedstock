@@ -29,6 +29,7 @@ requirements:
     - gcc_impl_{{ build_platform }}   # [win]
     - gcc_impl_{{ target_platform }}  # [win]
     - cmake >=3.5
+    - libxml2  # [win]
     - ninja
   host:
     - clangdev {{ llvm_version }}
@@ -39,9 +40,6 @@ requirements:
     # - libcxx
     - zlib
     - zstd
-  run:
-    - {{ pin_compatible("libcxx", max_pin=None) }}  # [osx]
-    - llvmdev {{ llvm_version }}
 
 test:
   commands:
