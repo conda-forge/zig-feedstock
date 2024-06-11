@@ -9,4 +9,6 @@ conda_build:
 build_platform:
   linux_aarch64: linux_64
   linux_ppc64le: linux_64
+  win_64: linux_64
 test: native_and_emulated
+provider: {linux_aarch64: default, linux_ppc64le: default}
