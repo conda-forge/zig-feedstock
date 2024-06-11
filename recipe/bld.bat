@@ -14,8 +14,8 @@ set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :buildZigCmake
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+:: call :buildZigCmake
+:: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
