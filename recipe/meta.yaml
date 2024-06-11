@@ -34,8 +34,6 @@ requirements:
     - zlib  # [build_platform != target_platform]
     - ninja
   host:
-    - clangdev {{ llvm_version }}
-    - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
