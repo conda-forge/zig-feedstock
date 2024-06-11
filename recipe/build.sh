@@ -23,12 +23,13 @@ function configure_cmake() {
 
 function patchelf_installed_zig() {
   local install_dir=$1
+  local build_prefix=$2
 
   patchelf --remove-rpath                                                              "${install_dir}/bin/zig"
-  patchelf --set-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64"     "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${BUILD_PREFIX}/lib"                                      "${install_dir}/bin/zig"
+  patchelf --set-rpath      "${build_prefix}/x86_64-conda-linux-gnu/sysroot/lib64"     "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${build_prefix}/x86_64-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${build_prefix}/x86_64-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${build_prefix}/lib"                                      "${install_dir}/bin/zig"
   patchelf --add-rpath      "${PREFIX}/lib"                                            "${install_dir}/bin/zig"
 }
 
@@ -128,11 +129,11 @@ fi
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   cmake_build_install "${cmake_build_dir}"
 
-  if [[ "${target_platform}" == "linux-64" ]]; then
-    patchelf_installed_zig "${cmake_install_dir}"
-  elif [[ "${target_platform}" == "osx-64" ]]; then
-    otool -L "${cmake_install_dir}/bin/zig"
-    # install_name_tool -add_rpath "${PREFIX}/lib" "${cmake_install_dir}/bin/zig"
+  if [[ "${target_platform}" == "linux-64" ]] || \
+     [[ "${target_platform}" == "linux-aarch64" ]] || \
+     [[ "${target_platform}" == "linux-ppc64le" ]]
+  then
+    patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
   fi
 
   zig="${cmake_install_dir}/bin/zig"
@@ -147,3 +148,10 @@ self_build \
   "${zig}" \
   "${cmake_build_dir}/config.h" \
   "${PREFIX}"
+
+if [[ "${target_platform}" == "linux-64" ]] || \
+   [[ "${target_platform}" == "linux-aarch64" ]] || \
+   [[ "${target_platform}" == "linux-ppc64le" ]]
+then
+  patchelf_installed_zig "${cmake_install_dir}" "${PREFIX}"
+fi
