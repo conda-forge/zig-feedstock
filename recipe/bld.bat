@@ -30,7 +30,6 @@ GOTO :EOF
 :: --- Functions ---
 
 :configZigCmakeBuild
-echo Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
@@ -40,11 +39,6 @@ cd %CONFIG_DIR%
   set "_build_prefix=%BUILD_PREFIX:\=\\%"
   set "_zig_install_dir=%ZIG_INSTALL_DIR:\=\\%"
   set "_zig=%ZIG:\=\\%"
-
-  for /F "tokens=2 delims=:" %%a in ('systeminfo ^| findstr /C:"Available Physical Memory"') do set "freemem=%%a"
-  for /F "tokens=1 delims=MB" %%a in ("%freemem%") do set /A "freemem_int=%%a"
-  set freemem_int=%freemem_int:~1%
-  echo Available Physical Memory: %freemem%
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
@@ -66,27 +60,21 @@ cd %SRC_DIR%
 GOTO :EOF
 
 :buildZigcppCmake
-echo Building ZIG from source in %CONFIG_DIR%
 cd %CONFIG_DIR%
-  echo "   Building ..."
-  cmake --build . --config Release --target zigcpp -- -j %CPU_COUNT%
+  cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 GOTO :EOF
 
 :bootstrapZigWithZIG
-echo Building ZIG with: %ZIG% in %ZIG_BUILD_DIR%
 mkdir %ZIG_BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 cd %ZIG_BUILD_DIR%
-  echo "   Copying sources ..."
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  echo "   Building ..."
   mkdir %ZIG_INSTALL_DIR%
-
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
@@ -98,9 +86,6 @@ cd %ZIG_BUILD_DIR%
     -Dflat ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-    :: -Dtarget="%GNU_TARGET%" ^
-  echo "   Built."
-  dir %ZIG_INSTALL_DIR%
 cd %SRC_DIR%
 GOTO :EOF
 
