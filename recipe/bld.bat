@@ -66,7 +66,7 @@ cd %SRC_DIR%
 GOTO :EOF
 
 :buildZigcppCmake
-echo "Building ZIG from source in %CONFIG_DIR%
+echo Building ZIG from source in %CONFIG_DIR%
 cd %CONFIG_DIR%
   echo "   Building ..."
   cmake --build . --config Release --target zigcpp -- -j %CPU_COUNT%
