@@ -14,8 +14,8 @@ source:
   - folder: zig-bootstrap  # [(win or osx) and x86_64]
     url: https://ziglang.org/builds/zig-windows-x86_64-0.13.0.zip  # [win and x86_64]
     sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win and x86_64]
-    url: https://ziglang.org/download/0.13.0/zig-linux-x86_64-{{ version }}.tar.xz  # [linux and (aarch64 or ppc64le) or win]
-    sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux and (aarch64 or ppc64le) or win]
+    url: https://ziglang.org/download/0.13.0/zig-linux-x86_64-{{ version }}.tar.xz  # [linux and (aarch64 or ppc64le)]
+    sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux and (aarch64 or ppc64le)]
 
 build:
   number: 2
