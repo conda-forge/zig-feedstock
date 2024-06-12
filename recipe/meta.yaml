@@ -75,9 +75,9 @@ test:
     # Functionality tests
     # - patchelf --set-rpath ${PREFIX}/{{ arch }}-conda-linux-gnu/sysroot/lib64 ${PREFIX}/bin/zig  # [linux and aarch64]
     - ls ${PREFIX}
-    - ls ${PREFIX}/aarch64-conda-linux-gnu/sysroot
-    - ls ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64
-    - ls ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-2.28.so
+    - ls ${PREFIX}/*-conda-linux-gnu/sysroot
+    - ls ${PREFIX}/*-conda-linux-gnu/sysroot/lib64
+    - ls ${PREFIX}/*-conda-linux-gnu/sysroot/lib64/ld-2.28.so
     - zig version
     - zig zen
     - zig init

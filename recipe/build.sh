@@ -147,7 +147,7 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   then
     patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
   elif [[ "${target_platform}" == "osx-64" ]]; then
-    otool -L "${cmake_install_dir}" "${PREFIX}"
+    otool -L "${cmake_install_dir}"/bin/zig
     # install_name_tool -add_rpath "${PREFIX}/lib" "${cmake_install_dir}/bin/zig"
   fi
 
