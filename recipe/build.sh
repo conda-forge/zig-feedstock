@@ -78,7 +78,6 @@ function self_build() {
       --search-prefix "${PREFIX}" \
       -Doptimize=ReleaseSafe \
       -Dconfig_h="${config_h}" \
-      -Dstrip \
       "${EXTRA_ZIG_ARGS[@]}" \
       -Dversion-string="${PKG_VERSION}"
   cd "${current_dir}"
@@ -102,6 +101,7 @@ if [[ "${target_platform}" == "linux-64" ]]; then
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
+  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   SYSROOT_ARCH="aarch64"
@@ -109,6 +109,7 @@ elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
+  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
@@ -118,6 +119,7 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
+  EXTRA_ZIG_ARGS+=("-Dstrip")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
 
@@ -148,7 +150,7 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
     patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
   elif [[ "${target_platform}" == "osx-64" ]]; then
     otool -L "${cmake_install_dir}"/bin/zig
-    # install_name_tool -add_rpath "${PREFIX}/lib" "${cmake_install_dir}/bin/zig"
+    install_name_tool -add_rpath "${PREFIX}/lib" "${cmake_install_dir}/bin/zig"
   fi
 
   zig="${cmake_install_dir}/bin/zig"
@@ -168,5 +170,5 @@ if [[ "${target_platform}" == "linux-64" ]] || \
    [[ "${target_platform}" == "linux-aarch64" ]] || \
    [[ "${target_platform}" == "linux-ppc64le" ]]
 then
-  patchelf_installed_zig "${PREFIX}" "\$PREFIX"
+  patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
