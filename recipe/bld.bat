@@ -54,7 +54,7 @@ cd %CONFIG_DIR%
     -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_STATIC_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -97,7 +97,7 @@ cd %ZIG_BUILD_DIR%
     --search-prefix "%PREFIX%\Library\lib" ^
     --maxrss 24696061952 ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
-    -Denable-llvm ^
+    -Dstatic-llvm ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
     -Dversion-string="%PKG_VERSION%"

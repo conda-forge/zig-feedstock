@@ -2,8 +2,6 @@ channel_sources:
 - conda-forge/label/m2w64-experimental,conda-forge
 channel_targets:
 - conda-forge main
-docker_image:
-- quay.io/condaforge/linux-anvil-cos7-x86_64
 target_platform:
 - win-64
 zlib:
