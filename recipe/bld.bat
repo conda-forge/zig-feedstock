@@ -21,8 +21,11 @@ if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo Copying ZIG to %PREFIX%
 mkdir %PREFIX%\bin
+mkdir %PREFIX%\lib
+mkdir %PREFIX%\doc
 copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe
 xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib\ > nul
+xcopy /E %ZIG_INSTALL_DIR%\doc %PREFIX%\doc\ > nul
 
 :: Exit main script
 GOTO :EOF
