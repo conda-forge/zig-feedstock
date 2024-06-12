@@ -118,7 +118,7 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
+  # EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
@@ -143,10 +143,7 @@ fi
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   cmake_build_install "${cmake_build_dir}"
 
-  if [[ "${target_platform}" == "linux-64" ]] || \
-     [[ "${target_platform}" == "linux-aarch64" ]] || \
-     [[ "${target_platform}" == "linux-ppc64le" ]]
-  then
+  if [[ "${target_platform}" == "linux-aarch64" ]]; then
     patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
   elif [[ "${target_platform}" == "osx-64" ]]; then
     otool -L "${cmake_install_dir}"/bin/zig
@@ -166,9 +163,6 @@ self_build \
   "${cmake_build_dir}/config.h" \
   "${PREFIX}"
 
-if [[ "${target_platform}" == "linux-64" ]] || \
-   [[ "${target_platform}" == "linux-aarch64" ]] || \
-   [[ "${target_platform}" == "linux-ppc64le" ]]
-then
+if [[ "${target_platform}" == "linux-aarch64" ]]; then
   patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
