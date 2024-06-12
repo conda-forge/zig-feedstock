@@ -20,8 +20,8 @@ call :buildZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo "Copying ZIG to %PREFIX%"
-copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe > nul
-xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib > nul
+copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe
+xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 :: Exit main script
