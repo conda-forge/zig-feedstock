@@ -95,9 +95,9 @@ cd %ZIG_BUILD_DIR%
   %ZIG% build ^
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --maxrss 24696061952 ^
+    --release=small ^
+    --skip-oom-steps ^sysroot
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
-    -Dstatic-llvm ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
     -Dversion-string="%PKG_VERSION%"
