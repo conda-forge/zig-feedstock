@@ -14,7 +14,7 @@ set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :buildZigCmake
+call :buildZigcppCmake
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :bootstrapZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -65,17 +65,12 @@ cd %CONFIG_DIR%
 cd %SRC_DIR%
 GOTO :EOF
 
-:buildZigCmake
+:buildZigcppCmake
 echo "Building ZIG from source in %CONFIG_DIR%
 cd %CONFIG_DIR%
   echo "   Building ..."
-  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
-  cmake --build . --config Release --target zigcpp -- -j 1
-  :: cmake --build . --config Release --target install
+  cmake --build . --config Release --target zigcpp -- -j%CPU_COUNT%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-  :: echo "   Testing ..."
-  :: %ZIG_INSTALL_DIR%\bin\zig.exe build test
 cd %SRC_DIR%
 GOTO :EOF
 
