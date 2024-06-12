@@ -30,6 +30,8 @@ function patchelf_installed_zig() {
   patchelf --add-rpath      "${build_prefix}/${ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
   patchelf --add-rpath      "${build_prefix}/lib"                                       "${install_dir}/bin/zig"
   patchelf --add-rpath      "${PREFIX}/lib"                                             "${install_dir}/bin/zig"
+
+  patchelf --set-interpreter "${build_prefix}/${ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
 }
 
 function cmake_build_install() {
@@ -162,5 +164,5 @@ if [[ "${target_platform}" == "linux-64" ]] || \
    [[ "${target_platform}" == "linux-aarch64" ]] || \
    [[ "${target_platform}" == "linux-ppc64le" ]]
 then
-  patchelf_installed_zig "${PREFIX}" "${PREFIX}"
+  patchelf_installed_zig "${PREFIX}" "\$CONDA_PREFIX"
 fi
