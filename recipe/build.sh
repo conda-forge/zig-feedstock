@@ -25,13 +25,13 @@ function patchelf_installed_zig() {
   local build_prefix=$2
 
   patchelf --remove-rpath                                                               "${install_dir}/bin/zig"
-  patchelf --set-rpath      "${build_prefix}/${ARCH}-conda-linux-gnu/sysroot/lib64"     "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${build_prefix}/${ARCH}-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${build_prefix}/${ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
+  patchelf --set-rpath      "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64"     "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
   patchelf --add-rpath      "${build_prefix}/lib"                                       "${install_dir}/bin/zig"
   patchelf --add-rpath      "${PREFIX}/lib"                                             "${install_dir}/bin/zig"
 
-  patchelf --set-interpreter "${build_prefix}/${ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
+  patchelf --set-interpreter "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
 }
 
 function cmake_build_install() {
@@ -75,6 +75,7 @@ function self_build() {
 
     "${zig}" build \
       --prefix "${install_dir}" \
+      --search-prefix "${PREFIX}" \
       -Doptimize=ReleaseSafe \
       -Dconfig_h="${config_h}" \
       -Dstrip \
@@ -97,38 +98,38 @@ EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
 EXTRA_ZIG_ARGS=()
 
 if [[ "${target_platform}" == "linux-64" ]]; then
-  ARCH="x86_64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot")
+  SYSROOT_ARCH="x86_64"
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
 
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
-  ARCH="aarch64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${ARCH}-linux-gnu")
+  SYSROOT_ARCH="aarch64"
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
+  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
 
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  ARCH="powerpc64le"
+  SYSROOT_ARCH="powerpc64le"
   # Replace default cmake arguments for powerpc64le-linux-gnu
-  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${ARCH}-linux-gnu" "-DZIG_STATIC_LLVM=ON")
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${ARCH}-conda-linux-gnu/sysroot")
+  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" "-DZIG_STATIC=ON" "-DZIG_STATIC_LLVM=ON")
+  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${ARCH}-linux-gnu")
+  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
 
 elif [[ "${target_platform}" == "osx-64" ]]; then
-  ARCH="x86_64"
+  SYSROOT_ARCH="x86_64"
   # Specifying the TARGET prevents using SDKROOT?
   export DYLD_LIBRARY_PATH="${PREFIX}/lib"
 
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
-  ARCH="arm64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${ARCH}-linux-gnu")
+  SYSROOT_ARCH="arm64"
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
 fi
 
@@ -164,5 +165,5 @@ if [[ "${target_platform}" == "linux-64" ]] || \
    [[ "${target_platform}" == "linux-aarch64" ]] || \
    [[ "${target_platform}" == "linux-ppc64le" ]]
 then
-  patchelf_installed_zig "${PREFIX}" "\$CONDA_PREFIX"
+  patchelf_installed_zig "${PREFIX}" "\$PREFIX"
 fi
