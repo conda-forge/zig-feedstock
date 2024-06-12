@@ -100,6 +100,7 @@ cd %ZIG_BUILD_DIR%
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
+    -Dflat ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: -Dtarget="%GNU_TARGET%" ^
