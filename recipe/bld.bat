@@ -96,7 +96,7 @@ cd %ZIG_BUILD_DIR%
     --prefix "%ZIG_INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     --release=small ^
-    --skip-oom-steps ^sysroot
+    --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
