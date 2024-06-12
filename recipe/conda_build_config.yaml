@@ -1,4 +1,4 @@
 c_stdlib_version:
   - '2.28'  # [linux and x86_64]
 channel_sources:  # [win]
-  - conda-forge/label/m2w64-experimental,conda-forge  # [win]
+  - conda-forge  # [win]
