@@ -16,13 +16,13 @@ call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :buildZigCmake
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :buildZigWithZIG
+call :bootstrapZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-echo "Copying ZIG to %PREFIX%"
+echo Copying ZIG to %PREFIX%
+mkdir %PREFIX%\bin
 copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe
-xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib\ > nul
 
 :: Exit main script
 GOTO :EOF
@@ -30,7 +30,7 @@ GOTO :EOF
 :: --- Functions ---
 
 :configZigCmakeBuild
-echo "Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%"
+echo Configuring ZIG in %CONFIG_DIR% from %SOURCE_DIR%
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
@@ -79,8 +79,8 @@ cd %CONFIG_DIR%
 cd %SRC_DIR%
 GOTO :EOF
 
-:buildZigWithZIG
-echo "Building ZIG with: %ZIG% in %ZIG_BUILD_DIR%"
+:bootstrapZigWithZIG
+echo Building ZIG with: %ZIG% in %ZIG_BUILD_DIR%
 mkdir %ZIG_BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -109,30 +109,27 @@ cd %ZIG_BUILD_DIR%
 cd %SRC_DIR%
 GOTO :EOF
 
-:: echo "Testing self-build ZIG with: %ZIG_INSTALL_DIR%\zig.exe in %ZIG_TEST_DIR%"
-:: mkdir %ZIG_TEST_DIR%
-:: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-:: cd %ZIG_TEST_DIR%
-::   echo "   Copying sources ..."
-::   xcopy /E %SOURCE_DIR%\* . > nul
-::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-::
-::   set "ZIG=%ZIG_INSTALL_DIR%\bin\zig.exe"
-::
-::   echo "   Building ..."
-::   mkdir %SRC_DIR%\_self-test
-::   %ZIG% build ^
-::     --prefix "%SRC_DIR%/_self-test" ^
-::     -Doptimize=ReleaseFast ^
-::     -Dstrip ^
-::     -Dtarget="%MSVC_TARGET%" ^
-::     -Dcpu="%MCPU%" ^
-::     -Dversion-string="%PKG_VERSION%"
-::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-:: cd %SRC_DIR%
-::
-:: echo "ZIG built and tested successfully."
-:: echo "Copying ZIG to %PREFIX%"
-:: copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe > nul
-:: xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib > nul
-:: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+:buildZigWithZIG
+echo Testing self-build ZIG with: %ZIG_INSTALL_DIR%\zig.exe in %ZIG_TEST_DIR%
+mkdir %ZIG_TEST_DIR%
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %ZIG_TEST_DIR%
+  echo "   Copying sources ..."
+  xcopy /E %SOURCE_DIR%\* . > nul
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  set "ZIG=%ZIG_INSTALL_DIR%\zig.exe"
+
+  echo "   Building ..."
+  mkdir %SRC_DIR%\_self-test
+  %ZIG% build ^
+    --prefix "%SRC_DIR%/_self-test" ^
+    --search-prefix "%PREFIX%\Library\lib" ^
+    --skip-oom-steps ^
+    --release=safe ^
+    -Dstrip ^
+    -Dflat ^
+    -Dversion-string="%PKG_VERSION%"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %SRC_DIR%
+GOTO :EOF
