@@ -19,21 +19,18 @@ source:
 
 build:
   number: 2
-  skip: True  # [not (win64 and target_platform == "win-64")]
+  skip: True  # [not win64]
 
 requirements:
   build:
-    - {{ compiler('c') }}  # [not win]
-    - {{ compiler('cxx') }}  # [not win]
-    - {{ stdlib('c') }}  # [not win]
-    - gcc_impl_{{ build_platform }}   # [win]
-    - gcc_impl_{{ target_platform }}  # [win]
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
+    - {{ stdlib('c') }}
     - cmake >=3.5
-    - clangdev {{ llvm_version }}  # [build_platform != target_platform]
-    - llvmdev {{ llvm_version }}  # [build_platform != target_platform]
-    - zlib  # [build_platform != target_platform]
     - ninja
   host:
+    - clangdev {{ llvm_version }}
+    - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
