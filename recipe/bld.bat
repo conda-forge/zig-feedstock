@@ -16,7 +16,8 @@ if %ERRORLEVEL% neq 0 (
   echo "Failed to bootstrap ZIG"
   exit /b %ERRORLEVEL%
 )
-call :buildZigWithZIG %SRC_DIR%\_conda-zig-build %SRC_DIR%\_conda-bootstrapped\zig.exe %ZIG% %SRC_DIR%\_conda-final
+dir %SRC_DIR%\_conda-bootstrapped
+call :buildZigWithZIG %SRC_DIR%\_conda-zig-build %SRC_DIR%\_conda-bootstrapped\zig.exe %SRC_DIR%\_conda-final
 if %ERRORLEVEL% neq 0 (
     echo "Failed to build ZIG"
     exit /b %ERRORLEVEL%
