@@ -110,7 +110,8 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%\Library\lib" ^
     --skip-oom-steps ^
     --release=safe ^
-    -Denable-llvm
+    -Denable-llvm ^
+    -Dstrip ^
     -Dflat ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
