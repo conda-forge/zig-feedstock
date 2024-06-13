@@ -1,5 +1,5 @@
 {% set name = "zig" %}
-{% set version = "0.12.0" %}
+{% set version = "0.13.0" %}
 {% set llvm_version = "17" %}
 
 package:
@@ -8,7 +8,7 @@ package:
 
 source:
   - url: https://github.com/ziglang/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
-    sha256: 57d7e0ad565ef734d9f3fe8cff7a815f2ab012ec3d8e155a316dfc79f789c432
+    sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
       - 0001-add-patchelf-zig2.patch  # [linux and x86_64]
 
@@ -17,7 +17,7 @@ source:
   #   sha256: c7ae866b8a76a568e2d5cfd31fe89cdb629bdd161fdd5018b29a4a0a17045cad
 
 build:
-  number: 1
+  number: 0
   skip: true  # [not unix]
   script_env:
     - LIBC_CONDA_VERSION=2.28
