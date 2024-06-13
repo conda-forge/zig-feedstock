@@ -19,6 +19,8 @@ call :buildZigcppCmake
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :bootstrapZigWithZIG
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+call :buildZigWithZIG
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo Copying ZIG to %PREFIX%
 mkdir %PREFIX%\bin
