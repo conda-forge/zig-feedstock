@@ -12,9 +12,15 @@ set "CONFIG_DIR=%SRC_DIR%\_config"
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 call :bootstrapZigWithZIG %SRC_DIR%\_conda-bootstrap %ZIG% %SRC_DIR%\_conda-bootstrapped
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+if %ERRORLEVEL% neq 0 (
+  echo "Failed to bootstrap ZIG"
+  exit /b %ERRORLEVEL%
+)
 call :buildZigWithZIG %SRC_DIR%\_conda-zig-build %SRC_DIR%\_conda-bootstrapped\zig.exe %ZIG% %SRC_DIR%\_conda-final
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+if %ERRORLEVEL% neq 0 (
+    echo "Failed to build ZIG"
+    exit /b %ERRORLEVEL%
+    )
 
 echo Copying ZIG to %PREFIX%
 mkdir %PREFIX%\bin
