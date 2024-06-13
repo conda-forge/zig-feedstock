@@ -8,27 +8,21 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
-set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
-set "ZIG_STAGE1_DIR=%SRC_DIR%\_stage1"
-set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
-set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :buildZigcppCmake
+call :bootstrapZigWithZIG %SRC_DIR%\_conda-bootstrap %ZIG% %SRC_DIR%\_conda-bootstrapped
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :bootstrapZigWithZIG
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :buildZigWithZIG
+call :buildZigWithZIG %SRC_DIR%\_conda-zig-build %SRC_DIR%\_conda-bootstrapped\zig.exe %ZIG% %SRC_DIR%\_conda-final
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 echo Copying ZIG to %PREFIX%
 mkdir %PREFIX%\bin
 mkdir %PREFIX%\lib
 mkdir %PREFIX%\doc
-copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe
-xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib\ > nul
-xcopy /E %ZIG_INSTALL_DIR%\doc %PREFIX%\doc\ > nul
+copy %SRC_DIR%\_conda-final\zig.exe %PREFIX%\bin\zig.exe
+xcopy /E %SRC_DIR%\_conda-final\lib %PREFIX%\lib\ > nul
+xcopy /E %SRC_DIR%\_conda-final\doc %PREFIX%\doc\ > nul
 
 dir %PREFIX%\lib
 
@@ -41,10 +35,7 @@ GOTO :EOF
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
-  set "PATH=%PREFIX%\bin;%PATH%"
-
   set "_prefix=%PREFIX:\=\\%"
-  set "_build_prefix=%BUILD_PREFIX:\=\\%"
   set "_zig_install_dir=%ZIG_INSTALL_DIR:\=\\%"
   set "_zig=%ZIG:\=\\%"
 
@@ -64,27 +55,28 @@ cd %CONFIG_DIR%
     :: -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     :: -D CMAKE_AR="%_zig%" ^
     :: -D ZIG_SYSTEM_LIBCXX="c++" ^
-cd %SRC_DIR%
-GOTO :EOF
 
-:buildZigcppCmake
-cd %CONFIG_DIR%
   cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 GOTO :EOF
 
 :bootstrapZigWithZIG
-mkdir %ZIG_BUILD_DIR%
+setlocal
+set "BUILD_DIR=%~1"
+set "ZIG=%~2"
+set "INSTALL_DIR=$~3"
+
+mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-cd %ZIG_BUILD_DIR%
+cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  mkdir %ZIG_STAGE1_DIR%
+  mkdir %INSTALL_DIR%
   %ZIG% build ^
-    --prefix "%ZIG_STAGE1_DIR%" ^
+    --prefix "%INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     --release=small ^
     --skip-oom-steps ^
@@ -97,27 +89,31 @@ cd %ZIG_BUILD_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
+endlocal
 GOTO :EOF
 
 :buildZigWithZIG
-mkdir %ZIG_TEST_DIR%
+setlocal
+set "BUILD_DIR=%~1"
+set "ZIG=%~2"
+set "INSTALL_DIR=$~3"
+
+mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-cd %ZIG_TEST_DIR%
+cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  set "ZIG=%ZIG_STAGE1_DIR%\zig.exe"
-
-  mkdir %ZIG_INSTALL_DIR%
+  mkdir %INSTALL_DIR%
   %ZIG% build ^
-    --prefix "%ZIG_INSTALL_DIR%" ^
+    --prefix "%INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     --skip-oom-steps ^
     --release=safe ^
     -Denable-llvm
-    -Dstrip ^
     -Dflat ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
+endlocal
 GOTO :EOF
