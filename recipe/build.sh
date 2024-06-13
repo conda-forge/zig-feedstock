@@ -118,7 +118,7 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  # EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
+  EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
@@ -127,6 +127,7 @@ elif [[ "${target_platform}" == "osx-64" ]]; then
   SYSROOT_ARCH="x86_64"
   # Specifying the TARGET prevents using SDKROOT?
   export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+  EXTRA_ZIG_ARGS+=("-Denable-llvm")
 
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
   SYSROOT_ARCH="arm64"
