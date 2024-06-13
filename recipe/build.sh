@@ -154,9 +154,19 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
 
   zig="${cmake_install_dir}/bin/zig"
 else
-  cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-  zig="${SRC_DIR}/zig-bootstrap/zig"
-  EXTRA_ZIG_ARGS+=("-fqemu")
+  if [[ "${target_platform}" == "linux-ppc64le" ]] ; then
+    echo "$CMAKE_ARGS"
+    export CFLAGS="${CFLAGS} -fPIC"
+    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    zig="${SRC_DIR}/zig-bootstrap/zig"
+    EXTRA_ZIG_ARGS+=("-fqemu")
+    cmake_build_install "${cmake_build_dir}"
+    zig="${cmake_install_dir}/bin/zig"
+  else
+    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    zig="${SRC_DIR}/zig-bootstrap/zig"
+    EXTRA_ZIG_ARGS+=("-fqemu")
+  fi
 fi
 
 self_build \
