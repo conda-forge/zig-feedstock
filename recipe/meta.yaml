@@ -50,6 +50,7 @@ requirements:
     - zstd
   run:
     - llvmdev {{ llvm_version }}  # [ppc64le]
+    - llvm {{ llvm_version }}  # [ppc64le]
     - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64)]
 
 test:
