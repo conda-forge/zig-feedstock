@@ -49,7 +49,8 @@ requirements:
     - zlib
     - zstd
   run:
-    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
+    - llvmdev {{ llvm_version }}  # [ppc64le]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64)]
 
 test:
   commands:
