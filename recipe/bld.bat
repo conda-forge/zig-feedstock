@@ -9,6 +9,7 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 set "ZIG_BUILD_DIR=%SRC_DIR%\_build"
+set "ZIG_STAGE1_DIR=%SRC_DIR%\_stage1"
 set "ZIG_INSTALL_DIR=%SRC_DIR%\_installed"
 set "ZIG_TEST_DIR=%SRC_DIR%\_self-build"
 
@@ -24,8 +25,10 @@ mkdir %PREFIX%\bin
 mkdir %PREFIX%\lib
 mkdir %PREFIX%\doc
 copy %ZIG_INSTALL_DIR%\zig.exe %PREFIX%\bin\zig.exe
-xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib\
+xcopy /E %ZIG_INSTALL_DIR%\lib %PREFIX%\lib\ > nul
 xcopy /E %ZIG_INSTALL_DIR%\doc %PREFIX%\doc\ > nul
+
+dir %PREFIX%\lib
 
 :: Exit main script
 GOTO :EOF
@@ -77,42 +80,42 @@ cd %ZIG_BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  mkdir %ZIG_INSTALL_DIR%
+  mkdir %ZIG_STAGE1_DIR%
   %ZIG% build ^
-    --prefix "%ZIG_INSTALL_DIR%" ^
+    --prefix "%ZIG_STAGE1_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --release=small ^
+    --release=safe ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
     -Dflat ^
+    -Dno-lib ^
+    -Dno-langref ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 GOTO :EOF
 
-:: :buildZigWithZIG
-:: echo Testing self-build ZIG with: %ZIG_INSTALL_DIR%\zig.exe in %ZIG_TEST_DIR%
-:: mkdir %ZIG_TEST_DIR%
-:: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-:: cd %ZIG_TEST_DIR%
-::   echo "   Copying sources ..."
-::   xcopy /E %SOURCE_DIR%\* . > nul
-::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-::
-::   set "ZIG=%ZIG_INSTALL_DIR%\zig.exe"
-::
-::   echo "   Building ..."
-::   mkdir %SRC_DIR%\_self-test
-::   %ZIG% build ^
-::     --prefix "%SRC_DIR%/_self-test" ^
-::     --search-prefix "%PREFIX%\Library\lib" ^
-::     --skip-oom-steps ^
-::     --release=safe ^
-::     -Dstrip ^
-::     -Dflat ^
-::     -Dversion-string="%PKG_VERSION%"
-::   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-:: cd %SRC_DIR%
-:: GOTO :EOF
+:buildZigWithZIG
+mkdir %ZIG_TEST_DIR%
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %ZIG_TEST_DIR%
+  xcopy /E %SOURCE_DIR%\* . > nul
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  set "ZIG=%ZIG_STAGE1_DIR%\zig.exe"
+
+  mkdir %ZIG_INSTALL_DIR%
+  %ZIG% build ^
+    --prefix "%ZIG_INSTALL_DIR%" ^
+    --search-prefix "%PREFIX%\Library\lib" ^
+    --skip-oom-steps ^
+    --release=safe ^
+    -Denable-llvm
+    -Dstrip ^
+    -Dflat ^
+    -Dversion-string="%PKG_VERSION%"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %SRC_DIR%
+GOTO :EOF
