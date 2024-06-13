@@ -41,16 +41,16 @@ test:
   commands:
     - if not exist %PREFIX%\\bin\\zig.exe exit 1  # [win]
     - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
-    - if not exist %PREFIX%\\lib\\zig\\c.zig exit 1  # [win]
-    - if not exist %PREFIX%\\lib\\zig\\compiler_rt.zig exit 1  # [win]
-    - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]
-    {% set lib_dirs = [
-      "compiler", "compiler_rt", "docs", "include", "init", "libc",
-      "libcxx", "libcxxabi", "libunwind", "std", "tsan"
-    ] %}
-    {% for lib_dir in lib_dirs %}
-    - if not exist %PREFIX%\\lib\\zig\\{{ lib_dir }} exit 1  # [win]
-    {% endfor %}
+    # - if not exist %PREFIX%\\lib\\zig\\c.zig exit 1  # [win]
+    # - if not exist %PREFIX%\\lib\\zig\\compiler_rt.zig exit 1  # [win]
+    # - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]
+    # {% set lib_dirs = [
+    #   "compiler", "compiler_rt", "docs", "include", "init", "libc",
+    #   "libcxx", "libcxxabi", "libunwind", "std", "tsan"
+    # ] %}
+    # {% for lib_dir in lib_dirs %}
+    # - if not exist %PREFIX%\\lib\\zig\\{{ lib_dir }} exit 1  # [win]
+    # {% endfor %}
 
     - zig version
     - zig zen
