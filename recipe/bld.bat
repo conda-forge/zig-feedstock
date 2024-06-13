@@ -86,7 +86,7 @@ cd %ZIG_BUILD_DIR%
   %ZIG% build ^
     --prefix "%ZIG_STAGE1_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --release=safe ^
+    --release=small ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dskip-non-native ^
