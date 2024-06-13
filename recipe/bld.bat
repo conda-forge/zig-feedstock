@@ -11,13 +11,14 @@ set "CONFIG_DIR=%SRC_DIR%\_config"
 
 call :configZigCmakeBuild
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-call :bootstrapZigWithZIG %SRC_DIR%\_conda-bootstrap %ZIG% %SRC_DIR%\_conda-bootstrapped
+call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%ZIG%" "%SRC_DIR%\_conda-bootstrapped"
 if %ERRORLEVEL% neq 0 (
   echo "Failed to bootstrap ZIG"
   exit /b %ERRORLEVEL%
 )
-dir %SRC_DIR%\_conda-bootstrapped
-call :buildZigWithZIG %SRC_DIR%\_conda-zig-build %SRC_DIR%\_conda-bootstrapped\zig.exe %SRC_DIR%\_conda-final
+dir "%SRC_DIR%\_conda-bootstrapped"
+dir "%SRC_DIR%\_conda-bootstrapped\zig.exe"
+call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-bootstrapped\zig.exe" "%SRC_DIR%\_conda-final"
 if %ERRORLEVEL% neq 0 (
     echo "Failed to build ZIG"
     exit /b %ERRORLEVEL%
@@ -58,13 +59,13 @@ cd %CONFIG_DIR%
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  cmake --build . --config Release --target zigcpp
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: -D CMAKE_C_COMPILER="%_zig%;cc" ^
     :: -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     :: -D CMAKE_AR="%_zig%" ^
     :: -D ZIG_SYSTEM_LIBCXX="c++" ^
-
-  cmake --build . --config Release --target zigcpp
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 GOTO :EOF
 
