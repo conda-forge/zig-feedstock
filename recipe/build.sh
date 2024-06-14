@@ -51,7 +51,6 @@ function self_build() {
   local zig=$2
   local config_h=$3
   local install_dir=$4
-  local target=${5:-$TARGET}
 
   local current_dir
   current_dir=$(pwd)
