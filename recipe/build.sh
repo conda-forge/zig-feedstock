@@ -114,7 +114,7 @@ elif [[ "${target_platform}" == "linux-aarch64" ]]; then
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   # Replace default cmake arguments for powerpc64le-linux-gnu
-  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" "-DZIG_STATIC=ON" "-DZIG_STATIC_LLVM=ON")
+  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" "-DZIG_STATIC=ON" "-DZIG_SHARED_LLVM=ON")
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
