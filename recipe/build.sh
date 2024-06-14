@@ -13,10 +13,12 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     if [[ "${zig:-}" != '' ]]; then
-      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=baseline"
-      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=baseline"
+      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu"
+      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu"
+
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_CFLAGS=${zig}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
     fi
@@ -132,6 +134,8 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
   export CFLAGS="${CFLAGS//-fno-plt/}"
+  export CFLAGS="${CFLAGS//-mcpu=power8/}"
+  export CFLAGS="${CFLAGS//-mtune=power8/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
 
