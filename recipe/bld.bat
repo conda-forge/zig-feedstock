@@ -9,7 +9,7 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 
-call :configZigCmakeBuild "%SRC_DIR%\_conda-cmake-built"
+call :configZigCmakeBuildMSVC "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%ZIG%" "%SRC_DIR%\_conda-bootstrapped"
@@ -39,14 +39,13 @@ GOTO :EOF
 
 :: --- Functions ---
 
-:configZigCmakeBuild
+:configZigCmakeBuildMSVC
 set "INSTALL_DIR=%~1"
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
   set "_prefix=%PREFIX:\=\\%"
   set "_zig_install_dir=%INSTALL_DIR:\=\\%"
-  set "_zig=%ZIG:\=\\%"
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
@@ -63,16 +62,42 @@ cd %CONFIG_DIR%
 
   cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-    :: -D CMAKE_C_COMPILER="%_zig%;cc" ^
-    :: -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
-    :: -D CMAKE_AR="%_zig%" ^
-    :: -D ZIG_SYSTEM_LIBCXX="c++" ^
+cd %SRC_DIR%
+GOTO :EOF
+
+:configZigCmakeBuildZIG
+set "INSTALL_DIR=%~1"
+mkdir %CONFIG_DIR%
+if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %CONFIG_DIR%
+  set "_prefix=%PREFIX:\=\\%"
+  set "_zig_install_dir=%INSTALL_DIR:\=\\%"
+  set "_zig=%ZIG:\=\\%"
+
+  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
+  cmake %SOURCE_DIR% ^
+    -G "Ninja" ^
+    -D CMAKE_BUILD_TYPE=Release ^
+    -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
+    -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib" ^
+    -D CMAKE_C_COMPILER="%_zig%;cc" ^
+    -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
+    -D CMAKE_AR="%_zig%" ^
+    -D ZIG_AR_WORKAROUND=ON ^
+    -D ZIG_USE_LLVM_CONFIG=OFF ^
+    -D ZIG_STATIC_LLVM=ON ^
+    -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
+    -D ZIG_VERSION="%PKG_VERSION%"
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  cmake --build . --config Release --target zigcpp
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 GOTO :EOF
 
 :bootstrapZigWithZIG
-echo "bootstrapZigWithZIG"
 setlocal
+echo "bootstrapZigWithZIG"
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
 set "INSTALL_DIR=%~3"
@@ -98,14 +123,14 @@ cd %BUILD_DIR%
     -Dno-langref ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-cd %SRC_DIR%
 echo "Done"
+cd %SRC_DIR%
 endlocal
 GOTO :EOF
 
 :buildZigWithZIG
-echo "buildZigWithZIG"
 setlocal
+echo "buildZigWithZIG"
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
 set "INSTALL_DIR=%~3"
