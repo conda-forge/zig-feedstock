@@ -77,7 +77,7 @@ echo "bootstrapZigWithZIG"
 setlocal
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
-set "INSTALL_DIR=$~3"
+set "INSTALL_DIR=%~3"
 
 echo "BUILD_DIR: %BUILD_DIR%"
 echo "ZIG: %ZIG%"
@@ -114,7 +114,7 @@ GOTO :EOF
 setlocal
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
-set "INSTALL_DIR=$~3"
+set "INSTALL_DIR=%~3"
 
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
