@@ -3,7 +3,6 @@
 set "MSVC_TARGET=x86_64-windows-msvc"
 set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
-set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
@@ -12,7 +11,7 @@ set "CONFIG_DIR=%SRC_DIR%\_config"
 call :configZigCmakeBuildMSVC "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%ZIG%" "%SRC_DIR%\_conda-bootstrapped"
+call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-bootstrap\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
 if %ERRORLEVEL% neq 0 (
   echo "Failed to bootstrap ZIG"
   exit /b %ERRORLEVEL%
@@ -66,7 +65,10 @@ cd %SRC_DIR%
 GOTO :EOF
 
 :configZigCmakeBuildZIG
+setlocal
 set "INSTALL_DIR=%~1"
+set "ZIG=%~2"
+
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
@@ -93,6 +95,7 @@ cd %CONFIG_DIR%
   cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
+endlocal
 GOTO :EOF
 
 :bootstrapZigWithZIG
@@ -138,6 +141,9 @@ set "INSTALL_DIR=%~3"
 echo "BUILD_DIR: %BUILD_DIR%"
 echo "ZIG: %ZIG%"
 echo "INSTALL_DIR: %INSTALL_DIR%"
+
+dir %ZIG%
+%ZIG% --version
 
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
