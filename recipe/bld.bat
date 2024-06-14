@@ -9,8 +9,9 @@ set "ZIG=%SRC_DIR%\zig-bootstrap\zig.exe"
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 
-call :configZigCmakeBuild
+call :configZigCmakeBuild "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
 call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%ZIG%" "%SRC_DIR%\_conda-bootstrapped"
 if %ERRORLEVEL% neq 0 (
   echo "Failed to bootstrap ZIG"
@@ -18,6 +19,7 @@ if %ERRORLEVEL% neq 0 (
 )
 dir "%SRC_DIR%\_conda-bootstrapped"
 dir "%SRC_DIR%\_conda-bootstrapped\zig.exe"
+
 call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-bootstrapped\zig.exe" "%SRC_DIR%\_conda-final"
 if %ERRORLEVEL% neq 0 (
     echo "Failed to build ZIG"
@@ -40,11 +42,12 @@ GOTO :EOF
 :: --- Functions ---
 
 :configZigCmakeBuild
+set "INSTALL_DIR=%~1"
 mkdir %CONFIG_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %CONFIG_DIR%
   set "_prefix=%PREFIX:\=\\%"
-  set "_zig_install_dir=%ZIG_INSTALL_DIR:\=\\%"
+  set "_zig_install_dir=%INSTALL_DIR:\=\\%"
   set "_zig=%ZIG:\=\\%"
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
@@ -70,10 +73,15 @@ cd %SRC_DIR%
 GOTO :EOF
 
 :bootstrapZigWithZIG
+echo "bootstrapZigWithZIG"
 setlocal
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
 set "INSTALL_DIR=$~3"
+
+echo "BUILD_DIR: %BUILD_DIR%"
+echo "ZIG: %ZIG%"
+echo "INSTALL_DIR: %INSTALL_DIR%"
 
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -97,6 +105,8 @@ cd %BUILD_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
+dir %INSTALL_DIR%
+echo "bootstrapZigWithZIG done"
 endlocal
 GOTO :EOF
 
