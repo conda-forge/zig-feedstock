@@ -17,8 +17,6 @@ if %ERRORLEVEL% neq 0 (
   echo "Failed to bootstrap ZIG"
   exit /b %ERRORLEVEL%
 )
-dir "%SRC_DIR%\_conda-bootstrapped"
-dir "%SRC_DIR%\_conda-bootstrapped\zig.exe"
 
 call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-bootstrapped\zig.exe" "%SRC_DIR%\_conda-final"
 if %ERRORLEVEL% neq 0 (
@@ -79,10 +77,6 @@ set "BUILD_DIR=%~1"
 set "ZIG=%~2"
 set "INSTALL_DIR=%~3"
 
-echo "BUILD_DIR: %BUILD_DIR%"
-echo "ZIG: %ZIG%"
-echo "INSTALL_DIR: %INSTALL_DIR%"
-
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
@@ -105,16 +99,20 @@ cd %BUILD_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
-dir %INSTALL_DIR%
-echo "bootstrapZigWithZIG done"
+echo "Done"
 endlocal
 GOTO :EOF
 
 :buildZigWithZIG
+echo "buildZigWithZIG"
 setlocal
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
 set "INSTALL_DIR=%~3"
+
+echo "BUILD_DIR: %BUILD_DIR%"
+echo "ZIG: %ZIG%"
+echo "INSTALL_DIR: %INSTALL_DIR%"
 
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -134,5 +132,6 @@ cd %BUILD_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
+echo "Done"
 endlocal
 GOTO :EOF
