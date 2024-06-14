@@ -36,7 +36,6 @@ requirements:
     - {{ compiler('cxx') }}
     - {{ stdlib("c") }}
     - cmake >=3.5
-    - llvmdev {{ llvm_version }}  # [build_platform != target_platform]
     - ninja
     - zstd
   host:
