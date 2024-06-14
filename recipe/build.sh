@@ -13,9 +13,9 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     if [[ "${zig:-}" != '' ]]; then
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=\"${zig};cc\"")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=\"${zig};cc++\"")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=\"${zig}\"")
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${zig};cc")
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${zig};cc++")
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
     fi
     cmake "${SRC_DIR}"/zig-source \
