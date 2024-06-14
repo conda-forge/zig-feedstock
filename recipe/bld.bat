@@ -121,7 +121,7 @@ cd %BUILD_DIR%
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
-    -Denable-llvm ^
+    -Dstatic-llvm ^
     -Dflat ^
     -Dno-langref ^
     -Dversion-string="%PKG_VERSION%"
