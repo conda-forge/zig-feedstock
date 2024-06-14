@@ -85,7 +85,8 @@ function self_build() {
 
 # --- Main ---
 
-set -ex
+set -euxo pipefail
+
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 
@@ -118,7 +119,7 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Dstatic-llvm")
+  EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
@@ -136,6 +137,7 @@ elif [[ "${target_platform}" == "osx-arm64" ]]; then
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
 fi
 
+# --- Configure CMake build dir and build zigcpp/libzigcpp.a ---
 configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
 if [[ "${target_platform}" == "osx-64" ]]; then
   sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
@@ -157,7 +159,7 @@ else
   if [[ "${target_platform}" == "linux-ppc64le" ]] ; then
     echo "$CMAKE_ARGS"
     export CFLAGS="${CFLAGS} -fPIC"
-    export CXX_FLAGS="${CXX_FLAGS} -fPIC"
+    export CXXFLAGS="${CXXFLAGS} -fPIC"
     EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
     cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
     zig="${SRC_DIR}/zig-bootstrap/zig"
