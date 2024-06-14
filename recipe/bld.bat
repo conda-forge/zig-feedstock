@@ -122,7 +122,6 @@ cd %BUILD_DIR%
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
     -Dflat ^
-    -Dno-lib ^
     -Dno-langref ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -141,9 +140,6 @@ set "INSTALL_DIR=%~3"
 echo "BUILD_DIR: %BUILD_DIR%"
 echo "ZIG: %ZIG%"
 echo "INSTALL_DIR: %INSTALL_DIR%"
-
-dir %ZIG%
-%ZIG% --version
 
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
