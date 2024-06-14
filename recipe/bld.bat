@@ -121,6 +121,7 @@ cd %BUILD_DIR%
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dskip-non-native ^
     -Denable-symlinks-windows ^
+    -Denable-llvm ^
     -Dflat ^
     -Dno-langref ^
     -Dversion-string="%PKG_VERSION%"
@@ -136,10 +137,6 @@ echo "buildZigWithZIG"
 set "BUILD_DIR=%~1"
 set "ZIG=%~2"
 set "INSTALL_DIR=%~3"
-
-echo "BUILD_DIR: %BUILD_DIR%"
-echo "ZIG: %ZIG%"
-echo "INSTALL_DIR: %INSTALL_DIR%"
 
 mkdir %BUILD_DIR%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
