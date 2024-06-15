@@ -51,7 +51,6 @@ cd %CONFIG_DIR%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=ON ^
@@ -83,12 +82,11 @@ cd %CONFIG_DIR%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib" ^
     -D CMAKE_C_COMPILER="%_zig%;cc" ^
     -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
     -D CMAKE_AR="%_zig%" ^
     -D ZIG_AR_WORKAROUND=ON ^
-    -D ZIG_USE_LLVM_CONFIG=OFF ^
+    -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
