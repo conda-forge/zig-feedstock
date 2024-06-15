@@ -32,12 +32,11 @@ build:
 
 requirements:
   build:
-    - {{ compiler('c') }}  # [not aarch64]
-    - {{ compiler('cxx') }}  # [not aarch64]
-    - {{ compiler('clang') }}  # [aarch64]
-    - {{ compiler('clangxx') }}  # [aarch64]
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
     - {{ stdlib("c") }}
     - cmake >=3.5
+    - llvmdev {{ llvm_version }}  # [build_platform != target_platform]
     - ninja
     - zstd
   host:
