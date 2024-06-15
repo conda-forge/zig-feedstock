@@ -140,6 +140,8 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   export CFLAGS="${CFLAGS//-mcpu=power8/}"
   export CFLAGS="${CFLAGS//-mtune=power8/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
+  export CXXFLAGS="${CXXFLAGS//-mcpu=power8/}"
+  export CXXFLAGS="${CXXFLAGS//-mtune=power8/}"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
 
 elif [[ "${target_platform}" == "osx-64" ]]; then
