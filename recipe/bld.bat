@@ -118,7 +118,6 @@ cd %BUILD_DIR%
   %ZIG% build ^
     --prefix "%INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --search-prefix "%PREFIX%\lib" ^
     --release=small ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
