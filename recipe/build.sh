@@ -13,8 +13,8 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     if [[ "${zig:-}" != '' ]]; then
-      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu"
-      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu"
+      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;mcpu=pwr8"
+      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;mcpu=pwr8"
 
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
