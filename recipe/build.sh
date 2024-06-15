@@ -13,12 +13,11 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     if [[ "${zig:-}" != '' ]]; then
-      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=pwr8"
-      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=pwr8"
+      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=baseline"
+      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=baseline"
 
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_CFLAGS=${zig}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_SHARED_LINKER_FLAGS=")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_STATIC_LINKER_FLAGS=")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_EXE_LINKER_FLAGS=\"-L$BUILD_PREFIX/lib\"")
