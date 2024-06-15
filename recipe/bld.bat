@@ -8,7 +8,7 @@ set "MCPU=native"
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 
-call :configZigCmakeBuildMSVC "%SRC_DIR%\_conda-cmake-built"
+call :configZigCmakeBuildZIG "%SRC_DIR%\_conda-cmake-built" "%SRC_DIR%\zig-bootstrap\zig.exe"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-bootstrap\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
@@ -122,8 +122,6 @@ cd %BUILD_DIR%
     --release=small ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
-    -Dskip-non-native ^
-    -Denable-symlinks-windows ^
     -Dstatic-llvm ^
     -Dflat ^
     -Dno-langref ^
