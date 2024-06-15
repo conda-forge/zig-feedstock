@@ -13,14 +13,14 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     if [[ "${zig:-}" != '' ]]; then
-      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=baseline"
-      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=baseline"
-
+      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+      if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
+        _c="${_c};-fqemu"
+        _cxx="${_cxx};-fqemu"
+      fi
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_SHARED_LINKER_FLAGS=")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_STATIC_LINKER_FLAGS=")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_EXE_LINKER_FLAGS=\"-L$BUILD_PREFIX/lib\"")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
     fi
@@ -112,29 +112,23 @@ EXTRA_ZIG_ARGS=()
 if [[ "${target_platform}" == "linux-64" ]]; then
   SYSROOT_ARCH="x86_64"
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
 
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   SYSROOT_ARCH="aarch64"
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
 
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
-  # Replace default cmake arguments for powerpc64le-linux-gnu
-  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" "-DZIG_SHARED_LLVM=ON")
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Dpie=false")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
+  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CFLAGS="${CFLAGS//-mcpu=power8/}"
   export CFLAGS="${CFLAGS//-mtune=power8/}"
@@ -142,21 +136,26 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   export CXXFLAGS="${CXXFLAGS//-mcpu=power8/}"
   export CXXFLAGS="${CXXFLAGS//-mtune=power8/}"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
+  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
+  EXTRA_ZIG_ARGS+=("-Dpie=false")
+  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
+  EXTRA_ZIG_ARGS+=("-Denable-llvm")
+  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "osx-64" ]]; then
   SYSROOT_ARCH="x86_64"
   # Specifying the TARGET prevents using SDKROOT?
-  export DYLD_LIBRARY_PATH="${PREFIX}/lib"
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
+  export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+  EXTRA_ZIG_ARGS+=("-Denable-llvm")
 
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
   SYSROOT_ARCH="arm64"
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
 fi
 
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
