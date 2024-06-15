@@ -36,6 +36,45 @@ function configure_cmake() {
   cd "${current_dir}"
 }
 
+function build_stage3_cross_cmake() {
+  local build_dir=$1
+  local install_dir=$2
+  local target=$3
+  local mcpu=$4
+  local zig=${5:-}
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}"
+    if [[ "${zig:-}" != '' ]]; then
+      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+      if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
+        _c="${_c};-fqemu"
+        _cxx="${_cxx};-fqemu"
+      fi
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
+      EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
+      EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
+    fi
+    cmake "${SRC_DIR}"/zig-source \
+      -D CMAKE_INSTALL_PREFIX="${install_dir}" \
+      -D CMAKE_BUILD_TYPE=Release \
+      -D ZIG_USE_LLVM_CONFIG=ON \
+      -D ZIG_STATIC=ON \
+      -D ZIG_NO_LIBC=ON \
+      -D ZIG_TARGET_TRIPLE="${target}" \
+      -D ZIG_TARGET_MCPU="${mcpu}" \
+      "${EXTRA_CMAKE_ARGS[@]}" \
+      -G Ninja
+
+    ninja install
+  cd "${current_dir}"
+}
+
 function patchelf_installed_zig() {
   local install_dir=$1
   local build_prefix=$2
@@ -138,7 +177,9 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-mcpu=power8/}"
   export CXXFLAGS="${CXXFLAGS//-mtune=power8/}"
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
+
+  build_stage3_cross_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SYSROOT_ARCH}" "pwr8"
+
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dpie=false")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
@@ -173,12 +214,12 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   zig="${cmake_install_dir}/bin/zig"
 else
   if [[ "${target_platform}" == "linux-ppc64le" ]] ; then
-    echo "$CMAKE_ARGS"
-    export CFLAGS="${CFLAGS} -fPIC"
-    export CXXFLAGS="${CXXFLAGS} -fPIC"
-    EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
-    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-    zig="${SRC_DIR}/zig-bootstrap/zig"
+    # echo "$CMAKE_ARGS"
+    # export CFLAGS="${CFLAGS} -fPIC"
+    # export CXXFLAGS="${CXXFLAGS} -fPIC"
+    # EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
+    # cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    zig="${cmake_install_dir}"/zig
     EXTRA_ZIG_ARGS+=("-fqemu")
     cmake_build_install "${cmake_build_dir}"
     zig="${cmake_install_dir}/bin/zig"
