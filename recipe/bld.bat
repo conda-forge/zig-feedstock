@@ -96,9 +96,11 @@ cd %CONFIG_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   :: Configuration puts -lzstd.dll instead of -lzstd
+  set "old_string=zstd.dll"
+  set "new_string=zstd"
   for /f "tokens=*" %%A in (config.h) do (
       set "line=%%A"
-      set "line=!line:zstd.dll=%zstd%!"
+      set "line=!line:%old_string%=%new_string%!"
       echo !line! >> _config.h
   )
   move /y _config.h config.h
