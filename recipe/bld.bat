@@ -51,16 +51,18 @@ cd %CONFIG_DIR%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib" ^
+    -D CMAKE_PREFIX_PATH="%_prefix%\\Library\\lib;%_prefix%\\lib" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_STATIC_LLVM=ON ^
+    -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  type config.h
 cd %SRC_DIR%
 GOTO :EOF
 
@@ -116,6 +118,7 @@ cd %BUILD_DIR%
   %ZIG% build ^
     --prefix "%INSTALL_DIR%" ^
     --search-prefix "%PREFIX%\Library\lib" ^
+    --search-prefix "%PREFIX%\lib" ^
     --release=small ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
