@@ -32,8 +32,10 @@ build:
 
 requirements:
   build:
-    - {{ compiler('c') }}
-    - {{ compiler('cxx') }}
+    - {{ compiler('c') }}  # [not aarch64]
+    - {{ compiler('cxx') }}  # [not aarch64]
+    - {{ compiler('clang') }}  # [aarch64]
+    - {{ compiler('clangxx') }}  # [aarch64]
     - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
