@@ -88,13 +88,20 @@ cd %CONFIG_DIR%
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_SHARED_LLVM=OFF ^
-    -D ZIG_STATIC_ZSTD=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
+  :: Configuration puts -lzstd.dll instead of -lzstd
+  for /f "tokens=*" %%A in (config.h) do (
+      set "line=%%A"
+      set "line=!line:zstd.dll=%zstd%!"
+      echo !line! >> _config.h
+  )
+  move /y _config.h config.h
 
   type config.h
 cd %SRC_DIR%
