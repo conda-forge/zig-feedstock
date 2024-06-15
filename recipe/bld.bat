@@ -87,7 +87,7 @@ cd %CONFIG_DIR%
     -D CMAKE_AR="%_zig%" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
-    -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_SHARED_LLVM=OFF ^
     -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -121,12 +121,12 @@ cd %BUILD_DIR%
     --release=small ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
-    -Dstatic-llvm ^
+    -Denable-llvm ^
     -Dflat ^
     -Dno-langref ^
-    -Dtarget=%GNU_TARGET% ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+    :: Dtarget=%GNU_TARGET% ^
 echo "Done"
 cd %SRC_DIR%
 endlocal
