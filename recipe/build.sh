@@ -21,8 +21,8 @@ function configure_cmake() {
       fi
       echo "C: ${_c}"
       echo "C: ${_cxx}"
-      $_c --version
-      $_cxx --version
+      $zig cc --version
+      $zig c++ --version
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
