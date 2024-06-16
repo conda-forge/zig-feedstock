@@ -13,11 +13,11 @@ function configure_cmake() {
   mkdir -p "${build_dir}"
   cd "${build_dir}"
     if [[ "${zig:-}" != '' ]]; then
-      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
-      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+      _c="${zig};cc"
+      _cxx="${zig};c++"
       if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
-        _c="${_c};-fqemu"
-        _cxx="${_cxx};-fqemu"
+        _c="${_c};-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline};-fqemu"
+        _cxx="${_cxx};-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline};-fqemu"
       fi
       echo "C: ${_c}"
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
