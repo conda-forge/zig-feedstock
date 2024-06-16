@@ -119,51 +119,39 @@ EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
-  EXTRA_CMAKE_ARGS=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}")
-  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_CMAKE_ARGS=("-DZIG_MCPU=power8")
-  export CFLAGS="${CFLAGS//-fno-plt/}"
-  export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
-  # configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
+  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
 fi
-
-if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
-  cmake_build_install "${cmake_build_dir}"
-
-  if [[ "${target_platform}" == "linux-64" ]]; then
-    patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
-  elif [[ "${target_platform}" == "osx-64" ]]; then
-    otool -l "${cmake_install_dir}"/bin/zig
-  fi
-
-  zig="${cmake_install_dir}/bin/zig"
-else
-  EXTRA_ZIG_ARGS+=("-fqemu")
-  if [[ "${target_platform}" == "linux-ppc64le" ]] ; then
-    # echo "$CMAKE_ARGS"
-    # export CFLAGS="${CFLAGS} -fPIC"
-    # export CXXFLAGS="${CXXFLAGS} -fPIC"
-    # EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
-    # cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-    zig="${SRC_DIR}/zig-bootstrap/zig"
-    #zig="${cmake_install_dir}"/zig
-    # cmake_build_install "${cmake_build_dir}"
-    #zig="${cmake_install_dir}/bin/zig"
-  else
-    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-    zig="${SRC_DIR}/zig-bootstrap/zig"
-  fi
-fi
+#
+# if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
+#   cmake_build_install "${cmake_build_dir}"
+#
+#   if [[ "${target_platform}" == "linux-64" ]]; then
+#     patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
+#   elif [[ "${target_platform}" == "osx-64" ]]; then
+#     otool -l "${cmake_install_dir}"/bin/zig
+#   fi
+#
+#   zig="${cmake_install_dir}/bin/zig"
+# else
+#   EXTRA_ZIG_ARGS+=("-fqemu")
+#   if [[ "${target_platform}" == "linux-ppc64le" ]] ; then
+#     # echo "$CMAKE_ARGS"
+#     # export CFLAGS="${CFLAGS} -fPIC"
+#     # export CXXFLAGS="${CXXFLAGS} -fPIC"
+#     # EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
+#     # cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+#     zig="${SRC_DIR}/zig-bootstrap/zig"
+#     #zig="${cmake_install_dir}"/zig
+#     # cmake_build_install "${cmake_build_dir}"
+#     #zig="${cmake_install_dir}/bin/zig"
+#   else
+#     cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+#     zig="${SRC_DIR}/zig-bootstrap/zig"
+#   fi
+# fi
 
 self_build \
   "${self_build_dir}" \
   "${zig}" \
   "${cmake_build_dir}/config.h" \
   "${PREFIX}"
-
-if [[ "${target_platform}" == "linux-aarch64" ]]; then
-  patchelf_installed_zig "${PREFIX}" "${PREFIX}"
-fi
