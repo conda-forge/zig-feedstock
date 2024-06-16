@@ -12,6 +12,7 @@ source:
     patches:
       - patches/0001-remove-failing-langref.patch
       - patches/0002-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
+      - patches/0003-cross-CMakeLists.txt.patch  # [linux and (ppc64le)]
     folder: zig-source
 
   # This is mostly used for cross-build. Installing previous conda version of zig
@@ -36,7 +37,6 @@ requirements:
     - {{ compiler('cxx') }}
     - {{ stdlib("c") }}
     - cmake >=3.5
-    - llvmdev {{ llvm_version }}  # [build_platform != target_platform]
     - ninja
     - zstd
   host:
