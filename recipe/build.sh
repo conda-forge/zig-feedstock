@@ -129,7 +129,7 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   EXTRA_CMAKE_ARGS=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}")
   EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_CMAKE_ARGS=("-DZIG_MCUP=pwr8")
+  EXTRA_CMAKE_ARGS=("-DZIG_MCPU=power8")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
