@@ -149,15 +149,13 @@ cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
 EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
-EXTRA_ZIG_ARGS=()
+EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
 if [[ "${target_platform}" == "linux-64" ]]; then
   SYSROOT_ARCH="x86_64"
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   SYSROOT_ARCH="aarch64"
@@ -165,22 +163,14 @@ elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   export CFLAGS="${CFLAGS//-fno-plt/}"
-  export CFLAGS="${CFLAGS//-mcpu=power8/}"
-  export CFLAGS="${CFLAGS//-mtune=power8/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
-  export CXXFLAGS="${CXXFLAGS//-mcpu=power8/}"
-  export CXXFLAGS="${CXXFLAGS//-mtune=power8/}"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Dpie=true")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
 

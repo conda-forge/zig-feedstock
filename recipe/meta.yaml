@@ -11,8 +11,7 @@ source:
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
       - patches/0001-remove-failing-langref.patch
-      - patches/0002-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
-      - patches/0003-cross-CMakeLists.txt.patch  # [linux and (ppc64le)]
+      - patches/0002-cross-findllvm.patch  # [linux and aarch64]
     folder: zig-source
 
   # This is mostly used for cross-build. Installing previous conda version of zig
@@ -22,12 +21,14 @@ source:
     sha256: 2199eb4c2000ddb1fba85ba78f1fcf9c1fb8b3e57658f6a627a8e513131893f5  # [win and x86_64]
     url: https://ziglang.org/builds/zig-macos-x86_64-0.13.0.tar.xz  # [osx and arm64]
     sha256: 8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd  # [osx and arm64]
-    url: https://ziglang.org/download/0.13.0/zig-linux-x86_64-{{ version }}.tar.xz  # [linux and (aarch64 or ppc64le)]
-    sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux and (aarch64 or ppc64le)]
+    url: https://ziglang.org/download/0.13.0/zig-linux-x86_64-{{ version }}.tar.xz  # [linux and aarch64]
+    sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux and aarch64]
+    url: https://ziglang.org/download/0.13.0/zig-linux-powerpc64le-0.13.0.tar.xz  # [linux and ppc64le]
+    sha256: 6a467622448e830e8f85d20cabed151498af2b0a62f87b8c083b2fe127e60417  # [linux and ppc64le]
 
 build:
   number: 0
-  skip: true  # [not linux and not (osx and x86_64)]
+  skip: true  # [not linux or not ppc64le]
   ignore_run_exports:
     - __glibc
 
