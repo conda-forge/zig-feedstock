@@ -132,7 +132,7 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS=("-DZIG_MCPU=power8")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
+  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "SRC_DIR/zig-bootstrap/zig"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
