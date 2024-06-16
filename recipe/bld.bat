@@ -134,6 +134,7 @@ cd %BUILD_DIR%
     -Denable-llvm ^
     -Dflat ^
     -Dno-langref ^
+    -Dtarget=%GNU_TARGET% ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: Dtarget=%GNU_TARGET% ^
