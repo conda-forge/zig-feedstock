@@ -46,6 +46,7 @@ cd %CONFIG_DIR%
   set "_prefix=%PREFIX:\=\\%"
   set "_zig_install_dir=%INSTALL_DIR:\=\\%"
 
+  set "CXXFLAGS=-MD"
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
