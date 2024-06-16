@@ -66,7 +66,7 @@ cd %SRC_DIR%
 GOTO :EOF
 
 :configZigCmakeBuildZIG
-setlocal
+setlocal enabledelayedexpansion
 set "INSTALL_DIR=%~1"
 set "ZIG=%~2"
 
@@ -96,7 +96,6 @@ cd %CONFIG_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   :: Configuration puts -lzstd.dll instead of -lzstd
-  setlocal enabledelayedexpansion
   set "old_string=zstd.dll"
   set "new_string=zstd"
   for /f "tokens=*" %%A in (config.h) do (
