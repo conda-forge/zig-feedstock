@@ -112,45 +112,17 @@ self_build_dir="${SRC_DIR}/self-built-source"
 EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
 EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
-if [[ "${target_platform}" == "linux-64" ]]; then
-  SYSROOT_ARCH="x86_64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-
-elif [[ "${target_platform}" == "linux-aarch64" ]]; then
-  SYSROOT_ARCH="aarch64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-
-elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   EXTRA_CMAKE_ARGS=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}")
   EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_CMAKE_ARGS=("-DZIG_MCPU=power8")
-  export CFLAGS="${CFLAGS//-fno-plt/}"
-  export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "SRC_DIR/zig-bootstrap/zig"
+  CFLAGS="${CFLAGS//-fno-plt/}"
+  CXXFLAGS="${CXXFLAGS//-fno-plt/}"
+  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
-
-elif [[ "${target_platform}" == "osx-64" ]]; then
-  SYSROOT_ARCH="x86_64"
-  # Specifying the TARGET prevents using SDKROOT?
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
-  export DYLD_LIBRARY_PATH="${PREFIX}/lib"
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-
-elif [[ "${target_platform}" == "osx-arm64" ]]; then
-  SYSROOT_ARCH="arm64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
 fi
 
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
