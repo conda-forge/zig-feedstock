@@ -152,6 +152,6 @@ fi
 
 self_build \
   "${self_build_dir}" \
-  "${zig}" \
+  "${SRC_DIR}/zig-bootstrap/zig" \
   "${cmake_build_dir}/config.h" \
   "${PREFIX}"
