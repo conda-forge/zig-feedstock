@@ -46,20 +46,15 @@ cd %CONFIG_DIR%
   set "_prefix=%PREFIX:\=\\%"
   set "_zig_install_dir=%INSTALL_DIR:\=\\%"
 
-  set "CXXFLAGS=-MD"
+  echo
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_C_COMPILER="cl" ^
-    -D CMAKE_CXX_COMPILER="cl" ^
-    -D CMAKE_AR="lib" ^
-    -D CMAKE_C_FLAGS="-MD" ^
-    -D CMAKE_CXX_FLAGS="-MD" ^
     -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_STATIC_LLVM=ON ^
+    -D ZIG_STATIC=ON ^
     -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
