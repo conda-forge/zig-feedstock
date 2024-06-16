@@ -7,6 +7,7 @@ function configure_cmake() {
   local install_dir=$2
   local zig=${3:-}
 
+  echo "Configuring cmake build"
   local current_dir
   current_dir=$(pwd)
 
@@ -39,6 +40,7 @@ function configure_cmake() {
       "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
   cd "${current_dir}"
+  echo "Done"
 }
 
 function patchelf_installed_zig() {
@@ -72,6 +74,8 @@ function self_build() {
   local zig=$2
   local config_h=$3
   local install_dir=$4
+
+  echo "Building zig from source"
 
   local current_dir
   current_dir=$(pwd)
@@ -120,6 +124,7 @@ EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
+  echo "------------------"
 fi
 #
 # if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
