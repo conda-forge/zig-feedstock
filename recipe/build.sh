@@ -36,55 +36,16 @@ function configure_cmake() {
   cd "${current_dir}"
 }
 
-function build_stage3_cross_cmake() {
-  local build_dir=$1
-  local install_dir=$2
-  local target=$3
-  local mcpu=$4
-  local zig=${5:-}
-
-  local current_dir
-  current_dir=$(pwd)
-
-  mkdir -p "${build_dir}"
-  cd "${build_dir}"
-    if [[ "${zig:-}" != '' ]]; then
-      _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
-      _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
-      if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
-        _c="${_c};-fqemu"
-        _cxx="${_cxx};-fqemu"
-      fi
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
-      EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
-      EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
-    fi
-    cmake "${SRC_DIR}"/zig-source \
-      -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_BUILD_TYPE=Release \
-      -D ZIG_USE_LLVM_CONFIG=ON \
-      -D ZIG_STATIC=ON \
-      -D ZIG_NO_LIBC=ON \
-      -D ZIG_TARGET_TRIPLE="${target}" \
-      -D ZIG_TARGET_MCPU="${mcpu}" \
-      "${EXTRA_CMAKE_ARGS[@]}" \
-      -G Ninja
-
-    ninja install
-  cd "${current_dir}"
-}
-
 function patchelf_installed_zig() {
   local install_dir=$1
   local build_prefix=$2
 
-  patchelf --remove-rpath                                                               "${install_dir}/bin/zig"
+  patchelf --remove-rpath                                                                       "${install_dir}/bin/zig"
   patchelf --set-rpath      "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64"     "${install_dir}/bin/zig"
   patchelf --add-rpath      "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/lib"               "${install_dir}/bin/zig"
   patchelf --add-rpath      "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${build_prefix}/lib"                                       "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${PREFIX}/lib"                                             "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${build_prefix}/lib"                                               "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${PREFIX}/lib"                                                     "${install_dir}/bin/zig"
 
   patchelf --set-interpreter "${build_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
 }
@@ -149,15 +110,13 @@ cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
 EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
-EXTRA_ZIG_ARGS=()
+EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
 if [[ "${target_platform}" == "linux-64" ]]; then
   SYSROOT_ARCH="x86_64"
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   SYSROOT_ARCH="aarch64"
@@ -165,26 +124,6 @@ elif [[ "${target_platform}" == "linux-aarch64" ]]; then
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
-
-elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  SYSROOT_ARCH="powerpc64le"
-  EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  export CFLAGS="${CFLAGS//-fno-plt/}"
-  export CFLAGS="${CFLAGS//-mcpu=power8/}"
-  export CFLAGS="${CFLAGS//-mtune=power8/}"
-  export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
-  export CXXFLAGS="${CXXFLAGS//-mcpu=power8/}"
-  export CXXFLAGS="${CXXFLAGS//-mtune=power8/}"
-
-  build_stage3_cross_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SYSROOT_ARCH}" "pwr8"
-
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Dpie=false")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
-  EXTRA_ZIG_ARGS+=("-Dstrip")
 
 elif [[ "${target_platform}" == "osx-64" ]]; then
   SYSROOT_ARCH="x86_64"
@@ -192,14 +131,12 @@ elif [[ "${target_platform}" == "osx-64" ]]; then
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
   export DYLD_LIBRARY_PATH="${PREFIX}/lib"
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
 
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
   SYSROOT_ARCH="arm64"
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_ZIG_ARGS+=("-Denable-llvm")
 fi
 
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
@@ -207,27 +144,13 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
 
   if [[ "${target_platform}" == "linux-64" ]]; then
     patchelf_installed_zig "${cmake_install_dir}" "${BUILD_PREFIX}"
-  elif [[ "${target_platform}" == "osx-64" ]]; then
-    otool -l "${cmake_install_dir}"/bin/zig
   fi
 
   zig="${cmake_install_dir}/bin/zig"
 else
-  if [[ "${target_platform}" == "linux-ppc64le" ]] ; then
-    # echo "$CMAKE_ARGS"
-    # export CFLAGS="${CFLAGS} -fPIC"
-    # export CXXFLAGS="${CXXFLAGS} -fPIC"
-    # EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
-    # cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-    zig="${cmake_install_dir}"/zig
-    EXTRA_ZIG_ARGS+=("-fqemu")
-    cmake_build_install "${cmake_build_dir}"
-    zig="${cmake_install_dir}/bin/zig"
-  else
-    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-    zig="${SRC_DIR}/zig-bootstrap/zig"
-    EXTRA_ZIG_ARGS+=("-fqemu")
-  fi
+  cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+  zig="${SRC_DIR}/zig-bootstrap/zig"
+  EXTRA_ZIG_ARGS+=("-fqemu")
 fi
 
 self_build \
