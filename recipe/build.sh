@@ -124,7 +124,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS=("-DZIG_MCPU=power8")
   export CFLAGS="${CFLAGS//-fno-plt/}"
   export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
+  # configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
   EXTRA_ZIG_ARGS+=("-Dstrip")
@@ -147,7 +147,7 @@ else
     # export CFLAGS="${CFLAGS} -fPIC"
     # export CXXFLAGS="${CXXFLAGS} -fPIC"
     # EXTRA_CMAKE_ARGS+=("${CMAKE_ARGS[@]}")
-    cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    # cd "${cmake_build_dir}" && cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
     zig="${SRC_DIR}/zig-bootstrap/zig"
     #zig="${cmake_install_dir}"/zig
     # cmake_build_install "${cmake_build_dir}"
