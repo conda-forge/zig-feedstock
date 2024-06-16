@@ -15,18 +15,20 @@ function configure_cmake() {
     if [[ "${zig:-}" != '' ]]; then
       _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
       _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
-      if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
+      if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
         _c="${_c};-fqemu"
         _cxx="${_cxx};-fqemu"
       fi
+      echo "C: ${_c}"
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
-    else
-      _toolchain="-DCMAKE_C_COMPILER=$CC_FOR_BUILD;-DCMAKE_CXX_COMPILER=$CXX_FOR_BUILD;-DCMAKE_EXE_LINKER_FLAGS=\"-L$BUILD_PREFIX/lib\";-DCMAKE_MODULE_LINKER_FLAGS=;-DCMAKE_SHARED_LINKER_FLAGS=;-DCMAKE_STATIC_LINKER_FLAGS=;-DCMAKE_AR=$(which ${AR});-DCMAKE_RANLIB=$(which ${RANLIB});-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}"
-      EXTRA_CMAKE_ARGS+=("-DCROSS_TOOLCHAIN_FLAGS_NATIVE=${_toolchain}")
+    #else
+    #  _toolchain="-DCMAKE_C_COMPILER=$CC_FOR_BUILD;-DCMAKE_CXX_COMPILER=$CXX_FOR_BUILD;-DCMAKE_EXE_LINKER_FLAGS=\"-L$BUILD_PREFIX/lib\";-DCMAKE_MODULE_LINKER_FLAGS=;-DCMAKE_SHARED_LINKER_FLAGS=;-DCMAKE_STATIC_LINKER_FLAGS=;-DCMAKE_AR=$(which ${AR});-DCMAKE_RANLIB=$(which ${RANLIB});-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}"
+    #  EXTRA_CMAKE_ARGS+=("-DCROSS_TOOLCHAIN_FLAGS_NATIVE=${_toolchain}")
     fi
+
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
@@ -117,8 +119,8 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}")
   EXTRA_CMAKE_ARGS=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
   EXTRA_CMAKE_ARGS=("-DZIG_MCPU=power8")
-  CFLAGS="${CFLAGS//-fno-plt/}"
-  CXXFLAGS="${CXXFLAGS//-fno-plt/}"
+  export CFLAGS="${CFLAGS//-fno-plt/}"
+  export CXXFLAGS="${CXXFLAGS//-fno-plt/}"
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}" "${SRC_DIR}/zig-bootstrap/zig"
   EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   EXTRA_ZIG_ARGS+=("-Denable-llvm")
