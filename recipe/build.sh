@@ -102,7 +102,7 @@ function self_build() {
     echo "     ${config_h}"
     ls -l "${zig}"
     uname -a
-    $zig build -Dcpu=ppc64le
+    $zig build -Dcpu=ppc64
 
     mkdir -p "${install_dir}"
     "${zig}" build \
