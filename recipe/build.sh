@@ -97,6 +97,13 @@ function self_build() {
       doc/langref/cImport_builtin.zig \
       doc/langref/verbose_cimport_flag.zig
 
+    echo "Building zig from source"
+    echo "ZIG: ${zig}"
+    echo "     ${config_h}"
+    echo "     ${EXTRA_ZIG_ARGS[@]}"
+    $zig build --help
+
+    mkdir -p "${install_dir}"
     "${zig}" build \
       --prefix "${install_dir}" \
       --search-prefix "${PREFIX}" \
