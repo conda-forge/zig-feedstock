@@ -93,7 +93,7 @@ cd %CONFIG_DIR%
     -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  cmake --build . --config Release --target zigcpp
+  :: cmake --build . --config Release --target zigcpp
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   :: Configuration puts -lzstd.dll instead of -lzstd
