@@ -158,7 +158,8 @@ cd %BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   dir %PREFIX%\Library\lib\clangFrontendTool.lib
-  dir %PREFIX%\Library\bin\clangFrontendTool.dll
+  dir %PREFIX%\Library\bin
+  dir %PREFIX%\Library
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
@@ -166,7 +167,7 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%" ^
     --search-prefix "%PREFIX%\Library" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --search-prefix "%VSINSTALLDIR%\VC\Tools\MSVC\14.29.*\lib\x64" ^
+    --search-prefix "%VSINSTALLDIR%\VC\Tools\MSVC\14.29.30133\lib\x64" ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
