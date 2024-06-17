@@ -157,6 +157,8 @@ cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
+  dir %PREFIX%\Library\lib
+
   mkdir %INSTALL_DIR%
   %ZIG% build ^
     --prefix "%INSTALL_DIR%" ^
