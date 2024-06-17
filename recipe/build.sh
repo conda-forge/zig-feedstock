@@ -100,7 +100,7 @@ function self_build() {
     echo "Building zig from source"
     echo "ZIG: ${zig}"
     echo "     ${config_h}"
-    echo "     ${EXTRA_ZIG_ARGS[@]}"
+    ls -l "${zig}"
     $zig build --help
 
     mkdir -p "${install_dir}"

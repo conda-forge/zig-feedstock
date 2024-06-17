@@ -23,8 +23,10 @@ source:
     sha256: 8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd  # [osx and arm64]
     url: https://ziglang.org/download/0.13.0/zig-linux-x86_64-{{ version }}.tar.xz  # [linux and aarch64]
     sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux and aarch64]
-    url: https://ziglang.org/download/0.13.0/zig-linux-powerpc64le-0.13.0.tar.xz  # [linux and ppc64le]
-    sha256: 6a467622448e830e8f85d20cabed151498af2b0a62f87b8c083b2fe127e60417  # [linux and ppc64le]
+    # url: https://ziglang.org/download/0.13.0/zig-linux-powerpc64le-0.13.0.tar.xz  # [linux and ppc64le]
+    # sha256: 6a467622448e830e8f85d20cabed151498af2b0a62f87b8c083b2fe127e60417  # [linux and ppc64le]
+    url: https://ziglang.org/builds/zig-linux-powerpc64le-0.14.0-dev.39+1b728e183.tar.xz  # [linux and ppc64le]
+    sha256: 914d33f61fb271b36dc20fb142dc76f3d3180d182d7dec16cd5d6cca90bce23f  # [linux and ppc64le]
 
 build:
   number: 0
