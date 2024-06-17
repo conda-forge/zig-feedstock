@@ -166,6 +166,7 @@ cd %BUILD_DIR%
     -Denable-llvm ^
     -Dstrip ^
     -Dflat ^
+    -Duse-zig-libcxx ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
