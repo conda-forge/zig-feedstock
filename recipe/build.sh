@@ -134,7 +134,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   TARGET="powerpc64le-linux-gnu"
   MCPU=ppc64
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  EXTRA_CMAKE_ARGS+=("-DZIG_MCPU=${MCPU}")
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   echo "------------------"
   cmake_build_install "${cmake_build_dir}"
