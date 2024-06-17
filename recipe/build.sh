@@ -102,7 +102,7 @@ function self_build() {
     echo "     ${config_h}"
     ls -l "${zig}"
     uname -a
-    $zig build -Dmcpu=ppc64
+    $zig build -Dmcpu=ppc64le
 
     mkdir -p "${install_dir}"
     "${zig}" build \
@@ -126,7 +126,7 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
-EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON" "-DZIG_MCPU=ppc64")
+EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON" "-DZIG_MCPU=ppc64le")
 EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
