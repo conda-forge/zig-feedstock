@@ -131,8 +131,10 @@ EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
+  MCPU=ppc64
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   echo "------------------"
+  cmake_build_install "${cmake_build_dir}"
 fi
 #
 # if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
