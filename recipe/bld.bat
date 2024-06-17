@@ -166,8 +166,9 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%" ^
     --search-prefix "%PREFIX%\Library" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --search-prefix "%VSINSTALLDIR%\VC\Tools\MSVC\14.25.28610\lib\x64" ^
+    --search-prefix "%VSINSTALLDIR%\VC\Tools\MSVC\14.29.*\lib\x64" ^
     --skip-oom-steps ^
+    -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
     -Dstatic-llvm ^
     -Dstrip ^
@@ -175,7 +176,6 @@ cd %BUILD_DIR%
     -Duse-zig-libcxx ^
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-    :: -Dconfig_h="%CONFIG_DIR%\config.h" ^
 cd %SRC_DIR%
 echo "Done"
 endlocal
