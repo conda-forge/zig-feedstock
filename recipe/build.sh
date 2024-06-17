@@ -131,12 +131,13 @@ EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
-  TARGET="powerpc64le-linux-gnu"
+  TARGET="${SYSROOT_ARCH}-linux"
   MCPU=ppc64
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${TARGET}")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   echo "------------------"
+  uname -a
   cmake_build_install "${cmake_build_dir}"
 fi
 #
