@@ -94,7 +94,7 @@ cd %CONFIG_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   :: cmake --build . --config Release --target zigcpp
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+  :: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   :: Configuration puts -lzstd.dll instead of -lzstd
   set "old_string=zstd.dll"
