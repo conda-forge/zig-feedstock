@@ -132,7 +132,7 @@ cd %BUILD_DIR%
     --release=small ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
-    -Denable-llvm ^
+    -Dstatic-llvm ^
     -Dflat ^
     -Dno-langref ^
     -Dtarget=%GNU_TARGET% ^
