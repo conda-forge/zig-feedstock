@@ -129,7 +129,7 @@ self_build_dir="${SRC_DIR}/self-built-source"
 EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
 EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
-if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+if [[ "${target_platform}" == "linux-ppc64le-musl" ]]; then
   SYSROOT_ARCH="powerpc64le"
   TARGET="${SYSROOT_ARCH}-linux"
   MCPU=ppc64
