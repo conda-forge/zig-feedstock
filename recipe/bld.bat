@@ -131,7 +131,6 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%\Library\lib" ^
     --release=small ^
     --skip-oom-steps ^
-    -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Dstatic-llvm ^
     -Dflat ^
     -Dno-langref ^
@@ -139,6 +138,7 @@ cd %BUILD_DIR%
     -Dversion-string="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: Dtarget=%GNU_TARGET% ^
+    :: -Dconfig_h="%CONFIG_DIR%\config.h" ^
 echo "Done"
 cd %SRC_DIR%
 endlocal
