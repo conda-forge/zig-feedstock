@@ -166,6 +166,7 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%" ^
     --search-prefix "%PREFIX%\Library" ^
     --search-prefix "%PREFIX%\Library\lib" ^
+    --search-prefix "%VSINSTALLDIR%\VC\Tools\MSVC\14.25.28610\lib\x64" ^
     --skip-oom-steps ^
     -Doptimize=ReleaseFast ^
     -Dstatic-llvm ^
