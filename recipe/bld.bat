@@ -157,12 +157,15 @@ cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  dir %PREFIX%\Library\lib
+  dir %PREFIX%\Library\lib\clangFrontendTool.lib
+  dir %PREFIX%\Library\bin\clangFrontendTool.dll
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
     --prefix "%INSTALL_DIR%" ^
     --search-prefix "%PREFIX%" ^
+    --search-prefix "%PREFIX%\Library" ^
+    --search-prefix "%PREFIX%\Library\lib" ^
     --skip-oom-steps ^
     --release=safe ^
     -Denable-llvm ^
