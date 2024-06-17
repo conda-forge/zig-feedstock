@@ -167,8 +167,8 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%\Library" ^
     --search-prefix "%PREFIX%\Library\lib" ^
     --skip-oom-steps ^
-    --release=safe ^
-    -Denable-llvm ^
+    -Doptimize=ReleaseFast ^
+    -Dstatic-llvm ^
     -Dstrip ^
     -Dflat ^
     -Duse-zig-libcxx ^
