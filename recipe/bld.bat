@@ -162,7 +162,7 @@ cd %BUILD_DIR%
   mkdir %INSTALL_DIR%
   %ZIG% build ^
     --prefix "%INSTALL_DIR%" ^
-    --search-prefix "%PREFIX%\Library\lib" ^
+    --search-prefix "%PREFIX%" ^
     --skip-oom-steps ^
     --release=safe ^
     -Denable-llvm ^
