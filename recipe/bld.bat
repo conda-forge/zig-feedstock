@@ -157,9 +157,11 @@ cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  dir %VSINSTALLDIR%*"
+  echo "%VSINSTALLDIR%"
+  dir %VSINSTALLDIR%"
   dir %VSINSTALLDIR%VC\Tools\MSVC\*"
   dir %VSINSTALLDIR%VC\Tools\MSVC\*\lib"
+  dir C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\lib
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
@@ -167,7 +169,7 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%" ^
     --search-prefix "%PREFIX%\Library" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --search-prefix "%VSINSTALLDIR%VC\Tools\MSVC\14.29.30133\lib" ^
+    --search-prefix "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\lib" ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
