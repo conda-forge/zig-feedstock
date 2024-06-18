@@ -34,12 +34,12 @@ function configure_cmake() {
     fi
 
     cmake ${CMAKE_ARGS} \
-      "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_USE_LLVM_CONFIG=ON \
       "${EXTRA_CMAKE_ARGS[@]}" \
-      -G Ninja
+      -G Ninja \
+      "${SRC_DIR}"/zig-source
   cd "${current_dir}"
   echo "Done"
 }
