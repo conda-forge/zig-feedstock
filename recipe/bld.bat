@@ -158,10 +158,9 @@ cd %BUILD_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   echo "%VSINSTALLDIR%"
-  dir %VSINSTALLDIR%"
-  dir %VSINSTALLDIR%VC\Tools\MSVC\*"
-  dir %VSINSTALLDIR%VC\Tools\MSVC\*\lib"
-  dir C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\lib
+  dir %VSINSTALLDIR%
+  dir %VSINSTALLDIR%VC\Tools\MSVC"
+  dir C:\Program Files\Microsoft Visual Studio\2022\Enterprise
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
