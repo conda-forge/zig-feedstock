@@ -157,7 +157,8 @@ cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  dir %VSINSTALLDIR%\VC\Tools\MSVC\14.29.30133\lib\x64"
+  dir %VSINSTALLDIR%\VC\Tools\MSVC\14.29.30133"
+  dir %VSINSTALLDIR%\VC\Tools\MSVC\14.29.30133\*"
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
