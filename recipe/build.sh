@@ -100,14 +100,6 @@ function self_build() {
     echo "Building zig from source"
     echo "ZIG: ${zig}"
     echo "     ${config_h}"
-    ls -l "${zig}"
-    uname -a
-    objdump -h "${zig}"
-    nm "${zig}"
-    readelf -s "${zig}"
-    $zig build.exe -mcpu=ppc64le
-    $zig build -Dcpu=ppc64
-    $zig build -Dcpu=ppc64
 
     mkdir -p "${install_dir}"
     "${zig}" build \
@@ -141,6 +133,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}/powerpc64le-conda-linux-gnu/sysroot")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${TARGET}")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
+  cat /proc/cpuinfo
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   echo "------------------"
   cmake_build_install "${cmake_build_dir}"
