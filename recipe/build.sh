@@ -135,8 +135,9 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
   cat /proc/cpuinfo
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  cd "${cmake_build_dir}" && cmake --build . --target compiler_rt.c -- -j"${CPU_COUNT}"
   cd "${cmake_build_dir}" && cmake --build . --target zig2.c -- -j"${CPU_COUNT}"
+  grep -3 "Sigaction__3652" "${cmake_build_dir}/zig2.c"
+  sed -i 's/Sigaction__3652/sigaction/' "${cmake_build_dir}/zig2.c"
   echo "------------------"
   cmake_build_install "${cmake_build_dir}"
 fi
