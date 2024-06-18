@@ -157,8 +157,9 @@ cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  dir %VSINSTALLDIR%\VC\Redist\MSVC\14.29.30133\*"
-  dir %VSINSTALLDIR%\VC\Tools\MSVC\*"
+  dir %VSINSTALLDIR%*"
+  dir %VSINSTALLDIR%VC\Tools\MSVC\*"
+  dir %VSINSTALLDIR%VC\Tools\MSVC\*\lib"
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
@@ -166,7 +167,7 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%" ^
     --search-prefix "%PREFIX%\Library" ^
     --search-prefix "%PREFIX%\Library\lib" ^
-    --search-prefix "%VSINSTALLDIR%\VC\Redist\MSVC\14.29.30133\lib\x64" ^
+    --search-prefix "%VSINSTALLDIR%VC\Tools\MSVC\14.29.30133\lib" ^
     --skip-oom-steps ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
