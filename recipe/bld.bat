@@ -52,7 +52,6 @@ cd %CONFIG_DIR%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D ZIG_AR_WORKAROUND=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_STATIC=ON ^
     -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
