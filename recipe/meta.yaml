@@ -22,10 +22,11 @@ build:
 
 requirements:
   build:
+    - {{ compiler('m2w64_c') }}
     - mingw-w64-ucrt-x86_64-gcc  # [win and x86_64]
     - mingw-w64-ucrt-x86_64-gcc-libs  # [win and x86_64]
     - mingw-w64-ucrt-x86_64-zstd  # [win and x86_64]
-    - {{ stdlib('c') }}
+    - {{ stdlib('m2w64_c') }}
     - cmake >=3.5
     - ninja
   host:
