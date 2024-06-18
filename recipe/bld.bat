@@ -4,8 +4,8 @@ set "MSVC_TARGET=x86_64-windows-msvc"
 set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
 
-set "CC=%BUILD_PREFIX%\Library\ucrt64\bin\gcc.exe"
-set "CXX=%BUILD_PREFIX%\Library\ucrt64\bin\g++.exe"
+set "CC=%BUILD_PREFIX%\Library\ucrt64\bin\gcc"
+set "CXX=%BUILD_PREFIX%\Library\ucrt64\bin\g++"
 
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
@@ -62,7 +62,7 @@ cd %_build_dir%
     -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_SHARED_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
-    -D ZIG_VERSION="%PKG_VERSION%"
+    -D ZIG_VERSION="%PKG_VERSION%" --debug-trycompile
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --build . --config Release
