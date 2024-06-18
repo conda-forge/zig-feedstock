@@ -134,7 +134,7 @@ self_build_dir="${SRC_DIR}/self-built-source"
 EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
 EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
-if [[ "${target_platform}" == "linux-ppc64le-musl" ]]; then
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   TARGET="${SYSROOT_ARCH}-linux"
   MCPU=ppc64
@@ -142,7 +142,6 @@ if [[ "${target_platform}" == "linux-ppc64le-musl" ]]; then
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   echo "------------------"
-  uname -a
   cmake_build_install "${cmake_build_dir}"
 fi
 #
