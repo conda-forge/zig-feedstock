@@ -4,11 +4,14 @@ set "MSVC_TARGET=x86_64-windows-msvc"
 set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
 
+set "CC=%BUILD_PREFIX%\Library\mingw-w64\bin\gcc.exe"
+set "CXX=%BUILD_PREFIX%\Library\mingw-w64\bin\g++.exe"
+
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 
-call :configZigCmakeBuildMSVC "%SRC_DIR%\_conda-cmake-built"
+call :configZigCmakeBuildGCC "%CONFIG_DIR%" "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 :: call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-bootstrap\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
@@ -17,7 +20,7 @@ if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 ::   exit /b %ERRORLEVEL%
 :: )
 
-call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\zig-bootstrap\zig.exe" "%SRC_DIR%\_conda-final"
+call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-cmake-built\bin\zig.exe" "%SRC_DIR%\_conda-final"
 if %ERRORLEVEL% neq 0 (
     echo "Failed to build ZIG"
     exit /b %ERRORLEVEL%
@@ -38,107 +41,34 @@ GOTO :EOF
 
 :: --- Functions ---
 
-:configZigCmakeBuildMSVC
-set "INSTALL_DIR=%~1"
-mkdir %CONFIG_DIR%
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-cd %CONFIG_DIR%
-  set "_prefix=%PREFIX:\=\\%"
-  set "_zig_install_dir=%INSTALL_DIR:\=\\%"
-
-  echo
-  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
-  cmake %SOURCE_DIR% ^
-    -G "Ninja" ^
-    -D CMAKE_BUILD_TYPE=Release ^
-    -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_STATIC=ON ^
-    -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
-    -D ZIG_VERSION="%PKG_VERSION%"
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-  :: cmake --build . --config Release --target zigcpp
-  :: if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-  type config.h
-cd %SRC_DIR%
-GOTO :EOF
-
-:configZigCmakeBuildZIG
-setlocal enabledelayedexpansion
-set "INSTALL_DIR=%~1"
-set "ZIG=%~2"
-
-mkdir %CONFIG_DIR%
-if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-cd %CONFIG_DIR%
-  set "_prefix=%PREFIX:\=\\%"
-  set "_zig_install_dir=%INSTALL_DIR:\=\\%"
-  set "_zig=%ZIG:\=\\%"
-
-  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
-  cmake %SOURCE_DIR% ^
-    -G "Ninja" ^
-    -D CMAKE_BUILD_TYPE=Release ^
-    -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_C_COMPILER="%_zig%;cc" ^
-    -D CMAKE_CXX_COMPILER="%_zig%;c++" ^
-    -D CMAKE_AR="%_zig%" ^
-    -D ZIG_AR_WORKAROUND=ON ^
-    -D ZIG_USE_LLVM_CONFIG=ON ^
-    -D ZIG_SHARED_LLVM=OFF ^
-    -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
-    -D ZIG_VERSION="%PKG_VERSION%"
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-  cmake --build . --config Release --target zigcpp
-  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-
-  :: Configuration puts -lzstd.dll instead of -lzstd
-  set "old_string=zstd.dll"
-  set "new_string=zstd"
-  for /f "tokens=*" %%A in (config.h) do (
-      set "line=%%A"
-      set "line=!line:%old_string%=%new_string%!"
-      echo !line! >> _config.h
-  )
-  move /y _config.h config.h
-
-  type config.h
-cd %SRC_DIR%
-endlocal
-GOTO :EOF
-
-:bootstrapZigWithZIG
+:configZigCmakeBuildGCC
 setlocal
-echo "bootstrapZigWithZIG"
-set "BUILD_DIR=%~1"
-set "ZIG=%~2"
-set "INSTALL_DIR=%~3"
+set "_build_dir=%~1"
+set "_zig_install_dir=%~2"
 
-mkdir %BUILD_DIR%
+mkdir %_build_dir%
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+cd %_build_dir%
+  set "_prefix=%PREFIX:\=\\%"
+  set "_zig_install_dir=%_zig_install_dir:\=\\%"
 
-cd %BUILD_DIR%
-  xcopy /E %SOURCE_DIR%\* . > nul
+  set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
+  cmake %SOURCE_DIR% ^
+    -G "Ninja" ^
+    -D CMAKE_BUILD_TYPE=Release ^
+    -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
+    -D CMAKE_C_COMPILER="%CC%" ^
+    -D CMAKE_CXX_COMPILER="%CXX%" ^
+    -D ZIG_USE_LLVM_CONFIG=ON ^
+    -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
+    -D ZIG_VERSION="%PKG_VERSION%"
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  mkdir %INSTALL_DIR%
-  %ZIG% build ^
-    --prefix "%INSTALL_DIR%" ^
-    --search-prefix "%PREFIX%\Library\lib" ^
-    --release=small ^
-    --skip-oom-steps ^
-    -Dstatic-llvm ^
-    -Dflat ^
-    -Dno-langref ^
-    -Dtarget=%GNU_TARGET% ^
-    -Dversion-string="%PKG_VERSION%"
+  cmake --build . --config Release
+  cmake --install . --config Release
+
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
-    :: Dtarget=%GNU_TARGET% ^
-    :: -Dconfig_h="%CONFIG_DIR%\config.h" ^
-echo "Done"
 cd %SRC_DIR%
 endlocal
 GOTO :EOF

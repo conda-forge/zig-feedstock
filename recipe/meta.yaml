@@ -13,7 +13,7 @@ source:
     patches:
 
   - folder: zig-bootstrap  # [(win or osx) and x86_64]
-    url: https://ziglang.org/builds/zig-windows-x86_64-0.13.0.zip  # [win and x86_64]
+    url: https://ziglang.org/builds/zig-windows-x86_64-{{ version }}.zip  # [win and x86_64]
     sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win and x86_64]
 
 build:
@@ -22,8 +22,9 @@ build:
 
 requirements:
   build:
-    - {{ compiler('c') }}
-    - {{ compiler('cxx') }}
+    - mingw-w64-ucrt-x86_64-gcc  # [win and x86_64]
+    - mingw-w64-ucrt-x86_64-gcc-libs  # [win and x86_64]
+    - mingw-w64-ucrt-x86_64-zstd  # [win and x86_64]
     - {{ stdlib('c') }}
     - cmake >=3.5
     - ninja
