@@ -4,8 +4,8 @@ set "MSVC_TARGET=x86_64-windows-msvc"
 set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
 
-set "CC=%BUILD_PREFIX%\Library\mingw-w64\bin\gcc.exe"
-set "CXX=%BUILD_PREFIX%\Library\mingw-w64\bin\g++.exe"
+set "CC=%BUILD_PREFIX%\Library\ucrt64\bin\gcc.exe"
+set "CXX=%BUILD_PREFIX%\Library\ucrt64\bin\g++.exe"
 
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
