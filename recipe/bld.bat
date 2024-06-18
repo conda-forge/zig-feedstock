@@ -157,9 +157,7 @@ cd %BUILD_DIR%
   xcopy /E %SOURCE_DIR%\* . > nul
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  dir %PREFIX%\Library\lib\clangFrontendTool.lib
-  dir %PREFIX%\Library\bin
-  dir %PREFIX%\Library
+  dir %VSINSTALLDIR%\VC\Tools\MSVC\14.29.30133\lib\x64"
 
   mkdir %INSTALL_DIR%
   %ZIG% build ^
