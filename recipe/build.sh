@@ -102,7 +102,9 @@ function self_build() {
     echo "     ${config_h}"
     ls -l "${zig}"
     uname -a
-    ldd "${zig}"
+    objdump -h "${zig}"
+    nm "${zig}"
+    readelf -s "${zig}"
     $zig build.exe -mcpu=ppc64le
     $zig build -Dcpu=ppc64
     $zig build -Dcpu=ppc64
