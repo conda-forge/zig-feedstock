@@ -129,7 +129,7 @@ EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   TARGET="${SYSROOT_ARCH}-linux"
-  MCPU=ppc64
+  MCPU="pwr9"
   EXTRA_CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}/powerpc64le-conda-linux-gnu/sysroot")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${TARGET}")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
