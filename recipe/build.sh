@@ -34,7 +34,7 @@ function configure_cmake() {
     fi
 
     cmake "${SRC_DIR}"/zig-source \
-      "${CMAKE_ARGS[@]}" \
+      "${CMAKE_ARGS}" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_USE_LLVM_CONFIG=ON \
