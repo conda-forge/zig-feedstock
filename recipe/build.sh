@@ -94,10 +94,6 @@ function self_build() {
       doc/langref/cImport_builtin.zig \
       doc/langref/verbose_cimport_flag.zig
 
-    echo "Building zig from source"
-    echo "ZIG: ${zig}"
-    echo "     ${config_h}"
-
     mkdir -p "${install_dir}"
     "${zig}" build \
       --prefix "${install_dir}" \
@@ -133,6 +129,8 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   cat /proc/cpuinfo
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   cd "${cmake_build_dir}" && cmake --build . --target zig2.c -- -j"${CPU_COUNT}"
+  grep "signal.h" "${cmake_build_dir}/zig2.*"
+  exit 1
   echo "------------------"
   cmake_build_install "${cmake_build_dir}"
 fi
