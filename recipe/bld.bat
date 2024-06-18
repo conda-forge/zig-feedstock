@@ -54,6 +54,8 @@ cd %_build_dir%
 
   %CC% --version
   %CXX% --version
+  echo %CFLAGS%
+  echo %CXXFLAGS%
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %SOURCE_DIR% ^
