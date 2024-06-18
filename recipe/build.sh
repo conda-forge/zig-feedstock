@@ -20,10 +20,6 @@ function configure_cmake() {
         _c="${_c};-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline};-fqemu"
         _cxx="${_cxx};-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline};-fqemu"
       fi
-      echo "C: ${_c}"
-      echo "C: ${_cxx}"
-      $zig cc --version
-      $zig c++ --version
       EXTRA_CMAKE_ARGS+=("-DCMAKE_C_COMPILER=${_c}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
