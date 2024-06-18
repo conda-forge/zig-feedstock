@@ -33,7 +33,7 @@ function configure_cmake() {
     #  EXTRA_CMAKE_ARGS+=("-DCROSS_TOOLCHAIN_FLAGS_NATIVE=${_toolchain}")
     fi
 
-    cmake ${CMAKE_ARGS} \
+    cmake \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       -D CMAKE_BUILD_TYPE=Release \
       -D ZIG_USE_LLVM_CONFIG=ON \
@@ -131,7 +131,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   SYSROOT_ARCH="powerpc64le"
   TARGET="${SYSROOT_ARCH}-linux"
   MCPU="pwr9"
-  echo "$CMAKE_ARGS"
   EXTRA_CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}/powerpc64le-conda-linux-gnu/sysroot/usr")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${TARGET}")
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
