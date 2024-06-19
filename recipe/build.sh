@@ -128,7 +128,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=${MCPU}")
   cat /proc/cpuinfo
   (cd "${BUILD_PREFIX}"/${SYSROOT_ARCH}-conda-linux-gnu/sysroot && \
-    expand -t 4 -d usr/include/signal.h > usr/include/signal.h.tmp && \
+    expand -t 4 usr/include/signal.h > usr/include/signal.h.tmp && \
     mv usr/include/signal.h.tmp usr/include/signal.h && \
     patch -Np0 -i "${RECIPE_DIR}"/patches/xxxx-ppc64le-sysroot.patch --binary \
   )
