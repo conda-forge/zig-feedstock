@@ -57,7 +57,6 @@ cd %_build_dir%
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
-    -D CMAKE _PREFIX_PATH="%BUILD_PREFIX%" ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_STATIC_LLVM=ON ^
