@@ -1,5 +1,17 @@
 --- CMakeLists.txt      2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt      2024-06-19 18:01:59.808672313 -0500
+@@ -161,6 +161,11 @@
+
+     find_library(ZSTD NAMES libzstd.a libzstdstatic.a zstd NAMES_PER_DIR)
+     list(APPEND LLVM_LIBRARIES "${ZSTD}")
++else()
++    if (MSVC)
++        list(APPEND LLVM_LIBRARIES zstd)
++        list(APPEND LLVM_LIBRARIES xml2)
++    endif()
+ endif()
+
+ if(ZIG_STATIC_CURSES)
 @@ -729,6 +729,7 @@
      -Wno-comment
    )
