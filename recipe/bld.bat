@@ -63,7 +63,7 @@ cd %_build_dir%
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
-    %SOURCE_DIR%
+    %SOURCE_DIR% --debug-trycompile
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --build . --config Release
