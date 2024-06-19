@@ -1,11 +1,11 @@
-@echo off
+:: @echo off
 :: Try using bootstrapped ZIG to build ZIG for Conda environment
 set "MSVC_TARGET=x86_64-windows-msvc"
 set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
 
-set "CC=%BUILD_PREFIX%\Library\ucrt64\bin\gcc"
-set "CXX=%BUILD_PREFIX%\Library\ucrt64\bin\g++"
+:: set "CC=%BUILD_PREFIX%\Library\ucrt64\bin\gcc"
+:: set "CXX=%BUILD_PREFIX%\Library\ucrt64\bin\g++"
 
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"

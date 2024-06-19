@@ -1,10 +1,12 @@
+c_stdlib:
+- vs
 channel_sources:
 - conda-forge/label/m2w64-experimental,conda-forge
 channel_targets:
 - conda-forge main
 m2w64_c_compiler:
 - m2w64-toolchain
-m2w64_c_stdlib:
+m2w64_cxx_compiler:
 - m2w64-toolchain
 target_platform:
 - win-64
