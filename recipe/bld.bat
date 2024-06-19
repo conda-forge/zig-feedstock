@@ -52,17 +52,12 @@ cd %_build_dir%
   set "_prefix=%PREFIX:\=\\%"
   set "_zig_install_dir=%_zig_install_dir:\=\\%"
 
-  %CC% --version
-  %CXX% --version
-  echo %CFLAGS%
-  echo %CXXFLAGS%
-
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D ZIG_USE_LLVM_CONFIG=ON ^
+    -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=OFF ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_VERSION="%PKG_VERSION%" --debug-trycompile ^
