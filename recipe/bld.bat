@@ -54,6 +54,8 @@ cd %_build_dir%
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   echo "%CMAKE_ARGS%"
+  echo "%CFLAGS%"
+  echo "%LD_FLAGS%"
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
@@ -63,10 +65,10 @@ cd %_build_dir%
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
-    %SOURCE_DIR% --debug-trycompile
+    %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  cmake --build . --config Release
+  cmake --build . --config Release --debug-trycompile
   cmake --install . --config Release
 
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
