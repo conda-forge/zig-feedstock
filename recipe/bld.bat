@@ -58,10 +58,10 @@ cd %_build_dir%
     -D CMAKE_BUILD_TYPE=Debug ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_SHARED_LLVM=OFF ^
+    -D ZIG_STATIC_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
-    -D ZIG_VERSION="%PKG_VERSION%" --debug-trycompile ^
+    -D ZIG_VERSION="%PKG_VERSION%" ^
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
