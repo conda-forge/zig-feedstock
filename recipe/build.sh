@@ -129,7 +129,9 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   cat /proc/cpuinfo
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   cd "${cmake_build_dir}" && cmake --build . --target zig2.c -- -j"${CPU_COUNT}"
-  grep "signal.h" "${cmake_build_dir}/zig2.*"
+  echo "------------------"
+  grep "signal" "${cmake_build_dir}/zig2.*"
+  echo "------------------"
   cd "${cmake_build_dir}" && cmake --build . --target zig2.o -- -j"${CPU_COUNT}"
   echo "------------------"
   cmake_build_install "${cmake_build_dir}"
