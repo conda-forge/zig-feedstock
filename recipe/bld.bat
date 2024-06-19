@@ -58,14 +58,15 @@ cd %_build_dir%
   echo %CXXFLAGS%
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
-  cmake %SOURCE_DIR% ^
+  cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
-    -D ZIG_SHARED_LLVM=ON ^
+    -D ZIG_SHARED_LLVM=OFF ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
-    -D ZIG_VERSION="%PKG_VERSION%" --debug-trycompile
+    -D ZIG_VERSION="%PKG_VERSION%" --debug-trycompile ^
+    %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --build . --config Release
