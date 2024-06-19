@@ -11,7 +11,7 @@ set "MCPU=native"
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
 set "CONFIG_DIR=%SRC_DIR%\_config"
 
-call :configZigCmakeBuildGCC "%CONFIG_DIR%" "%SRC_DIR%\_conda-cmake-built"
+call :configZigCmakeBuildMSVC "%CONFIG_DIR%" "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 :: call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-bootstrap\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
@@ -41,7 +41,7 @@ GOTO :EOF
 
 :: --- Functions ---
 
-:configZigCmakeBuildGCC
+:configZigCmakeBuildMSVC
 setlocal
 set "_build_dir=%~1"
 set "_zig_install_dir=%~2"
@@ -60,6 +60,7 @@ cd %_build_dir%
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_SHARED_LLVM=OFF ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
+    -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_VERSION="%PKG_VERSION%" --debug-trycompile ^
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%

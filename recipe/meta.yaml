@@ -22,11 +22,8 @@ build:
 
 requirements:
   build:
-    - {{ compiler('m2w64_c') }}
-    - {{ compiler('m2w64_cxx') }}
-    - mingw-w64-ucrt-x86_64-gcc  # [win and x86_64]
-    - mingw-w64-ucrt-x86_64-gcc-libs  # [win and x86_64]
-    - mingw-w64-ucrt-x86_64-zstd  # [win and x86_64]
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
     - {{ stdlib('c') }}
     - cmake >=3.5
     - ninja
