@@ -135,8 +135,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
   cd "${cmake_build_dir}" && cmake --build . --target zig2.c -- -j"${CPU_COUNT}"
   echo "------------------"
-  cd "${cmake_build_dir}" && cmake --build . --target zig2.o -- -j"${CPU_COUNT}"
-  echo "------------------"
   cmake_build_install "${cmake_build_dir}"
 fi
 #
