@@ -131,7 +131,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   cd "${cmake_build_dir}" && cmake --build . --target zig2.c -- -j"${CPU_COUNT}"
   grep "signal.h" "${cmake_build_dir}/zig2.*"
   cd "${cmake_build_dir}" && cmake --build . --target zig2.o -- -j"${CPU_COUNT}"
-  exit 1
   echo "------------------"
   cmake_build_install "${cmake_build_dir}"
 fi
