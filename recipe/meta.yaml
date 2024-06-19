@@ -12,7 +12,7 @@ source:
     folder: zig-source
     patches:
 
-  - folder: zig-bootstrap  # [(win or osx) and x86_64]
+  - folder: zig-binary  # [(win or osx) and x86_64]
     url: https://ziglang.org/builds/zig-windows-x86_64-{{ version }}.zip  # [win and x86_64]
     sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win and x86_64]
 

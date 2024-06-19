@@ -14,7 +14,7 @@ set "CONFIG_DIR=%SRC_DIR%\_config"
 call :configZigCmakeBuildMSVC "%CONFIG_DIR%" "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-:: call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-bootstrap\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
+:: call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-binary\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
 :: if %ERRORLEVEL% neq 0 (
 ::   echo "Failed to bootstrap ZIG"
 ::   exit /b %ERRORLEVEL%
@@ -56,6 +56,7 @@ cd %_build_dir%
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
+    -D CMAKE _PREFIX_PATH="%BUILD_PREFIX%" ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_STATIC_LLVM=ON ^
