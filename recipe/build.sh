@@ -13,7 +13,7 @@ function configure_platform() {
       ;;
 
     osx-64)
-      SYSROOT_ARCH="osx_64"
+      SYSROOT_ARCH="macos"
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
       ;;
   esac
