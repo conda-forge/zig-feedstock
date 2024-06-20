@@ -24,9 +24,9 @@ function configure_platform() {
   if [[ "${target_platform}" == "linux" ]]; then
     EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
   fi
-  if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
+  # if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-  fi
+  # fi
 }
 
 function configure_cmake() {
