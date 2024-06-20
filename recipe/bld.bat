@@ -41,7 +41,7 @@ GOTO :EOF
 
 :: --- Functions ---
 
-:configZigCmakeBuildMSVC
+:configZigCmakeBuildCLANG
 setlocal
 set "_build_dir=%~1"
 set "_zig_install_dir=%~2"
