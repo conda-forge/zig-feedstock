@@ -2,6 +2,33 @@
 
 # --- Functions ---
 
+function configure_platform() {
+  case "${target_platform}" in
+    linux-64)
+      SYSROOT_ARCH="x86_64"
+      ;;
+
+    linux-aarch64)
+      SYSROOT_ARCH="aarch64"
+      ;;
+
+    osx-64)
+      SYSROOT_ARCH="osx_64"
+      export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+      ;;
+  esac
+
+  if [[ "${target_platform}" != "osx-64" ]]; then
+    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
+  fi
+  if [[ "${target_platform}" == "linux" ]]; then
+    EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
+  fi
+  if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
+    EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
+  fi
+}
+
 function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
@@ -23,16 +50,16 @@ function configure_cmake() {
       EXTRA_CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=${_cxx}")
       EXTRA_CMAKE_ARGS+=("-DCMAKE_AR=${zig}")
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
-    else
-      _toolchain="-DCMAKE_C_COMPILER=$CC_FOR_BUILD;-DCMAKE_CXX_COMPILER=$CXX_FOR_BUILD;-DCMAKE_EXE_LINKER_FLAGS=\"-L$BUILD_PREFIX/lib\";-DCMAKE_MODULE_LINKER_FLAGS=;-DCMAKE_SHARED_LINKER_FLAGS=;-DCMAKE_STATIC_LINKER_FLAGS=;-DCMAKE_AR=$(which ${AR});-DCMAKE_RANLIB=$(which ${RANLIB});-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}"
-      EXTRA_CMAKE_ARGS+=("-DCROSS_TOOLCHAIN_FLAGS_NATIVE=${_toolchain}")
     fi
+
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
-      -D CMAKE_BUILD_TYPE=Release \
-      -D ZIG_USE_LLVM_CONFIG=ON \
       "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
+
+    if [[ "${target_platform}" == "osx-64" ]]; then
+      sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
+    fi
   cd "${current_dir}"
 }
 
@@ -109,35 +136,11 @@ cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 self_build_dir="${SRC_DIR}/self-built-source"
 
-EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON")
+EXTRA_CMAKE_ARGS=("-DZIG_SHARED_LLVM=ON" "-DZIG_USE_LLVM_CONFIG=ON" "-DCMAKE_BUILD_TYPE=Release")
 EXTRA_ZIG_ARGS=("-Denable-llvm" "-Dstrip")
 
-if [[ "${target_platform}" == "linux-64" ]]; then
-  SYSROOT_ARCH="x86_64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-
-elif [[ "${target_platform}" == "linux-aarch64" ]]; then
-  SYSROOT_ARCH="aarch64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  EXTRA_ZIG_ARGS+=("--sysroot" "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot")
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-
-elif [[ "${target_platform}" == "osx-64" ]]; then
-  SYSROOT_ARCH="x86_64"
-  # Specifying the TARGET prevents using SDKROOT?
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
-  export DYLD_LIBRARY_PATH="${PREFIX}/lib"
-
-elif [[ "${target_platform}" == "osx-arm64" ]]; then
-  SYSROOT_ARCH="arm64"
-  EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-  configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
-  EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
-fi
+configure_platform
+configure_cmake "${cmake_build_dir}" "${cmake_install_dir}"
 
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
   cmake_build_install "${cmake_build_dir}"
