@@ -18,5 +18,5 @@
 @@ -852,3 +870,3 @@
  else()
 -  target_link_libraries(zig1 LINK_PUBLIC m)
-+  # target_link_libraries(zig1 LINK_PUBLIC m)
++  target_link_libraries(zig1 LINK_PUBLIC ${PREFIX}/Library/lib/libm.lib)
    if(MINGW)
