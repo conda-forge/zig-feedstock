@@ -65,7 +65,9 @@ cd %_build_dir%
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  cmake --build . --config Release
+  cmake --build . -v --config Debug
+  if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+
   cmake --install . --config Release
 
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
