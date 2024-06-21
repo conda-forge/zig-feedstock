@@ -1,6 +1,6 @@
 --- CMakeLists.txt      2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt      2024-06-19 18:01:59.808672313 -0500
-@@ -163,2 +163,8 @@
+@@ -163,3 +163,10 @@
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
 +else()
 +    if (MSVC)
@@ -9,6 +9,8 @@
 +        list(APPEND LLVM_LIBRARIES zlib)
 +    endif()
  endif()
++list(APPEND LLVM_LIBRARIES m)
+ 
 @@ -731,2 +737,3 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
@@ -16,5 +18,5 @@
 @@ -852,3 +870,3 @@
  else()
 -  target_link_libraries(zig1 LINK_PUBLIC m)
-+  target_link_libraries(zig1 LINK_PUBLIC libm.lib)
++  # target_link_libraries(zig1 LINK_PUBLIC m)
    if(MINGW)
