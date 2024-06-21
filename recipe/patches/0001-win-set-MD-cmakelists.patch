@@ -1,24 +1,20 @@
 --- CMakeLists.txt      2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt      2024-06-19 18:01:59.808672313 -0500
-@@ -161,6 +161,13 @@
-
-     find_library(ZSTD NAMES libzstd.a libzstdstatic.a zstd NAMES_PER_DIR)
+@@ -163,2 +163,8 @@
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
 +else()
 +    if (MSVC)
 +        list(APPEND LLVM_LIBRARIES zstd)
 +        list(APPEND LLVM_LIBRARIES xml2)
 +        list(APPEND LLVM_LIBRARIES zlib)
-+        list(APPEND LLVM_LIBRARIES m)
 +    endif()
  endif()
-
- if(ZIG_STATIC_CURSES)
-@@ -729,6 +729,7 @@
-     -Wno-comment
-   )
+@@ -731,2 +737,3 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
- set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
- endif()
+@@ -852,3 +870,3 @@
+ else()
+-  target_link_libraries(zig1 LINK_PUBLIC m)
++  target_link_libraries(zig1 LINK_PUBLIC libm.lib)
+   if(MINGW)
