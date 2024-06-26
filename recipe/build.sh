@@ -49,9 +49,11 @@ function configure_platform() {
       ;;
   esac
 
-  if [[ "${target_platform}" != "osx-64" ]]; then
+  if [[ "${build_platform}" != "osx-64" ]]; then
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
     EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=stdc++")
+    # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
+    modify_libc_libm_for_zig "${BUILD_PREFIX}"
   fi
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
@@ -206,9 +208,6 @@ if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
   cmake_build_install "${cmake_build_dir}"
 fi
 
-# Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
-modify_libc_libm_for_zig "${BUILD_PREFIX}"
-
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
   "-Dconfig_h=${cmake_build_dir}/config.h" \
@@ -219,7 +218,7 @@ EXTRA_ZIG_ARGS+=( \
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
-  self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
-else
   self_build "${SRC_DIR}/conda-zig-source" "${cmake_install_dir}" "${PREFIX}"
+else
+  self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
 fi
