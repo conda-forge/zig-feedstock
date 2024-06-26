@@ -12,3 +12,6 @@ conda_build:
 test: native_and_emulated
 azure:
   free_disk_space: true
+  settings_win:
+    variables:
+      SET_PAGEFILE: 'True'
