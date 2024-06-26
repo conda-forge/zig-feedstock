@@ -176,6 +176,20 @@ function self_build() {
   fi
 }
 
+function patchelf_installed_zig() {
+  local install_dir=$1
+  local _prefix=$2
+
+  patchelf --remove-rpath                                                                          "${install_dir}/bin/zig"
+  patchelf --set-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64"             "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/lib"                       "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64"         "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${_prefix}/lib"                                                       "${install_dir}/bin/zig"
+  patchelf --add-rpath      "${PREFIX}/lib"                                                        "${install_dir}/bin/zig"
+
+  patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
+}
+
 # --- Main ---
 
 set -euxo pipefail
@@ -221,4 +235,8 @@ if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
   self_build "${SRC_DIR}/conda-zig-source" "${cmake_install_dir}" "${PREFIX}"
 else
   self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
+fi
+
+if [[ "${target_platform}" == "linux-aarch64" ]]; then
+  patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
