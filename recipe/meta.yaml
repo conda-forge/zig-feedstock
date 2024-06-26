@@ -28,6 +28,8 @@ build:
   # skip: true  # [not linux and not (osx and x86_64)]
   # Temporarily limiting to ppc64le
   skip: true  # [not linux or not (ppc64le)]
+  script_env:
+    - BUILD_SOURCE_WITH_CMAKE=1
   ignore_run_exports:
     - __glibc
 
