@@ -192,6 +192,18 @@ function patchelf_installed_zig() {
   patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
 }
 
+function patch_system() {
+  local prefix_dir=$1
+
+  if [[ "${target_platform}" == "linux-ppc64le" && -f "${SRC_DIR}"/build-level-patches/xxxx-ppc64le-sysroot.patch ]]; then
+    (cd "${prefix_dir}"/${SYSROOT_ARCH}-conda-linux-gnu/sysroot && \
+      expand -t 4 usr/include/signal.h > usr/include/signal.h.tmp && \
+      mv usr/include/signal.h.tmp usr/include/signal.h && \
+      patch -Np0 -i "${SRC_DIR}"/build-level-patches/xxxx-ppc64le-sysroot.patch --binary \
+    )
+  fi
+}
+
 # --- Main ---
 
 set -euxo pipefail
