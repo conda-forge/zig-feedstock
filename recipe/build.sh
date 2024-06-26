@@ -220,7 +220,7 @@ configure_platform
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+if [[ "${BUILD_SOURCE_WITH_CMAKE:-0}" == "1" ]]; then
   cmake_build_install "${cmake_build_dir}"
 fi
 
@@ -233,7 +233,7 @@ EXTRA_ZIG_ARGS+=( \
   )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
-if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+if [[ "${BUILD_SOURCE_WITH_CMAKE:-0}" == "1" ]]; then
   self_build "${SRC_DIR}/conda-zig-source" "${cmake_install_dir}" "${PREFIX}"
 else
   self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
