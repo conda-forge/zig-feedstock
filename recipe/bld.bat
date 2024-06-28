@@ -53,6 +53,7 @@ cd %_build_dir%
   set "_zig_install_dir=%_zig_install_dir:\=\\%"
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
+  set "CMAKE_BUILD_PARALLEL_LEVEL=1"
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
