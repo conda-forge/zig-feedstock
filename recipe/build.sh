@@ -130,7 +130,7 @@ function cmake_build_install() {
   current_dir=$(pwd)
 
   cd "${build_dir}"
-    cmake --build . -- -j"${CPU_COUNT}"
+    cmake --build . -- -j"${CPU_COUNT}" -v
     cmake --install .
   cd "${current_dir}"
 }
@@ -211,6 +211,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 EXTRA_CMAKE_ARGS+=( \
 "-DZIG_SHARED_LLVM=ON" \
 "-DZIG_USE_LLVM_CONFIG=ON" \
+"-DCMAKE_VERBOSE_MAKEFILE=ON" \
 )
 
 # Current conda zig may not be able to build the latest zig
