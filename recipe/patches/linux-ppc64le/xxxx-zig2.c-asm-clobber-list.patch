@@ -1,0 +1,38 @@
+--- zig2.c 2024-06-20 11:33:33.032130211 -0500
++++ zig2.c 2024-06-20 11:46:49.218920956 -0500
+@@ -845003,7 +845003,7 @@
+  register uintptr_t const t6 __asm("r5") = a3;
+  register uintptr_t const t7 __asm("r6") = a4;
+  register uintptr_t const t8 __asm("r7") = a5;
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8): "memory", "cr0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8): "memory", "cr0", "r8", "r9", "r10", "r11", "r12");
+  t1 = t2;
+  return t1;
+ }
+@@ -1766187,7 +1766187,7 @@
+  register uintptr_t const t7 __asm("r6") = a4;
+  register uintptr_t const t8 __asm("r7") = a5;
+  register uintptr_t const t9 __asm("r8") = a6;
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8), [arg6]"r"(t9): "memory", "cr0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8), [arg6]"r"(t9): "memory", "cr0", "r9", "r10", "r11", "r12");
+  t1 = t2;
+  return t1;
+ }
+@@ -1939307,7 +1939307,7 @@
+  register uintptr_t const t4 __asm("r3") = a1;
+  register uintptr_t const t5 __asm("r4") = a2;
+  register uintptr_t const t6 __asm("r5") = a3;
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6): "memory", "cr0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6): "memory", "cr0", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
+  t1 = t2;
+  return t1;
+ }
+@@ -2549427,7 +2549427,7 @@
+  register uintptr_t const t5 __asm("r4") = a2;
+  register uintptr_t const t6 __asm("r5") = a3;
+  register uintptr_t const t7 __asm("r6") = a4;
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7): "memory", "cr0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7): "memory", "cr0", "r7", "r8", "r9", "r10", "r11", "r12");
+  t1 = t2;
+  return t1;
+ }
