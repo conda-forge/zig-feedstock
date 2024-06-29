@@ -61,11 +61,11 @@ cd %_build_dir%
     -D CMAKE_VERBOSE_MAKEFILE=ON ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_STATIC_LLVM=ON ^
-    -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
-    -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+   :: -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
+   :: -D ZIG_TARGET_MCPU="baseline" ^
 
   cmake --build . --config Debug -- -v -j 1
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
