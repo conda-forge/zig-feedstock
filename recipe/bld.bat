@@ -58,6 +58,7 @@ cd %_build_dir%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Debug ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
+    -D CMAKE_VERBOSE_MAKEFILE=ON ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_STATIC_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
@@ -66,7 +67,7 @@ cd %_build_dir%
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  cmake --build . -v --config Debug
+  cmake --build . --config Debug -- -v -j 1
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --install . --config Release
