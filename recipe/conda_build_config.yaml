@@ -1,9 +1,7 @@
-c_stdlib_version:  # [unix]
+c_stdlib_version:
   - '2.28'  # [linux]
   - '11.3'  # [osx and x86_64]
+  - 'vs_2022'  # [win]
+
 docker_image:
   - quay.io/condaforge/linux-anvil-alma-x86_64:8  # [linux and x86_64]
-c_compiler:  # [win]
-- clang  # [win]
-cxx_compiler:  # [win]
-- clangxx  # [win]
