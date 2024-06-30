@@ -11,7 +11,7 @@ Summary: Zig is a general-purpose programming language and toolchain for maintai
 
 Development: https://github.com/ziglang/zig
 
-Documentation: https://ziglang.org/documentation/0.12.0/
+Documentation: https://ziglang.org/documentation/0.13.0/
 
 Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
 Robust: Behavior is correct even for edge cases such as out of memory.
@@ -39,10 +39,10 @@ Current build status
         <table>
           <thead><tr><th>Variant</th><th>Status</th></tr></thead>
           <tbody><tr>
-              <td>linux_64</td>
+              <td>win_64</td>
               <td>
                 <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=linux&configuration=linux%20linux_64_" alt="variant">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=win&configuration=win%20win_64_" alt="variant">
                 </a>
               </td>
             </tr>
