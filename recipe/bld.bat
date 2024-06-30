@@ -14,12 +14,6 @@ set "CONFIG_DIR=%SRC_DIR%\_config"
 call :configZigCmakeBuildCLANG "%CONFIG_DIR%" "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-:: call :bootstrapZigWithZIG "%SRC_DIR%\_conda-bootstrap" "%SRC_DIR%\zig-binary\zig.exe" "%SRC_DIR%\_conda-bootstrapped"
-:: if %ERRORLEVEL% neq 0 (
-::   echo "Failed to bootstrap ZIG"
-::   exit /b %ERRORLEVEL%
-:: )
-
 call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-cmake-built\bin\zig.exe" "%SRC_DIR%\_conda-final"
 if %ERRORLEVEL% neq 0 (
     echo "Failed to build ZIG"

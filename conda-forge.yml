@@ -8,5 +8,9 @@ conda_build:
   pkg_format: '2'
 build_platform:
   linux_aarch64: linux_64
-  win_64: linux_64
 test: native_and_emulated
+azure:
+  free_disk_space: true
+  settings_win:
+    variables:
+      SET_PAGEFILE: 'True'

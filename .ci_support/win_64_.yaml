@@ -1,5 +1,5 @@
 c_compiler:
-- clang
+- vs2019
 c_stdlib:
 - vs
 channel_sources:
@@ -7,9 +7,7 @@ channel_sources:
 channel_targets:
 - conda-forge main
 cxx_compiler:
-- clangxx
-docker_image:
-- quay.io/condaforge/linux-anvil-cos7-x86_64
+- vs2019
 target_platform:
 - win-64
 zlib:
