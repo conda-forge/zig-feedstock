@@ -43,3 +43,16 @@
              return true;
          }
      }
+--- src/zig_llvm-ar.cpp.orig	2024-06-29 18:26:01.752074223 -0500
++++ src/zig_llvm-ar.cpp	2024-06-29 18:29:36.007910238 -0500
+@@ -619,8 +619,8 @@
+         sys::fs::setLastAccessAndModificationTime(FD, ModTimeOrErr.get()));
+   }
+ 
+-  if (close(FD))
+-    fail("Could not close the file");
++  if (_close(FD))
++    fail("Could not _close the file");
+ }
+ 
+ static bool shouldCreateArchive(ArchiveOperation Op) {
