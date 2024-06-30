@@ -39,6 +39,7 @@ function configure_platform() {
 
     linux-ppc64le)
       SYSROOT_ARCH="powerpc64le"
+      EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=ppc64le")
       EXTRA_ZIG_ARGS+=("-Dcpu=ppc64le")
       ;;
 
@@ -55,6 +56,7 @@ function configure_platform() {
     # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
     modify_libc_libm_for_zig "${BUILD_PREFIX}"
   fi
+
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/aarch64-conda-linux-gnu/sysroot/libc64/libc.so.6")
@@ -237,6 +239,6 @@ else
   self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
 fi
 
-if [[ "${target_platform}" == "linux-aarch64" ]]; then
+if [[ "${target_platform}" == "linux-aarch64" ]] || [[ "${target_platform}" == "linux-ppc64le" ]]; then
   patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
