@@ -39,6 +39,7 @@ function configure_platform() {
 
     linux-ppc64le)
       SYSROOT_ARCH="powerpc64le"
+      EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=ppc64le")
       EXTRA_ZIG_ARGS+=("-Dcpu=ppc64le")
       ;;
 
@@ -55,6 +56,7 @@ function configure_platform() {
     # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
     modify_libc_libm_for_zig "${BUILD_PREFIX}"
   fi
+
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/aarch64-conda-linux-gnu/sysroot/libc64/libc.so.6")
@@ -218,7 +220,7 @@ configure_platform
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+if [[ "${BUILD_SOURCE_WITH_CMAKE:-0}" == "1" ]]; then
   cmake_build_install "${cmake_build_dir}"
 fi
 
@@ -231,12 +233,12 @@ EXTRA_ZIG_ARGS+=( \
   )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
-if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+if [[ "${BUILD_SOURCE_WITH_CMAKE:-0}" == "1" ]]; then
   self_build "${SRC_DIR}/conda-zig-source" "${cmake_install_dir}" "${PREFIX}"
 else
   self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
 fi
 
-if [[ "${target_platform}" == "linux-aarch64" ]]; then
+if [[ "${target_platform}" == "linux-aarch64" ]] || [[ "${target_platform}" == "linux-ppc64le" ]]; then
   patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
