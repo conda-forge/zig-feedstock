@@ -56,7 +56,7 @@ cd %_build_dir%
   set "CMAKE_BUILD_PARALLEL_LEVEL=1"
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
-    -D CMAKE_BUILD_TYPE=Debug ^
+    -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D CMAKE_VERBOSE_MAKEFILE=ON ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
@@ -67,11 +67,10 @@ cd %_build_dir%
    :: -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
    :: -D ZIG_TARGET_MCPU="baseline" ^
 
-  cmake --build . --config Debug -- -v -j 1
+  cmake --build . --config Release
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
   cmake --install . --config Release
-
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 cd %SRC_DIR%
 endlocal

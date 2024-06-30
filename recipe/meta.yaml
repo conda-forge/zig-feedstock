@@ -12,6 +12,7 @@ source:
     folder: zig-source
     patches:
       - patches/0001-win-set-MD-cmakelists.patch  # [win]
+      - patches/0002-win-deprecations.patch  # [win]
 
   - folder: zig-binary  # [(win or osx) and x86_64]
     url: https://ziglang.org/builds/zig-windows-x86_64-{{ version }}.zip  # [win and x86_64]
