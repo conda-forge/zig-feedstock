@@ -1,7 +1,13 @@
+c_compiler:
+- clang
+c_stdlib:
+- vs
 channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
+cxx_compiler:
+- clangxx
 docker_image:
 - quay.io/condaforge/linux-anvil-cos7-x86_64
 target_platform:
