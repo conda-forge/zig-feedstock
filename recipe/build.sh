@@ -30,6 +30,7 @@ function configure_platform() {
   local zig_cpu="-Dcpu=baseline"
   local zig_cxx="-DZIG_SYSTEM_LIBCXX=stdc++"
   local llvm_config="-DZIG_USE_LLVM_CONFIG=ON"
+  local zig_sysroot=()
 
   case "${target_platform}" in
     # Native platforms
@@ -72,7 +73,7 @@ function configure_platform() {
   EXTRA_CMAKE_ARGS+=("-DZIG_STATIC=OFF")
 
   EXTRA_ZIG_ARGS+=("${zig_cpu}")
-  EXTRA_ZIG_ARGS+=("${zig_sysroot:-}")
+  EXTRA_ZIG_ARGS+=("${zig_sysroot[@]}")
   EXTRA_ZIG_ARGS+=("${zig_target:-}")
 
   if [[ "${build_platform}" != "osx-64" ]]; then
