@@ -39,6 +39,14 @@ function configure_platform() {
 
     linux-ppc64le)
       SYSROOT_ARCH="powerpc64le"
+      EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_MCPU=ppc64le")
+      EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=stdc++")
+      CFLAGS="${CFLAGS} -mlongcall -mcmodel=large -Os -Wl,--no-relax -fPIE -pie"
+      CXXFLAGS="${CXXFLAGS} -mlongcall -mcmodel=large -Os -Wl,--no-relax -fPIE -pie"
+      # export CFLAGS=${CFLAGS//-fno-plt/}
+      # export CXXFLAGS=${CXXFLAGS//-fno-plt/}
+      export CFLAGS=${CFLAGS}
+      export CXXFLAGS=${CXXFLAGS}
       EXTRA_ZIG_ARGS+=("-Dcpu=ppc64le")
       ;;
 
@@ -55,12 +63,15 @@ function configure_platform() {
     # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
     modify_libc_libm_for_zig "${BUILD_PREFIX}"
   fi
+
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/aarch64-conda-linux-gnu/sysroot/libc64/libc.so.6")
 
     EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
     EXTRA_ZIG_ARGS+=("-fqemu")
+
+    export ZIG_CROSS_TARGET_TRIPLE="${SYSROOT_ARCH}-linux-gnu"
   fi
 }
 
@@ -117,7 +128,7 @@ function configure_cmake_zigcpp() {
       sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
     fi
 
-    cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    cmake --build . -v --target zigcpp -- -j"${CPU_COUNT}" > _build-zigcpp.log 2>&1
   cd "${current_dir}"
 }
 
@@ -190,6 +201,42 @@ function patchelf_installed_zig() {
   patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
 }
 
+function patch_system() {
+  local prefix_dir=$1
+
+  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+    signal="${prefix_dir}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/include/signal.h"
+    expand -t 4 "${signal}" > "${signal}.tmp" && \
+    mv "${signal}.tmp" "${signal}" && \
+    if [[ -f "${SRC_DIR}"/build-level-patches/xxxx-sysroot-signal.h.patch ]]; then
+      (cd "${prefix_dir}" && patch -Np0 -i "${SRC_DIR}"/build-level-patches/xxxx-sysroot-signal.h.patch --binary)
+    fi
+  fi
+}
+
+function staggered_cmake_with_patch() {
+  local build_dir=$1
+
+  local current_dir
+  current_dir=$(pwd)
+
+  if [[ -d "${build_dir}" ]]; then
+    cd "${build_dir}"
+      if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+        cmake --build . -v --target zig2.c -- -j"${CPU_COUNT}" > _build-zig2.log 2>&1
+        patch -Np0 -i "${SRC_DIR}"/build-level-patches/xxxx-zig2.c-asm-clobber-list.patch --binary
+        cmake --build . -v --target compiler_rt.c -- -j"${CPU_COUNT}" >> _build-zig2.log 2>&1
+        # patch -Np0 -i "${SRC_DIR}"/build-level-patches/xxxx-compiler_rt.c.patch --binary
+        echo "Building zig2"
+        cmake --build . -v --target zig2 -- -j"${CPU_COUNT}" >> _build-zig2.log 2>&1
+      fi
+  else
+    echo "No build directory found"
+    exit 1
+  fi
+  cd "${current_dir}"
+}
+
 # --- Main ---
 
 set -euxo pipefail
@@ -203,11 +250,11 @@ cmake_install_dir="${SRC_DIR}/cmake-built-install"
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
 mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
-cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
+cp -r "${RECIPE_DIR}"/patches/"${target_platform}"/xxxx* "${SRC_DIR}"/build-level-patches
 
 # Configuration relevant to conda environment
 EXTRA_CMAKE_ARGS+=( \
-"-DZIG_SHARED_LLVM=ON" \
+"-DZIG_SHARED_LLVM=OFF" \
 "-DZIG_USE_LLVM_CONFIG=ON" \
 )
 
@@ -218,7 +265,12 @@ configure_platform
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+if [[ "${BUILD_SOURCE_WITH_CMAKE:-0}" == "1" ]]; then
+  patch_system "${BUILD_PREFIX}"
+  if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
+    export ZIG_CROSS_TARGET_TRIPLE="${SYSROOT_ARCH}-linux-gnu"
+  fi
+  staggered_cmake_with_patch "${cmake_build_dir}"
   cmake_build_install "${cmake_build_dir}"
 fi
 
@@ -231,12 +283,12 @@ EXTRA_ZIG_ARGS+=( \
   )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
-if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+if [[ "${BUILD_SOURCE_WITH_CMAKE:-0}" == "1" ]]; then
   self_build "${SRC_DIR}/conda-zig-source" "${cmake_install_dir}" "${PREFIX}"
 else
   self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
 fi
 
-if [[ "${target_platform}" == "linux-aarch64" ]]; then
+if [[ "${target_platform}" == "linux-aarch64" ]] || [[ "${target_platform}" == "linux-ppc64le" ]]; then
   patchelf_installed_zig "${PREFIX}" "${PREFIX}"
 fi
