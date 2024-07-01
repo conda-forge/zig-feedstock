@@ -25,7 +25,7 @@ source:
 
 build:
   number: 1
-  skip: true  # [not linux and not (osx and x86_64) and not win64]
+  skip: true  # [not win64]
   ignore_run_exports:
     - __glibc
 
