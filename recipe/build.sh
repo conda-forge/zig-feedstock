@@ -62,13 +62,14 @@ function configure_platform() {
       zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
       zig_target="-Dtarget=aarch64-macos.11-gnu"
       llvm_config="-DZIG_USE_LLVM_CONFIG=OFF"
-      zig_sysroot="--sysroot ${SDKROOT}"
+      zig_sysroot=("--sysroot" "${SDKROOT}")
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
       ;;
   esac
   EXTRA_CMAKE_ARGS+=("${zig_cxx}")
   EXTRA_CMAKE_ARGS+=("${llvm_config}")
   EXTRA_CMAKE_ARGS+=("-DZIG_SHARED_LLVM=ON")
+  EXTRA_CMAKE_ARGS+=("-DZIG_STATIC=OFF")
 
   EXTRA_ZIG_ARGS+=("${zig_cpu}")
   EXTRA_ZIG_ARGS+=("${zig_sysroot:-}")
