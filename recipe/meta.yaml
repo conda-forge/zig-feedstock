@@ -15,7 +15,7 @@ source:
 
 build:
   number: 0
-  skip: true  # [not linux and not (osx and x86_64)]
+  skip: true  # [win]
 
 requirements:
   build:
