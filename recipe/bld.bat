@@ -57,6 +57,7 @@ cd %_build_dir%
     -D ZIG_STATIC_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
+    -D ZIG_SYSTEM_LIBCXX="c++" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
@@ -70,6 +71,7 @@ cd %_build_dir%
       echo !line! >> _config.h
   )
   move /y _config.h config.h
+  type config.h
 
   cmake --build . --config Release
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
