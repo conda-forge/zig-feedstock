@@ -245,12 +245,16 @@ if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
   cmake_build_install "${cmake_build_dir}"
 fi
 
+ls -l "${SDKROOT}"/*/*
+
+create_libc_file "${SDKROOT}"
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
   "-Dconfig_h=${cmake_build_dir}/config.h" \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
+  "--libc" "_libc_file" \
   )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
