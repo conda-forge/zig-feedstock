@@ -29,19 +29,12 @@ function configure_platform() {
   local zig_os="linux"
   local zig_cpu="-Dcpu=baseline"
   local zig_cxx="-DZIG_SYSTEM_LIBCXX=stdc++"
+  local llvm_config="-DZIG_USE_LLVM_CONFIG=ON"
 
   case "${target_platform}" in
+    # Native platforms
     linux-64)
       SYSROOT_ARCH="x86_64"
-      ;;
-
-    linux-aarch64)
-      SYSROOT_ARCH="aarch64"
-      ;;
-
-    linux-ppc64le)
-      SYSROOT_ARCH="powerpc64le"
-      zig_cpu="-Dcpu=ppc64le"
       ;;
 
     osx-64)
@@ -51,15 +44,35 @@ function configure_platform() {
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
       ;;
 
+    # Cross-compiled platforms
+    linux-aarch64)
+      SYSROOT_ARCH="aarch64"
+      zig_target="-Dtarget=${SYSROOT_ARCH}-${zig_os}-gnu"
+      ;;
+
+    linux-ppc64le)
+      SYSROOT_ARCH="powerpc64le"
+      zig_cpu="-Dcpu=ppc64le"
+      zig_target="-Dtarget${SYSROOT_ARCH}-${zig_os}-gnu"
+      ;;
+
     osx-arm64)
       SYSROOT_ARCH="aarch64"
       zig_os="macos"
       zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
+      zig_target="-Dtarget=aarch64-macos.11-gnu"
+      llvm_config="-DZIG_USE_LLVM_CONFIG=OFF"
+      zig_sysroot="--sysroot ${SDKROOT}"
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
       ;;
   esac
-  EXTRA_ZIG_ARGS+=("${zig_cpu}")
   EXTRA_CMAKE_ARGS+=("${zig_cxx}")
+  EXTRA_CMAKE_ARGS+=("${llvm_config}")
+  EXTRA_CMAKE_ARGS+=("-DZIG_SHARED_LLVM=ON")
+
+  EXTRA_ZIG_ARGS+=("${zig_cpu}")
+  EXTRA_ZIG_ARGS+=("${zig_sysroot:-}")
+  EXTRA_ZIG_ARGS+=("${zig_target:-}")
 
   if [[ "${build_platform}" != "osx-64" ]]; then
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
@@ -68,9 +81,7 @@ function configure_platform() {
   fi
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
-    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/${SYSROOT_ARCH}-conda-${zig_os}-gnu/sysroot/libc64/libc.so.6")
-
-    EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-${zig_os}-gnu")
+    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${BUILD_PREFIX}/bin/${LD}")
     EXTRA_ZIG_ARGS+=("-fqemu")
   fi
 }
@@ -145,13 +156,12 @@ function cmake_build_install() {
 }
 
 function create_libc_file() {
-  local build_prefix=$1
-  local sysroot_arch=$2
+  local sysroot=$1
 
   cat <<EOF > _libc_file
-include_dir=${build_prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/include
-sys_include_dir=${build_prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/include
-crt_dir=${build_prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64
+include_dir=${sysroot}/usr/include
+sys_include_dir=${sysroot}/usr/include
+crt_dir=${sysroot}/usr/lib64
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
