@@ -219,7 +219,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 # Configuration relevant to conda environment
 EXTRA_CMAKE_ARGS+=( \
 "-DZIG_SHARED_LLVM=ON" \
-"-DZIG_USE_LLVM_CONFIG=ON" \
+"-DZIG_USE_LLVM_CONFIG=OFF" \
 )
 
 # Current conda zig may not be able to build the latest zig
