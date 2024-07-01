@@ -245,8 +245,6 @@ if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
   cmake_build_install "${cmake_build_dir}"
 fi
 
-ls -l "${SDKROOT}"/*/*
-
 create_libc_file "${SDKROOT}"
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
