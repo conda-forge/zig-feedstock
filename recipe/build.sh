@@ -26,40 +26,51 @@ function remove_failing_langref() {
 }
 
 function configure_platform() {
+  local zig_os="linux"
+  local zig_cpu="-Dcpu=baseline"
+  local zig_cxx="-DZIG_SYSTEM_LIBCXX=stdc++"
+
   case "${target_platform}" in
     linux-64)
       SYSROOT_ARCH="x86_64"
-      EXTRA_ZIG_ARGS+=("-Dcpu=baseline")
       ;;
 
     linux-aarch64)
       SYSROOT_ARCH="aarch64"
-      EXTRA_ZIG_ARGS+=("-Dcpu=baseline")
       ;;
 
     linux-ppc64le)
       SYSROOT_ARCH="powerpc64le"
-      EXTRA_ZIG_ARGS+=("-Dcpu=ppc64le")
+      zig_cpu="-Dcpu=ppc64le"
       ;;
 
     osx-64)
-      SYSROOT_ARCH="macos"
-      EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=c++")
+      SYSROOT_ARCH="x86_64"
+      zig_os="macos"
+      zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
+      export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+      ;;
+
+    osx-arm64)
+      SYSROOT_ARCH="aarch64"
+      zig_os="macos"
+      zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
       ;;
   esac
+  EXTRA_ZIG_ARGS+=("${zig_cpu}")
+  EXTRA_CMAKE_ARGS+=("${zig_cxx}")
 
   if [[ "${build_platform}" != "osx-64" ]]; then
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-    EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=stdc++")
     # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
     modify_libc_libm_for_zig "${BUILD_PREFIX}"
   fi
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
-    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/aarch64-conda-linux-gnu/sysroot/libc64/libc.so.6")
+    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/${SYSROOT_ARCH}-conda-${zig_os}-gnu/sysroot/libc64/libc.so.6")
 
-    EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
+    EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-${zig_os}-gnu")
     EXTRA_ZIG_ARGS+=("-fqemu")
   fi
 }
