@@ -254,7 +254,7 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "--libc" "_libc_file" \
+  "--libc" "${SRC_DIR}/_libc_file" \
   )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
