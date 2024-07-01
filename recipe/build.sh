@@ -254,7 +254,7 @@ cp -r "${RECIPE_DIR}"/patches/"${target_platform}"/xxxx* "${SRC_DIR}"/build-leve
 
 # Configuration relevant to conda environment
 EXTRA_CMAKE_ARGS+=( \
-"-DZIG_SHARED_LLVM=ON" \
+"-DZIG_SHARED_LLVM=OFF" \
 "-DZIG_USE_LLVM_CONFIG=ON" \
 )
 
