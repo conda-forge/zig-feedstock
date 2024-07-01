@@ -10,7 +10,7 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
-      - patches/0001-cross-findllvm.patch  # [linux and aarch64]
+      - patches/0001-cross-findllvm.patch  # [linux and aarch64 or osx and arm64]
     folder: zig-source
 
   # We use the upstrean binary as bootstrap. Installing previous conda version of zig
