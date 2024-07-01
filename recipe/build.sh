@@ -61,7 +61,7 @@ function configure_platform() {
       SYSROOT_ARCH="aarch64"
       zig_os="macos"
       zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
-      zig_target="-Dtarget=aarch64-macos.11-gnu"
+      zig_target="-Dtarget=aarch64-macos-gnu"
       llvm_config="-DZIG_USE_LLVM_CONFIG=OFF"
       zig_sysroot=("--sysroot" "${SDKROOT}")
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
