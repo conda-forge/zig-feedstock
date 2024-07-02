@@ -1,15 +1,30 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -163,2 +163,8 @@
+@@ -91,2 +91,3 @@
+ set(ZIG_STATIC_ZSTD ${ZIG_STATIC} CACHE BOOL "Prefer linking against static zstd")
++set(ZIG_STATIC_XML2 ${ZIG_STATIC} CACHE BOOL "Prefer linking against static xml2")
+ if(APPLE AND ZIG_STATIC)
+@@ -163,2 +164,23 @@
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
 +else()
 +    if (MSVC)
-+        list(APPEND LLVM_LIBRARIES zstd.lib)
-+        list(APPEND LLVM_LIBRARIES xml2.lib)
-+        list(APPEND LLVM_LIBRARIES zlib.lib)
++        find_library(XML2 NAMES xml2 libxml2.a NAMES_PER_DIR)
++        list(APPEND LLVM_LIBRARIES "${XML2}")
++    endif()
++endif()
++
++if(ZIG_STATIC_XML2)
++    if (MSVC)
++        list(REMOVE_ITEM LLVM_LIBRARIES "xml2.lib")
++    else()
++        list(REMOVE_ITEM LLVM_LIBRARIES "-lxml2")
++    endif()
++
++    find_library(XML2 NAMES libxml2.a xml2 NAMES_PER_DIR)
++    list(APPEND LLVM_LIBRARIES "${XML2}")
++else()
++    if (MSVC)
++        find_library(XML2 NAMES xml2 libxml2.a NAMES_PER_DIR)
++        list(APPEND LLVM_LIBRARIES "${XML2}")
 +    endif()
  endif()
-@@ -731,2 +737,3 @@
- else()
-+target_compile_options(zigcpp PRIVATE -MD)
- target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
