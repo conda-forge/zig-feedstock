@@ -1,10 +1,11 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -91,2 +91,3 @@
- set(ZIG_STATIC_ZSTD ${ZIG_STATIC} CACHE BOOL "Prefer linking against static zstd")
-+set(ZIG_STATIC_XML2 ${ZIG_STATIC} CACHE BOOL "Prefer linking against static xml2")
- if(APPLE AND ZIG_STATIC)
-@@ -163,2 +164,23 @@
++find_package(xml2)
++find_package(zlib)
++find_package(zstd)
++
+ if(ZIG_STATIC_ZLIB)
+@@ -163,2 +168,23 @@
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
 +else()
 +    if (MSVC)
@@ -24,7 +25,23 @@
 +    list(APPEND LLVM_LIBRARIES "${XML2}")
 +else()
 +    if (MSVC)
-+        find_package(xml2)
-+        message(STATUS "xml2_LIBRARIES: ${xml2_LIBRARIES}")
++        find_library(XML2 NAMES xml2 libxml2 libxml2.a NAMES_PER_DIR)
++        list(APPEND LLVM_LIBRARIES "${XML2}")
 +    endif()
+ endif()
+@@ -722,3 +748,3 @@
+     -fno-rtti
+-    -fno-stack-protector
++    # -fno-stack-protector
+
+@@ -729,6 +755,8 @@
+     -Wno-comment
++    -Os
+   )
+ else()
+-target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
+-set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
++  target_compile_options(zigcpp PRIVATE -MD)
++  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
++  set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
  endif()
