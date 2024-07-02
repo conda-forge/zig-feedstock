@@ -80,9 +80,14 @@ function build_zig_with_zig() {
   export http_proxy=http://localhost
 
   if [[ -d "${build_dir}" ]]; then
+    if [[ "${CROSSCOMPILING_EMULATOR:-0}" == *"qemu"* ]]; then
+      ln -s "${CROSSCOMPILING_EMULATOR}" "${BUILD_PREFIX}/bin/qemu-${SYSROOT_ARCH}"
+    fi
+
     cd "${build_dir}" || exit 1
       "${zig}" build \
         --prefix "${install_dir}" \
+        --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \
         -Dversion-string="${PKG_VERSION}"
     cd "${current_dir}" || exit 1
@@ -108,6 +113,7 @@ function patchelf_installed_zig() {
 
 function remove_failing_langref() {
   local build_dir=$1
+  local testslistfile=${2:-"${SRC_DIR}"/build-level-patches/xxxx-remove-langref-std.txt}
 
   local current_dir
   current_dir=$(pwd)
@@ -116,7 +122,7 @@ function remove_failing_langref() {
     # These langerf code snippets fails with lld.ld failing to find /usr/lib64/libmvec_nonshared.a
     # No idea why this comes up, there is no -lmvec_nonshared.a on the link command
     # there seems to be no way to redirect to sysroot/usr/lib64/libmvec_nonshared.a
-    grep -v -f "${SRC_DIR}"/build-level-patches/xxxx-remove-langref-std.txt "${build_dir}"/doc/langref.html.in > "${build_dir}"/doc/_langref.html.in
+    grep -v -f "${testslistfile}" "${build_dir}"/doc/langref.html.in > "${build_dir}"/doc/_langref.html.in
     mv "${build_dir}"/doc/_langref.html.in "${build_dir}"/doc/langref.html.in
     while IFS= read -r file
     do
