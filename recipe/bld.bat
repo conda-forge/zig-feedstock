@@ -55,22 +55,22 @@ cd %_build_dir%
     -D CMAKE_VERBOSE_MAKEFILE=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_STATIC_LLVM=ON ^
-    -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
+    -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_SYSTEM_LIBCXX="c++" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-  :: Configuration puts -lzstd.dll instead of -lzstd
-  set "old_string=zstd.dll"
-  set "new_string=zstd"
-  for /f "tokens=*" %%A in (config.h) do (
-      set "line=%%A"
-      set "line=!line:%old_string%=%new_string%!"
-      echo !line! >> _config.h
-  )
-  move /y _config.h config.h
+  :: :: Configuration puts -lzstd.dll instead of -lzstd
+  :: set "old_string=zstd.dll"
+  :: set "new_string=zstd"
+  :: for /f "tokens=*" %%A in (config.h) do (
+  ::     set "line=%%A"
+  ::     set "line=!line:%old_string%=%new_string%!"
+  ::     echo !line! >> _config.h
+  :: )
+  :: move /y _config.h config.h
   type config.h
 
   cmake --build . --config Release
