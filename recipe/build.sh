@@ -26,40 +26,62 @@ function remove_failing_langref() {
 }
 
 function configure_platform() {
+  local zig_os="linux"
+  local zig_cpu="-Dcpu=baseline"
+  local zig_cxx="-DZIG_SYSTEM_LIBCXX=stdc++"
+  local llvm_config="-DZIG_USE_LLVM_CONFIG=ON"
+  local zig_sysroot=()
+
   case "${target_platform}" in
+    # Native platforms
     linux-64)
       SYSROOT_ARCH="x86_64"
-      EXTRA_ZIG_ARGS+=("-Dcpu=baseline")
       ;;
 
+    osx-64)
+      SYSROOT_ARCH="x86_64"
+      zig_os="macos"
+      zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
+      export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+      ;;
+
+    # Cross-compiled platforms
     linux-aarch64)
       SYSROOT_ARCH="aarch64"
-      EXTRA_ZIG_ARGS+=("-Dcpu=baseline")
+      zig_target="-Dtarget=${SYSROOT_ARCH}-${zig_os}-gnu"
       ;;
 
     linux-ppc64le)
       SYSROOT_ARCH="powerpc64le"
-      EXTRA_ZIG_ARGS+=("-Dcpu=ppc64le")
+      zig_cpu="-Dcpu=ppc64le"
+      zig_target="-Dtarget${SYSROOT_ARCH}-${zig_os}-gnu"
       ;;
 
-    osx-64)
-      SYSROOT_ARCH="macos"
-      EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=c++")
+    osx-arm64)
+      SYSROOT_ARCH="aarch64"
+      zig_os="macos"
+      zig_cxx="-DZIG_SYSTEM_LIBCXX=c++"
+      zig_target="-Dtarget=aarch64-macos-none"
+      llvm_config="-DZIG_USE_LLVM_CONFIG=OFF"
+      zig_sysroot=("--sysroot" "${SDKROOT}")
       export DYLD_LIBRARY_PATH="${PREFIX}/lib"
       ;;
   esac
+  EXTRA_CMAKE_ARGS+=("${zig_cxx}")
+  EXTRA_CMAKE_ARGS+=("${llvm_config}")
+  EXTRA_CMAKE_ARGS+=("-DZIG_SHARED_LLVM=ON")
+
+  EXTRA_ZIG_ARGS+=("${zig_cpu}")
+  EXTRA_ZIG_ARGS+=("${zig_sysroot[@]}")
+  EXTRA_ZIG_ARGS+=("${zig_target:-}")
 
   if [[ "${build_platform}" != "osx-64" ]]; then
     EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-    EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=stdc++")
     # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
     modify_libc_libm_for_zig "${BUILD_PREFIX}"
   fi
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
-    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${PREFIX}/aarch64-conda-linux-gnu/sysroot/libc64/libc.so.6")
-
-    EXTRA_ZIG_ARGS+=("-Dtarget=${SYSROOT_ARCH}-linux-gnu")
     EXTRA_ZIG_ARGS+=("-fqemu")
   fi
 }
@@ -115,7 +137,14 @@ function configure_cmake_zigcpp() {
 
     if [[ "${target_platform}" == "osx-64" ]]; then
       sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
+    elif [[ "${target_platform}" == "osx-arm64" ]]; then
+      echo "${CMAKE_ARGS}"
+      find "${PREFIX}" -name "libxml2*"
+      find "${PREFIX}" -name "libz*"
+      find "${PREFIX}" -name "libzstd*"
+      sed -i '' "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
     fi
+    cat config.h
 
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   cd "${current_dir}"
@@ -134,13 +163,12 @@ function cmake_build_install() {
 }
 
 function create_libc_file() {
-  local build_prefix=$1
-  local sysroot_arch=$2
+  local sysroot=$1
 
   cat <<EOF > _libc_file
-include_dir=${build_prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/include
-sys_include_dir=${build_prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/include
-crt_dir=${build_prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64
+include_dir=${sysroot}/usr/include
+sys_include_dir=${sysroot}/usr/include
+crt_dir=${sysroot}/usr/lib64
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
@@ -208,7 +236,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 # Configuration relevant to conda environment
 EXTRA_CMAKE_ARGS+=( \
 "-DZIG_SHARED_LLVM=ON" \
-"-DZIG_USE_LLVM_CONFIG=ON" \
+"-DZIG_USE_LLVM_CONFIG=OFF" \
 )
 
 # Current conda zig may not be able to build the latest zig
@@ -222,12 +250,14 @@ if [[ "${BUILD_FROM_SOURCE:-0}" == "1" ]]; then
   cmake_build_install "${cmake_build_dir}"
 fi
 
+create_libc_file "${SDKROOT}"
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
   "-Dconfig_h=${cmake_build_dir}/config.h" \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
+  "--libc" "${SRC_DIR}/_libc_file" \
   )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
