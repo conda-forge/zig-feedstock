@@ -27,8 +27,8 @@ build:
   number: 1
   skip: true  # [not (osx and arm64)]
   script:
-    - build.sh  # [not (osx and arm64)]
-    - build_scripts/cross-zig-build-osx-arm64.sh  # [osx and arm64]
+    - build_scripts/build.sh  # [not (osx and arm64)]
+    - build_scripts/cross-zig-osx-arm64.sh  # [osx and arm64]
   ignore_run_exports:
     - __glibc
 

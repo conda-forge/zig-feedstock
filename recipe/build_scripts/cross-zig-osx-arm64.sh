@@ -88,8 +88,7 @@ export DYLD_LIBRARY_PATH="${PREFIX}/lib"
 EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=c++")
 EXTRA_CMAKE_ARGS+=("-DZIG_USE_LLVM_CONFIG=OFF")
 EXTRA_CMAKE_ARGS+=("-DZIG_SHARED_LLVM=ON")
-EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu")
-EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
+EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none")
 
 EXTRA_ZIG_ARGS+=("-Dcpu=baseline")
 EXTRA_ZIG_ARGS+=("--sysroot" "${SDKROOT}")
@@ -98,8 +97,8 @@ EXTRA_ZIG_ARGS+=("-fqemu")
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-
 create_libc_file "${SDKROOT}"
+
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
   "-Dconfig_h=${cmake_build_dir}/config.h" \
