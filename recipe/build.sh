@@ -70,7 +70,6 @@ function configure_platform() {
   EXTRA_CMAKE_ARGS+=("${zig_cxx}")
   EXTRA_CMAKE_ARGS+=("${llvm_config}")
   EXTRA_CMAKE_ARGS+=("-DZIG_SHARED_LLVM=ON")
-  EXTRA_CMAKE_ARGS+=("-DZIG_STATIC=OFF")
 
   EXTRA_ZIG_ARGS+=("${zig_cpu}")
   EXTRA_ZIG_ARGS+=("${zig_sysroot[@]}")
@@ -83,7 +82,6 @@ function configure_platform() {
   fi
   if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
     EXTRA_CMAKE_ARGS+=("-DLLVM_CONFIG_EXE=${PREFIX}/bin/llvm-config")
-    EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_DYNAMIC_LINKER=${BUILD_PREFIX}/bin/${LD}")
     EXTRA_ZIG_ARGS+=("-fqemu")
   fi
 }
@@ -147,7 +145,7 @@ function configure_cmake_zigcpp() {
       sed -i '' "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
     fi
     cat config.h
-    exit 1
+
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   cd "${current_dir}"
 }
