@@ -140,7 +140,7 @@ function configure_cmake_zigcpp() {
     if [[ "${target_platform}" == "osx-64" ]]; then
       sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}/config.h"
     elif [[ "${target_platform}" == "osx-arm64" ]]; then
-      sed -i '' "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib@" "${cmake_build_dir}/config.h"
+      sed -i '' "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
     fi
 
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
