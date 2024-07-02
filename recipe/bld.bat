@@ -56,7 +56,7 @@ cd %_build_dir%
     -D LLVM_ENABLE_XML2=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
     -D ZIG_STATIC=ON ^
-    -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
+    -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_SYSTEM_LIBCXX="c++" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
