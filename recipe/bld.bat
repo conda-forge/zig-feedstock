@@ -54,7 +54,7 @@ cd %_build_dir%
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
     -D CMAKE_VERBOSE_MAKEFILE=ON ^
     -D ZIG_USE_LLVM_CONFIG=OFF ^
-    -D ZIG_STATIC_LLVM=ON ^
+    -D ZIG_STATIC=ON ^
     -D ZIG_TARGET_TRIPLE=%MSVC_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_SYSTEM_LIBCXX="c++" ^
