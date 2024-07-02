@@ -82,19 +82,16 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 SYSROOT_ARCH="aarch64"
 export DYLD_LIBRARY_PATH="${PREFIX}/lib"
 
-EXTRA_CMAKE_ARGS+=("-DZIG_SYSTEM_LIBCXX=c++")
-EXTRA_CMAKE_ARGS+=("-DZIG_USE_LLVM_CONFIG=OFF")
-EXTRA_CMAKE_ARGS+=("-DZIG_SHARED_LLVM=ON")
-EXTRA_CMAKE_ARGS+=("-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none")
-
-EXTRA_ZIG_ARGS+=("-Dcpu=baseline")
-EXTRA_ZIG_ARGS+=("--sysroot" "${SDKROOT}")
-EXTRA_ZIG_ARGS+=("-Dtarget=aarch64-macos-none")
-EXTRA_ZIG_ARGS+=("-fqemu")
+EXTRA_CMAKE_ARGS+=( \
+  "-DZIG_SYSTEM_LIBCXX=c++" \
+  "-DZIG_USE_LLVM_CONFIG=OFF" \
+  "-DZIG_SHARED_LLVM=ON" \
+  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none" \
+)
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-create_libc_file "${SDKROOT}"
+# create_libc_file "${SDKROOT}"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
@@ -102,8 +99,10 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "--libc" "${SRC_DIR}/_libc_file" \
-  )
+  "--sysroot" "${SDKROOT}" \
+  "-Dtarget=aarch64-macos-none" \
+)
+#  "--libc" "${SRC_DIR}/_libc_file" \
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
