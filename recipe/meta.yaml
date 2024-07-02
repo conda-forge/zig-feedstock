@@ -26,8 +26,6 @@ source:
 build:
   number: 1
   skip: true  # [not linux and not (osx and x86_64)]
-  script:
-    - build_scripts/build.sh
   ignore_run_exports:
     - __glibc
 
