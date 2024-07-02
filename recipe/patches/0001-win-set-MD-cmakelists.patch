@@ -3,7 +3,7 @@
 +find_package(xml2)
 +find_package(zlib)
 +find_package(zstd)
-+
++find_package(c)
  if(ZIG_STATIC_ZLIB)
 @@ -163,2 +168,23 @@
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
