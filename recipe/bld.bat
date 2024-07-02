@@ -14,19 +14,19 @@ set "CONFIG_DIR=%SRC_DIR%\_config"
 call :configZigCmakeBuildMSVC "%CONFIG_DIR%" "%SRC_DIR%\_conda-cmake-built"
 if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
-call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-cmake-built\bin\zig.exe" "%SRC_DIR%\_conda-final"
-if %ERRORLEVEL% neq 0 (
-    echo "Failed to build ZIG"
-    exit /b %ERRORLEVEL%
-    )
+:: call :buildZigWithZIG "%SRC_DIR%\_conda-zig-build" "%SRC_DIR%\_conda-cmake-built\bin\zig.exe" "%SRC_DIR%\_conda-final"
+:: if %ERRORLEVEL% neq 0 (
+::     echo "Failed to build ZIG"
+::     exit /b %ERRORLEVEL%
+::     )
 
 echo Copying ZIG to %PREFIX%
 mkdir %PREFIX%\bin
 mkdir %PREFIX%\lib
 mkdir %PREFIX%\doc
-copy %SRC_DIR%\_conda-final\zig.exe %PREFIX%\bin\zig.exe
-xcopy /E %SRC_DIR%\_conda-final\lib %PREFIX%\lib\ > nul
-xcopy /E %SRC_DIR%\_conda-final\doc %PREFIX%\doc\ > nul
+copy %SRC_DIR%\_conda-cmake-built\zig.exe %PREFIX%\bin\zig.exe
+xcopy /E %SRC_DIR%\_conda-cmake-built\lib %PREFIX%\lib\ > nul
+xcopy /E %SRC_DIR%\_conda-cmake-built\doc %PREFIX%\doc\ > nul
 
 dir %PREFIX%\lib
 
@@ -36,7 +36,7 @@ GOTO :EOF
 :: --- Functions ---
 
 :configZigCmakeBuildMSVC
-setlocal
+setlocal emabledelayedexpansion
 set "_build_dir=%~1"
 set "_zig_install_dir=%~2"
 
@@ -108,6 +108,7 @@ cd %BUILD_DIR%
     --search-prefix "%PREFIX%\Library\lib" ^
     --search-prefix "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.29.30133\lib" ^
     --skip-oom-steps ^
+    --zig_lib_dir "%PREFIX%\Library\lib" ^
     -Dconfig_h="%CONFIG_DIR%\config.h" ^
     -Doptimize=ReleaseFast ^
     -Dstatic-llvm ^
