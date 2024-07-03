@@ -2,7 +2,7 @@
 
 # --- Functions ---
 
-source "${RECIPE_DIR}/build_scripts/functions.sh"
+source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
 
