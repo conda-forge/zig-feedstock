@@ -18,7 +18,7 @@ mkdir -p "${cmake_install_dir}"
 
 # Current conda zig may not be able to build the latest zig
 # mamba create -yp "${SRC_DIR}"/conda-zig-bootstrap zig
-SYSROOT_ARCH="aarch64"
+SYSROOT_ARCH="x86_64"
 zig="${SRC_DIR}/zig-bootstrap/zig"
 
 EXTRA_CMAKE_ARGS+=( \
