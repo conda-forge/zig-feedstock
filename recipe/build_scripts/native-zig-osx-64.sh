@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
+set -euxo pipefail
 
 # --- Functions ---
 
 source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
-
-set -euxo pipefail
 
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
@@ -30,6 +29,7 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \

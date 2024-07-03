@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
+set -euxo pipefail
 
 # --- Functions ---
 
 source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
-
-set -euxo pipefail
 
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
