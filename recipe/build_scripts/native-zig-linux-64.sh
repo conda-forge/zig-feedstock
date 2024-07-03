@@ -21,10 +21,10 @@ mkdir -p "${cmake_install_dir}"
 SYSROOT_ARCH="x86_64"
 zig="${SRC_DIR}/zig-bootstrap/zig"
 
-# When specifying the TARGET, some libraries are not found
 EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SHARED_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
+  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" \
 )
 
 # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)

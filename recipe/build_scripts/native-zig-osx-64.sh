@@ -22,9 +22,9 @@ SYSROOT_ARCH="aarch64"
 zig="${SRC_DIR}/zig-bootstrap/zig"
 
 EXTRA_CMAKE_ARGS+=( \
-"-DZIG_SHARED_LLVM=ON" \
-"-DZIG_USE_LLVM_CONFIG=ON" \
-"-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" \
+  "-DZIG_SHARED_LLVM=ON" \
+  "-DZIG_USE_LLVM_CONFIG=ON" \
+  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none" \
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a
@@ -37,7 +37,7 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "-Dtarget=${SYSROOT_ARCH}-linux-gnu" \
+  "-Dtarget=${SYSROOT_ARCH}-macos-none" \
   "-fqemu"
   )
 
