@@ -22,7 +22,6 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 # mamba create -yp "${SRC_DIR}"/conda-zig-bootstrap zig
 SYSROOT_ARCH="aarch64"
 zig="${SRC_DIR}/zig-bootstrap/zig"
-export DYLD_LIBRARY_PATH="${PREFIX}/lib"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SYSTEM_LIBCXX=c++" \
@@ -41,7 +40,6 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "--sysroot" "${SDKROOT}" \
   "-Dtarget=aarch64-macos-none" \
 )
 
