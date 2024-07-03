@@ -80,7 +80,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 # Current conda zig may not be able to build the latest zig
 # mamba create -yp "${SRC_DIR}"/conda-zig-bootstrap zig
 SYSROOT_ARCH="aarch64"
-export DYLD_LIBRARY_PATH="${PREFIX}/lib"
+zig="${SRC_DIR}/zig-bootstrap/zi"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SYSTEM_LIBCXX=c++" \
@@ -91,7 +91,6 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-# create_libc_file "${SDKROOT}"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
@@ -99,10 +98,8 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "--sysroot" "${SDKROOT}" \
   "-Dtarget=aarch64-macos-none" \
 )
-#  "--libc" "${SRC_DIR}/_libc_file" \
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
-self_build "${SRC_DIR}/conda-zig-source" "${SRC_DIR}/zig-bootstrap/zig" "${PREFIX}"
+self_build "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
