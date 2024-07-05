@@ -24,8 +24,8 @@ source:
     sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 0
-  skip: true  # [not linux and not (osx and x86_64)]
+  number: 1
+  skip: true  # [not linux and not osx]
   ignore_run_exports:
     - __glibc
 
