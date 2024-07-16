@@ -5,8 +5,20 @@ function cmake_build_install() {
   current_dir=$(pwd)
 
   cd "${build_dir}" || exit 1
-    cmake --build . -- -j"${CPU_COUNT}"
+    cmake --build . -v -- -j"${CPU_COUNT}"
     cmake --install .
+  cd "${current_dir}" || exit 1
+}
+
+function cmake_build_cmake_target() {
+  local build_dir=$1
+  local target=$2
+
+  local current_dir
+  current_dir=$(pwd)
+
+  cd "${build_dir}" || exit 1
+    cmake --build . --target "${target}" -v -- -j"${CPU_COUNT}"
   cd "${current_dir}" || exit 1
 }
 
@@ -54,16 +66,16 @@ function configure_cmake_zigcpp() {
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
     fi
 
+    if [[ ${USE_CMAKE_ARGS:-0} == 1 ]]; then
+      # Split $CMAKE_ARGS into an array
+      IFS=' ' read -r -a cmake_args_array <<< "$CMAKE_ARGS"
+      EXTRA_CMAKE_ARGS+=("${cmake_args_array[@]}")
+    fi
+
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
-
-    if [[ "${target_platform}" == "osx-64" ]]; then
-      sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" config.h
-    elif [[ "${target_platform}" == "osx-arm64" ]]; then
-      sed -i '' "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
-    fi
 
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   cd "${current_dir}" || exit 1
@@ -99,18 +111,35 @@ function build_zig_with_zig() {
   fi
 }
 
-function patchelf_installed_zig() {
-  local install_dir=$1
+function patchelf_with_2.28() {
+  local _exec=$1
   local _prefix=$2
 
-  patchelf --remove-rpath                                                                          "${install_dir}/bin/zig"
-  patchelf --set-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64"             "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/lib"                       "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64"         "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${_prefix}/lib"                                                       "${install_dir}/bin/zig"
-  patchelf --add-rpath      "${PREFIX}/lib"                                                        "${install_dir}/bin/zig"
+  patchelf --remove-rpath                                                                          "${_exec}"
+  patchelf --set-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64"             "${_exec}"
+  patchelf --add-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/lib"                       "${_exec}"
+  patchelf --add-rpath      "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64"         "${_exec}"
+  patchelf --add-rpath      "${_prefix}/lib"                                                       "${_exec}"
+  patchelf --add-rpath      "${PREFIX}/lib"                                                        "${_exec}"
 
-  patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${install_dir}/bin/zig"
+  patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${_exec}"
+}
+
+function patchelf_replace_2.28() {
+  local _exec=$1
+  local _prefix=$2
+
+  patchelf --remove-rpath                                                                          "${_exec}"
+  patchelf --set-rpath       "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64"             "${_exec}"
+  patchelf --add-rpath       "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/lib"                       "${_exec}"
+  patchelf --add-rpath       "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64"         "${_exec}"
+  patchelf --add-rpath       "${_prefix}/lib"                                                       "${_exec}"
+  patchelf --add-rpath       "${PREFIX}/lib"                                                        "${_exec}"
+
+  # patchelf --replace-needed  "libc.so.6" "libc-2.28.so"                                             "${_exec}"
+  # patchelf --replace-needed  "ld-linux-aarch64.so.1" "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1"                                   "${_exec}"
+
+  # patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so"  "${_exec}"
 }
 
 function remove_failing_langref() {

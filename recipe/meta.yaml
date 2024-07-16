@@ -11,6 +11,7 @@ source:
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
+      - patches/0002-cross-CMakeLists.txt.patch  # [build_platform != target_platform]
     folder: zig-source
 
   # We use the upstrean binary as bootstrap. Installing previous conda version of zig
@@ -26,6 +27,8 @@ source:
 build:
   number: 1
   skip: true  # [not linux and not osx]
+  script_env:
+    - BUILD_WITH_CMAKE=1  # [linux or (osx and x86_64)]
   ignore_run_exports:
     - __glibc
 
@@ -36,6 +39,14 @@ requirements:
     - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
+    # This is needed to build a qemu that intercepts the execve() call that zig2 emits
+    - glib  # [linux and build_platform != target_platform]
+    - make # [linux and build_platform != target_platform]
+    - pkg-config  # [linux and build_platform != target_platform]
+    - sphinx  # [linux and build_platform != target_platform]
+    - sphinx-rtd-theme  # [linux and build_platform != target_platform]
+    - sysroot_linux-64 >=2.28  # [linux and build_platform != target_platform]
+    - zlib  # [linux and build_platform != target_platform]
   host:
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
