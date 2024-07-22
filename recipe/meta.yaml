@@ -42,7 +42,7 @@ requirements:
     - ninja
     # This is needed to build a qemu that intercepts the execve() call that zig2 emits
     - glib  # [linux and build_platform != target_platform]
-    - make # [linux and build_platform != target_platform]
+    - make  # [linux and build_platform != target_platform]
     - pkg-config  # [linux and build_platform != target_platform]
     - sphinx  # [linux and build_platform != target_platform]
     - sphinx-rtd-theme  # [linux and build_platform != target_platform]
