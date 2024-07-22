@@ -141,10 +141,14 @@
 -  "-Dcpu=${ZIG_TARGET_MCPU}"
 +  "-Dtarget=${ZIG_CROSS_TARGET_TRIPLE}"
 +  "-Dcpu=${ZIG_CROSS_TARGET_MCPU}"
- 
+
 @@ -978,3 +1042,4 @@
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
 -  COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
 +  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
 +  DEPENDS zig2
    COMMENT STATUS "Building stage3"
+@@ -989,2 +1055,3 @@
+
++install(CODE "set(CROSSCOMPILING_EMULATOR \"${CROSSCOMPILING_EMULATOR}\")")
+ install(CODE "set(ZIG_EXECUTABLE \"${ZIG_EXECUTABLE}\")")

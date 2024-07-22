@@ -94,12 +94,8 @@ function build_zig_with_zig() {
   export http_proxy=http://localhost
 
   if [[ -d "${build_dir}" ]]; then
-    if [[ "${CROSSCOMPILING_EMULATOR:-0}" == *"qemu"* ]]; then
-      ln -s "${CROSSCOMPILING_EMULATOR}" "${BUILD_PREFIX}/bin/qemu-${SYSROOT_ARCH}"
-    fi
-
     cd "${build_dir}" || exit 1
-      "${zig}" build \
+      "${CROSSCOMPILING_EMULATOR:-}" "${zig}" build \
         --prefix "${install_dir}" \
         --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \
@@ -140,6 +136,25 @@ function patchelf_replace_2.28() {
   # patchelf --replace-needed  "ld-linux-aarch64.so.1" "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1"                                   "${_exec}"
 
   # patchelf --set-interpreter "${_prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so"  "${_exec}"
+}
+
+function patchelf_sysroot_interpreter() {
+  local _sysroot=$1
+  local _interpreter=$2
+  local _exec=$3
+  local _add_lib=${4:-}
+
+  patchelf --set-interpreter "${_interpreter}" "${_exec}"
+  patchelf --set-rpath "${PREFIX}"/lib "${_exec}"
+  if [[ -d "${_sysroot}"/lib64 ]]; then
+    patchelf --add-rpath "${_sysroot}"/lib64 "${_exec}"
+  fi
+  patchelf --add-rpath "${_sysroot}"/lib "${_exec}"
+  if [[ -n "${_add_lib}" ]]; then
+    patchelf --add-needed "libdl.so.2" "${_exec}"
+    patchelf --add-needed "librt.so.1" "${_exec}"
+    patchelf --add-needed "libm.so.6" "${_exec}"
+  fi
 }
 
 function remove_failing_langref() {

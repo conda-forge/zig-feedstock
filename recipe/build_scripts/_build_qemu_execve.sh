@@ -37,5 +37,12 @@ function build_qemu_execve() {
       patchelf --set-interpreter "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/lib64/ld-linux-x86-64.so.2" "${BUILD_PREFIX}/bin/qemu-${arch}"
       patchelf --set-rpath "\$ORIGIN/../x86_64-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/qemu-${arch}"
       patchelf --add-rpath "\$ORIGIN/../lib" "${BUILD_PREFIX}/bin/qemu-${arch}"
+
+      export QEMU_LD_PREFIX="${SYSROOT_PATH}"
+      export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+      export QEMU_EXECVE="${BUILD_PREFIX}"/bin/qemu-${SYSROOT_ARCH}
+      export QEMU_STACK_SIZE=67108864
+      export QEMU_LOG_FILENAME="${SRC_DIR}"/_qemu.log
+      export QEMU_LOG="strace"
   cd "${SRC_DIR}"
 }

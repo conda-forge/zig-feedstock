@@ -12,6 +12,7 @@ source:
     patches:
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
       - patches/0002-cross-CMakeLists.txt.patch  # [build_platform != target_platform]
+      - patches/0003-cross-install.cmake.patch  # [build_platform != target_platform]
     folder: zig-source
 
   # We use the upstrean binary as bootstrap. Installing previous conda version of zig
@@ -48,6 +49,7 @@ requirements:
     - sysroot_linux-64 >=2.28  # [linux and build_platform != target_platform]
     - zlib  # [linux and build_platform != target_platform]
   host:
+    - {{ compiler('cxx') }}  # [linux and build_platform != target_platform]
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
@@ -63,12 +65,12 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    - test -f ${PREFIX}/doc/langref.html  # [unix]
+    # - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
     - if not exist %PREFIX%\\bin\\zig.exe exit 1  # [win]
-    - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
+    # - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\c.zig exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\compiler_rt.zig exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]

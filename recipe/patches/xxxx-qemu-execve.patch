@@ -25,9 +25,8 @@
  extern unsigned long mmap_min_addr;
 --- qemu/linux-user/syscall.c.orig	2024-07-13 15:31:51.834834526 -0500
 +++ qemu/linux-user/syscall.c	2024-07-13 18:42:00.033718159 -0500
-@@ -8416,2 +8416,105 @@
- }
-+
+@@ -8417,2 +8417,104 @@
+
 +#define BINPRM_BUF_SIZE 128
 +
 +/* qemu_execve() Must return target values and target errnos. */
@@ -127,16 +126,18 @@
 +    } else {
 +        new_argp[2] = argv[0];
 +    }
-+    qemu_log_mask(LOG_GUEST_ERROR, "execve(\"%s\")\n", qemu_execve_path);
 +    return get_errno(execve(qemu_execve_path, new_argp, envp));
 +}
-
-@@ -8534,3 +8639,6 @@
-         ? safe_execveat(dirfd, exe, argp, envp, flags)
++
+ ssize_t do_guest_readlink(const char *pathname, char *buf, size_t bufsiz)
+@@ -8533,4 +8635,8 @@
+     ret = is_execveat
+-        ? safe_execveat(dirfd, exe, argp, envp, flags)
 -        : safe_execve(exe, argp, envp);
++        ? ((qemu_execve_path && *qemu_execve_path)
++          ? get_errno(qemu_execve(exe, argp, envp))
++          : safe_execveat(dirfd, exe, argp, envp, flags))
 +        : ((qemu_execve_path && *qemu_execve_path)
 +          ? get_errno(qemu_execve(exe, argp, envp))
 +          : safe_execve(exe, argp, envp));
-+    qemu_log_mask(LOG_GUEST_ERROR, "execve(\"%s\", %p, %p, %d)\n", exe ? (char *)exe : (char *)p, argp, envp, is_execveat);
-
      ret = get_errno(ret);

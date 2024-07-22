@@ -16,6 +16,7 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 SYSROOT_ARCH="x86_64"
 
 EXTRA_CMAKE_ARGS+=( \
+  "-DCMAKE_BUILD_TYPE=Release" \
   "-DZIG_SHARED_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" \
