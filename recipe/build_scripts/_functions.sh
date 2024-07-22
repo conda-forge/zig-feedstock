@@ -93,9 +93,15 @@ function build_zig_with_zig() {
   export HTTPS_PROXY=https://localhost
   export http_proxy=http://localhost
 
+  if [[ ${CROSSCOMPILING_EMULATOR:-} == '' ]]; then
+    _cmd="${zig}"
+  else
+    _cmd="${CROSSCOMPILING_EMULATOR} ${zig}"
+  fi
+
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || exit 1
-      "${CROSSCOMPILING_EMULATOR:-}" "${zig}" build \
+      "${_cmd}" build \
         --prefix "${install_dir}" \
         --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \
@@ -150,6 +156,7 @@ function patchelf_sysroot_interpreter() {
     patchelf --add-rpath "${_sysroot}"/lib64 "${_exec}"
   fi
   patchelf --add-rpath "${_sysroot}"/lib "${_exec}"
+
   if [[ -n "${_add_lib}" ]]; then
     patchelf --add-needed "libdl.so.2" "${_exec}"
     patchelf --add-needed "librt.so.1" "${_exec}"
