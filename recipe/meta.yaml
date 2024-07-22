@@ -46,7 +46,7 @@ requirements:
     - pkg-config  # [linux and build_platform != target_platform]
     - sphinx  # [linux and build_platform != target_platform]
     - sphinx-rtd-theme  # [linux and build_platform != target_platform]
-    - sysroot_linux-64 >=2.28  # [linux and build_platform != target_platform]
+    - {{ stdlib("c") }}  # [linux and build_platform != target_platform]
     - zlib  # [linux and build_platform != target_platform]
   host:
     - {{ compiler('cxx') }}  # [linux and build_platform != target_platform]
