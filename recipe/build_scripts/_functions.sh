@@ -157,7 +157,7 @@ function patchelf_sysroot_interpreter() {
   fi
   patchelf --add-rpath "${_sysroot}"/lib "${_exec}"
 
-  if [[ -n "${_add_lib}" ]]; then
+  if [[ "${_add_lib:-0}" != "0" ]]; then
     patchelf --add-needed "libdl.so.2" "${_exec}"
     patchelf --add-needed "librt.so.1" "${_exec}"
     patchelf --add-needed "libm.so.6" "${_exec}"
