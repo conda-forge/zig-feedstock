@@ -63,6 +63,8 @@ requirements:
     - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
 
 test:
+  requires:
+    - patchelf  # [aarch64]
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
     # - test -f ${PREFIX}/doc/langref.html  # [unix]

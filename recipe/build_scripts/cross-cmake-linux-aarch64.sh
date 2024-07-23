@@ -68,7 +68,7 @@ popd
 patchelf --set-rpath "\$ORIGIN/../${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${PREFIX}/bin/zig"
 patchelf --add-rpath "\$ORIGIN/../lib" "${PREFIX}/bin/zig"
 
-# ${QEMU_EXECVE} "${PREFIX}/bin/zig" --version
+${QEMU_EXECVE} "${PREFIX}/bin/zig" version
 
 # patchelf_sysroot_interpreter "${SYSROOT_PATH}" "${TARGET_INTERPRETER}" "${PREFIX}/bin/zig"
 
