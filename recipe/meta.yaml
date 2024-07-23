@@ -84,6 +84,7 @@ test:
     {% endfor %}
 
     # Functionality tests
+    - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig  # [aarch64]
     - zig version
     - zig zen
     - zig init
