@@ -11,6 +11,8 @@ source:
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
+      - patches/0002-cross-CMakeLists.txt.patch  # [build_platform != target_platform]
+      - patches/0003-cross-install.cmake.patch  # [build_platform != target_platform]
     folder: zig-source
 
   # We use the upstrean binary as bootstrap. Installing previous conda version of zig
@@ -26,6 +28,8 @@ source:
 build:
   number: 1
   skip: true  # [not linux and not osx]
+  script_env:
+    - BUILD_WITH_CMAKE=1  # [linux or (osx and x86_64)]
   ignore_run_exports:
     - __glibc
 
@@ -36,7 +40,16 @@ requirements:
     - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
+    # This is needed to build a qemu that intercepts the execve() call that zig2 emits
+    - glib  # [linux and build_platform != target_platform]
+    - make  # [linux and build_platform != target_platform]
+    - pkg-config  # [linux and build_platform != target_platform]
+    - sphinx  # [linux and build_platform != target_platform]
+    - sphinx-rtd-theme  # [linux and build_platform != target_platform]
+    - sysroot_{{ build_platform }} >=2.28  # [linux and build_platform != target_platform]
+    - zlib  # [linux and build_platform != target_platform]
   host:
+    - {{ compiler('cxx') }}  # [linux and build_platform != target_platform]
     - clangdev {{ llvm_version }}
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
@@ -47,17 +60,21 @@ requirements:
     - zlib
     - zstd
   run:
+    - libxml2  # [linux and build_platform != target_platform]
     - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
 
 test:
+  requires:
+    - patchelf  # [aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    - test -f ${PREFIX}/doc/langref.html  # [unix]
+    # - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
     - if not exist %PREFIX%\\bin\\zig.exe exit 1  # [win]
-    - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
+    # - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\c.zig exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\compiler_rt.zig exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]
@@ -71,6 +88,9 @@ test:
     {% endfor %}
 
     # Functionality tests
+    - readelf -l ${PREFIX}/bin/zig  # [aarch64]
+    - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig  # [aarch64]
+    - readelf -l ${PREFIX}/bin/zig  # [aarch64]
     - zig version
     - zig zen
     - zig init

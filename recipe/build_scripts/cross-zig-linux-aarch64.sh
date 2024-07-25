@@ -49,4 +49,4 @@ EXTRA_ZIG_ARGS+=( \
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 remove_failing_langref "${SRC_DIR}/conda-zig-source"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
-patchelf_installed_zig "${PREFIX}" "${PREFIX}"
+patchelf_with_ld-2.28 "${PREFIX}/bin/zig" "${PREFIX}"
