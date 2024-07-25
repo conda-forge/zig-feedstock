@@ -64,7 +64,7 @@ pushd "${cmake_build_dir}"
   cmake --install .
 popd
 
-patchelf --set-interpreter "${PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-linux-${SYSROOT_ARCH}.so.1" "${PREFIX}/bin/zig"
+# patchelf --set-interpreter "${PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-linux-${SYSROOT_ARCH}.so.1" "${PREFIX}/bin/zig"
 patchelf --set-rpath "\$ORIGIN/../${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${PREFIX}/bin/zig"
 patchelf --add-rpath "\$ORIGIN/../lib" "${PREFIX}/bin/zig"
 
