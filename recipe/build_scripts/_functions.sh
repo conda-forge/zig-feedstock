@@ -94,14 +94,14 @@ function build_zig_with_zig() {
   export http_proxy=http://localhost
 
   if [[ ${CROSSCOMPILING_EMULATOR:-} == '' ]]; then
-    _cmd="${zig}"
+    _cmd=("${zig}")
   else
-    _cmd="${CROSSCOMPILING_EMULATOR} ${zig}"
+    _cmd=("${CROSSCOMPILING_EMULATOR}" "${zig}")
   fi
-
+  echo "Building with ${_cmd[*]}"
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || exit 1
-      "${_cmd}" build \
+      "${_cmd[*]}" build \
         --prefix "${install_dir}" \
         --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \
