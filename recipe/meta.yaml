@@ -26,6 +26,8 @@ source:
 build:
   number: 1
   skip: true  # [not linux and not osx]
+  script_env:
+    - BUILD_WITH_CMAKE=1  # [linux or (osx and x86_64)]
   ignore_run_exports:
     - __glibc
 
