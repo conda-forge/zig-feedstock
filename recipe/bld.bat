@@ -4,8 +4,8 @@ set "MSVC_TARGET=x86_64-windows-msvc"
 set "GNU_TARGET=x86_64-windows-gnu"
 set "MCPU=native"
 
-:: set "CC=%BUILD_PREFIX%\Library\ucrt64\bin\gcc"
-:: set "CXX=%BUILD_PREFIX%\Library\ucrt64\bin\g++"
+set CC=x86_64-w64-mingw32-gcc
+set CXX=x86_64-w64-mingw32-g++
 
 :: Configure CMake in build directory
 set "SOURCE_DIR=%SRC_DIR%\zig-source"
@@ -49,9 +49,6 @@ cd %_build_dir%
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   set "CMAKE_BUILD_PARALLEL_LEVEL=1"
 
-  set CC=x86_64-w64-mingw32-gcc
-  set CXX=x86_64-w64-mingw32-g++
-
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
@@ -61,7 +58,7 @@ cd %_build_dir%
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
     -D ZIG_TARGET_MCPU="baseline" ^
     -D ZIG_VERSION="%PKG_VERSION%" ^
-    %SOURCE_DIR%
+    %SOURCE_DIR% --debug-output
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
     :: -D CMAKE_VERBOSE_MAKEFILE=ON ^
 
