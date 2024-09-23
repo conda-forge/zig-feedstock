@@ -18,10 +18,9 @@ mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
-# Current conda zig may not be able to build the latest zig
-# mamba create -yp "${SRC_DIR}"/conda-zig-bootstrap zig
 SYSROOT_ARCH="aarch64"
-zig="${SRC_DIR}/zig-bootstrap/zig"
+
+zig="${BUILD_PREFIX}/bin/zig"
 
 EXTRA_CMAKE_ARGS+=( \
 "-DZIG_SHARED_LLVM=ON" \

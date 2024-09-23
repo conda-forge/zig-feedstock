@@ -10,6 +10,18 @@ function cmake_build_install() {
   cd "${current_dir}" || exit 1
 }
 
+function cmake_build_cmake_target() {
+  local build_dir=$1
+  local target=$2
+
+  local current_dir
+  current_dir=$(pwd)
+
+  cd "${build_dir}" || exit 1
+    cmake --build . --target "${target}" -v -- -j"${CPU_COUNT}"
+  cd "${current_dir}" || exit 1
+}
+
 function modify_libc_libm_for_zig() {
   local prefix=$1
 
