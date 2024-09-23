@@ -13,8 +13,9 @@ source:
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
     folder: zig-source
 
-  # We use the upstream binary as bootstrap. Installing previous conda version of zig
-  # may trigger issues with dependencies (i.e. llvm)
+  # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
+  # The zig variable in the build scripts would then need to be updated
+  #
   # - folder: zig-bootstrap
   #   url: https://ziglang.org/download/{{ version }}/zig-windows-x86_64-{{ version }}.zip  # [win]
   #   sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win]
