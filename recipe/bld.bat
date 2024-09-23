@@ -56,7 +56,6 @@ cd %_build_dir%
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
     -D CMAKE_INSTALL_PREFIX="%_zig_install_dir%" ^
-    -D CMAKE_VERBOSE_MAKEFILE=ON ^
     -D ZIG_USE_LLVM_CONFIG=ON ^
     -D ZIG_STATIC_LLVM=ON ^
     -D ZIG_TARGET_TRIPLE=%GNU_TARGET% ^
@@ -64,6 +63,9 @@ cd %_build_dir%
     -D ZIG_VERSION="%PKG_VERSION%" ^
     %SOURCE_DIR%
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+    :: -D CMAKE_VERBOSE_MAKEFILE=ON ^
+
+  type config.h
 
   cmake --build . --config Release --verbose
   if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%

@@ -13,3 +13,8 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
+@@ -979,3 +985,3 @@
+   COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
+-  COMMENT STATUS "Building stage3"
++  COMMENT STATUS "Building stage3 ${ZIG_BUILD_ARGS}"
+   WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
