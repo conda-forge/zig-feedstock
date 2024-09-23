@@ -48,6 +48,10 @@ cd %_build_dir%
 
   set "CLANG_MAXIMUM_CONCURRENT_JOBS=1"
   set "CMAKE_BUILD_PARALLEL_LEVEL=1"
+
+  set CC=x86_64-w64-mingw32-gcc
+  set CXX=x86_64-w64-mingw32-g++
+
   cmake %CMAKE_ARGS% ^
     -G "Ninja" ^
     -D CMAKE_BUILD_TYPE=Release ^
