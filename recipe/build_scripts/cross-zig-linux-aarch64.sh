@@ -21,8 +21,8 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 SYSROOT_ARCH="aarch64"
 
 zig="${BUILD_PREFIX}/bin/zig"
-patchelf --set-rpath "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
-patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
+patchelf --set-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
+patchelf --add-rpath "${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
 readelf -d "${BUILD_PREFIX}/bin/zig"
 
 EXTRA_CMAKE_ARGS+=( \
