@@ -19,16 +19,19 @@ mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 SYSROOT_ARCH="aarch64"
-BUILD_SYSROOT_ARCH="x86_64"
 
 zig="${BUILD_PREFIX}/bin/zig"
 
-patchelf --set-rpath "${BUILD_PREFIX}/${BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
+_BUILD_SYSROOT_ARCH="x86_64"
+patchelf --set-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
-patchelf --set-interpreter "${BUILD_PREFIX}/${BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
-ldd "${BUILD_PREFIX}/bin/zig"
-readelf -d "${BUILD_PREFIX}/bin/zig"
-export LD_DEBUG=libs
+patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
+
+${zig} --version
+
+# ldd "${BUILD_PREFIX}/bin/zig"
+# readelf -d "${BUILD_PREFIX}/bin/zig"
+# export LD_DEBUG=libs
 
 EXTRA_CMAKE_ARGS+=( \
 "-DZIG_SHARED_LLVM=ON" \
