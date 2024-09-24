@@ -9,3 +9,8 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
+@@ -826,3 +828,3 @@
+   else()
+-    set(ZIG2_LINK_FLAGS "-Wl,-z,stack-size=0x10000000")
++    set(ZIG2_LINK_FLAGS "-Wl,-z,stack-size=0x10000000,--allow-multiple-definition")
+   endif()
