@@ -1,20 +1,9 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -163,2 +163,8 @@
-     list(APPEND LLVM_LIBRARIES "${ZSTD}")
-+else()
-+    if (MSVC)
-+        list(APPEND LLVM_LIBRARIES zstd)
-+        list(APPEND LLVM_LIBRARIES xml2)
-+        list(APPEND LLVM_LIBRARIES zlib)
-+    endif()
+@@ -164,2 +164,3 @@
  endif()
-@@ -731,2 +737,3 @@
++string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
+@@ -731,2 +732,3 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
-@@ -979,3 +985,3 @@
-   COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
--  COMMENT STATUS "Building stage3"
-+  COMMENT STATUS "Building stage3 ${ZIG_BUILD_ARGS}"
-   WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
