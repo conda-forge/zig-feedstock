@@ -3,6 +3,7 @@
 @@ -164,2 +164,3 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
+
 @@ -731,2 +732,3 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
