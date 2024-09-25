@@ -30,15 +30,12 @@ patchelf --add-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sys
 patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
 patchelf --shrink-rpath --allowed-rpath-prefixes "${BUILD_PREFIX}" "${BUILD_PREFIX}/bin/zig"
 
-patchelf --replace-needed librt.so.1 "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/librt.so" "${BUILD_PREFIX}/bin/zig"
-patchelf --replace-needed libdl.so.2 "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libdl.so" "${BUILD_PREFIX}/bin/zig"
-patchelf --replace-needed libm.so.6 "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libm.so" "${BUILD_PREFIX}/bin/zig"
-ldd "${BUILD_PREFIX}/bin/zig"
-
-# patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/librt.so" "${BUILD_PREFIX}/bin/zig"
-# patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libdl.so" "${BUILD_PREFIX}/bin/zig"
-# patchelf --remove-needed librt.so.1 "${BUILD_PREFIX}/bin/zig"
-# patchelf --remove-needed libdl.so.2 "${BUILD_PREFIX}/bin/zig"
+patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/librt.so" "${BUILD_PREFIX}/bin/zig"
+patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libdl.so" "${BUILD_PREFIX}/bin/zig"
+patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libm.so" "${BUILD_PREFIX}/bin/zig"
+patchelf --remove-needed librt.so.1 "${BUILD_PREFIX}/bin/zig"
+patchelf --remove-needed libdl.so.2 "${BUILD_PREFIX}/bin/zig"
+patchelf --remove-needed libm.so.6 "${BUILD_PREFIX}/bin/zig"
 
 ldd "${BUILD_PREFIX}/bin/zig"
 # readelf -d "${BUILD_PREFIX}/bin/zig"
