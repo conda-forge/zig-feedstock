@@ -39,7 +39,7 @@ requirements:
     - cmake >=3.5
     # - libclang-cpp {{ llvm_version }}  # [build_platform != target_platform]
     - ninja
-     - zig  # [build_platform != target_platform]
+    - zig  # [build_platform != target_platform]
   host:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
