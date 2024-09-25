@@ -12,5 +12,5 @@
 @@ -826,3 +828,3 @@
    else()
 -    set(ZIG2_LINK_FLAGS "-Wl,-z,stack-size=0x10000000")
-+    set(ZIG2_LINK_FLAGS "-Wl,-z,stack-size=0x10000000,-Wl,--allow-multiple-definition")
++    set(ZIG2_LINK_FLAGS "-Wl,-z,stack-size=0x10000000 -Wl,--allow-multiple-definition")
    endif()
