@@ -12,5 +12,5 @@
 @@ -821,3 +823,3 @@
    elseif(MINGW)
 -    set(ZIG2_LINK_FLAGS "-Wl,--stack,0x10000000")
-+    set(ZIG2_LINK_FLAGS "-Wl,--stack,0x10000000 -Wl,--allow-multiple-definition")
++    set(ZIG2_LINK_FLAGS "-Wl,--stack,0x10000000 -Wl,--allow-multiple-definition -lbufferoverflow.lib")
    # Solaris/illumos ld(1) does not provide a --stack-size option.
