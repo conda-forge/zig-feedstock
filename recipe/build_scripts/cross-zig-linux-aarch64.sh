@@ -23,10 +23,10 @@ SYSROOT_ARCH="aarch64"
 zig="${BUILD_PREFIX}/bin/zig"
 
 _BUILD_SYSROOT_ARCH="x86_64"
+patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
 patchelf --set-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr//lib64" "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
-# patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
 
 ${zig} --version
 
