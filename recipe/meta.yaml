@@ -37,7 +37,6 @@ requirements:
     - {{ build_c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux]
     - {{ stdlib("c") }}
     - cmake >=3.5
-    # - libclang-cpp {{ llvm_version }}  # [build_platform != target_platform]
     - ninja
     - zig  # [build_platform != target_platform]
   host:
