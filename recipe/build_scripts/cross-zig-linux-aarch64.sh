@@ -23,12 +23,14 @@ SYSROOT_ARCH="aarch64"
 zig="${BUILD_PREFIX}/bin/zig"
 
 _BUILD_SYSROOT_ARCH="x86_64"
-find ${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/ -name librt.so
+
 patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
 patchelf --set-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${BUILD_PREFIX}/bin/zig"
-patchelf --replace-needed "/lib64/librt.so.1" "librt.so" "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
+
+patchelf --replace-needed "/lib64/librt.so.1" "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/librt.so.1" "${BUILD_PREFIX}/bin/zig"
+patchelf --replace-needed "/lib64/libdl.so.2" "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libdl.so.1" "${BUILD_PREFIX}/bin/zig"
 ldd "${BUILD_PREFIX}/bin/zig"
 # readelf -d "${BUILD_PREFIX}/bin/zig"
 # export LD_DEBUG=libs
