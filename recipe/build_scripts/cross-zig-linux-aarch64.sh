@@ -27,6 +27,7 @@ find ${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/ -name librt
 patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
 patchelf --set-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${BUILD_PREFIX}/bin/zig"
+patchelf --replace-needed librt.so.1 librt.so "${BUILD_PREFIX}/bin/zig"
 patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
 
 ${zig} --version
