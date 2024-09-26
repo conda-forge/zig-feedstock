@@ -27,7 +27,7 @@ source:
 
 build:
   number: 4
-  skip: true  # [not win or not x86_64]
+  skip: true  # [not win]
   script_env:
     - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
   ignore_run_exports:
