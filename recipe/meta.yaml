@@ -25,7 +25,7 @@ source:
   #   sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 2
+  number: 3
   skip: true  # [not linux and not osx]
   script_env:
     - BUILD_WITH_CMAKE=1  # [(linux or osx) and x86_64]
@@ -36,7 +36,7 @@ requirements:
   build:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
-    - {{ build_c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux]
+    - {{ build_c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and build_platform != target_platform]
     - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
@@ -57,7 +57,6 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    # - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
