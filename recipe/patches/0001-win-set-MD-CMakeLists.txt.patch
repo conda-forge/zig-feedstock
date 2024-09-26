@@ -3,14 +3,9 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+#string(REPLACE ";uuid.lib" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
++list(APPEND LLVM_LIBRARIES "m;c")
 
 @@ -731,2 +733,3 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
-@@ -821,3 +823,3 @@
-   elseif(MINGW)
--    set(ZIG2_LINK_FLAGS "-Wl,--stack,0x10000000")
-+    set(ZIG2_LINK_FLAGS "-Wl,--stack,0x10000000 -Wl,--allow-multiple-definition")
-   # Solaris/illumos ld(1) does not provide a --stack-size option.
