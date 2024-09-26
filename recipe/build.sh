@@ -16,7 +16,6 @@ case "${target_platform}" in
     bash "${RECIPE_DIR}"/build_scripts/native-"${builder}"-osx-64.sh
     ;;
   win-64)
-    builder=cmake
     bash "${RECIPE_DIR}"/build_scripts/native-"${builder}"-win-64.sh
     ;;
   linux-aarch64)
