@@ -57,6 +57,7 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
+    - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
