@@ -1,5 +1,3 @@
-build_c_stdlib:
-- sysroot
 c_compiler:
 - gcc
 c_compiler_version:

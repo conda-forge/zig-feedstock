@@ -36,7 +36,7 @@ requirements:
   build:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
-    - {{ build_c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and build_platform != target_platform]
+    - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
