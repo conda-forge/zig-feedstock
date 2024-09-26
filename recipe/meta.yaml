@@ -26,7 +26,7 @@ source:
 
 build:
   number: 2
-  skip: true  # [not linux and not osx]
+  skip: true  # [not win or not x86_64]
   ignore_run_exports:
     - __glibc
 
@@ -42,6 +42,7 @@ requirements:
   host:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - libcxx {{ cxx_compiler_version }}  # [osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
