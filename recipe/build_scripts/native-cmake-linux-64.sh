@@ -13,11 +13,10 @@ export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 cmake_build_dir="${SRC_DIR}/build-release"
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
 
-# Current conda zig may not be able to build the latest zig - using a bootstrap zig
-# mamba create -yp "${SRC_DIR}"/conda-zig-bootstrap zig
 SYSROOT_ARCH="x86_64"
 
 EXTRA_CMAKE_ARGS+=( \
+  "-DCMAKE_BUILD_TYPE=Release" \
   "-DZIG_SHARED_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" \

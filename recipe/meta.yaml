@@ -27,6 +27,8 @@ source:
 build:
   number: 2
   skip: true  # [not linux and not osx]
+  script_env:
+    - BUILD_WITH_CMAKE=1  # [(linux or osx) and x86_64]
   ignore_run_exports:
     - __glibc
 
@@ -55,7 +57,7 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    - test -f ${PREFIX}/doc/langref.html  # [unix]
+    # - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]

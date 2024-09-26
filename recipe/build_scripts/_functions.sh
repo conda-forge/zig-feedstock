@@ -66,16 +66,16 @@ function configure_cmake_zigcpp() {
       EXTRA_CMAKE_ARGS+=("-DZIG_AR_WORKAROUND=ON")
     fi
 
+    if [[ ${USE_CMAKE_ARGS:-0} == 1 ]]; then
+      # Split $CMAKE_ARGS into an array
+      IFS=' ' read -r -a cmake_args_array <<< "$CMAKE_ARGS"
+      EXTRA_CMAKE_ARGS+=("${cmake_args_array[@]}")
+    fi
+
     cmake "${SRC_DIR}"/zig-source \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
-
-    if [[ "${target_platform}" == "osx-64" ]]; then
-      sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" config.h
-    elif [[ "${target_platform}" == "osx-arm64" ]]; then
-      sed -i '' "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
-    fi
 
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   cd "${current_dir}" || exit 1
@@ -93,13 +93,15 @@ function build_zig_with_zig() {
   export HTTPS_PROXY=https://localhost
   export http_proxy=http://localhost
 
+  if [[ ${CROSSCOMPILING_EMULATOR:-} == '' ]]; then
+    _cmd=("${zig}")
+  else
+    _cmd=("${CROSSCOMPILING_EMULATOR}" "${zig}")
+  fi
+  echo "Building with ${_cmd[*]}"
   if [[ -d "${build_dir}" ]]; then
-    if [[ "${CROSSCOMPILING_EMULATOR:-0}" == *"qemu"* ]]; then
-      ln -s "${CROSSCOMPILING_EMULATOR}" "${BUILD_PREFIX}/bin/qemu-${SYSROOT_ARCH}"
-    fi
-
     cd "${build_dir}" || exit 1
-      "${zig}" build \
+      "${_cmd[*]}" build \
         --prefix "${install_dir}" \
         --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \
