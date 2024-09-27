@@ -16,7 +16,7 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 # Current conda zig may not be able to build the latest zig
 SYSROOT_ARCH="x86_64"
 
-find / -name libmsvcprt.a 2>/dev/null
+echo "$(cmd.exe /c "vcvarsall.bat && set")"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
