@@ -18,7 +18,7 @@ SYSROOT_ARCH="x86_64"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
-  "-DZIG_CMAKE_PREFIX_PATH=$PREFIX/Library/lib;C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.29.30133/Library/lib" \
+  "-DZIG_CMAKE_PREFIX_PATH=$PREFIX/Library/lib;$LIB" \
   "-DZIG_STATIC_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_SYSTEM_LIBCXX='c++'" \
