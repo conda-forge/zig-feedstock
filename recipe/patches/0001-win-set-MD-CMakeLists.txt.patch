@@ -3,7 +3,7 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "msvcrt.lib")
++list(APPEND LLVM_LIBRARIES "ucrt.lib")
 
 @@ -731,2 +733,3 @@
  else()
