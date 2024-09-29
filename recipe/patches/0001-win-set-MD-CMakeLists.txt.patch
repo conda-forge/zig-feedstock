@@ -12,5 +12,9 @@
 @@ -813,3 +817,3 @@
    set(ZIG2_COMPILE_FLAGS "/Od")
 -  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
-+  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE /NODEFAULTLIB:LIBCMT")
++  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE /NODEFAULTLIB:LIBCMT /DEFAULTLIB:vcruntime")
  else()
+@@ -939,2 +941,3 @@
+   -Dstd-docs=false
++  -fverbose-link -fverbose-cc --verbose
+ )
