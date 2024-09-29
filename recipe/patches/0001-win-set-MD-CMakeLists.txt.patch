@@ -3,9 +3,14 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+#list(APPEND LLVM_LIBRARIES "c")
++set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")  #list(APPEND LLVM_LIBRARIES "c")
 
 @@ -731,2 +733,3 @@
  else()
-+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")  #target_compile_options(zigcpp PRIVATE -MD)
++target_compile_options(zigcpp PRIVATE -MD)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
+@@ -901,3 +904,3 @@
+   COMPILE_FLAGS ${ZIG2_COMPILE_FLAGS}
+-  LINK_FLAGS "${ZIG2_LINK_FLAGS}"
++  LINK_FLAGS "${ZIG2_LINK_FLAGS}" /NODEFAULTLIB:LIBCMT
+ )
