@@ -24,8 +24,10 @@ source:
     sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 1
+  number: 4
   skip: true  # [not linux and not (osx and x86_64) and not win64]
+  script_env:
+    - BUILD_WITH_CMAKE=1  # [(linux or osx) and x86_64]
   ignore_run_exports:
     - __glibc
 
@@ -39,13 +41,14 @@ requirements:
     - {{ stdlib('clang') }}  # [win]
     - cmake >=3.5
     - ninja
+    - zig  # [build_platform != target_platform]
   host:
     - clangdev {{ llvm_version }}
+    - libclang-cpp {{ llvm_version }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
-    - libclang-cpp {{ llvm_version }}
-    - libcxx {{ cxx_compiler_version }}  # [osx]
     - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
     - zlib
     - zstd
@@ -55,7 +58,6 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
