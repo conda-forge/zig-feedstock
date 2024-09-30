@@ -31,9 +31,8 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 
 pushd "${cmake_build_dir}"
   dir
-  type config.h || true
-  type config.zig || true
-  exit 0
+  cat config.h || true
+  cat config.zig || true
 popd
 
 # sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
