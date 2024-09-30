@@ -19,7 +19,6 @@ SYSROOT_ARCH="x86_64"
 _LIBPATH="${LIBPATH//\\//}"
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
-  "-DCMAKE_EXE_LINKER_FLAGS=msvcrt.lib" \
   "-DZIG_CMAKE_PREFIX_PATH=$PREFIX/Library/lib;$_LIBPATH" \
   "-DZIG_STATIC_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
@@ -29,5 +28,7 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
+type "${cmake_build_dir}"/config.h
+exit 1
 # sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
 cmake_build_install "${cmake_build_dir}"
