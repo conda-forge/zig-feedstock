@@ -33,6 +33,7 @@ pushd "${cmake_build_dir}"
   dir
   type config.h || true
   type config.zig || true
+  exit 0
 popd
 
 # sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
