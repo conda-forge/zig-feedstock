@@ -28,7 +28,7 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
-type "${cmake_build_dir}"/config.h
+dir "${cmake_build_dir}"
 exit 1
 # sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
 cmake_build_install "${cmake_build_dir}"
