@@ -40,6 +40,7 @@ requirements:
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - {{ stdlib("c") }}
     - cmake >=3.5
+    - m2w64-gcc-libs  # [win]
     - ninja
     - zig  # [build_platform != target_platform]
   host:
