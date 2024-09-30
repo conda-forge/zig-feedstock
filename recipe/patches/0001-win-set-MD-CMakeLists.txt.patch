@@ -16,5 +16,5 @@
  else()
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
-+  --verbose-link --verbose-cc
++  --verbose-link
  )
