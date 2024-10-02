@@ -15,13 +15,11 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 
 # Current conda zig may not be able to build the latest zig
 SYSROOT_ARCH="x86_64"
-PREFIX_WIN=$(echo "$BUILD_PREFIX" | sed 's/\//\\/g')
-where /r "${PREFIX_WIN}":*msvcrt*
 
 _LIBPATH="${LIBPATH//\\//}"
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
-  "-DZIG_CMAKE_PREFIX_PATH=$BUILD_PREFIX;$PREFIX/Library/lib;$_LIBPATH" \
+  "-DZIG_CMAKE_PREFIX_PATH=$BUILD_PREFIX/Library/mingw-w64/lib;$PREFIX/Library/lib;$_LIBPATH" \
   "-DZIG_STATIC_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_SYSTEM_LIBCXX='c++'" \
