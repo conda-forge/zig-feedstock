@@ -16,7 +16,7 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 # Current conda zig may not be able to build the latest zig
 SYSROOT_ARCH="x86_64"
 PREFIX_WIN=$(echo "$PREFIX" | sed 's/\//\\/g')
-where /r "${PREFIX_WIN}" *msvcrt*
+where /r "${PREFIX_WIN}":*msvcrt*
 
 _LIBPATH="${LIBPATH//\\//}"
 EXTRA_CMAKE_ARGS+=( \
