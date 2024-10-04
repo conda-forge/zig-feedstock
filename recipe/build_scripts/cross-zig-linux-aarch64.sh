@@ -55,7 +55,7 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "-Dtarget=${SYSROOT_ARCH}-linux-msvc" \
+  "-Dtarget=${SYSROOT_ARCH}-linux-gnu" \
   "-fqemu"
   "--glibc-runtimes" "${PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/libc.so.6"
 )
