@@ -33,7 +33,6 @@ EXTRA_CMAKE_ARGS+=( \
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 
 pushd "${cmake_build_dir}"
-  dir
   cat config.h || true
   cat config.zig || true
 popd
