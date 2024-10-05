@@ -3,7 +3,7 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")  #list(APPEND LLVM_LIBRARIES "c")
++list(APPEND LLVM_LIBRARIES "ucrt.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 @@ -731,2 +733,4 @@
  else()
@@ -13,7 +13,7 @@
 @@ -813,3 +818,3 @@
    set(ZIG2_COMPILE_FLAGS "/Od")
 -  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
-+  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE /VERBOSE:LIB ucrt.lib")
++  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
  else()
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
