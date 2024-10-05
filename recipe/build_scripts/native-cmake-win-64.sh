@@ -16,17 +16,17 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 # Current conda zig may not be able to build the latest zig
 SYSROOT_ARCH="x86_64"
 
-dir "$BUILD_PREFIX"/Library/mingw-w64/lib/gcc/x86_64-w64-mingw32/5.3.0
-dir "$BUILD_PREFIX"/Library/mingw-w64/lib/binutils
+# dir "$BUILD_PREFIX"/Library/mingw-w64/lib/gcc/x86_64-w64-mingw32/5.3.0
+# dir "$BUILD_PREFIX"/Library/mingw-w64/lib/binutils
 
 _LIBPATH="${LIBPATH//\\//}"
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
-  "-DZIG_CMAKE_PREFIX_PATH=$BUILD_PREFIX/Library/mingw-w64/lib/gcc/x86_64-w64-mingw32/5.3.0;$PREFIX/Library/lib;$_LIBPATH" \
+  "-DZIG_CMAKE_PREFIX_PATH=$PREFIX/Library/lib;$_LIBPATH" \
   "-DZIG_STATIC_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_SYSTEM_LIBCXX='c++'" \
-  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-gnu" \
+  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc" \
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a
