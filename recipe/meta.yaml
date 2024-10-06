@@ -46,7 +46,7 @@ requirements:
   host:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
-    - libcxx {{ cxx_compiler_version }}  # [osx and win64]
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
