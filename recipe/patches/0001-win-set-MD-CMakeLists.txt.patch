@@ -21,9 +21,9 @@
 +  # target_link_libraries(zig1 LINK_PUBLIC m)
    if(MINGW)
 @@ -869,2 +871,3 @@
-  --mod "aro" "lib/compiler/aro/aro.zig"
-+ --verbose-link --verbose
-)
+   --mod "aro" "lib/compiler/aro/aro.zig"
++  --verbose-link --verbose
+ )
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
 +  --verbose-link
