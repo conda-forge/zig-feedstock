@@ -22,7 +22,7 @@
    if(MINGW)
 @@ -869,2 +871,3 @@
    --mod "aro" "lib/compiler/aro/aro.zig"
-+  --verbose-link --verbose
++  --verbose-link --verbose-cc
  )
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
