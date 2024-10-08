@@ -36,8 +36,8 @@ build:
 
 requirements:
   build:
-    - {{ compiler('clang') }}
-    - {{ compiler('clangxx') }}
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - {{ stdlib("c") }}
     - cmake >=3.5
