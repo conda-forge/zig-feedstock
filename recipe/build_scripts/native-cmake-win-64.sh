@@ -27,7 +27,7 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_STATIC_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_SYSTEM_LIBCXX='c++'" \
-  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-gnu" \
+  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc" \
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a
