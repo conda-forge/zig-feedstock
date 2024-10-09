@@ -24,10 +24,10 @@ EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
   "-DCMAKE_VERBOSE_MAKEFILE=ON" \
   "-DZIG_CMAKE_PREFIX_PATH=$PREFIX/Library/lib;$_LIBPATH" \
-  "-DZIG_USE_LLVM_CONFIG=ON" \
-  "-DZIG_SYSTEM_LIBCXX='c++'" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc" \
 )
+  # "-DZIG_SYSTEM_LIBCXX='c++'" \
+  # "-DZIG_USE_LLVM_CONFIG=ON" \
   # "-DZIG_STATIC_LLVM=ON" \
 
 # When using installed c++ libs, zig needs libzigcpp.a
