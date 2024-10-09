@@ -3,7 +3,7 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 @@ -731,2 +733,4 @@
  else()
