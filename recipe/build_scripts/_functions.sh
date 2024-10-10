@@ -5,7 +5,7 @@ function cmake_build_install() {
   current_dir=$(pwd)
 
   cd "${build_dir}" || exit 1
-    cmake --build . -- -j"${CPU_COUNT}"
+    cmake --build . -v -- -j"${CPU_COUNT}"
     cmake --install .
   cd "${current_dir}" || exit 1
 }

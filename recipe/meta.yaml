@@ -11,6 +11,8 @@ source:
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
     patches:
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
+      - patches/0001-win-set-MD-CMakeLists.txt.patch  # [win]
+      - patches/0002-win-deprecations.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
@@ -25,10 +27,10 @@ source:
   #   sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 3
-  skip: true  # [not linux and not osx]
+  number: 4
+  skip: true  # [not win]
   script_env:
-    - BUILD_WITH_CMAKE=1  # [(linux or osx) and x86_64]
+    - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
   ignore_run_exports:
     - __glibc
 
@@ -39,6 +41,7 @@ requirements:
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - {{ stdlib("c") }}
     - cmake >=3.5
+    # - m2w64-toolchain  # [win]
     - ninja
     - zig  # [build_platform != target_platform]
   host:
@@ -57,6 +60,7 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
+    - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
