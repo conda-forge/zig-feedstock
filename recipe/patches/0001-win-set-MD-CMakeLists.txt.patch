@@ -26,5 +26,5 @@
  )
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
-+  --verbose-link
++  --verbose-link --libc=$ENV{RECIPE_DIR}/patches/win_libc.txt
  )
