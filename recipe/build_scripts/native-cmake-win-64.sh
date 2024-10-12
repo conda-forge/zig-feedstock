@@ -17,7 +17,6 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 SYSROOT_ARCH="x86_64"
 
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64"
-dir "${_UCRT_LIBPATH}"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
