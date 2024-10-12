@@ -26,5 +26,4 @@
  )
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
-+  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt --search-prefix $ENV{LIBPATH}
- )
++  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt --search-prefix $<SHELL_PATH:$<SHELL_PATH:$<SHELL_PATH:$ENV{LIBPATH}>>> )
