@@ -18,6 +18,8 @@ SYSROOT_ARCH="x86_64"
 
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64"
 
+export FIRST_PATH="${LIBPATH%%;*}"
+
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
   "-DCMAKE_VERBOSE_MAKEFILE=ON" \
