@@ -14,7 +14,7 @@ crt_dir=C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64
 
 # The directory that contains `vcruntime.lib`.
 # Only needed when targeting MSVC on Windows.
-msvc_lib_dir=C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Tools\14.29.30133\Lib\x64
+msvc_lib_dir=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\14.29.30133\Lib\x64
 
 # The directory that contains `kernel32.lib`.
 # Only needed when targeting MSVC on Windows.
