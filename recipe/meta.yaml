@@ -48,11 +48,11 @@ requirements:
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
-    - sysroot_{{ target_platform }} >=2.28 # [linux and (aarch64 or ppc64le)]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
     - zlib
     - zstd
   run:
-    - sysroot_{{ target_platform }} >=2.28 # [linux and (aarch64 or ppc64le)]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
   commands:
