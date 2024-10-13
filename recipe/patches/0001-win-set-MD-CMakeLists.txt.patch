@@ -26,5 +26,5 @@
  )
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
-+  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt --search-prefix "$<LIST:GET,$<STRING:REPLACE,\,$<COMMA>,$<REPLACE:;,\\;,$ENV{LIBPATH}>>,1>"
++  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt --search-prefix "$<IF:$<BOOL:$ENV{LIBPATH}>,$<LIST:GET,$<STRING:REPLACE,\;,||,$ENV{LIBPATH}>,0>,>"
  )
