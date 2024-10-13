@@ -18,7 +18,7 @@ mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
-SYSROOT_ARCH="ppc64le"
+SYSROOT_ARCH="powerpc64le"
 
 zig="${BUILD_PREFIX}/bin/zig"
 
