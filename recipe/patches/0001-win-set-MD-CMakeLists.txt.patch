@@ -13,7 +13,8 @@
 @@ -813,3 +818,3 @@
    set(ZIG2_COMPILE_FLAGS "/Od")
 -  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
-+  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
++  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE /LIBPATH:C:/Windows/System32 /LIBPATH:C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64")
+   set(ZIG2_LINK_FLAGS_DEBUG "/DEBUG")
  else()
 @@ -852,3 +854,3 @@
  else()
@@ -26,5 +27,5 @@
  )
 @@ -939,2 +941,3 @@
    -Dstd-docs=false
-+  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt -L "C:/Windows/System32" -L "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
++  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt --search-prefix "C:/Windows/System32" --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
  )
