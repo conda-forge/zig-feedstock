@@ -10,7 +10,7 @@
 +target_compile_options(zigcpp PRIVATE -MD)
 +add_compile_options(/MD /wd4715 /wd4291)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
-@@ -813,3 +818,3 @@
+@@ -813,3 +817,3 @@
    set(ZIG2_COMPILE_FLAGS "/Od")
 -  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
 +  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
@@ -25,7 +25,7 @@
    --mod "aro" "lib/compiler/aro/aro.zig"
 +  --verbose-link --verbose-cc
  )
-@@ -958,2 +960,7 @@
+@@ -950,2 +952,7 @@
    -Dno-langref
 +  --verbose-link
 +  --libc $ENV{RECIPE_DIR}/patches/win_libc.txt
