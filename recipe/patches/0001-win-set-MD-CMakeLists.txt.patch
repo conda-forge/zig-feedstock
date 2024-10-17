@@ -3,7 +3,7 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib" "ucrt.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 @@ -731,2 +733,4 @@
  else()
@@ -25,7 +25,11 @@
    --mod "aro" "lib/compiler/aro/aro.zig"
 +  --verbose-link --verbose-cc
  )
-@@ -939,2 +941,3 @@
+@@ -939,2 +941,7 @@
    -Dstd-docs=false
-+  --verbose-link --libc $ENV{RECIPE_DIR}/patches/win_libc.txt --search-prefix "C:/Windows/System32" --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
++  --verbose-link
++  --libc $ENV{RECIPE_DIR}/patches/win_libc.txt
++  --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/ucrt/x64"
++  --search-prefix "C:/Windows/System32"
++  --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
  )

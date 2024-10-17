@@ -23,7 +23,7 @@ where version.dll
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
   "-DCMAKE_VERBOSE_MAKEFILE=ON" \
-  "-DZIG_CMAKE_PREFIX_PATH=${_UCRT_LIBPATH//\\//};${LIBPATH//\\//}" \
+  "-DZIG_CMAKE_PREFIX_PATH=${_UCRT_LIBPATH};${LIBPATH}" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc" \
 )
   # "-DZIG_SYSTEM_LIBCXX='c++'" \
