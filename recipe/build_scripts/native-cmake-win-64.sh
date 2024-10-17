@@ -34,6 +34,7 @@ EXTRA_CMAKE_ARGS+=( \
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 
 # sed -i '' "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
+
 pushd "${cmake_build_dir}"
   cat config.h || true
   cat config.zig || true

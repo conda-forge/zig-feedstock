@@ -25,11 +25,11 @@
    --mod "aro" "lib/compiler/aro/aro.zig"
 +  --verbose-link --verbose-cc
  )
-@@ -939,2 +941,7 @@
-   -Dstd-docs=false
+@@ -958,2 +960,7 @@
+   -Dno-langref
 +  --verbose-link
 +  --libc $ENV{RECIPE_DIR}/patches/win_libc.txt
-+  --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/ucrt/x64"
-+  --search-prefix "C:/Windows/System32"
-+  --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
++  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/ucrt/x64"
++  # --search-prefix "C:/Windows/System32"
++  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
  )
