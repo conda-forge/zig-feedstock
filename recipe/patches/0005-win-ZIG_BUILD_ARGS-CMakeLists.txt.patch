@@ -1,12 +1,7 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -950,4 +952,9 @@
+@@ -950,2 +952,4 @@
    -Dno-langref
 +  --verbose-link
 +  --libc $ENV{RECIPE_DIR}/patches/win_libc.txt
  )
-
- option(ZIG_EXTRA_BUILD_ARGS "Extra zig build args")
-+  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/ucrt/x64"
-+  # --search-prefix "C:/Windows/System32"
-+  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
