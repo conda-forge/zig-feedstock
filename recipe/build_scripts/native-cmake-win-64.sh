@@ -20,6 +20,9 @@ _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;
 
 export FIRST_PATH="${LIBPATH%%;*}"
 where version.dll
+where ucrt.dll
+where OLDNAMES.a
+
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
   "-DCMAKE_VERBOSE_MAKEFILE=ON" \
@@ -30,7 +33,7 @@ EXTRA_CMAKE_ARGS+=( \
   # "-DZIG_USE_LLVM_CONFIG=ON" \
   # "-DZIG_STATIC_LLVM=ON" \
 
-type zig-source\\CMakeLists.txt || true
+cat build-release/CMakeLists.txt
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
