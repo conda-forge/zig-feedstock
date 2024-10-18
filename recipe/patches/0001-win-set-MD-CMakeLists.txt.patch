@@ -1,37 +1,7 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -164,2 +164,4 @@
- endif()
-+string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib" "ucrt.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-
 @@ -731,2 +733,4 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
 +add_compile_options(/MD /wd4715 /wd4291)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
-@@ -813,3 +817,3 @@
-   set(ZIG2_COMPILE_FLAGS "/Od")
--  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
-+  set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
-   set(ZIG2_LINK_FLAGS_DEBUG "/DEBUG")
- else()
-@@ -852,3 +854,3 @@
- else()
--  target_link_libraries(zig1 LINK_PUBLIC m)
-+  # target_link_libraries(zig1 LINK_PUBLIC m)
-   if(MINGW)
-@@ -869,2 +871,3 @@
-   --mod "aro" "lib/compiler/aro/aro.zig"
-+  --verbose-link --verbose-cc
- )
-@@ -950,4 +952,9 @@
-   -Dno-langref
-+  --verbose-link
-+  --libc $ENV{RECIPE_DIR}/patches/win_libc.txt
- )
-
-option(ZIG_EXTRA_BUILD_ARGS "Extra zig build args")
-+  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/ucrt/x64"
-+  # --search-prefix "C:/Windows/System32"
-+  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
