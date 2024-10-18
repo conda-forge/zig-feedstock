@@ -30,6 +30,8 @@ EXTRA_CMAKE_ARGS+=( \
   # "-DZIG_USE_LLVM_CONFIG=ON" \
   # "-DZIG_STATIC_LLVM=ON" \
 
+type CMakeLists.txt || true
+
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 
