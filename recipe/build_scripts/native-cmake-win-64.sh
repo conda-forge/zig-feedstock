@@ -19,9 +19,9 @@ SYSROOT_ARCH="x86_64"
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 
 export FIRST_PATH="${LIBPATH%%;*}"
-where version.dll
-where ucrt.dll
-where OLDNAMES.a
+where version.dll || true
+where ucrt.lib || true
+where OLDNAMES.a || true
 
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
