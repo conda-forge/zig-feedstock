@@ -25,11 +25,13 @@
    --mod "aro" "lib/compiler/aro/aro.zig"
 +  --verbose-link --verbose-cc
  )
-@@ -950,2 +952,7 @@
+@@ -950,4 +952,9 @@
    -Dno-langref
 +  --verbose-link
 +  --libc $ENV{RECIPE_DIR}/patches/win_libc.txt
+ )
+
+option(ZIG_EXTRA_BUILD_ARGS "Extra zig build args")
 +  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/ucrt/x64"
 +  # --search-prefix "C:/Windows/System32"
 +  # --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
- )
