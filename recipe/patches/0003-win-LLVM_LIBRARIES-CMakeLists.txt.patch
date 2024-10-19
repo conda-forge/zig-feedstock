@@ -3,5 +3,5 @@
 @@ -164,2 +164,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib" "C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64\ucrt.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib" "C:/Program Files (x86)/Windows Kits/10/lib/10.0.22621.0/ucrt/x64/ucrt.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
