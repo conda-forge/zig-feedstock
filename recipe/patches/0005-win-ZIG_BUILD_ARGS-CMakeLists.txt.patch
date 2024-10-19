@@ -4,4 +4,5 @@
    -Dno-langref
 +  --verbose-link
 +  --libc "$ENV{RECIPE_DIR}/patches/win_libc.txt"
++  --search-prefix "C:\Windows\System32"
    -Dstd-docs=false
