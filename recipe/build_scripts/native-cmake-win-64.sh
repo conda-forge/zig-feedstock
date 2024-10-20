@@ -31,9 +31,9 @@ EXTRA_CMAKE_ARGS+=( \
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 
-sed -i 's#ZIG_LLVM_LIB_PATH ".+#ZIG_LLVM_LIB_PATH "C:/Windows/System32"#' "${cmake_build_dir}"/config.h
 
 pushd "${cmake_build_dir}"
+  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \".+', 'ZIG_LLVM_LIB_PATH \"C:/Windows/System32\"' | Set-Content config.h"
   cat config.h || true
   cat config.zig || true
 popd
