@@ -1,13 +1,20 @@
 --- build.zig.old	2024-06-06 14:05:11.000000000 -0500
 +++ build.zig	2024-06-22 11:27:13.931633400 -0500
-@@ -337,1 +337,10 @@
-                 // LLVM depends on networking as of version 18.
-+               if (cmake_cfg) |cfg| {
-+                    if (cfg.cmake_prefix_path.len > 0) {
-+                        var it = mem.tokenizeScalar(u8, cfg.cmake_prefix_path, ';');
-+                        while (it.next()) |path| {
-+                            artifact.addSearchPrefix(path);
-+                            b.addSearchPrefix(path);
-+                        }
-+                    }
-+                }
+@@ -686,1 +686,2 @@
+     exe.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
++    exe.addLibraryPath(.{ .cwd_relative = cfg.system_lib_dir });
+@@ -859,1 +859,2 @@
+     llvm_lib_dir: []const u8,
++    system_lib_dir: []const u8,
+@@ -926,1 +926,2 @@
+         .llvm_lib_dir = undefined,
++        .system_lib_dir = undefined,
+@@ -982,4 +982,8 @@
+         .{
+             .prefix = "#define ZIG_LLVM_LIB_PATH ",
+             .field = "llvm_lib_dir",
+         },
++        .{
++            .prefix = "#define ZIG_SYSTEM_LIB_PATH ",
++            .field = "system_lib_dir",
++        },
