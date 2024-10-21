@@ -1,0 +1,5 @@
+--- build.zig.old	2024-06-06 14:05:11.000000000 -0500
++++ build.zig	2024-06-22 11:27:13.931633400 -0500
+@@ -324,1 +324,2 @@
+                     b.addSearchPrefix(path);
++                    artifact.addSearchPrefix(path);

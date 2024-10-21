@@ -16,6 +16,7 @@ source:
       - patches/0003-win-LLVM_LIBRARIES-CMakeLists.txt.patch  # [win]
       - patches/0004-win-ZIG2_LINK_FLAGS-CMakeLists.txt.patch  # [win]
       - patches/0005-win-ZIG_BUILD_ARGS-CMakeLists.txt.patch  # [win]
+      - patches/0006-win-add-libdir-build.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
