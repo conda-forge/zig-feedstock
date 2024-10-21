@@ -1,5 +1,11 @@
 --- build.zig.old	2024-06-06 14:05:11.000000000 -0500
 +++ build.zig	2024-06-22 11:27:13.931633400 -0500
-@@ -324,1 +324,2 @@
-                     b.addSearchPrefix(path);
-+                    artifact.addSearchPrefix(path);
+@@ -337,1 +337,8 @@
+                 // LLVM depends on networking as of version 18.
++                if (cfg.cmake_prefix_path.len > 0) {
++                    var it = mem.tokenizeScalar(u8, cfg.cmake_prefix_path, ';');
++                    while (it.next()) |path| {
++                        artifact.addSearchPrefix(path);
++                        b.addSearchPrefix(path);
++                    }
++                }
