@@ -9,12 +9,12 @@
 @@ -926,1 +928,2 @@
          .llvm_lib_dir = undefined,
 +        .system_lib_dir = undefined,
-@@ -983,4 +986,8 @@
-         .{
-             .prefix = "#define ZIG_LLVM_LIB_PATH ",
+@@ -985,4 +987,8 @@
              .field = "llvm_lib_dir",
          },
 +        .{
 +            .prefix = "#define ZIG_SYSTEM_LIB_PATH ",
 +            .field = "system_lib_dir",
 +        },
+        .{
+            .prefix = "#define ZIG_SYSTEM_LIBCXX",
