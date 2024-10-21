@@ -9,7 +9,7 @@
 @@ -926,1 +928,2 @@
          .llvm_lib_dir = undefined,
 +        .system_lib_dir = undefined,
-@@ -985,4 +987,8 @@
+@@ -985,4 +988,8 @@
              .field = "llvm_lib_dir",
          },
 +        .{
