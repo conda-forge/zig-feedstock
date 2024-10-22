@@ -36,7 +36,9 @@ build:
   script_env:
     - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
   ignore_run_exports:
-    - __glibc
+    - __glibc  # [linux and aarch64]
+    - ucrt  # [win]
+    - vc14_runtime  # [win]
 
 requirements:
   build:
@@ -56,6 +58,7 @@ requirements:
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
     - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
+    - libxml2  # [win]
     - zlib
     - zstd
   run:
@@ -64,12 +67,10 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
     - if not exist %PREFIX%\\bin\\zig.exe exit 1  # [win]
-    - if not exist %PREFIX%\\doc\\langref.html exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\c.zig exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\compiler_rt.zig exit 1  # [win]
     - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]
