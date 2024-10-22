@@ -16,7 +16,7 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 # Current conda zig may not be able to build the latest zig
 SYSROOT_ARCH="x86_64"
 
-_UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
+_UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
@@ -33,7 +33,7 @@ configure_cmake "${cmake_build_dir}" "${PREFIX}"
 
 pushd "${cmake_build_dir}"
   # sed -i 's#ZIG_LLVM_LIB_PATH "#ZIG_LLVM_LIB_PATH "C:/Windows/System32;C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64;"#' config.h
-  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \"', 'ZIG_LLVM_LIB_PATH \"${_UCRT_LIBPATH};' | Set-Content config.h"
+  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \"', 'ZIG_LLVM_LIB_PATH \"C:/Windows/System32;C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64;\"' | Set-Content config.h"
   cat config.h
 popd
 
