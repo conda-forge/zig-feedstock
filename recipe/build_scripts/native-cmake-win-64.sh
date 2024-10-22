@@ -32,7 +32,7 @@ EXTRA_CMAKE_ARGS+=( \
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 
 pushd "${cmake_build_dir}"
-  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \".+', 'ZIG_LLVM_LIB_PATH \"C:/Windows/System32\"\n#define ZIG_SYSTEM_LIB_PATH \"C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64\"' | Set-Content config.h"
+  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \".+', 'ZIG_LLVM_LIB_PATH \"C:/Windows/System32\"`r`n#define ZIG_SYSTEM_LIB_PATH \"C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64\"' | Set-Content config.h"
   cat config.h || true
   cat config.zig || true
   cat build.zig || true
