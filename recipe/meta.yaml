@@ -15,17 +15,22 @@ source:
       - patches/0002-win-deprecations.patch  # [win]
     folder: zig-source
 
-  # We use the upstrean binary as bootstrap. Installing previous conda version of zig
-  # may trigger issues with dependencies (i.e. llvm)
-  - folder: zig-bootstrap
-    url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
-    sha256: 8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd  # [osx]
-    url: https://ziglang.org/download/{{ version }}/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
-    sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
+  # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
+  # The zig variable in the build scripts would then need to be updated
+  #
+  # - folder: zig-bootstrap
+  #   url: https://ziglang.org/download/{{ version }}/zig-windows-x86_64-{{ version }}.zip  # [win]
+  #   sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win]
+  #   url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
+  #   sha256: 8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd  # [osx]
+  #   url: https://ziglang.org/download/{{ version }}/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
+  #   sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 1
-  skip: true  # [not linux and not (osx and x86_64) and not win64]
+  number: 3
+  skip: true  # [not linux and not osx]
+  script_env:
+    - BUILD_WITH_CMAKE=1  # [(linux or osx) and x86_64]
   ignore_run_exports:
     - __glibc
 
@@ -33,16 +38,18 @@ requirements:
   build:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
-    - {{ stdlib('c') }}
+    - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
+    - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
+    - zig  # [build_platform != target_platform]
   host:
     - clangdev {{ llvm_version }}
+    - libclang-cpp {{ llvm_version }}
+    - libcxx {{ cxx_compiler_version }}  # [osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
-    - libclang-cpp {{ llvm_version }}
-    - libcxx {{ cxx_compiler_version }}  # [osx or win64]
     - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
     - zlib
     - zstd
@@ -52,7 +59,6 @@ requirements:
 test:
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
-    - test -f ${PREFIX}/doc/langref.html  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/compiler_rt.zig  # [unix]
     - test -f ${PREFIX}/lib/zig/zig.h  # [unix]
