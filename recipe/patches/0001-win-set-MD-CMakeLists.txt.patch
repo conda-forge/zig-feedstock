@@ -1,0 +1,7 @@
+--- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
++++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
+@@ -731,2 +733,4 @@
+ else()
++target_compile_options(zigcpp PRIVATE -MD)
++add_compile_options(/MD /wd4715 /wd4291)
+ target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
