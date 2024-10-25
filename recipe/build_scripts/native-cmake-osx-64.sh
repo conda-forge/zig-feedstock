@@ -21,6 +21,7 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SHARED_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none" \
+  "-DZIG_TARGET_MCPU=baseline" \
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a
