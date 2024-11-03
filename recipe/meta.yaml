@@ -1,18 +1,21 @@
 {% set name = "zig" %}
 {% set version = "0.13.0" %}
-{% set llvm_version = "18" %}
+{% set llvm_version = "19" %}
 
 package:
   name: {{ name|lower }}
   version: {{ version }}
 
 source:
-  - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
-    sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
+  # - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
+  #  sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
+  - url: https://github.com/ziglang/zig/archive/refs/heads/master.zip
+    sha256: 535092b882cc5d64a2d07b3fe328cb15276eb2dfd87a5dfee8276c3d11f2f587
     patches:
-      - patches/0001-cross-findllvm.patch  # [linux and aarch64]
+      - patches/0001-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
       - patches/0002-cross-CMakeLists.txt.patch  # [build_platform != target_platform]
       - patches/0003-cross-install.cmake.patch  # [build_platform != target_platform]
+      - patches/0004-cross-ppc64le-signal.h.patch  # [ppc64le]
     folder: zig-source
 
   # We use the upstrean binary as bootstrap. Installing previous conda version of zig
@@ -42,12 +45,15 @@ requirements:
     - ninja
     # This is needed to build a qemu that intercepts the execve() call that zig2 emits
     - glib  # [linux and build_platform != target_platform]
-    - make  # [linux and build_platform != target_platform]
-    - pkg-config  # [linux and build_platform != target_platform]
-    - sphinx  # [linux and build_platform != target_platform]
-    - sphinx-rtd-theme  # [linux and build_platform != target_platform]
     - sysroot_{{ build_platform }} >=2.28  # [linux and build_platform != target_platform]
-    - zlib  # [linux and build_platform != target_platform]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and build_platform != target_platform]
+    # - gcc_impl_linux-ppc64le  # [linux and ppc64le]
+    # - make  # [linux and build_platform != target_platform]
+    # - meson  # [linux and build_platform != target_platform]
+    # - pkg-config  # [linux and build_platform != target_platform]
+    # - sphinx  # [linux and build_platform != target_platform]
+    # - sphinx-rtd-theme  # [linux and build_platform != target_platform]
+    # - zlib  # [linux and build_platform != target_platform]
   host:
     - {{ compiler('cxx') }}  # [linux and build_platform != target_platform]
     - clangdev {{ llvm_version }}
@@ -56,17 +62,16 @@ requirements:
     - lld {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
     - libcxx {{ cxx_compiler_version }}  # [osx]
-    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
     - zlib
     - zstd
   run:
     - libxml2  # [linux and build_platform != target_platform]
-    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
   requires:
     - patchelf  # [aarch64]
-    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
     # - test -f ${PREFIX}/doc/langref.html  # [unix]
@@ -88,9 +93,9 @@ test:
     {% endfor %}
 
     # Functionality tests
-    - readelf -l ${PREFIX}/bin/zig  # [aarch64]
+    - readelf -l ${PREFIX}/bin/zig  # [(aarch64 or ppc64le)]
     - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig  # [aarch64]
-    - readelf -l ${PREFIX}/bin/zig  # [aarch64]
+    - readelf -l ${PREFIX}/bin/zig  # [(aarch64 or ppc64le)]
     - zig version
     - zig zen
     - zig init
