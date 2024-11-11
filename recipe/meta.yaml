@@ -44,7 +44,7 @@ requirements:
   build:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
-    - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
+    - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and (aarch64 or ppc64le)]
     - {{ stdlib("c") }}
     - cmake >=3.5
     - ninja
@@ -56,12 +56,12 @@ requirements:
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
-    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
     - libxml2  # [win]
     - zlib
     - zstd
   run:
-    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
   commands:
