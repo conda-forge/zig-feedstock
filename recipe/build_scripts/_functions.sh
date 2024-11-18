@@ -43,7 +43,7 @@ function modify_libc_libm_for_zig() {
   fi
 }
 
-function configure_cmake_zigcpp() {
+function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
   local zig=${3:-}
@@ -76,9 +76,18 @@ function configure_cmake_zigcpp() {
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       "${EXTRA_CMAKE_ARGS[@]}" \
       -G Ninja
-
-    cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   cd "${current_dir}" || exit 1
+}
+
+function configure_cmake_zigcpp() {
+  local build_dir=$1
+  local install_dir=$2
+  local zig=${3:-}
+
+  configure_cmake "${build_dir}" "${install_dir}" "${zig}"
+  pushd "${build_dir}"
+    cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+  popd
 }
 
 function build_zig_with_zig() {
@@ -94,14 +103,14 @@ function build_zig_with_zig() {
   export http_proxy=http://localhost
 
   if [[ ${CROSSCOMPILING_EMULATOR:-} == '' ]]; then
-    _cmd="${zig}"
+    _cmd=("${zig}")
   else
-    _cmd="${CROSSCOMPILING_EMULATOR} ${zig}"
+    _cmd=("${CROSSCOMPILING_EMULATOR}" "${zig}")
   fi
-
+  echo "Building with ${_cmd[*]}"
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || exit 1
-      "${_cmd}" build \
+      "${_cmd[*]}" build \
         --prefix "${install_dir}" \
         --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \

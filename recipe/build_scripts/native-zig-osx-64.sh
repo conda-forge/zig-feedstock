@@ -16,10 +16,11 @@ cmake_install_dir="${SRC_DIR}/cmake-built-install"
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
 mkdir -p "${cmake_install_dir}"
 
-# Current conda zig may not be able to build the latest zig
-# mamba create -yp "${SRC_DIR}"/conda-zig-bootstrap zig
 SYSROOT_ARCH="x86_64"
-zig="${SRC_DIR}/zig-bootstrap/zig"
+
+mamba create -yp conda_zig_env zig
+zig="${SRC_DIR}"/conda_zig_env/bin/zig
+export PATH="${SRC_DIR}/conda_zig_env/bin:${PATH}"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SHARED_LLVM=ON" \

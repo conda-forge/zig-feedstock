@@ -20,6 +20,7 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SHARED_LLVM=ON" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu" \
+  "-DZIG_TARGET_MCPU=baseline" \
 )
 
 # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
