@@ -6,6 +6,8 @@ github:
   tooling_branch_name: main
 conda_build:
   pkg_format: '2'
+provider:
+  linux_ppc64le: default
 build_platform:
   linux_aarch64: linux_64
   # linux_ppc64le: linux_64
