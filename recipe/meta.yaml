@@ -38,7 +38,7 @@ source:
 
 build:
   number: 5
-  skip: true  # [not linux and not ppc64le]
+  skip: true  # [not linux or not ppc64le]
   script_env:
     - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
   ignore_run_exports:

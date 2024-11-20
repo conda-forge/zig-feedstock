@@ -14,6 +14,7 @@ case "${target_platform}" in
     ;;
   osx-64)
     bash "${RECIPE_DIR}"/build_scripts/native-"${builder}"-osx-64.sh
+    ;;
   win-64)
     bash "${RECIPE_DIR}"/build_scripts/native-"${builder}"-win-64.sh
     ;;
