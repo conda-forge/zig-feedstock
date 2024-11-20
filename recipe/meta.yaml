@@ -40,7 +40,7 @@ build:
   number: 5
   skip: true  # [not linux or not ppc64le]
   script_env:
-    - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
+    - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and (x86_64 or ppc64le)]
   ignore_run_exports:
     - __glibc  # [linux and aarch64]
     - ucrt  # [win]
@@ -50,8 +50,8 @@ requirements:
   build:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
-    - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
-    - {{ stdlib("c") }}
+    - {{ stdlib('c') }}
+    # - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - cmake >=3.5
     - ninja
     # This is needed to build a qemu that intercepts the execve() call that zig2 emits
