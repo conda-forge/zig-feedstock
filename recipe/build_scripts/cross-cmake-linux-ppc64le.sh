@@ -16,13 +16,22 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/_conda-build-level-patches
 
 # Current conda zig may not be able to build the latest zig
 SYSROOT_ARCH="powerpc64le"
-ZIG_ARCH="powerpc64le"
+ZIG_ARCH="powerpc64"
 QEMU_ARCH="ppc64le"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
+
+source "${RECIPE_DIR}/build_scripts/_build_qemu_execve.sh"
+build_qemu_execve "${QEMU_ARCH}"
+
+export CC=$(which clang)
+export CXX=$(which clang++)
+
+export CFLAGS="-target ${SYSROOT_ARCH}-linux-gnu -fno-plt"
+export CXXFLAGS="-target ${SYSROOT_ARCH}-linux-gnu -fno-plt --stdlib=libstdc++"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
@@ -33,12 +42,10 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_TARGET_TRIPLE=${ZIG_ARCH}-linux-gnu" \
   "-DZIG_TARGET_MCPU=baseline" \
+  "-DZIG_SYSTEM_LIBCXX=stdc++" \
 )
 # This path is too long for Target.zig
 #  "-DZIG_TARGET_DYNAMIC_LINKER=${TARGET_INTERPRETER}" \
-
-source "${RECIPE_DIR}/build_scripts/_build_qemu_execve.sh"
-build_qemu_execve "${QEMU_ARCH}"
 
 # export CROSSCOMPILING_EMULATOR="${BUILD_PREFIX}/bin/qemu-${SYSROOT_ARCH}"
 
@@ -56,18 +63,18 @@ export CXXFLAGS="${CXXFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-
 export ZIG_CROSS_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
 export ZIG_CROSS_TARGET_MCPU="ppc64le"
 
-USE_CMAKE_ARGS=1
+USE_CMAKE_ARGS=0
 
-CFLAGS=${CFLAGS//-fPIC/}
-CXXFLAGS=${CXXFLAGS//-fPIC/}
-CFLAGS=${CFLAGS//-fpie/}
-CXXFLAGS=${CXXFLAGS//-fpie/}
-CFLAGS=${CFLAGS//-fno-plt/}
-CXXFLAGS=${CXXFLAGS//-fno-plt/}
-export CFLAGS="${CFLAGS}"
-export CXXFLAGS="${CXXFLAGS} -fno-optimize-sibling-calls -fno-threadsafe-statics"
-echo "CFLAGS=${CFLAGS}"
-echo "CXXFLAGS=${CXXFLAGS}"
+# CFLAGS=${CFLAGS//-fPIC/}
+# CXXFLAGS=${CXXFLAGS//-fPIC/}
+# CFLAGS=${CFLAGS//-fpie/}
+# CXXFLAGS=${CXXFLAGS//-fpie/}
+# CFLAGS=${CFLAGS//-fno-plt/}
+# CXXFLAGS=${CXXFLAGS//-fno-plt/}
+# export CFLAGS="${CFLAGS}"
+# export CXXFLAGS="${CXXFLAGS} -fno-optimize-sibling-calls -fno-threadsafe-statics"
+# echo "CFLAGS=${CFLAGS}"
+# echo "CXXFLAGS=${CXXFLAGS}"
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 cat <<EOF >> "${cmake_build_dir}/config.zig"
 pub const mem_leak_frames = 0;

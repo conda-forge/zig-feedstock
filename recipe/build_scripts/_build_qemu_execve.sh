@@ -36,7 +36,7 @@ function build_qemu_execve() {
 
       # export CC PATH PKG_CONFIG CFLAGS LDFLAGS PKG_CONFIG_PATH
 
-      ../qemu/configure --prefix="${BUILD_PREFIX}" \
+      "${SRC_DIR}"/_qemu_execve/qemu/configure --prefix="${BUILD_PREFIX}" \
          --interp-prefix="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot" \
          --enable-linux-user \
          --target-list="${arch}-linux-user" \

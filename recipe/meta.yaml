@@ -51,6 +51,9 @@ requirements:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
     - {{ stdlib('c') }}
+    - clang  # [linux and ppc64le]
+    - clangxx  # [linux and ppc64le]
+    - llvm-tools  # [linux and ppc64le]
     # - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - cmake >=3.5
     - ninja
@@ -67,10 +70,9 @@ requirements:
     # - zlib  # [linux and build_platform != target_platform]
     - zig  # [build_platform != target_platform]
   host:
-    - {{ compiler('cxx') }}  # [linux and build_platform != target_platform]
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
-    - libcxx {{ cxx_compiler_version }}  # [osx]
+    - libcxx  # [osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}

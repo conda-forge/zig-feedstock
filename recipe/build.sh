@@ -22,7 +22,7 @@ case "${target_platform}" in
     bash "${RECIPE_DIR}"/build_scripts/cross-"${builder}"-linux-aarch64.sh
     ;;
   linux-ppc64le)
-    bash "${RECIPE_DIR}"/build_scripts/native-"${builder}"-linux-ppc64le.sh
+    bash "${RECIPE_DIR}"/build_scripts/cross-"${builder}"-linux-ppc64le.sh
     ;;
   osx-arm64)
     bash "${RECIPE_DIR}"/build_scripts/cross-"${builder}"-osx-arm64.sh

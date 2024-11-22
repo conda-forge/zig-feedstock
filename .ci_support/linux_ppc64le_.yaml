@@ -1,5 +1,5 @@
 c_compiler:
-- clang
+- gcc
 c_compiler_version:
 - '13'
 c_stdlib:
@@ -12,18 +12,29 @@ channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
-cxx_compiler:
-- clangxx
-cxx_compiler_version:
-- '13'
 docker_image:
-- quay.io/condaforge/linux-anvil-ppc64le
+- quay.io/condaforge/linux-anvil-cos7-x86_64
 target_platform:
 - linux-ppc64le
-zip_keys:
-- - c_compiler_version
-  - cxx_compiler_version
 zlib:
 - '1'
 zstd:
 - '1.5'
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static

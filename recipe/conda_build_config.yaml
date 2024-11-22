@@ -1,12 +1,5 @@
 c_stdlib_version:  # [unix]
   - 2.28  # [linux]
   - 11.3  # [osx and x86_64]
-build_c_stdlib:
-  - sysroot  # [linux]
 docker_image:
-  - quay.io/condaforge/linux-anvil-alma-x86_64:8  # [linux and x86_64]
-
-c_compiler:
-  - clang  # [linux and ppc64le]
-cxx_compiler:
-  - clangxx  # [linux and ppc64le]
+  - quay.io/condaforge/linux-anvil-alma-x86_64:8  # [linux and (x86_64 or ppc64le)]
