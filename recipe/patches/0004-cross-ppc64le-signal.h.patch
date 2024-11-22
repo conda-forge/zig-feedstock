@@ -1,0 +1,4 @@
+diff --git a/stage1/zig.h b/stage1/zig.h
+index 05529feec7..38f01ca020 100644
+--- a/stage1/zig.h
++++ b/stage1/zig.h

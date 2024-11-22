@@ -9,8 +9,13 @@ package:
 source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
     sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
+  # - url: https://github.com/ziglang/zig/archive/refs/heads/master.zip
+  #   sha256: 535092b882cc5d64a2d07b3fe328cb15276eb2dfd87a5dfee8276c3d11f2f587
     patches:
-      - patches/0001-cross-findllvm.patch  # [linux and aarch64]
+      - patches/0001-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
+      - patches/0002-cross-CMakeLists.txt.patch  # [build_platform != target_platform]
+      - patches/0003-cross-install.cmake.patch  # [build_platform != target_platform]
+      - patches/0004-cross-ppc64le-signal.h.patch  # [ppc64le]
       # May be combined into a single patch once the build is found robust (few versions of zig)
       - patches/0001-win-set-MD-CMakeLists.txt.patch  # [win]
       - patches/0002-win-deprecations.patch  # [win]
@@ -32,9 +37,10 @@ source:
   #   sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 4
+  number: 5
+  skip: true  # [not linux or not ppc64le]
   script_env:
-    - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
+    - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and (x86_64 or ppc64le)]
   ignore_run_exports:
     - __glibc  # [linux and aarch64]
     - ucrt  # [win]
@@ -44,15 +50,29 @@ requirements:
   build:
     - {{ compiler('c') }}
     - {{ compiler('cxx') }}
-    - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
-    - {{ stdlib("c") }}
+    - {{ stdlib('c') }}
+    - clang  # [linux and ppc64le]
+    - clangxx  # [linux and ppc64le]
+    - llvm-tools  # [linux and ppc64le]
+    # - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and aarch64]
     - cmake >=3.5
     - ninja
+    # This is needed to build a qemu that intercepts the execve() call that zig2 emits
+    - glib  # [linux and build_platform != target_platform]
+    - sysroot_{{ build_platform }} >=2.28  # [linux and build_platform != target_platform]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and build_platform != target_platform]
+    # - gcc_impl_linux-ppc64le  # [linux and ppc64le]
+    # - make  # [linux and build_platform != target_platform]
+    # - meson  # [linux and build_platform != target_platform]
+    # - pkg-config  # [linux and build_platform != target_platform]
+    # - sphinx  # [linux and build_platform != target_platform]
+    # - sphinx-rtd-theme  # [linux and build_platform != target_platform]
+    # - zlib  # [linux and build_platform != target_platform]
     - zig  # [build_platform != target_platform]
   host:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
-    - libcxx {{ cxx_compiler_version }}  # [osx]
+    - libcxx  # [osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
@@ -61,9 +81,13 @@ requirements:
     - zlib
     - zstd
   run:
-    - sysroot_{{ target_platform }} >=2.28  # [linux and aarch64]
+    - libxml2  # [linux and build_platform != target_platform]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
+  requires:
+    - patchelf  # [aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
@@ -83,6 +107,9 @@ test:
     {% endfor %}
 
     # Functionality tests
+    - readelf -l ${PREFIX}/bin/zig  # [(aarch64 or ppc64le)]
+    - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig  # [aarch64]
+    - readelf -l ${PREFIX}/bin/zig  # [(aarch64 or ppc64le)]
     - zig version
     - zig zen
     - zig init
