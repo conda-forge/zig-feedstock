@@ -1,6 +1,6 @@
 {% set name = "zig" %}
 {% set version = "0.14.0" %}
-{% set llvm_version = "18" %}
+{% set llvm_version = "19" %}
 
 package:
   name: {{ name|lower }}
