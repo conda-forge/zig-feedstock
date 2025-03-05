@@ -1,5 +1,5 @@
 {% set name = "zig" %}
-{% set version = "0.13.0" %}
+{% set version = "0.14.0" %}
 {% set llvm_version = "18" %}
 
 package:
@@ -8,7 +8,7 @@ package:
 
 source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
-    sha256: d3912858003e340f315224bf177d0f441d86b81f62854f5c141b6d51ab6b5516
+    sha256: b45589b782a9406a414a3cac201ca0243650f9bedcb453730c124bf6f07ab33f
     patches:
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
       # May be combined into a single patch once the build is found robust (few versions of zig)
@@ -32,7 +32,7 @@ source:
   #   sha256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea  # [linux]
 
 build:
-  number: 4
+  number: 0
   script_env:
     - BUILD_WITH_CMAKE=1  # [(linux or osx or win) and x86_64]
   ignore_run_exports:
