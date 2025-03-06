@@ -10,15 +10,14 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
     sha256: b45589b782a9406a414a3cac201ca0243650f9bedcb453730c124bf6f07ab33f
     patches:
-      - patches/0001-x86-maxrss.patch  # [x64]
+      - patches/0001-all-build.zig.zon.patch
+      - patches/0001-x86-maxrss.patch  # [x86]
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
       # May be combined into a single patch once the build is found robust (few versions of zig)
-      - patches/0001-win-set-MD-CMakeLists.txt.patch  # [win]
-      - patches/0002-win-deprecations.patch  # [win]
-      - patches/0003-win-LLVM_LIBRARIES-CMakeLists.txt.patch  # [win]
-      - patches/0004-win-ZIG2_LINK_FLAGS-CMakeLists.txt.patch  # [win]
-      - patches/0005-win-ZIG_BUILD_ARGS-CMakeLists.txt.patch  # [win]
-      - patches/0006-win-add-libdir-build.zig.patch  # [win]
+      - patches/0001-win-deprecations.patch  # [win]
+      - patches/0002-win-ZIG2_LINK_FLAGS-CMakeLists.txt.patch  # [win]
+      - patches/0003-win-multilines-CMakeLists.txt.patch  # [win]
+      - patches/0004-win-add-libdir-build.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
