@@ -1,9 +1,9 @@
 --- build.zig.old	2024-06-06 14:05:11.000000000 -0500
 +++ build.zig	2024-06-22 11:27:13.931633400 -0500
-@@ -686,1 +686,5 @@
--    exe.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
+@@ -762,1 +762,5 @@
+-    mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
 +    // Split system_lib_dir by semicolon and add each path
 +    var it = std.mem.split(u8, cfg.llvm_lib_dir, ";");
 +    while (it.next()) |path| {
-+        exe.addLibraryPath(.{ .cwd_relative = path });
++        mod.addLibraryPath(.{ .cwd_relative = path });
 +    }
