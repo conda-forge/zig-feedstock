@@ -11,7 +11,7 @@ source:
     sha256: b45589b782a9406a414a3cac201ca0243650f9bedcb453730c124bf6f07ab33f
     patches:
       - patches/0001-all-build.zig.zon.patch
-      - patches/0001-x86-maxrss.patch  # [x86]
+      - patches/0001-x86-maxrss.patch  # [x86_64]
       - patches/0001-cross-findllvm.patch  # [linux and aarch64]
       - patches/0002-cross-CMakeLists.txt.patch  # [linux and aarch64]
       - patches/0003-cross-install.cmake.patch  # [linux and aarch64]
