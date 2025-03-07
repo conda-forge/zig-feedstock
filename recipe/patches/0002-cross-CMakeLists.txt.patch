@@ -140,7 +140,7 @@
 -  "-Dtarget=${ZIG_TARGET_TRIPLE}"
 -  "-Dcpu=${ZIG_TARGET_MCPU}"
 +  "-Dtarget=${ZIG_CROSS_TARGET_TRIPLE}"
-+  "-Dcpu=${ZIG_CROSS_TARGET_MCPU}" --verbose --verbose-link --summary all -Doptimize=ReleaseSmall
++  "-Dcpu=${ZIG_CROSS_TARGET_MCPU}" --verbose --verbose-link --summary all
 
 @@ -978,3 +1042,4 @@
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
