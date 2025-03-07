@@ -7,3 +7,10 @@
 @@ -969,1 +970,1 @@
 -if(MINGW AND "${ZIG_HOST_TARGET_ARCH}" STREQUAL "x86")
 +if("${ZIG_HOST_TARGET_ARCH}" STREQUAL "x86")
+--- build.zig.old	2024-06-06 14:05:11.000000000 -0500
++++ build.zig	2024-06-22 11:27:13.931633400 -0500
+@@ -713,3 +713,3 @@
+         .name = "zig",
+-        .max_rss = 7_800_000_000,
++        .max_rss = 7_000_000_000,
+         .root_module = compiler_mod,

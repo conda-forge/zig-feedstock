@@ -50,7 +50,9 @@ EXTRA_CMAKE_ARGS+=( \
 # export CROSSCOMPILING_EMULATOR="${BUILD_PREFIX}/bin/qemu-${SYSROOT_ARCH}"
 
 # export CROSSCOMPILING_EMULATOR="${QEMU_EXECVE}"
-export CROSSCOMPILING_LIBC="Wl,-dynamic-linker,${TARGET_INTERPRETER};-L${SYSROOT_PATH}/lib64;-lc"
+export QEMU_LD_PREFIX="${SYSROOT_PATH}"
+export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+export CROSSCOMPILING_LIBC="-L${SYSROOT_PATH}/lib64;-lc"
 
 # CFLAGS="${CFLAGS} -mlongcall -mcmodel=large -Os -Wl,--no-relax -fPIE -pie"
 # CXXFLAGS="${CXXFLAGS} -mlongcall -mcmodel=large -Os -Wl,--no-relax -fPIE -pie"
