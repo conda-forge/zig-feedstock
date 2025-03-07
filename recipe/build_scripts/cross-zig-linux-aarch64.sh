@@ -21,7 +21,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 SYSROOT_ARCH="aarch64"
 
-zig="${BUILD_PREFIX}/bin/zig"
+# zig="${BUILD_PREFIX}/bin/zig"
 zig="${SRC_DIR}/zig-bootstrap/zig"
 
 _BUILD_SYSROOT_ARCH="x86_64"
