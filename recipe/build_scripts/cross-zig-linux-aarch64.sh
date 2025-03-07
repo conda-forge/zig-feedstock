@@ -16,26 +16,28 @@ cmake_install_dir="${SRC_DIR}/cmake-built-install"
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
 mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
+
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 SYSROOT_ARCH="aarch64"
 
 zig="${BUILD_PREFIX}/bin/zig"
+zig="${SRC_DIR}/zig-bootstrap/zig"
 
 _BUILD_SYSROOT_ARCH="x86_64"
 
-patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
-patchelf --set-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
-patchelf --add-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${BUILD_PREFIX}/bin/zig"
-patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
-patchelf --shrink-rpath --allowed-rpath-prefixes "${BUILD_PREFIX}" "${BUILD_PREFIX}/bin/zig"
-
-patchelf --remove-needed librt.so.1 "${BUILD_PREFIX}/bin/zig"
-patchelf --remove-needed libdl.so.2 "${BUILD_PREFIX}/bin/zig"
-patchelf --remove-needed libm.so.6 "${BUILD_PREFIX}/bin/zig"
-patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/librt-2.28.so" "${BUILD_PREFIX}/bin/zig"
-patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/libdl-2.28.so" "${BUILD_PREFIX}/bin/zig"
-patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/libm-2.28.so" "${BUILD_PREFIX}/bin/zig"
+# patchelf --set-interpreter "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-2.28.so" "${BUILD_PREFIX}/bin/zig"
+# patchelf --set-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${BUILD_PREFIX}/bin/zig"
+# patchelf --add-rpath "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64" "${BUILD_PREFIX}/bin/zig"
+# patchelf --add-rpath "${BUILD_PREFIX}/lib" "${BUILD_PREFIX}/bin/zig"
+# patchelf --shrink-rpath --allowed-rpath-prefixes "${BUILD_PREFIX}" "${BUILD_PREFIX}/bin/zig"
+#
+# patchelf --remove-needed librt.so.1 "${BUILD_PREFIX}/bin/zig"
+# patchelf --remove-needed libdl.so.2 "${BUILD_PREFIX}/bin/zig"
+# patchelf --remove-needed libm.so.6 "${BUILD_PREFIX}/bin/zig"
+# patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/librt-2.28.so" "${BUILD_PREFIX}/bin/zig"
+# patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/libdl-2.28.so" "${BUILD_PREFIX}/bin/zig"
+# patchelf --add-needed "${BUILD_PREFIX}/${_BUILD_SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/libm-2.28.so" "${BUILD_PREFIX}/bin/zig"
 
 EXTRA_CMAKE_ARGS+=( \
 "-DZIG_SHARED_LLVM=ON" \
