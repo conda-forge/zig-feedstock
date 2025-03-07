@@ -93,7 +93,7 @@ cmake_build_cmake_target "${cmake_build_dir}" zig2.c
 
 sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 pushd "${cmake_build_dir}"
-  VERBOSE=1 cmake --build . -- -j"${CPU_COUNT}" > "${SRC_DIR}"/_make_post_zig2.log 2>&1
+  VERBOSE=1 cmake --build . -- -j"${CPU_COUNT}"
   cmake --install . > "${SRC_DIR}"/_install_post_zig2.log 2>&1
 popd
 
