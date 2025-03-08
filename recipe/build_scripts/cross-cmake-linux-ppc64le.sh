@@ -17,9 +17,9 @@ mkdir -p "${SRC_DIR}"/_conda-build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/_conda-build-level-patches
 
 # Current conda zig may not be able to build the latest zig
-SYSROOT_ARCH="aarch64"
-ZIG_ARCH="aarch64"
-QEMU_ARCH="aarch64"
+SYSROOT_ARCH="powerpc64le"
+ZIG_ARCH="powerpc64"
+QEMU_ARCH="ppc64le"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 
@@ -63,7 +63,7 @@ export CFLAGS="${CFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-link
 export CXXFLAGS="${CXXFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
 
 export ZIG_CROSS_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
-export ZIG_CROSS_TARGET_MCPU="baseline"
+export ZIG_CROSS_TARGET_MCPU="ppc64le"
 
 USE_CMAKE_ARGS=0
 
@@ -93,7 +93,7 @@ cmake_build_cmake_target "${cmake_build_dir}" zig2.c
 
 sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 pushd "${cmake_build_dir}"
-  VERBOSE=1 cmake --build . -- -j"${CPU_COUNT}"
+  VERBOSE=1 cmake --build . -- -j"${CPU_COUNT}" > "${SRC_DIR}"/_make_post_zig2.log 2>&1
   cmake --install . > "${SRC_DIR}"/_install_post_zig2.log 2>&1
 popd
 
