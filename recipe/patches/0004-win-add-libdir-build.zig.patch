@@ -3,7 +3,7 @@
 @@ -762,1 +762,5 @@
 -    mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
 +    // Split system_lib_dir by semicolon and add each path
-+    var it = std.mem.splitScalar(u8, cfg.llvm_lib_dir, ";");
++    var it = std.mem.splitScalar(u8, cfg.llvm_lib_dir, ';');
 +    while (it.next()) |path| {
 +        mod.addLibraryPath(.{ .cwd_relative = path });
 +    }
