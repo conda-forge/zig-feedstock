@@ -1,5 +1,0 @@
---- zig/lib/std/mem.zig.old	2024-06-06 14:05:11.000000000 -0500
-+++ zig/lib/std/mem.zig	2024-06-22 11:27:13.931633400 -0500
-@@ -2422,1 +2422,1 @@
--pub const split = @compileError("deprecated; use splitSequence, splitAny, or splitScalar");
-+///pub const split = @compileError("deprecated; use splitSequence, splitAny, or splitScalar");

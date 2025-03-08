@@ -20,7 +20,6 @@ source:
       - patches/0002-win-ZIG2_LINK_FLAGS-CMakeLists.txt.patch  # [win]
       - patches/0003-win-multilines-CMakeLists.txt.patch  # [win]
       - patches/0004-win-add-libdir-build.zig.patch  # [win]
-      - patches/0005-win-comment-split-mem.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
@@ -53,6 +52,7 @@ requirements:
     - ninja
     - zig  # [build_platform != target_platform and not aarch64]
   host:
+    - {{ compiler('cxx') }}  # [linux and aarch64]
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
     - libcxx {{ llvm_version }}  # [osx]

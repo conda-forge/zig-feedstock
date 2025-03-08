@@ -26,8 +26,8 @@ TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 # source "${RECIPE_DIR}/build_scripts/_build_qemu_execve.sh"
 # build_qemu_execve "${QEMU_ARCH}"
 
-# export CC=$(which clang)
-# export CXX=$(which clang++)
+export CC=$(which clang)
+export CXX=$(which clang++)
 #
 # export CFLAGS="-target ${SYSROOT_ARCH}-linux-gnu -fno-plt"
 # export CXXFLAGS="-target ${SYSROOT_ARCH}-linux-gnu -fno-plt --stdlib=libstdc++ -v -fverbose-asm"
