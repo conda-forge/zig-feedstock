@@ -2,7 +2,7 @@
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
 @@ -148,2 +148,4 @@
  endif()
-+string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
++string(REPLACE ".dll" ".lib" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
 +list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 @@ -725,2 +727,4 @@

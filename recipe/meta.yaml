@@ -10,7 +10,6 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
     sha256: b45589b782a9406a414a3cac201ca0243650f9bedcb453730c124bf6f07ab33f
     patches:
-      # - patches/0001-all-build.zig.zon.patch
       - patches/0001-x86-maxrss.patch
       - patches/0001-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
       - patches/0002-cross-CMakeLists.txt.patch  # [linux and (aarch64 or ppc64le)]
@@ -30,8 +29,8 @@ source:
   #   sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win]
     url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
     sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3  # [osx]
-    url: https://ziglang.org/download/{{ version }}/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
-    sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  # [linux]
+  #   url: https://ziglang.org/download/{{ version }}/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
+  #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  # [linux]
 
 build:
   number: 0
@@ -68,6 +67,9 @@ requirements:
     - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
+  requires:
+    - patchelf  # [linux and aarch64]
+    - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
   commands:
     - test -f ${PREFIX}/bin/zig  # [unix]
     - test -f ${PREFIX}/lib/zig/c.zig  # [unix]
@@ -87,6 +89,8 @@ test:
     {% endfor %}
 
     # Functionality tests
+    - readelf -l ${PREFIX}/bin/zig  # [linux and (aarch64 or ppc64le)]
+    - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig  # [linux and (aarch64)]
     - zig version
     - zig zen
     - zig init
