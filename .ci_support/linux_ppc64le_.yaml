@@ -19,7 +19,7 @@ cxx_compiler_version:
 docker_image:
 - quay.io/condaforge/linux-anvil-x86_64:cos7
 target_platform:
-- linux-64
+- linux-ppc64le
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version
@@ -27,3 +27,15 @@ zlib:
 - '1'
 zstd:
 - '1.5'
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-ppc64le-static
