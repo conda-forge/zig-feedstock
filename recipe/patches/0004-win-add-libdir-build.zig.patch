@@ -4,13 +4,13 @@
          if (target.result.os.tag == .windows) {
              // LLVM depends on networking as of version 18.
 -            exe.root_module.linkSystemLibrary("ws2_32", .{});
-+            exe.root_module.linkSystemLibrary("ws2_32", .{});
++            // exe.root_module.linkSystemLibrary("ws2_32", .{});
 
 -            exe.root_module.linkSystemLibrary("version", .{});
-+            exe.root_module.linkSystemLibrary("version", .{});
++            // exe.root_module.linkSystemLibrary("version", .{});
              exe.root_module.linkSystemLibrary("uuid", .{});
 -            exe.root_module.linkSystemLibrary("ole32", .{});
-+            exe.root_module.linkSystemLibrary("ole32", .{});
++            // exe.root_module.linkSystemLibrary("ole32", .{});
          }
 @@ -762,1 +762,5 @@
 -    mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
