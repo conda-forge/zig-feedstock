@@ -1,5 +1,17 @@
 --- build.zig.old	2024-06-06 14:05:11.000000000 -0500
 +++ build.zig	2024-06-22 11:27:13.931633400 -0500
+@@ -339,8 +339,8 @@
+         if (target.result.os.tag == .windows) {
+             // LLVM depends on networking as of version 18.
+-            exe.root_module.linkSystemLibrary("ws2_32", .{});
++            exe.root_module.linkSystemLibrary("ws2_32", .{});
+
+-            exe.root_module.linkSystemLibrary("version", .{});
++            exe.root_module.linkSystemLibrary("version", .{});
+             exe.root_module.linkSystemLibrary("uuid", .{});
+-            exe.root_module.linkSystemLibrary("ole32", .{});
++            exe.root_module.linkSystemLibrary("ole32", .{});
+         }
 @@ -762,1 +762,5 @@
 -    mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
 +    // Split system_lib_dir by semicolon and add each path

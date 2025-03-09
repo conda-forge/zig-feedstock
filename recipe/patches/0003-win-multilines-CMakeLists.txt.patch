@@ -1,11 +1,12 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -148,2 +148,4 @@
+@@ -148,2 +148,5 @@
  endif()
 +string(REPLACE ".dll" ".lib" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")
++list(REMOVE_ITEM CLANG_LIBRARIES "version.lib")
 
-@@ -725,2 +727,4 @@
+@@ -725,2 +728,4 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
 +add_compile_options(/MD /wd4715 /wd4291)
