@@ -9,7 +9,7 @@ else
 fi
 
 case "${target_platform}" in
-  linux-64|osx-64|win-64)
+  linux-64|osx-64|win-64|linux-ppc64le)
     bash "${RECIPE_DIR}"/build_scripts/native-"${builder}-${target_platform}".sh
     ;;
   # osx-64)
@@ -18,7 +18,7 @@ case "${target_platform}" in
   # win-64)
   #   bash "${RECIPE_DIR}"/build_scripts/native-"${builder}"-win-64.sh
   #   ;;
-  linux-aarch64|linux-ppc64le|osx-arm64)
+  linux-aarch64|osx-arm64)
     bash "${RECIPE_DIR}"/build_scripts/cross-"${builder}-${target_platform}".sh
     ;;
   # linux-ppc64le)
