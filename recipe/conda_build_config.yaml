@@ -4,4 +4,4 @@ c_stdlib_version:  # [unix]
 # build_c_stdlib:
 #   - sysroot  # [linux]
 docker_image:
-  - quay.io/condaforge/linux-anvil-x86_64:alma9  # [linux]
+  - quay.io/condaforge/linux-anvil-x86_64:alma9  # [linux and not ppc64le]
