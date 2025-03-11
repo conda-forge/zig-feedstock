@@ -18,7 +18,7 @@ source:
       - patches/0001-win-deprecations.patch  # [win]
       - patches/0002-win-libraries-CMakeLists.txt.patch  # [win]
       - patches/0003-win-add-libdir-build.zig.patch  # [win]
-      - patches/0004-win-add-libucrt-main.zig.patch  # [win]
+      # - patches/0004-win-add-libucrt-main.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
@@ -27,15 +27,15 @@ source:
   - folder: zig-bootstrap
   #   url: https://ziglang.org/download/{{ version }}/zig-windows-x86_64-{{ version }}.zip  # [win]
   #   sha256: d859994725ef9402381e557c60bb57497215682e355204d754ee3df75ee3c158  # [win]
-    url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
-    sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3  # [osx]
+  #   url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
+  #   sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3  # [osx]
   #   url: https://ziglang.org/download/{{ version }}/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
   #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  # [linux]
 
 build:
   number: 0
   script_env:
-    - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and (aarch64 or ppc64le))]
+    - BUILD_WITH_CMAKE=1  # [(linux and (x86_64 or aarch64)) or osx and x86_64]
   ignore_run_exports:
     - __glibc  # [linux and aarch64]
     - ucrt  # [win]
