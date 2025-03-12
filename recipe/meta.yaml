@@ -48,7 +48,6 @@ requirements:
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and (aarch64 or ppc64le)]
     - {{ stdlib("c") }}
     - cmake >=3.5
-    - m2-sed  # [win]
     - ninja
     - sed  # [unix]
     - zig  # [build_platform != target_platform and not (aarch64 or ppc64le)]

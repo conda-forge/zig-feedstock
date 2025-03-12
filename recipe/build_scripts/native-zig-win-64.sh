@@ -34,7 +34,7 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-sed -i '' "s@zstd.dll.lib@zstd.lib@" "${cmake_build_dir}/config.h"
+powershell -Command "(Get-Content '${cmake_build_dir}/config.h') -replace 'zstd.dll.lib', 'zstd.lib' | Set-Content '${cmake_build_dir}/config.h'"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
