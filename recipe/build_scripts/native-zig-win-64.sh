@@ -26,7 +26,7 @@ _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:
 zig="${SRC_DIR}"/zig-bootstrap/zig.exe
 
 EXTRA_CMAKE_ARGS+=( \
-  "-DZIG_SHARED_LLVM=ON" \
+  "-DZIG_SHARED_LLVM=OFF" \
   "-DZIG_USE_LLVM_CONFIG=ON" \
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc" \
   "-DZIG_TARGET_MCPU=baseline" \
