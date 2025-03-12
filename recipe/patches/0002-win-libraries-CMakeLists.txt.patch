@@ -2,9 +2,9 @@
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
 @@ -148,2 +148,5 @@
  endif()
-+string(REPLACE ".dll" ".lib" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib" "libcmt.lib")
-+list(REMOVE_ITEM CLANG_LIBRARIES "version.lib")
++string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
++list(APPEND LLVM_LIBRARIES "xml2" "zstd" "zlib")
++# list(REMOVE_ITEM CLANG_LIBRARIES "version.lib")
 
 @@ -725,2 +728,4 @@
  else()
