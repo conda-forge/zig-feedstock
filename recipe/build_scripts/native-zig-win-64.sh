@@ -34,6 +34,7 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+sed -i '' "s@zstd.dll.lib@zstd.lib@" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
@@ -41,6 +42,7 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
+  "--libc ${RECIPE_DIR}/patches/win_libc.txt" \
   "-Dtarget=${SYSROOT_ARCH}-windows-msvc" \
   "-fqemu"
   )
