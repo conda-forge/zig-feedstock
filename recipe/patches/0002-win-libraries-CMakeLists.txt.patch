@@ -3,7 +3,7 @@
 @@ -148,2 +148,5 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib") # list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "libcmt.lib") # list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib")
 +# list(REMOVE_ITEM CLANG_LIBRARIES "version.lib")
 
 @@ -725,2 +728,4 @@
