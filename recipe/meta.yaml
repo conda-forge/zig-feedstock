@@ -34,6 +34,7 @@ source:
 
 build:
   number: 0
+  skip: true  # [unix]
   script_env:
     - BUILD_WITH_CMAKE=1  # [(linux and (x86_64 or aarch64)) or osx and x86_64]
   ignore_run_exports:
