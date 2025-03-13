@@ -34,7 +34,13 @@ EXTRA_CMAKE_ARGS+=( \
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-powershell -Command "(Get-Content '${cmake_build_dir}/config.h') -replace 'zstd.dll.lib', 'zstd.lib' | Set-Content '${cmake_build_dir}/config.h'"
+pushd "${cmake_build_dir}"
+  # This is very hack-ish, but it seemed impossible to tell stage3/zig to find the needed version, uuid, ole32, etc DLLs
+  # It goes with a patch of build.zig to accept multiple paths
+  powershell -Command "(Get-Content '${cmake_build_dir}/config.h') -replace 'zstd.dll.lib', 'zstd.lib' | Set-Content '${cmake_build_dir}/config.h'"
+  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \"', 'ZIG_LLVM_LIB_PATH \"C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64;C:/Windows/System32;\"' | Set-Content config.h"
+  cat config.h
+popd
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=( \
