@@ -51,7 +51,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - sed  # [unix]
-    - zig  # [build_platform != target_platform and not (aarch64 or ppc64le)]
+    - zig  # [target_platform == osx-arm64]
   host:
     - {{ compiler('cxx') }}  # [linux and (aarch64 or ppc64le)]
     - clangdev {{ llvm_version }}
