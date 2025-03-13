@@ -49,7 +49,15 @@ EXTRA_ZIG_ARGS+=( \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
   "-Dtarget=${SYSROOT_ARCH}-windows-msvc" \
-  )
+  "--verbose" \
+  "--verbose-link" \
+  "--summary" "all" \
+  "--search-prefix" \
+  "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64" \
+  "--search-prefix" \
+  "C:/Windows/System32" \
+  "--libc" "${RECIPE_DIR}/patches/win_libc.txt"
+)
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
