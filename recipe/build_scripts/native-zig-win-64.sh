@@ -20,6 +20,7 @@ SYSROOT_ARCH="x86_64"
 
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 
+dir "C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64"
 # ${PREFIX}/Library/bin/mamba.exe create -yp conda_zig_env zig
 # zig="${SRC_DIR}"/conda_zig_env/bin/zig
 # export PATH="${SRC_DIR}/conda_zig_env/bin:${PATH}"
@@ -48,7 +49,7 @@ EXTRA_ZIG_ARGS+=( \
   "-Denable-llvm" \
   "-Dstrip" \
   "-Duse-zig-libcxx=false" \
-  "-Dtarget=${SYSROOT_ARCH}-windows-msvc" \
+  "-Dtarget=${SYSROOT_ARCH}-windows-gnu" \
   "--verbose" \
   "--verbose-link" \
   "--summary" "all" \
