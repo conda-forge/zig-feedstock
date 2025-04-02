@@ -3,13 +3,13 @@
 @@ -148,2 +148,5 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "zstd.lib" "xml2.lib" "libcmt.lib" "libucrt.lib") # list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib" "libcmt.lib") # list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib")
 +# list(REMOVE_ITEM CLANG_LIBRARIES "version.lib")
 
 @@ -725,2 +728,4 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
-+add_compile_options(/MD /wd4715 /wd4291 /NODEFAULTLIB:library)
++add_compile_options(/MD /wd4715 /wd4291)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
 @@ -847,1 +850,1 @@
 -  target_link_libraries(zig1 LINK_PUBLIC m)
