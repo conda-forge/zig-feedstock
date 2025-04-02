@@ -9,7 +9,7 @@
 @@ -725,2 +728,4 @@
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
-+add_compile_options(/MD /wd4715 /wd4291)
++add_compile_options(/MD /wd4715 /wd4291 /NODEFAULTLIB:library)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
 @@ -847,1 +850,1 @@
 -  target_link_libraries(zig1 LINK_PUBLIC m)
