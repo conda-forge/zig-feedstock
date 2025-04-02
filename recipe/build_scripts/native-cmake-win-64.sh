@@ -23,10 +23,11 @@ EXTRA_CMAKE_ARGS+=(
   "-DZIG_CMAKE_PREFIX_PATH=${_UCRT_LIBPATH};${LIBPATH}"
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-gnu"
   "-DZIG_TARGET_MCPU=baseline"
-  "-DZIG_SYSTEM_LIBCXX='c++'"
+  "-DZIG_AR_WORKAROUND=ON"
 )
-  # "-DZIG_USE_LLVM_CONFIG=ON" \
-  # "-DZIG_STATIC_LLVM=ON" \
+  # "-DZIG_SYSTEM_LIBCXX='c++'"
+  # "-DZIG_USE_LLVM_CONFIG=ON"
+  # "-DZIG_STATIC_LLVM=ON"
 
 configure_cmake "${cmake_build_dir}" "${PREFIX}"
 
