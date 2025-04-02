@@ -20,14 +20,6 @@ SYSROOT_ARCH="x86_64"
 
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 
-where libcmt.lib
-where libucrt.lib
-where libvcruntime.lib
-where libvcruntime140.lib
-where libvcruntime140_1.lib
-where libvcruntime140_2.lib
-where libvcruntime140_3.lib
-
 # ${PREFIX}/Library/bin/mamba.exe create -yp conda_zig_env zig
 # zig="${SRC_DIR}"/conda_zig_env/bin/zig
 # export PATH="${SRC_DIR}/conda_zig_env/bin:${PATH}"
