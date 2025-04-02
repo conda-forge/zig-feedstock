@@ -3,7 +3,7 @@
 @@ -148,2 +148,5 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "libcmt.lib") # list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "libcmt.lib" "libucrt.lib") # list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd" "zlib")
 +# list(REMOVE_ITEM CLANG_LIBRARIES "version.lib")
 
 @@ -725,2 +728,4 @@
@@ -20,4 +20,4 @@
 +  --libc "$ENV{RECIPE_DIR}/patches/win_libc.txt"
 +  --search-prefix "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.22621.0/um/x64"
 +  --search-prefix "C:/Windows/System32"
- )
+   --maxrss 7000000000
