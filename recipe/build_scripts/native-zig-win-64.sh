@@ -20,10 +20,10 @@ SYSROOT_ARCH="x86_64"
 
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 
-# ${PREFIX}/Library/bin/mamba.exe create -yp conda_zig_env zig
-# zig="${SRC_DIR}"/conda_zig_env/bin/zig
-# export PATH="${SRC_DIR}/conda_zig_env/bin:${PATH}"
-zig="${SRC_DIR}"/zig-bootstrap/zig.exe
+${PREFIX}/Library/bin/mamba.exe create -yp conda_zig_env zig
+zig="${SRC_DIR}"/conda_zig_env/bin/zig
+export PATH="${SRC_DIR}/conda_zig_env/bin:${PATH}"
+# zig="${SRC_DIR}"/zig-bootstrap/zig.exe
 
 EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SHARED_LLVM=OFF" \
