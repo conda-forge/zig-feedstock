@@ -2,4 +2,4 @@
 +++ src/main.zig	2024-06-22 11:27:13.931633400 -0500
 @@ -3744,1 +3744,1 @@
 -                    "-lkernel32",  "-lntdll",
-+                    "-lkernel32",  "-lntdll",  "-lmsvcrt",
++                    "-lkernel32",  "-lntdll",
