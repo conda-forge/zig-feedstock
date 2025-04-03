@@ -5,6 +5,11 @@ set -euxo pipefail
 
 source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
+get_msvc_version() {
+  # Extract the MSVC version from VSINSTALLDIR.  Adjust the regex if needed.
+  [[ "${VSINSTALLDIR}" =~ MSVC/([0-9.]+) ]] && echo "${BASH_REMATCH[1]}"
+}
+
 # --- Main ---
 
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
