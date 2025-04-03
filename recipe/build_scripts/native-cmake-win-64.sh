@@ -6,8 +6,9 @@ set -euxo pipefail
 source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 get_msvc_version() {
-  # Extract the MSVC version from VSINSTALLDIR.  Adjust the regex if needed.
-  [[ "${VSINSTALLDIR}" =~ MSVC/([0-9.]+) ]] && echo "${BASH_REMATCH[1]}"
+  # Find the latest MSVC version directory under VSINSTALLDIR/VC/Tools/MSVC
+  latest_version=$(ls -1v "${VSINSTALLDIR}/VC/Tools/MSVC" | tail -n 1)
+  echo "${latest_version}"
 }
 
 # --- Main ---
@@ -22,7 +23,7 @@ SYSROOT_ARCH="x86_64"
 
 _UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 # Construct the path to msvcrt.lib using VSINSTALLDIR
-_MSVC_LIB_PATH="${VSINSTALLDIR}/VC/Tools/MSVC/$(get_msvc_version)/lib"
+_MSVC_LIB_PATH="${VSINSTALLDIR//\\/\/}/VC/Tools/MSVC/$(get_msvc_version)/lib"
 
 echo "VSINSTALLDIR: ${VSINSTALLDIR}"
 
