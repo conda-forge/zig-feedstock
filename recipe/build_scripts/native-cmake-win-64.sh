@@ -41,11 +41,11 @@ EXTRA_CMAKE_ARGS+=(
 
 configure_cmake "${cmake_build_dir}" "${PREFIX}"
 
-# pushd "${cmake_build_dir}"
-#   # This is very hack-ish, but it seemed impossible to tell stage3/zig to find the needed version, uuid, ole32, etc DLLs
-#   # It goes with a patch of build.zig to accept multiple paths
-#   powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \"', 'ZIG_LLVM_LIB_PATH \"${_MSVC_LIB_PATH};\"' | Set-Content config.h"
-#   cat config.h
-# popd
+pushd "${cmake_build_dir}"
+  # This is very hack-ish, but it seemed impossible to tell stage3/zig to find the needed version, uuid, ole32, etc DLLs
+  # It goes with a patch of build.zig to accept multiple paths
+  powershell -Command "(Get-Content config.h) -replace 'ZIG_LLVM_LIB_PATH \"', 'ZIG_LLVM_LIB_PATH \"${_MSVC_LIB_PATH};\"' | Set-Content config.h"
+  cat config.h
+popd
 
 cmake_build_install "${cmake_build_dir}"
