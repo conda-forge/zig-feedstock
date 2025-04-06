@@ -1,6 +1,6 @@
 --- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
 +++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -148,2 +148,5 @@
+@@ -148,2 +148,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
 +list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")
