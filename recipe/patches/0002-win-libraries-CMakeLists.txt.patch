@@ -3,7 +3,7 @@
 @@ -148,2 +148,4 @@
  endif()
 +string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
-+list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib")
++list(APPEND LLVM_LIBRARIES "xml2.lib" "zstd.lib" "zlib.lib" "msvcrt.lib")
 
 @@ -725,2 +727,4 @@
  else()
