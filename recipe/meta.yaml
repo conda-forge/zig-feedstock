@@ -18,8 +18,7 @@ source:
       - patches/0001-win-deprecations.patch  # [win]
       - patches/0002-win-libraries-CMakeLists.txt.patch  # [win]
       - patches/0003-win-add-libdir-build.zig.patch  # [win]
-      # - patches/0004-win-add-libucrt-main.zig.patch  # [win]
-      - patches/0005-win-remove-api-mingw.zig.patch  # [win]
+      - patches/0004-win-remove-api-mingw.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version

@@ -21,20 +21,16 @@ mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_
 
 SYSROOT_ARCH="x86_64"
 
-_UCRT_LIBPATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
+_UCRT_LIB_PATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 _MSVC_LIB_PATH="${VSINSTALLDIR//\\/\/}/VC/Tools/MSVC/$(get_msvc_version)/lib/x64"
 
 EXTRA_CMAKE_ARGS+=(
   "-DCMAKE_BUILD_TYPE=Release"
   "-DCMAKE_VERBOSE_MAKEFILE=ON"
-  "-DZIG_CMAKE_PREFIX_PATH=${_MSVC_LIB_PATH};${_UCRT_LIBPATH};${LIBPATH}"
+  "-DZIG_CMAKE_PREFIX_PATH=${_MSVC_LIB_PATH};${_UCRT_LIB_PATH};${LIBPATH}"
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc"
   "-DZIG_TARGET_MCPU=baseline"
 )
-  # "-DZIG_AR_WORKAROUND=ON"
-  # "-DZIG_SYSTEM_LIBCXX='c++'"
-  # "-DZIG_USE_LLVM_CONFIG=ON"
-  # "-DZIG_STATIC_LLVM=ON"
 
 configure_cmake "${cmake_build_dir}" "${PREFIX}"
 
