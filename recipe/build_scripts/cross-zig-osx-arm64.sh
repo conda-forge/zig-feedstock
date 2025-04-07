@@ -20,8 +20,9 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 SYSROOT_ARCH="aarch64"
 
-# zig="${BUILD_PREFIX}/bin/zig"
-zig="${SRC_DIR}/zig-bootstrap/zig"
+zig="${BUILD_PREFIX}/bin/zig"
+# This is safe-keep for when non-backward compatible updates are introduced
+# zig="${SRC_DIR}/zig-bootstrap/zig"
 
 EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SYSTEM_LIBCXX=c++" \

@@ -23,15 +23,6 @@ QEMU_ARCH="aarch64"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 
-# source "${RECIPE_DIR}/build_scripts/_build_qemu_execve.sh"
-# build_qemu_execve "${QEMU_ARCH}"
-
-# export CC=$(which clang)
-# export CXX=$(which clang++)
-#
-# export CFLAGS="-target ${SYSROOT_ARCH}-linux-gnu -fno-plt"
-# export CXXFLAGS="-target ${SYSROOT_ARCH}-linux-gnu -fno-plt --stdlib=libstdc++ -v -fverbose-asm"
-
 EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_BUILD_TYPE=Release" \
   "-DCMAKE_PREFIX_PATH=${PREFIX};${SYSROOT_PATH}" \
@@ -44,20 +35,10 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_SYSTEM_LIBCXX=stdc++" \
   "-DZIG_SINGLE_THREADED=ON" \
 )
-# This path is too long for Target.zig
-#  "-DZIG_TARGET_DYNAMIC_LINKER=${TARGET_INTERPRETER}" \
 
-# export CROSSCOMPILING_EMULATOR="${BUILD_PREFIX}/bin/qemu-${SYSROOT_ARCH}"
-
-# export CROSSCOMPILING_EMULATOR="${QEMU_EXECVE}"
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 export CROSSCOMPILING_LIBC="-L${SYSROOT_PATH}/lib64;-lc"
-
-# CFLAGS="${CFLAGS} -mlongcall -mcmodel=large -Os -Wl,--no-relax -fPIE -pie"
-# CXXFLAGS="${CXXFLAGS} -mlongcall -mcmodel=large -Os -Wl,--no-relax -fPIE -pie"
-# CFLAGS=${CFLAGS//-fno-plt/}
-# CXXFLAGS=${CXXFLAGS//-fno-plt/}
 
 export CFLAGS="${CFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
 export CXXFLAGS="${CXXFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
@@ -67,29 +48,12 @@ export ZIG_CROSS_TARGET_MCPU="baseline"
 
 USE_CMAKE_ARGS=0
 
-# CFLAGS=${CFLAGS//-fPIC/}
-# CXXFLAGS=${CXXFLAGS//-fPIC/}
-# CFLAGS=${CFLAGS//-fpie/}
-# CXXFLAGS=${CXXFLAGS//-fpie/}
-# CFLAGS=${CFLAGS//-fno-plt/}
-# CXXFLAGS=${CXXFLAGS//-fno-plt/}
-# export CFLAGS="${CFLAGS}"
-# export CXXFLAGS="${CXXFLAGS} -fno-optimize-sibling-calls -fno-threadsafe-statics"
-# echo "CFLAGS=${CFLAGS}"
-# echo "CXXFLAGS=${CXXFLAGS}"
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 cat <<EOF >> "${cmake_build_dir}/config.zig"
 pub const mem_leak_frames = 0;
 EOF
 
 cmake_build_cmake_target "${cmake_build_dir}" zig2.c
-# pushd "${cmake_build_dir}"
-#   patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list.patch --binary
-# popd
-
-# cmake_build_cmake_target "${cmake_build_dir}" zig2
-# patchelf_sysroot_interpreter "${SYSROOT_PATH}" "${TARGET_INTERPRETER}" "${cmake_build_dir}/zig2" 1
-# cmake_build_cmake_target "${cmake_build_dir}" stage3
 
 sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 pushd "${cmake_build_dir}"
@@ -97,9 +61,5 @@ pushd "${cmake_build_dir}"
   cmake --install . > "${SRC_DIR}"/_install_post_zig2.log 2>&1
 popd
 
-# patchelf --set-interpreter "${PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64/ld-linux-${SYSROOT_ARCH}.so.1" "${PREFIX}/bin/zig"
 patchelf --set-rpath "\$ORIGIN/../${SYSROOT_ARCH}-conda-linux-gnu/sysroot/lib64" "${PREFIX}/bin/zig"
 patchelf --add-rpath "\$ORIGIN/../lib" "${PREFIX}/bin/zig"
-
-# Use stage3/zig to self-build: This failed locally with SEGV in qemu
-# build_zig_with_zig "${zig_build_dir}" "${PREFIX}/bin/zig" "${PREFIX}"
