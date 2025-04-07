@@ -27,8 +27,8 @@ source:
   - folder: zig-bootstrap
   #   url: https://ziglang.org/download/{{ version }}/zig-windows-x86_64-{{ version }}.zip  # [win]
   #   sha256: f53e5f9011ba20bbc3e0e6d0a9441b31eb227a97bac0e7d24172f1b8b27b4371  # [win]
-    url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
-    sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3  # [osx]
+  #   url: https://ziglang.org/download/{{ version }}/zig-macos-x86_64-{{ version }}.tar.xz  # [osx]
+  #   sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3  # [osx]
   #   url: https://ziglang.org/download/{{ version }}/zig-linux-x86_64-{{ version }}.tar.xz  # [linux]
   #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  # [linux]
 
@@ -49,7 +49,7 @@ requirements:
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and (aarch64 or ppc64le)]
     - {{ stdlib("c") }}
     - cmake >=3.5
-    # - libxml2  # [(build_platform != target_platform) and osx-x86_64]
+    - libxml2  # [(build_platform != target_platform) and osx]
     - ninja
     - sed  # [unix]
   host:
@@ -57,7 +57,7 @@ requirements:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
     - libcxx {{ llvm_version }}  # [osx]
-    - libxml2  # [win]
+    - libxml2  # [win or osx]
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
@@ -66,7 +66,7 @@ requirements:
     - zlib
     - zstd
   run:
-    - libxml2  # [osx]
+    # - libxml2 <2.14  # [osx]
     - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
