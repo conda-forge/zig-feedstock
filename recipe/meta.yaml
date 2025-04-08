@@ -34,7 +34,7 @@ source:
 
 build:
   number: 1
-  skip: true  # [ppc64le]
+  skip: true  # [not aarch64 or ppc64le]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
