@@ -33,14 +33,17 @@ source:
   #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  # [linux]
 
 build:
-  number: 1
-  skip: true  # [ppc64le]
+  number: 2
+  skip: true  # [not aarch64 or ppc64le]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
     - __glibc  # [linux and aarch64]
     - ucrt  # [win]
     - vc14_runtime  # [win]
+    - libcxx  # [osx-arm64]
+    - libclang-cpp19.1  # [osx-arm64]
+    - libllvm19  # [osx-arm64]
 
 requirements:
   build:
@@ -66,7 +69,6 @@ requirements:
     - zlib
     - zstd
   run:
-    # - libxml2 <2.14  # [osx]
     - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:

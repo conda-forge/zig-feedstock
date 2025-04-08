@@ -33,7 +33,6 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_TARGET_TRIPLE=${ZIG_ARCH}-linux-gnu" \
   "-DZIG_TARGET_MCPU=baseline" \
   "-DZIG_SYSTEM_LIBCXX=stdc++" \
-  "-DZIG_SINGLE_THREADED=ON" \
 )
 
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
