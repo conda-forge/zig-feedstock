@@ -34,13 +34,16 @@ source:
 
 build:
   number: 1
-  skip: true  # [ppc64le]
+  skip: true  # [(not aarch64 and not linux64) or ppc64le]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
     - __glibc  # [linux and aarch64]
     - ucrt  # [win]
     - vc14_runtime  # [win]
+    - libcxx  # [osx-arm64]
+    - libclang-cpp19.1  # [osx-arm64]
+    - libllvm19  # [osx-arm64]
 
 requirements:
   build:
@@ -66,7 +69,6 @@ requirements:
     - zlib
     - zstd
   run:
-    # - libxml2 <2.14  # [osx]
     - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
@@ -87,7 +89,7 @@ test:
       "libcxx", "libcxxabi", "libunwind", "std", "tsan"
     ] %}
     {% for lib_dir in lib_dirs %}
-    - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not (osx and arm64 or win)]
+    - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not ((osx and arm64) or win)]
     - if not exist %PREFIX%\\lib\\zig\\{{ lib_dir }} exit 1  # [win]
     {% endfor %}
 
