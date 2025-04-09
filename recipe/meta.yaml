@@ -34,7 +34,7 @@ source:
 
 build:
   number: 1
-  skip: true  # [not aarch64 or ppc64le]
+  skip: true  # [(not aarch64 and not linux64) or ppc64le]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
@@ -89,7 +89,7 @@ test:
       "libcxx", "libcxxabi", "libunwind", "std", "tsan"
     ] %}
     {% for lib_dir in lib_dirs %}
-    - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not (osx and arm64 or win)]
+    - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not ((osx and arm64) or win)]
     - if not exist %PREFIX%\\lib\\zig\\{{ lib_dir }} exit 1  # [win]
     {% endfor %}
 
