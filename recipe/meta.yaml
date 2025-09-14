@@ -49,7 +49,7 @@ requirements:
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and (aarch64 or ppc64le)]
     - {{ stdlib("c") }}
     - cmake >=3.5
-    - libxml2  # [(build_platform != target_platform) and osx]
+    - libxml2  # [(build_platform != target_platform)]
     - ninja
     - sed  # [unix]
   host:
@@ -57,7 +57,7 @@ requirements:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
     - libcxx {{ llvm_version }}  # [osx]
-    - libxml2  # [win or osx]
+    - libxml2
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
