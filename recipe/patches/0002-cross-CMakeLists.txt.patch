@@ -27,7 +27,7 @@
 +    find_library(XML2 NAMES libxml2.a xml2 NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${XML2}")
 +else()
-+    find_library(XML2 NAMES xml2 libxml2 libxml2.a libxml2.so.16 NAMES_PER_DIR)
++    find_library(XML2 NAMES xml2 libxml2 libxml2.a NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${XML2}")
  endif()
 @@ -704,3 +725,3 @@
