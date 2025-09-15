@@ -19,7 +19,7 @@ source:
       - patches/0001-win-deprecations.patch  # [win]
       - patches/0002-win-libraries-CMakeLists.txt.patch  # [win]
       - patches/0003-win-add-libdir-build.zig.patch  # [win]
-      # - patches/0004-win-remove-ucrt-Coff.zig.patch  # [win]
+      - patches/0004-win-remove-ucrt-Lld.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
@@ -35,7 +35,7 @@ source:
 
 build:
   number: 0
-  skip: true  # [ppc64le]
+  skip: true  # [ppc64le or arm64]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
