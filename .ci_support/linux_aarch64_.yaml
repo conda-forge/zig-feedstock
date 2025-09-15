@@ -27,3 +27,9 @@ zlib:
 - '1'
 zstd:
 - '1.5'
+build_platform:
+- linux-64
+CMAKE_CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-aarch64-static
+CROSSCOMPILING_EMULATOR: 
+- /usr/bin/qemu-aarch64-static
