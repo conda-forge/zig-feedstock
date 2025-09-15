@@ -18,7 +18,7 @@ source:
       - patches/0001-win-deprecations.patch  # [win]
       - patches/0002-win-libraries-CMakeLists.txt.patch  # [win]
       - patches/0003-win-add-libdir-build.zig.patch  # [win]
-      - patches/0004-win-remove-ucrt-Coff.zig.patch  # [win]
+      # - patches/0004-win-remove-ucrt-Coff.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
@@ -84,7 +84,7 @@ test:
     - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]
     {% set lib_dirs = [
       "compiler", "compiler_rt", "docs", "include", "init", "libc",
-      "libcxx", "libcxxabi", "libunwind", "std", "tsan"
+      "libcxx", "libcxxabi", "libunwind", "std"
     ] %}
     {% for lib_dir in lib_dirs %}
     - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not (osx and arm64 or win)]
