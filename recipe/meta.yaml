@@ -11,7 +11,7 @@ source:
     sha256: f4e576ee050073f9cc42a2978994e07522701606678930b187e4d5e1334bfaf3
     patches:
       - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      - patches/0001-linux-libxml2-CMakeLists.txt.patch  # [linux and (x86_64)]
+      # - patches/0001-linux-libxml2-CMakeLists.txt.patch  # [linux and (x86_64)]
       - patches/0001-cross-findllvm.patch  # [linux and (aarch64)]
       - patches/0002-cross-CMakeLists.txt.patch  # [linux and (aarch64)]
       - patches/0003-cross-install.cmake.patch  # [linux and (aarch64)]
@@ -50,7 +50,7 @@ requirements:
     - {{ c_stdlib }}_{{ build_platform }} >={{ c_stdlib_version }}  # [linux and (aarch64 or ppc64le)]
     - {{ stdlib("c") }}
     - cmake >=3.5
-    - libxml2  # [(build_platform != target_platform) and osx]
+    - libxml2-devel  # [(build_platform != target_platform) and osx]
     - ninja
     - sed  # [unix]
   host:
@@ -58,7 +58,7 @@ requirements:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
     - libcxx {{ llvm_version }}  # [osx]
-    - libxml2  # [win or osx]
+    - libxml2-devel
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
@@ -67,7 +67,6 @@ requirements:
     - zlib
     - zstd
   run:
-    # - libxml2 <2.14  # [osx]
     - sysroot_{{ target_platform }} >=2.28  # [linux and (aarch64 or ppc64le)]
 
 test:
