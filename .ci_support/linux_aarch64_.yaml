@@ -18,6 +18,8 @@ cxx_compiler_version:
 - '14'
 docker_image:
 - quay.io/condaforge/linux-anvil-x86_64:alma9
+libxml2:
+- '2.13'
 target_platform:
 - linux-aarch64
 zip_keys:
@@ -27,9 +29,3 @@ zlib:
 - '1'
 zstd:
 - '1.5'
-build_platform:
-- linux-64
-CMAKE_CROSSCOMPILING_EMULATOR: 
-- /usr/bin/qemu-aarch64-static
-CROSSCOMPILING_EMULATOR: 
-- /usr/bin/qemu-aarch64-static
