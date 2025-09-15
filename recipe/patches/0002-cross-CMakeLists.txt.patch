@@ -10,7 +10,7 @@
 +    find_library(ZLIB NAMES z zlib libz libz.a libzlibstatic.a NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${ZLIB}")
  endif()
-@@ -163,2 +167,19 @@
+@@ -163,2 +167,20 @@
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
 +else()
 +    find_library(ZSTD NAMES zstd libzstd.a libzstdstatic.a NAMES_PER_DIR)
@@ -27,6 +27,7 @@
 +    find_library(XML2 NAMES libxml2.a xml2 NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${XML2}")
 +else()
++    list(REMOVE_ITEM LLVM_LIBRARIES "-lxml2")
 +    find_library(XML2 NAMES xml2 libxml2 libxml2.a libxml2.so.16 NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${XML2}")
  endif()
