@@ -58,7 +58,7 @@ requirements:
     - clangdev {{ llvm_version }}
     - libclang-cpp {{ llvm_version }}
     - libcxx {{ llvm_version }}  # [osx]
-    - libxml2
+    - libxml2 >=2.15
     - llvmdev {{ llvm_version }}
     - llvm {{ llvm_version }}
     - lld {{ llvm_version }}
