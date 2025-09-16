@@ -36,9 +36,9 @@ build:
   number: 2
   skip: true  # [ppc64le]
   script_env:
-    - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
+    - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and (aarch64 or ppc64le))]
   ignore_run_exports:
-    - __glibc  # [linux and aarch64]
+    - __glibc  # [(linux and (aarch64 or ppc64le))]
     - ucrt  # [win]
     - vc14_runtime  # [win]
 
