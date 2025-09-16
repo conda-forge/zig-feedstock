@@ -11,7 +11,6 @@ source:
     sha256: f4e576ee050073f9cc42a2978994e07522701606678930b187e4d5e1334bfaf3
     patches:
       - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      # - patches/0001-linux-libxml2-CMakeLists.txt.patch  # [linux and (x86_64)]
       - patches/0001-cross-findllvm.patch  # [linux and (aarch64)]
       - patches/0002-cross-CMakeLists.txt.patch  # [linux and (aarch64)]
       - patches/0003-cross-install.cmake.patch  # [linux and (aarch64)]
@@ -35,7 +34,7 @@ source:
 
 build:
   number: 1
-  skip: true  # [not (osx and arm64)]
+  skip: true  # [ppc64le]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
