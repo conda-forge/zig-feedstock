@@ -1,6 +1,6 @@
 {% set name = "zig" %}
-{% set version = "0.14.1" %}
-{% set llvm_version = "19" %}
+{% set version = "0.15.1" %}
+{% set llvm_version = "20" %}
 
 package:
   name: {{ name|lower }}
@@ -8,7 +8,7 @@ package:
 
 source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/{{ version }}.tar.gz
-    sha256: f4e576ee050073f9cc42a2978994e07522701606678930b187e4d5e1334bfaf3
+    sha256: f7d587087e551a206ad2e1c1a10e8124f5ecaec1f1efc69b0de6df89af80245c
     patches:
       - patches/0001-x86-maxrss-CMakeLists.txt.patch
       - patches/0001-cross-findllvm.patch  # [linux and (aarch64)]
@@ -18,7 +18,7 @@ source:
       - patches/0001-win-deprecations.patch  # [win]
       - patches/0002-win-libraries-CMakeLists.txt.patch  # [win]
       - patches/0003-win-add-libdir-build.zig.patch  # [win]
-      - patches/0004-win-remove-ucrt-Coff.zig.patch  # [win]
+      - patches/0004-win-remove-ucrt-Lld.zig.patch  # [win]
     folder: zig-source
 
   # We may need to use the upstream binary dist if conda ZIG cannot build a newer version
@@ -33,8 +33,8 @@ source:
   #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982  # [linux]
 
 build:
-  number: 2
-  skip: true  # [ppc64le]
+  number: 0
+  skip: true  # [ppc64le or (osx and arm64)]
   script_env:
     - BUILD_WITH_CMAKE=1  # [x86_64 or (linux and aarch64)]
   ignore_run_exports:
@@ -83,7 +83,7 @@ test:
     - if not exist %PREFIX%\\lib\\zig\\zig.h exit 1  # [win]
     {% set lib_dirs = [
       "compiler", "compiler_rt", "docs", "include", "init", "libc",
-      "libcxx", "libcxxabi", "libunwind", "std", "tsan"
+      "libcxx", "libcxxabi", "libunwind", "std"
     ] %}
     {% for lib_dir in lib_dirs %}
     - test -d ${PREFIX}/lib/zig/{{ lib_dir }}  # [not (osx and arm64 or win)]

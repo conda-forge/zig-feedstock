@@ -7,3 +7,7 @@ github:
   branch_name: main
   tooling_branch_name: main
 test: native_and_emulated
+azure:
+    free_disk_space: True
+    settings_linux:
+        swapfile_size: 10GiB
