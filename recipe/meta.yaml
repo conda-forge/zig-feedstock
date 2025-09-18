@@ -11,9 +11,9 @@ source:
     sha256: f7d587087e551a206ad2e1c1a10e8124f5ecaec1f1efc69b0de6df89af80245c
     patches:
       - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      - patches/0001-cross-findllvm.patch  # [linux and (aarch64)]
-      - patches/0002-cross-CMakeLists.txt.patch  # [linux and (aarch64)]
-      - patches/0003-cross-install.cmake.patch  # [linux and (aarch64)]
+      - patches/0001-cross-findllvm.patch  # [linux and (aarch64 or ppc64le)]
+      - patches/0002-cross-CMakeLists.txt.patch  # [linux and (aarch64 or ppc64le)]
+      - patches/0003-cross-install.cmake.patch  # [linux and (aarch64 or ppc64le)]
       # May be combined into a single patch once the build is found robust (few versions of zig)
       - patches/0001-win-deprecations.patch  # [win]
       - patches/0002-win-libraries-CMakeLists.txt.patch  # [win]

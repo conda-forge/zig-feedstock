@@ -69,9 +69,9 @@ pub const mem_leak_frames = 0;
 EOF
 
 cmake_build_cmake_target "${cmake_build_dir}" zig2.c
-pushd "${cmake_build_dir}"
-  patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list.patch --binary
-popd
+# pushd "${cmake_build_dir}"
+#   patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list.patch --binary
+# popd
 
 # cmake_build_cmake_target "${cmake_build_dir}" zig2
 # patchelf_sysroot_interpreter "${SYSROOT_PATH}" "${TARGET_INTERPRETER}" "${cmake_build_dir}/zig2" 1
