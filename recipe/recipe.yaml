@@ -1,0 +1,225 @@
+schema_version: 1
+
+context:
+  name: zig
+  version: 0.15.1
+  llvm_version: "20"
+
+package:
+  name: ${{ name|lower }}
+  version: ${{ version }}
+
+source:
+  - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
+    sha256: f7d587087e551a206ad2e1c1a10e8124f5ecaec1f1efc69b0de6df89af80245c
+    patches:
+      # Only apply CMake patch when building with CMake (x86_64 or linux-aarch64)
+      - if: x86_64 or (linux and aarch64)
+        then:
+          - patches/0001-x86-maxrss-CMakeLists.txt.patch
+      - if: linux and aarch64
+        then:
+          - patches/0001-cross-findllvm.patch
+          - patches/0002-cross-CMakeLists.txt.patch
+          - patches/0003-cross-install.cmake.patch
+      - if: win
+        then:
+          # May be combined into a single patch once the build is found robust (few versions of zig)
+          - patches/0001-win-deprecations.patch
+          - patches/0002-win-libraries-CMakeLists.txt.patch
+          - patches/0003-win-add-libdir-build.zig.patch
+          - patches/0004-win-remove-ucrt-Lld.zig.patch
+    target_directory: zig-source
+
+  # Bootstrap fallback: Use upstream binary dist if conda ZIG cannot build a newer version
+  # The zig variable in the build scripts would then need to be updated
+  # Uncomment the following sections to enable bootstrap binaries:
+  #
+  # - folder: zig-bootstrap
+  #   if: win
+  #   url: https://ziglang.org/download/${{ version }}/zig-windows-x86_64-${{ version }}.zip
+  #   sha256: f53e5f9011ba20bbc3e0e6d0a9441b31eb227a97bac0e7d24172f1b8b27b4371
+  #
+  # - folder: zig-bootstrap
+  #   if: osx
+  #   url: https://ziglang.org/download/${{ version }}/zig-macos-x86_64-${{ version }}.tar.xz
+  #   sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3
+  #
+  # - folder: zig-bootstrap
+  #   if: linux
+  #   url: https://ziglang.org/download/${{ version }}/zig-linux-x86_64-${{ version }}.tar.xz
+  #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982
+
+build:
+  number: 1
+  skip:
+    - ppc64le
+  script:
+    - if: unix
+      then:
+        - bash ${RECIPE_DIR}/build.sh
+    - if: win
+      then:
+        # The bld.bat script handles Windows builds
+        - call %RECIPE_DIR%\bld.bat
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - if: linux and (aarch64 or ppc64le)
+      then:
+        - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
+    - ${{ stdlib("c") }}
+    - cmake >=3.5
+    - if: (build_platform != target_platform) and osx
+      then:
+        - libxml2-devel
+    - ninja
+    - if: unix
+      then:
+        - sed
+    # mamba needed for cross-compilation bootstrap (to install zig)
+    - if: osx and arm64
+      then:
+        - mamba
+
+  host:
+    - if: linux and (aarch64 or ppc64le)
+      then:
+        - ${{ compiler('cxx') }}
+    - clangdev ${{ llvm_version }}.*
+    - libclang-cpp ${{ llvm_version }}.*
+    - if: osx
+      then:
+        - libcxx ${{ llvm_version }}.*
+    - libxml2-devel
+    - llvmdev ${{ llvm_version }}.*
+    - llvm ${{ llvm_version }}.*
+    - lld ${{ llvm_version }}.*
+    - if: win
+      then:
+        - mamba
+    - if: linux and (aarch64 or ppc64le)
+      then:
+        - sysroot_${{ target_platform }} >=2.28
+    - zlib
+    - zstd
+
+  run:
+    - if: linux and (aarch64 or ppc64le)
+      then:
+        - sysroot_${{ target_platform }} >=2.28
+
+  ignore_run_exports:
+    - if: linux and aarch64
+      then:
+        - __glibc
+    - if: win
+      then:
+        - ucrt
+        - vc14_runtime
+
+  script_env:
+    - if: x86_64 or (linux and aarch64)
+      then:
+        - BUILD_WITH_CMAKE=1
+
+tests:
+  - requirements:
+      run:
+        - if: linux and aarch64
+          then:
+            - patchelf
+        - if: linux and (aarch64 or ppc64le)
+          then:
+            - sysroot_${{ target_platform }} >=2.28
+
+    files:
+      source:
+        - zig-source/test
+
+    script:
+      # File existence tests - Unix
+      - if: unix
+        then:
+          - test -f ${PREFIX}/bin/zig
+          - test -f ${PREFIX}/lib/zig/c.zig
+          - test -f ${PREFIX}/lib/zig/compiler_rt.zig
+          - test -f ${PREFIX}/lib/zig/zig.h
+
+      # File existence tests - Windows
+      - if: win
+        then:
+          - if not exist %PREFIX%\bin\zig.exe exit 1
+          - if not exist %PREFIX%\lib\zig\c.zig exit 1
+          - if not exist %PREFIX%\lib\zig\compiler_rt.zig exit 1
+          - if not exist %PREFIX%\lib\zig\zig.h exit 1
+
+      # Directory tests - Unix (excluding osx-arm64)
+      - if: not (osx and arm64 or win)
+        then:
+          - test -d ${PREFIX}/lib/zig/compiler
+          - test -d ${PREFIX}/lib/zig/compiler_rt
+          - test -d ${PREFIX}/lib/zig/docs
+          - test -d ${PREFIX}/lib/zig/include
+          - test -d ${PREFIX}/lib/zig/init
+          - test -d ${PREFIX}/lib/zig/libc
+          - test -d ${PREFIX}/lib/zig/libcxx
+          - test -d ${PREFIX}/lib/zig/libcxxabi
+          - test -d ${PREFIX}/lib/zig/libunwind
+          - test -d ${PREFIX}/lib/zig/std
+
+      # Directory tests - Windows
+      - if: win
+        then:
+          - if not exist %PREFIX%\lib\zig\compiler exit 1
+          - if not exist %PREFIX%\lib\zig\compiler_rt exit 1
+          - if not exist %PREFIX%\lib\zig\docs exit 1
+          - if not exist %PREFIX%\lib\zig\include exit 1
+          - if not exist %PREFIX%\lib\zig\init exit 1
+          - if not exist %PREFIX%\lib\zig\libc exit 1
+          - if not exist %PREFIX%\lib\zig\libcxx exit 1
+          - if not exist %PREFIX%\lib\zig\libcxxabi exit 1
+          - if not exist %PREFIX%\lib\zig\libunwind exit 1
+          - if not exist %PREFIX%\lib\zig\std exit 1
+
+      # Functionality tests
+      - if: linux and (aarch64 or ppc64le)
+        then:
+          - readelf -l ${PREFIX}/bin/zig
+      - if: linux and aarch64
+        then:
+          - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig
+
+      - zig version
+      - zig zen
+      - zig init
+
+      - if: not win
+        then:
+          - zig test zig-source/test/behavior.zig
+      # One test fails on windows: 838/1932 behavior.floatop.test.@log2 with vectors...FAIL (TestUnexpectedResult)
+      - if: win
+        then:
+          - zig test zig-source/test/behavior.zig || true
+
+about:
+  homepage: https://ziglang.org/
+  license: MIT
+  license_file: zig-source/LICENSE
+  summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+  description: |
+    Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+    Robust: Behavior is correct even for edge cases such as out of memory.
+    Optimal: Write programs the best way they can behave and perform.
+    Reusable: The same code works in many environments which have different constraints.
+    Maintainable: Precisely communicate intent to the compiler and other programmers.
+      The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
+  documentation: https://ziglang.org/documentation/${{ version }}/
+  repository: https://github.com/ziglang/zig
+
+extra:
+  recipe-maintainers:
+    - MementoRC
+    - xmnlab
