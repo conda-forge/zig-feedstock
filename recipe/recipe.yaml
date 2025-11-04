@@ -55,18 +55,22 @@ build:
   skip:
     - ppc64le
   script:
-    - if: unix
-      then:
-        - bash ${RECIPE_DIR}/build.sh
-    - if: win
-      then:
-        # The bld.bat script handles Windows builds
-        - call %RECIPE_DIR%\bld.bat
+    content:
+      - if: unix
+        then:
+          - bash ${RECIPE_DIR}/build.sh
+      - if: win
+        then:
+          # The bld.bat script handles Windows builds
+          - call %RECIPE_DIR%\bld.bat
+    env:
+      BUILD_WITH_CMAKE: ${{"1" if x86_64 or (linux and aarch64)}}
 
 requirements:
   build:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
+    - zig
     - if: linux and (aarch64 or ppc64le)
       then:
         - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
@@ -79,10 +83,6 @@ requirements:
     - if: unix
       then:
         - sed
-    # mamba needed for cross-compilation bootstrap (to install zig)
-    - if: osx and arm64
-      then:
-        - mamba
 
   host:
     - if: linux and (aarch64 or ppc64le)
@@ -97,9 +97,6 @@ requirements:
     - llvmdev ${{ llvm_version }}.*
     - llvm ${{ llvm_version }}.*
     - lld ${{ llvm_version }}.*
-    - if: win
-      then:
-        - mamba
     - if: linux and (aarch64 or ppc64le)
       then:
         - sysroot_${{ target_platform }} >=2.28
@@ -112,18 +109,14 @@ requirements:
         - sysroot_${{ target_platform }} >=2.28
 
   ignore_run_exports:
-    - if: linux and aarch64
-      then:
-        - __glibc
-    - if: win
-      then:
-        - ucrt
-        - vc14_runtime
-
-  script_env:
-    - if: x86_64 or (linux and aarch64)
-      then:
-        - BUILD_WITH_CMAKE=1
+    by_name:
+      - if: linux and aarch64
+        then:
+          - __glibc
+      - if: win
+        then:
+          - ucrt
+          - vc14_runtime
 
 tests:
   - requirements:

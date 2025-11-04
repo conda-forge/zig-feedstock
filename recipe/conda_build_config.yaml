@@ -1,3 +1,0 @@
-c_stdlib_version:  # [unix]
-  - 2.28  # [linux]
-  - 11.3  # [osx and x86_64]
