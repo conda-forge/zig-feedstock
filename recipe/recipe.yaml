@@ -119,6 +119,28 @@ requirements:
           - vc14_runtime
 
 tests:
+  # Package contents verification
+  - package_contents:
+      bin:
+        - zig
+      files:
+        - lib/zig/c.zig
+        - lib/zig/compiler_rt.zig
+        - lib/zig/zig.h
+        - if: not (osx and arm64)
+          then:
+            - lib/zig/compiler/**
+            - lib/zig/compiler_rt/**
+            - lib/zig/docs/**
+            - lib/zig/include/**
+            - lib/zig/init/**
+            - lib/zig/libc/**
+            - lib/zig/libcxx/**
+            - lib/zig/libcxxabi/**
+            - lib/zig/libunwind/**
+            - lib/zig/std/**
+
+  # Functional tests
   - requirements:
       run:
         - if: linux and aarch64
@@ -133,50 +155,6 @@ tests:
         - zig-source/test
 
     script:
-      # File existence tests - Unix
-      - if: unix
-        then:
-          - test -f ${PREFIX}/bin/zig
-          - test -f ${PREFIX}/lib/zig/c.zig
-          - test -f ${PREFIX}/lib/zig/compiler_rt.zig
-          - test -f ${PREFIX}/lib/zig/zig.h
-
-      # File existence tests - Windows
-      - if: win
-        then:
-          - if not exist %PREFIX%\bin\zig.exe exit 1
-          - if not exist %PREFIX%\lib\zig\c.zig exit 1
-          - if not exist %PREFIX%\lib\zig\compiler_rt.zig exit 1
-          - if not exist %PREFIX%\lib\zig\zig.h exit 1
-
-      # Directory tests - Unix (excluding osx-arm64)
-      - if: not (osx and arm64 or win)
-        then:
-          - test -d ${PREFIX}/lib/zig/compiler
-          - test -d ${PREFIX}/lib/zig/compiler_rt
-          - test -d ${PREFIX}/lib/zig/docs
-          - test -d ${PREFIX}/lib/zig/include
-          - test -d ${PREFIX}/lib/zig/init
-          - test -d ${PREFIX}/lib/zig/libc
-          - test -d ${PREFIX}/lib/zig/libcxx
-          - test -d ${PREFIX}/lib/zig/libcxxabi
-          - test -d ${PREFIX}/lib/zig/libunwind
-          - test -d ${PREFIX}/lib/zig/std
-
-      # Directory tests - Windows
-      - if: win
-        then:
-          - if not exist %PREFIX%\lib\zig\compiler exit 1
-          - if not exist %PREFIX%\lib\zig\compiler_rt exit 1
-          - if not exist %PREFIX%\lib\zig\docs exit 1
-          - if not exist %PREFIX%\lib\zig\include exit 1
-          - if not exist %PREFIX%\lib\zig\init exit 1
-          - if not exist %PREFIX%\lib\zig\libc exit 1
-          - if not exist %PREFIX%\lib\zig\libcxx exit 1
-          - if not exist %PREFIX%\lib\zig\libcxxabi exit 1
-          - if not exist %PREFIX%\lib\zig\libunwind exit 1
-          - if not exist %PREFIX%\lib\zig\std exit 1
-
       # Functionality tests
       - if: linux and (aarch64 or ppc64le)
         then:
