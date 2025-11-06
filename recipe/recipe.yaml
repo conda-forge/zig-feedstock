@@ -62,7 +62,7 @@ build:
       - if: win
         then:
           # The bld.bat script handles Windows builds
-          - call %RECIPE_DIR%\bld.bat
+          - call %RECIPE_DIR%\build.bat
     env:
       BUILD_WITH_CMAKE: ${{ "1" if x86_64 or (linux and aarch64) }}
 
