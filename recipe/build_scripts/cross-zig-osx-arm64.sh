@@ -20,6 +20,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 SYSROOT_ARCH="aarch64"
 
+# No longer neede this was required for conda-build
 # mamba create -n zig_env -y zig
 # zig=$(mamba run -n zig_env which zig | grep -Eo '/.*zig' | tail -n 1)
 zig=zig
