@@ -64,7 +64,7 @@ build:
           # The bld.bat script handles Windows builds
           - call %RECIPE_DIR%\bld.bat
     env:
-      BUILD_WITH_CMAKE: ${{"1" if x86_64 or (linux and aarch64)}}
+      BUILD_WITH_CMAKE: ${{ "1" if x86_64 or (linux and aarch64) }}
 
 requirements:
   build:
