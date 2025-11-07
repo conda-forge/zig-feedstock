@@ -1,5 +1,11 @@
+commit e048c4b13c41f9eeabe0222c13727f9eae9de2f0
+Author: Tim de Jager <tdejager89@gmail.com>
+Date:   Fri Nov 7 12:17:37 2025 +0100
+
+    add default
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 01a4f23..3179087 100644
+index ef371fc..e5548b7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -89,6 +89,7 @@ set(ZIG_SHARED_LLVM off CACHE BOOL "Prefer linking against shared LLVM libraries
@@ -67,7 +73,7 @@ index 01a4f23..3179087 100644
  endif()
  
  target_include_directories(zigcpp PUBLIC
-@@ -784,6 +807,32 @@ else()
+@@ -784,6 +807,36 @@ else()
  endif()
  
  set(ZIG_HOST_TARGET_TRIPLE "${ZIG_HOST_TARGET_ARCH}-${ZIG_HOST_TARGET_OS}${ZIG_HOST_TARGET_ABI}" CACHE STRING "Host zig target triple.")
@@ -97,10 +103,14 @@ index 01a4f23..3179087 100644
 +  set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_TARGET_TRIPLE})
 +  set(ZIG_CROSS_TARGET_MCPU ${ZIG_TARGET_MCPU})
 +endif()
++
++if(NOT DEFINED CROSSCOMPILING_LIBC)
++  set(CROSSCOMPILING_LIBC "-lc")
++endif()
  
  if(MSVC)
    set(ZIG_WASM2C_COMPILE_FLAGS "")
-@@ -791,9 +840,15 @@ if(MSVC)
+@@ -791,9 +844,15 @@ if(MSVC)
    set(ZIG2_COMPILE_FLAGS "/Od")
    set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
  else()
@@ -119,7 +129,7 @@ index 01a4f23..3179087 100644
    if(APPLE)
      set(ZIG2_LINK_FLAGS "-Wl,-stack_size,0x10000000")
    elseif(MINGW)
-@@ -816,7 +871,7 @@ set_target_properties(zig-wasm2c PROPERTIES COMPILE_FLAGS "${ZIG_WASM2C_COMPILE_
+@@ -816,7 +875,7 @@ set_target_properties(zig-wasm2c PROPERTIES COMPILE_FLAGS "${ZIG_WASM2C_COMPILE_
  
  add_custom_command(
    OUTPUT "${ZIG1_C_SOURCE}"
@@ -128,7 +138,7 @@ index 01a4f23..3179087 100644
    DEPENDS zig-wasm2c "${ZIG1_WASM_MODULE}"
    COMMENT "Converting ${ZIG1_WASM_MODULE} to ${ZIG1_C_SOURCE}"
    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-@@ -828,18 +883,27 @@ set_target_properties(zig1 PROPERTIES COMPILE_FLAGS ${ZIG1_COMPILE_FLAGS})
+@@ -828,18 +887,27 @@ set_target_properties(zig1 PROPERTIES COMPILE_FLAGS ${ZIG1_COMPILE_FLAGS})
  if(MSVC)
    target_link_options(zig1 PRIVATE /STACK:0x10000000)
  else()
@@ -159,7 +169,7 @@ index 01a4f23..3179087 100644
    --dep "build_options"
    --dep "aro"
    "-Mroot=src/main.zig"
-@@ -849,7 +913,7 @@ set(BUILD_ZIG2_ARGS
+@@ -849,7 +917,7 @@ set(BUILD_ZIG2_ARGS
  
  add_custom_command(
    OUTPUT "${ZIG2_C_SOURCE}"
@@ -168,7 +178,7 @@ index 01a4f23..3179087 100644
    DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
    COMMENT "Running zig1.wasm to produce ${ZIG2_C_SOURCE}"
    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-@@ -860,13 +924,13 @@ set(BUILD_COMPILER_RT_ARGS
+@@ -860,13 +928,13 @@ set(BUILD_COMPILER_RT_ARGS
    build-obj -ofmt=c -OReleaseSmall
    --name compiler_rt
    -femit-bin="${ZIG_COMPILER_RT_C_SOURCE}"
@@ -184,7 +194,7 @@ index 01a4f23..3179087 100644
    DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
    COMMENT "Running zig1.wasm to produce ${ZIG_COMPILER_RT_C_SOURCE}"
    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-@@ -908,8 +972,8 @@ set(ZIG_BUILD_ARGS
+@@ -908,8 +976,8 @@ set(ZIG_BUILD_ARGS
    --zig-lib-dir "${PROJECT_SOURCE_DIR}/lib"
  
    "-Dversion-string=${RESOLVED_ZIG_VERSION}"
@@ -195,7 +205,7 @@ index 01a4f23..3179087 100644
  
    -Denable-llvm
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
-@@ -972,13 +1036,15 @@ set(ZIG2_WORKING_DIR "${PROJECT_SOURCE_DIR}")
+@@ -971,13 +1039,15 @@ set(ZIG2_WORKING_DIR "${PROJECT_SOURCE_DIR}")
  
  add_custom_command(
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
