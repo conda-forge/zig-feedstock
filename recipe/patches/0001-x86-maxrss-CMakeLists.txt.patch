@@ -1,16 +1,20 @@
---- CMakeLists.txt.orig	2024-06-06 14:05:11.000000000 -0500
-+++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
-@@ -915,6 +915,7 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ef371fc..01a4f23 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -915,6 +915,7 @@ set(ZIG_BUILD_ARGS
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
-
+ 
    -Dno-langref
 +  --maxrss 7000000000
  )
-
+ 
  set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")
---- build.zig.orig	2024-06-06 14:05:11.000000000 -0500
-+++ build.zig	2024-06-22 11:27:13.931633400 -0500
-@@ -738,7 +738,7 @@
+diff --git a/build.zig b/build.zig
+index 37523e6..a151dc6 100644
+--- a/build.zig
++++ b/build.zig
+@@ -738,7 +738,7 @@ fn addCompilerMod(b: *std.Build, options: AddCompilerModOptions) *std.Build.Modu
  fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Step.Compile {
      const exe = b.addExecutable(.{
          .name = "zig",
