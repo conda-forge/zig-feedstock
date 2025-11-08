@@ -1,16 +1,34 @@
---- CMakeLists.txt.old	2024-06-06 14:05:11.000000000 -0500
-+++ CMakeLists.txt	2024-07-05 15:35:21.268292096 -0500
-@@ -91,2 +91,3 @@
+commit e048c4b13c41f9eeabe0222c13727f9eae9de2f0
+Author: Tim de Jager <tdejager89@gmail.com>
+Date:   Fri Nov 7 12:17:37 2025 +0100
+
+    add default
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ef371fc..e5548b7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -89,6 +89,7 @@ set(ZIG_SHARED_LLVM off CACHE BOOL "Prefer linking against shared LLVM libraries
+ set(ZIG_STATIC_LLVM ${ZIG_STATIC} CACHE BOOL "Prefer linking against static LLVM libraries")
+ set(ZIG_STATIC_ZLIB ${ZIG_STATIC} CACHE BOOL "Prefer linking against static zlib")
  set(ZIG_STATIC_ZSTD ${ZIG_STATIC} CACHE BOOL "Prefer linking against static zstd")
 +set(ZIG_STATIC_XML2 ${ZIG_STATIC} CACHE BOOL "Prefer linking against static xml2")
  set(ZIG_STATIC_CURSES OFF CACHE BOOL "Enable static linking against curses")
-@@ -148,2 +149,5 @@
+ set(ZIG_STATIC_LIBXML2 OFF CACHE BOOL "Enable static linking against libxml2")
+ 
+@@ -146,6 +147,9 @@ if(ZIG_STATIC_ZLIB)
+ 
+     find_library(ZLIB NAMES libz.a libzlibstatic.a z zlib libz NAMES_PER_DIR)
      list(APPEND LLVM_LIBRARIES "${ZLIB}")
 +else()
 +    find_library(ZLIB NAMES z zlib libz libz.a libzlibstatic.a NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${ZLIB}")
  endif()
-@@ -159,2 +161,19 @@
+ 
+ if(ZIG_STATIC_ZSTD)
+@@ -157,6 +161,23 @@ if(ZIG_STATIC_ZSTD)
+ 
+     find_library(ZSTD NAMES libzstd.a libzstdstatic.a zstd NAMES_PER_DIR)
      list(APPEND LLVM_LIBRARIES "${ZSTD}")
 +else()
 +    find_library(ZSTD NAMES zstd libzstd.a libzstdstatic.a NAMES_PER_DIR)
@@ -30,12 +48,19 @@
 +    find_library(XML2 NAMES xml2 libxml2 libxml2.a NAMES_PER_DIR)
 +    list(APPEND LLVM_LIBRARIES "${XML2}")
  endif()
-@@ -704,3 +725,3 @@
+ 
+ if (MSVC)
+@@ -699,17 +720,19 @@ if(NOT MSVC)
+   target_compile_options(zigcpp PRIVATE
+     -fno-exceptions
      -fno-rtti
 -    -fno-stack-protector
 +    # -fno-stack-protector
  
-@@ -711,6 +732,8 @@
+     -fvisibility-inlines-hidden
+ 
+     -Wno-type-limits
+     -Wno-missing-braces
      -Wno-comment
 +    -Os
    )
@@ -46,7 +71,11 @@
 +  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
 +  set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
  endif()
-@@ -789,2 +812,28 @@
+ 
+ target_include_directories(zigcpp PUBLIC
+@@ -784,6 +807,36 @@ else()
+ endif()
+ 
  set(ZIG_HOST_TARGET_TRIPLE "${ZIG_HOST_TARGET_ARCH}-${ZIG_HOST_TARGET_OS}${ZIG_HOST_TARGET_ABI}" CACHE STRING "Host zig target triple.")
 +if(DEFINED ENV{CROSSCOMPILING_EMULATOR})
 +  set(CROSSCOMPILING_EMULATOR $ENV{CROSSCOMPILING_EMULATOR})
@@ -74,8 +103,16 @@
 +  set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_TARGET_TRIPLE})
 +  set(ZIG_CROSS_TARGET_MCPU ${ZIG_TARGET_MCPU})
 +endif()
++
++if(NOT DEFINED CROSSCOMPILING_LIBC)
++  set(CROSSCOMPILING_LIBC "-lc")
++endif()
  
-@@ -796,5 +865,11 @@
+ if(MSVC)
+   set(ZIG_WASM2C_COMPILE_FLAGS "")
+@@ -791,9 +844,15 @@ if(MSVC)
+   set(ZIG2_COMPILE_FLAGS "/Od")
+   set(ZIG2_LINK_FLAGS "/STACK:16777216 /FORCE:MULTIPLE")
  else()
 -  set(ZIG_WASM2C_COMPILE_FLAGS "-std=c99 -O2")
 -  set(ZIG1_COMPILE_FLAGS "-std=c99 -Os")
@@ -90,12 +127,20 @@
 +    set(ZIG2_COMPILE_FLAGS "-std=c99 -Os")
 +  endif()
    if(APPLE)
-@@ -821,3 +870,3 @@
+     set(ZIG2_LINK_FLAGS "-Wl,-stack_size,0x10000000")
+   elseif(MINGW)
+@@ -816,7 +875,7 @@ set_target_properties(zig-wasm2c PROPERTIES COMPILE_FLAGS "${ZIG_WASM2C_COMPILE_
+ 
+ add_custom_command(
    OUTPUT "${ZIG1_C_SOURCE}"
 -  COMMAND zig-wasm2c "${ZIG1_WASM_MODULE}" "${ZIG1_C_SOURCE}"
 +  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig-wasm2c "${ZIG1_WASM_MODULE}" "${ZIG1_C_SOURCE}"
    DEPENDS zig-wasm2c "${ZIG1_WASM_MODULE}"
-@@ -833,3 +882,9 @@
+   COMMENT "Converting ${ZIG1_WASM_MODULE} to ${ZIG1_C_SOURCE}"
+   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+@@ -828,18 +887,27 @@ set_target_properties(zig1 PROPERTIES COMPILE_FLAGS ${ZIG1_COMPILE_FLAGS})
+ if(MSVC)
+   target_link_options(zig1 PRIVATE /STACK:0x10000000)
  else()
 -  target_link_libraries(zig1 LINK_PUBLIC m)
 +  if(WIN32)
@@ -106,7 +151,9 @@
 +    target_link_libraries(zig1 LINK_PUBLIC m)
 +  endif()
    if(MINGW)
-@@ -839,8 +894,11 @@
+     target_link_options(zig1 PRIVATE -Wl,--stack,0x10000000)
+   endif()
+ endif()
  
 +if(NOT DEFINED ZIG_CROSS_TARGET_TRIPLE)
 +    set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_HOST_TARGET_TRIPLE})
@@ -120,35 +167,58 @@
 -  -target "${ZIG_HOST_TARGET_TRIPLE}"
 +  -target "${ZIG_CROSS_TARGET_TRIPLE}"
    --dep "build_options"
-@@ -854,3 +912,3 @@
+   --dep "aro"
+   "-Mroot=src/main.zig"
+@@ -849,7 +917,7 @@ set(BUILD_ZIG2_ARGS
+ 
+ add_custom_command(
    OUTPUT "${ZIG2_C_SOURCE}"
 -  COMMAND zig1 ${BUILD_ZIG2_ARGS}
 +  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig1 ${BUILD_ZIG2_ARGS}
    DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
-@@ -865,3 +923,3 @@
+   COMMENT "Running zig1.wasm to produce ${ZIG2_C_SOURCE}"
+   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+@@ -860,13 +928,13 @@ set(BUILD_COMPILER_RT_ARGS
+   build-obj -ofmt=c -OReleaseSmall
+   --name compiler_rt
    -femit-bin="${ZIG_COMPILER_RT_C_SOURCE}"
 -  -target "${ZIG_HOST_TARGET_TRIPLE}"
 +  -target "${ZIG_CROSS_TARGET_TRIPLE}"
-   --dep "build_options"
-@@ -871,3 +929,3 @@
+   "-Mroot=lib/compiler_rt.zig"
+ )
+ 
+ add_custom_command(
    OUTPUT "${ZIG_COMPILER_RT_C_SOURCE}"
 -  COMMAND zig1 ${BUILD_COMPILER_RT_ARGS}
 +  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig1 ${BUILD_COMPILER_RT_ARGS}
    DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
-@@ -913,4 +971,4 @@
+   COMMENT "Running zig1.wasm to produce ${ZIG_COMPILER_RT_C_SOURCE}"
+   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+@@ -908,8 +976,8 @@ set(ZIG_BUILD_ARGS
+   --zig-lib-dir "${PROJECT_SOURCE_DIR}/lib"
+ 
    "-Dversion-string=${RESOLVED_ZIG_VERSION}"
 -  "-Dtarget=${ZIG_TARGET_TRIPLE}"
 -  "-Dcpu=${ZIG_TARGET_MCPU}"
 +  "-Dtarget=${ZIG_CROSS_TARGET_TRIPLE}"
 +  "-Dcpu=${ZIG_CROSS_TARGET_MCPU}" --verbose --verbose-link --summary all
-
-@@ -977,3 +1035,4 @@
+ 
+   -Denable-llvm
+   "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
+@@ -971,13 +1039,15 @@ set(ZIG2_WORKING_DIR "${PROJECT_SOURCE_DIR}")
+ 
+ add_custom_command(
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
 -  COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
 +  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
 +  DEPENDS zig2
-   COMMENT STATUS "Building stage3"
-@@ -985,2 +1043,3 @@
-
+   COMMENT "Building stage3"
+   WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
+ )
+ 
+ set(ZIG_EXECUTABLE "$<TARGET_FILE:zig2>")
+ 
 +install(CODE "set(CROSSCOMPILING_EMULATOR \"${CROSSCOMPILING_EMULATOR}\")")
  install(CODE "set(ZIG_EXECUTABLE \"${ZIG_EXECUTABLE}\")")
+ install(CODE "set(ZIG_BUILD_ARGS \"${ZIG_BUILD_ARGS}\")")
+ install(CODE "set(ZIG2_WORKING_DIR \"${ZIG2_WORKING_DIR}\")")
