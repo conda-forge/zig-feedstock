@@ -202,5 +202,6 @@ Feedstock Maintainers
 =====================
 
 * [@MementoRC](https://github.com/MementoRC/)
+* [@tdejager](https://github.com/tdejager/)
 * [@xmnlab](https://github.com/xmnlab/)
 
