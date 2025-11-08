@@ -17,11 +17,6 @@ source:
       - if: x86_64 or (linux and aarch64)
         then:
           - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      - if: linux and aarch64
-        then:
-          - patches/0001-cross-findllvm.patch
-          - patches/0002-cross-CMakeLists.txt.patch
-          - patches/0003-cross-install.cmake.patch
       - if: win
         then:
           # May be combined into a single patch once the build is found robust (few versions of zig)
@@ -71,7 +66,7 @@ requirements:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
     - zig
-    - if: linux and (aarch64 or ppc64le)
+    - if: linux and ppc64le
       then:
         - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
     - ${{ stdlib("c") }}
@@ -85,7 +80,7 @@ requirements:
         - sed
 
   host:
-    - if: linux and (aarch64 or ppc64le)
+    - if: linux and ppc64le
       then:
         - ${{ compiler('cxx') }}
     - clangdev ${{ llvm_version }}.*
@@ -97,22 +92,19 @@ requirements:
     - llvmdev ${{ llvm_version }}.*
     - llvm ${{ llvm_version }}.*
     - lld ${{ llvm_version }}.*
-    - if: linux and (aarch64 or ppc64le)
+    - if: linux and ppc64le
       then:
         - sysroot_${{ target_platform }} >=2.28
     - zlib
     - zstd
 
   run:
-    - if: linux and (aarch64 or ppc64le)
+    - if: linux and ppc64le
       then:
         - sysroot_${{ target_platform }} >=2.28
 
   ignore_run_exports:
     by_name:
-      - if: linux and aarch64
-        then:
-          - __glibc
       - if: win
         then:
           - ucrt
