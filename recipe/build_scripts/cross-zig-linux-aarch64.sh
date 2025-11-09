@@ -19,6 +19,8 @@ mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 SYSROOT_ARCH="aarch64"
+SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
+TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="aarch64"
 
 zig=zig
@@ -27,28 +29,34 @@ zig=zig
 # zig="${SRC_DIR}/zig-bootstrap/zig"
 
 EXTRA_CMAKE_ARGS+=(
-  "-DZIG_SHARED_LLVM=OFF"
-  "-DZIG_USE_LLVM_CONFIG=ON"
+  "-DZIG_SHARED_LLVM=ON"
+  "-DZIG_USE_LLVM_CONFIG=OFF"
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu"
   "-DZIG_TARGET_MCPU=baseline"
   "-DZIG_SYSTEM_LIBCXX=stdc++"
-  "-DZIG_SINGLE_THREADED=ON"
 )
+#  "-DZIG_SINGLE_THREADED=ON"
+
+USE_CMAKE_ARGS=0
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-cat <<EOF >> "${cmake_build_dir}/config.zig"
+cat << EOF >> "${cmake_build_dir}/config.zig"
 pub const mem_leak_frames = 0;
 EOF
 #sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${BUILD_PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
+cat ${cmake_build_dir}/config.h
+
 EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
   "-Dstrip"
   "-Duse-zig-libcxx=false"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
+  "-Dcpu=baseline"
+  "-Ddynamic-linker=${TARGET_INTERPRETER}"
 )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"

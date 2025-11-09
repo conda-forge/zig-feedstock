@@ -13,10 +13,13 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
-      # Only apply CMake patch when building with CMake (x86_64 or linux-aarch64)
-      - if: x86_64 or (linux and aarch64)
+      # Only apply CMake patch when cross-compiling (Needed to set the config.h)
+      - if: x86_64 or linux
         then:
           - patches/0001-x86-maxrss-CMakeLists.txt.patch
+          - patches/0001-cross-findllvm.patch
+          - patches/0002-cross-CMakeLists.txt.patch
+          - patches/0003-cross-install.cmake.patch
       - if: win
         then:
           # May be combined into a single patch once the build is found robust (few versions of zig)
@@ -33,17 +36,17 @@ source:
   # - folder: zig-bootstrap
   #   if: win
   #   url: https://ziglang.org/download/${{ version }}/zig-windows-x86_64-${{ version }}.zip
-  #   sha256: f53e5f9011ba20bbc3e0e6d0a9441b31eb227a97bac0e7d24172f1b8b27b4371
+  #   sha256: ...
   #
   # - folder: zig-bootstrap
   #   if: osx
   #   url: https://ziglang.org/download/${{ version }}/zig-macos-x86_64-${{ version }}.tar.xz
-  #   sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3
+  #   sha256: ...
   #
   # - folder: zig-bootstrap
   #   if: linux
   #   url: https://ziglang.org/download/${{ version }}/zig-linux-x86_64-${{ version }}.tar.xz
-  #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982
+  #   sha256: ...
 
 build:
   number: 1
@@ -95,14 +98,14 @@ requirements:
     - lld ${{ llvm_version }}.*
     - if: aarch64 or ppc64le
       then:
-        - sysroot_${{ target_platform }} >=2.28
+        - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
     - zlib
     - zstd
 
   run:
     - if: aarch64 or ppc64le
       then:
-        - sysroot_${{ target_platform }} >=2.28
+        - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
 
   ignore_run_exports:
     by_name:
@@ -141,7 +144,7 @@ tests:
             - patchelf
         - if: linux and (aarch64 or ppc64le)
           then:
-            - sysroot_${{ target_platform }} >=2.28
+            - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
 
     files:
       source:
