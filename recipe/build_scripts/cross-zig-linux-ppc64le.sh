@@ -51,12 +51,12 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
-  "-Dstrip"
   "-Duse-zig-libcxx=false"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
   "-fqemu"
 )
+  # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
   # "-Dskip-libc=true"
 
