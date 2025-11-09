@@ -1,0 +1,17 @@
+--- zig2.c 2024-06-20 11:33:33.032130211 -0500
++++ zig2.c 2024-06-20 11:46:49.218920956 -0500
+@@ -597818 +597818 @@
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8): "memory", "cr0", "r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8): "memory", "cr0", "r8", "r9", "r10", "r11", "r12");
+@@ -910189 +910189 @@
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3): "memory", "cr0", "r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3): "memory", "cr0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
+@@ -1164779 +1164779 @@
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6): "memory", "cr0", "r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6): "memory", "cr0", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
+@@ -1531121 +1531121 @@
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7): "memory", "cr0", "r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7): "memory", "cr0", "r7", "r8", "r9", "r10", "r11", "r12");
+@@ -2969308 +2969308 @@
+- __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8), [arg6]"r"(t9): "memory", "cr0", "r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12");
++ __asm volatile(" sc\n bns+ 1f\n neg 3, 3\n 1:": [ret]"=r"(t2): [number]"r"(t3), [arg1]"r"(t4), [arg2]"r"(t5), [arg3]"r"(t6), [arg4]"r"(t7), [arg5]"r"(t8), [arg6]"r"(t9): "memory", "cr0", "r9", "r10", "r11", "r12");
