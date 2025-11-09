@@ -41,7 +41,7 @@ EXTRA_CMAKE_ARGS+=(
 USE_CMAKE_ARGS=0
 
 # When using installed c++ libs, zig needs libzigcpp.a
-# configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 # cat << EOF >> "${cmake_build_dir}/config.zig"
 # pub const mem_leak_frames = 0;
 # EOF
