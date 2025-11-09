@@ -29,7 +29,7 @@ EXTRA_CMAKE_ARGS+=( \
   "-DCMAKE_C_COMPILER=${CC}" \
   "-DCMAKE_CXX_COMPILER=${CXX}" \
   "-DZIG_SHARED_LLVM=OFF" \
-  "-DZIG_USE_LLVM_CONFIG=ON" \
+  "-DZIG_USE_LLVM_CONFIG=OFF" \
   "-DZIG_TARGET_TRIPLE=${ZIG_ARCH}-linux-gnu" \
   "-DZIG_TARGET_MCPU=baseline" \
   "-DZIG_SYSTEM_LIBCXX=stdc++" \
@@ -37,9 +37,10 @@ EXTRA_CMAKE_ARGS+=( \
   "-DZIG_HOST_TARGET_TRIPLE=x86_64-linux-gnu" \
 )
 
+export CROSSCOMPILING_EMULATOR="${CROSSCOMPILING_EMULATOR:-${BUILD_PREFIX}/bin/qemu-execve-ppc64le}"
+export CROSSCOMPILING_LIBC="-L${SYSROOT_PATH}/lib64;-lc"
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
-export CROSSCOMPILING_LIBC="-L${SYSROOT_PATH}/lib64;-lc"
 
 export CFLAGS="${CFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
 export CXXFLAGS="${CXXFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
@@ -55,9 +56,9 @@ pub const mem_leak_frames = 0;
 EOF
 
 cmake_build_cmake_target "${cmake_build_dir}" zig2.c
-pushd "${cmake_build_dir}"
-  patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list-ppc64le.patch --binary
-popd
+#pushd "${cmake_build_dir}"
+#  patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list-ppc64le.patch --binary
+#popd
 
 sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 pushd "${cmake_build_dir}"

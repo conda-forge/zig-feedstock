@@ -73,6 +73,7 @@ requirements:
     - if: linux and ppc64le
       then:
         - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
+        - qemu-execve-ppc64le
     - ${{ stdlib("c") }}
     - cmake >=3.5
     - if: (build_platform != target_platform) and osx
