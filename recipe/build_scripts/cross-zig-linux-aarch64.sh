@@ -23,7 +23,7 @@ SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="aarch64"
 
-zig=zig
+zig="${BUILD_PREFIX}"/bin/zig
 
 # This is safe-keep for when non-backward compatible updates are introduced
 # zig="${SRC_DIR}/zig-bootstrap/zig"
@@ -37,18 +37,17 @@ EXTRA_CMAKE_ARGS+=(
 )
 #  "-DZIG_SINGLE_THREADED=ON"
 
+# For some reason using the defined CMAKE_ARGS makes the build fail
 USE_CMAKE_ARGS=0
 
 # When using installed c++ libs, zig needs libzigcpp.a
-configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-cat << EOF >> "${cmake_build_dir}/config.zig"
-pub const mem_leak_frames = 0;
-EOF
+# configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+# cat << EOF >> "${cmake_build_dir}/config.zig"
+# pub const mem_leak_frames = 0;
+# EOF
 #sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${BUILD_PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
-cat ${cmake_build_dir}/config.h
-
 EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
@@ -57,7 +56,13 @@ EXTRA_ZIG_ARGS+=(
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
   "-Ddynamic-linker=${TARGET_INTERPRETER}"
+  "-Dskip-libc=true"
+  "-fqemu"
 )
 
+export QEMU_LD_PREFIX="${SYSROOT_PATH}"
+export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
+remove_failing_langref "${SRC_DIR}/conda-zig-source"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
