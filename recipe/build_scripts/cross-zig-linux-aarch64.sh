@@ -40,7 +40,7 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 cat <<EOF >> "${cmake_build_dir}/config.zig"
 pub const mem_leak_frames = 0;
 EOF
-sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${PREFIX}/bin@g" "${cmake_build_dir}/config.h"
+#sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${BUILD_PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=(

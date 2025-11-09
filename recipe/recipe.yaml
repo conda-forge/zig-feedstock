@@ -67,7 +67,7 @@ requirements:
     - ${{ compiler('cxx') }}
     - if: arm64 or aarch64 or ppc64le
       then: zig
-    - if: ppc64le
+    - if: aarch64 or ppc64le
       then:
         - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
     - ${{ stdlib("c") }}
@@ -81,7 +81,7 @@ requirements:
         - sed
 
   host:
-    - if: linux and ppc64le
+    - if: aarch64 or ppc64le
       then:
         - ${{ compiler('cxx') }}
     - clangdev ${{ llvm_version }}.*
@@ -93,14 +93,14 @@ requirements:
     - llvmdev ${{ llvm_version }}.*
     - llvm ${{ llvm_version }}.*
     - lld ${{ llvm_version }}.*
-    - if: linux and ppc64le
+    - if: aarch64 or ppc64le
       then:
         - sysroot_${{ target_platform }} >=2.28
     - zlib
     - zstd
 
   run:
-    - if: linux and ppc64le
+    - if: aarch64 or ppc64le
       then:
         - sysroot_${{ target_platform }} >=2.28
 
