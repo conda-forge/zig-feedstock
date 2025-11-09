@@ -152,12 +152,16 @@ tests:
 
     script:
       # Functionality tests
-      - if: linux and (aarch64 or ppc64le)
+      # - if: aarch64
+      #   then:
+      #     - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-${{ c_stdlib_version }}.so ${PREFIX}/bin/zig
+      # - if: ppc64le
+      #   then:
+      #     - patchelf --set-interpreter ${PREFIX}/poweroc64le-conda-linux-gnu/sysroot/lib64/ld-${{ c_stdlib_version }}.so ${PREFIX}/bin/zig
+      - if: aarch64 or ppc64le
         then:
           - readelf -l ${PREFIX}/bin/zig
-      - if: linux and aarch64
-        then:
-          - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig
+          - ldd ${PREFIX}/bin/zig
 
       - zig version
       - zig zen
