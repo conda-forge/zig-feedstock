@@ -55,10 +55,10 @@ EXTRA_ZIG_ARGS+=(
   "-Duse-zig-libcxx=false"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
-  "-Ddynamic-linker=${TARGET_INTERPRETER}"
-  "-Dskip-libc=true"
   "-fqemu"
 )
+  # "-Ddynamic-linker=${TARGET_INTERPRETER}"
+  # "-Dskip-libc=true"
 
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
