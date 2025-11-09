@@ -21,7 +21,7 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 SYSROOT_ARCH="powerpc64le"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
-ZIG_ARCH="powerpc64"
+ZIG_ARCH="powerpc64le"
 
 zig=zig
 

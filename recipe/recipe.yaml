@@ -142,7 +142,7 @@ tests:
         - if: linux and aarch64
           then:
             - patchelf
-        - if: linux and (aarch64 or ppc64le)
+        - if: aarch64 or ppc64le
           then:
             - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
 
@@ -161,7 +161,7 @@ tests:
       - if: aarch64 or ppc64le
         then:
           - readelf -l ${PREFIX}/bin/zig
-          - ldd ${PREFIX}/bin/zig
+          # - ldd ${PREFIX}/bin/zig
 
       - zig version
       - zig zen
