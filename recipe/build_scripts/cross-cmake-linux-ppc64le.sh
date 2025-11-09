@@ -56,7 +56,7 @@ EOF
 
 cmake_build_cmake_target "${cmake_build_dir}" zig2.c
 pushd "${cmake_build_dir}"
-  patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list.patch --binary
+  patch -Np0 -i "${SRC_DIR}"/_conda-build-level-patches/xxxx-zig2.c-asm-clobber-list-ppc64le.patch --binary
 popd
 
 sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${PREFIX}/bin@g" "${cmake_build_dir}/config.h"
