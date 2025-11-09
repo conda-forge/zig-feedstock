@@ -59,14 +59,15 @@ build:
           # The bld.bat script handles Windows builds
           - call %RECIPE_DIR%\build.bat
     env:
-      BUILD_WITH_CMAKE: ${{ "1" if x86_64 or (linux and aarch64) }}
+      BUILD_WITH_CMAKE: ${{ "1" if x86_64 }}
 
 requirements:
   build:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
-    - zig
-    - if: linux and ppc64le
+    - if: arm64 or aarch64 or ppc64le
+      then: zig
+    - if: ppc64le
       then:
         - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
     - ${{ stdlib("c") }}
