@@ -48,7 +48,7 @@ source:
 build:
   number: 1
   skip:
-    - not aarch64
+    - not (aarch64 or ppc64le)
   script:
     content:
       - if: unix
