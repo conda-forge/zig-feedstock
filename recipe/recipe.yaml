@@ -46,9 +46,9 @@ source:
   #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982
 
 build:
-  number: 0
+  number: 1
   skip:
-    - ppc64le
+    - not aarch64
   script:
     content:
       - if: unix
