@@ -38,10 +38,13 @@ cp -r "${SRC_DIR}"/zig-source/* "${stage1_build_dir}"
 remove_failing_langref "${stage1_build_dir}"
 
 # Build native x86_64 Zig with patches applied (patches already applied during source extraction)
+# Need to build with LLVM support for proper cross-compilation
 cd "${stage1_build_dir}"
 "${BUILD_PREFIX}/bin/zig" build \
   --prefix "${stage1_build_dir}" \
+  --search-prefix "${BUILD_PREFIX}" \
   -Doptimize=ReleaseFast \
+  -Dstatic-llvm \
   -Dskip-release-fast=true \
   -Dversion-string="${PKG_VERSION}"
 cd -

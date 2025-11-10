@@ -72,20 +72,22 @@ requirements:
   build:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
+    - ${{ stdlib("c") }}
+    - cmake >=3.5
+    - ninja
     - if: arm64 or aarch64 or ppc64le
       then: zig
     - if: aarch64 or ppc64le
+      then: ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
+    - if: ppc64le
       then:
-        - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
-    - ${{ stdlib("c") }}
-    - cmake >=3.5
+        - llvm ${{ llvm_version }}.*
+        - zlib
+        - zstd
     - if: (build_platform != target_platform) and osx
-      then:
-        - libxml2-devel
-    - ninja
+      then: libxml2-devel
     - if: unix
-      then:
-        - sed
+      then: sed
 
   host:
     - if: aarch64 or ppc64le
