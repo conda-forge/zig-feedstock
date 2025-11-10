@@ -58,17 +58,24 @@ EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Dstatic-llvm"
   "-Duse-zig-libcxx=false"
-  "-Dstrip"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
-  "-fno-lld"
 )
-  # "-Ddynamic-linker=${TARGET_INTERPRETER}"
-  # "-Dskip-libc=true"
+#  "-Dstrip"
 
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 remove_failing_langref "${SRC_DIR}/conda-zig-source"
-build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
+
+# Capture full build output to log file
+mkdir -p "${SRC_DIR}/build-logs"
+LOG_FILE="${SRC_DIR}/build-logs/ppc64le-build-$(date +%Y%m%d-%H%M%S).log"
+echo "Capturing build output to ${LOG_FILE}" | tee "${LOG_FILE}"
+
+build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}" 2>&1 | tee -a "${LOG_FILE}"
+BUILD_STATUS=${PIPESTATUS[0]}
+
+echo "Build completed with status: ${BUILD_STATUS}" | tee -a "${LOG_FILE}"
+exit ${BUILD_STATUS}

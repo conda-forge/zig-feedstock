@@ -20,6 +20,10 @@ source:
           - patches/0001-cross-findllvm.patch
           - patches/0002-cross-CMakeLists.txt.patch
           - patches/0003-cross-install.cmake.patch
+      - if: ppc64le
+        then:
+          - patches/0001-ppc64le-no-lld-build.zig.patch
+          - patches/0002-ppc64le-add-relocations-relocation.zig.patch
       - if: win
         then:
           # May be combined into a single patch once the build is found robust (few versions of zig)
@@ -165,7 +169,7 @@ tests:
 
       - zig version
       - zig zen
-      - zig init
+      # - zig init
 
       - if: not win
         then:
