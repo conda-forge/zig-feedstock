@@ -56,12 +56,13 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 # For ppc64le, we need to force use of ld.bfd instead of lld due to relocation issues
 EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
-  "-Denable-llvm"
+  "-Dstatic-llvm"
   "-Duse-zig-libcxx=false"
+  "-Dstrip"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
+  "-fno-lld"
 )
-  # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
   # "-Dskip-libc=true"
 
