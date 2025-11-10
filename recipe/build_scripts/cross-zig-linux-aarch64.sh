@@ -34,8 +34,8 @@ EXTRA_CMAKE_ARGS+=(
   "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu"
   "-DZIG_TARGET_MCPU=baseline"
   "-DZIG_SYSTEM_LIBCXX=stdc++"
+  "-DZIG_SINGLE_THREADED=ON"
 )
-#  "-DZIG_SINGLE_THREADED=ON"
 
 # For some reason using the defined CMAKE_ARGS makes the build fail
 USE_CMAKE_ARGS=0

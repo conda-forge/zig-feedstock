@@ -23,6 +23,11 @@ SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="powerpc64le"
 
+# Try ld.bfd for relocation issue
+export CFLAGS="${CFLAGS} -fuse-ld=bfd"
+export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd"
+export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
+
 zig=zig
 
 # This is safe-keep for when non-backward compatible updates are introduced
@@ -48,6 +53,7 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 #sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${BUILD_PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
+# For ppc64le, we need to force use of ld.bfd instead of lld due to relocation issues
 EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
@@ -55,6 +61,7 @@ EXTRA_ZIG_ARGS+=(
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
   "-fqemu"
+  "--ld-path=${BUILD_PREFIX}/bin/${SYSROOT_ARCH}-conda-linux-gnu-ld.bfd"
 )
   # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
