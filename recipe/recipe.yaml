@@ -78,10 +78,16 @@ requirements:
     - if: arm64 or aarch64 or ppc64le
       then: zig
     - if: aarch64 or ppc64le
-      then: ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
+      then:
+        - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
+        - patchelf
     - if: ppc64le
       then:
+        - clangdev ${{ llvm_version }}.*
+        - libclang-cpp ${{ llvm_version }}.*
+        - lld ${{ llvm_version }}.*
         - llvm ${{ llvm_version }}.*
+        - llvmdev ${{ llvm_version }}.*
         - zlib
         - zstd
     - if: (build_platform != target_platform) and osx

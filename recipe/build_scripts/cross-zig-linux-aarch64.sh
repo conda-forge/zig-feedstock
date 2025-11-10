@@ -62,4 +62,4 @@ remove_failing_langref "${SRC_DIR}/conda-zig-source"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
 
 # Set interpreter so that conda relocates it
-patchelf --set_interpreter "${TARGET_INTERPRETER}" "${PREFIX}"/bin/zig
+patchelf --set-interpreter "${TARGET_INTERPRETER}" "${PREFIX}"/bin/zig
