@@ -42,8 +42,8 @@ export CROSSCOMPILING_LIBC="-L${SYSROOT_PATH}/lib64;-lc"
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
-export CFLAGS="${CFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
-export CXXFLAGS="${CXXFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER}"
+export CFLAGS="${CFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER} -mlongcall"
+export CXXFLAGS="${CXXFLAGS} -Wl,-rpath-link,${SYSROOT_PATH}/lib64 -Wl,-dynamic-linker,${TARGET_INTERPRETER} -mlongcall"
 
 export ZIG_CROSS_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
 export ZIG_CROSS_TARGET_MCPU="ppc64le"
