@@ -78,9 +78,7 @@ requirements:
     - if: arm64 or aarch64 or ppc64le
       then: zig
     - if: aarch64 or ppc64le
-      then:
-        - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
-        - patchelf
+      then: ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
     - if: ppc64le
       then:
         - clangdev ${{ llvm_version }}.*

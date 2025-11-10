@@ -48,10 +48,10 @@ EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
   "-Duse-zig-libcxx=false"
-  "-Dstrip"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
 )
+  # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
 
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
@@ -61,5 +61,7 @@ mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC
 remove_failing_langref "${SRC_DIR}/conda-zig-source"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
 
+readelf -d "${PREFIX}"/bin/zig
+
 # Set interpreter so that conda relocates it
-patchelf --set-interpreter "${TARGET_INTERPRETER}" "${PREFIX}"/bin/zig
+# patchelf --set-interpreter "${TARGET_INTERPRETER}" "${PREFIX}"/bin/zig

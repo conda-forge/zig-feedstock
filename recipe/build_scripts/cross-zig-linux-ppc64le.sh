@@ -18,36 +18,54 @@ mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
+# STAGE 1: Build x86_64 Zig with PowerPC64LE patches for use as bootstrap compiler
+echo "=== STAGE 1: Building x86_64 Zig with PowerPC64LE support ==="
+stage1_build_dir="${SRC_DIR}/stage1-x86_64"
+stage1_zig="${stage1_build_dir}/bin/zig"
+(
+
+  mkdir -p "${stage1_build_dir}"
+  cp -r "${SRC_DIR}"/zig-source/* "${stage1_build_dir}"
+  remove_failing_langref "${stage1_build_dir}"
+
+  # Build native x86_64 Zig with patches applied (patches already applied during source extraction)
+  # Need to build with LLVM support for proper cross-compilation
+  # Save cross-compilation flags and clear them for native build
+  SAVED_CFLAGS="${CFLAGS}"
+  SAVED_CXXFLAGS="${CXXFLAGS}"
+  SAVED_LDFLAGS="${LDFLAGS}"
+  unset CFLAGS CXXFLAGS LDFLAGS
+
+  cd "${stage1_build_dir}"
+  "${BUILD_PREFIX}/bin/zig" build \
+    --prefix "${stage1_build_dir}" \
+    --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
+    -fqemu \
+    -Doptimize=ReleaseFast \
+    -Dskip-release-fast=true \
+    -Dstatic-llvm \
+    -Dversion-string="${PKG_VERSION}"
+  cd -
+
+  # Restore cross-compilation flags for Stage 2
+  export CFLAGS="${SAVED_CFLAGS}"
+  export CXXFLAGS="${SAVED_CXXFLAGS}"
+  export LDFLAGS="${SAVED_LDFLAGS}"
+
+  echo "Stage 1 Zig built at: ${stage1_zig}"
+  "${stage1_zig}" version
+)
+
+# Now set up PowerPC64LE cross-compilation environment for Stage 2
 SYSROOT_ARCH="powerpc64le"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="powerpc64le"
 
-# Try ld.bfd for relocation issue
+# Add ld.bfd for relocation issue
 export CFLAGS="${CFLAGS} -fuse-ld=bfd"
 export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd"
 export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
-
-# STAGE 1: Build x86_64 Zig with PowerPC64LE patches for use as bootstrap compiler
-echo "=== STAGE 1: Building x86_64 Zig with PowerPC64LE support ==="
-stage1_build_dir="${SRC_DIR}/stage1-x86_64"
-stage1_zig="${stage1_build_dir}/bin/zig"
-
-mkdir -p "${stage1_build_dir}"
-cp -r "${SRC_DIR}"/zig-source/* "${stage1_build_dir}"
-remove_failing_langref "${stage1_build_dir}"
-
-# Build native x86_64 Zig with patches applied (patches already applied during source extraction)
-# Need to build with LLVM support for proper cross-compilation
-cd "${stage1_build_dir}"
-"${BUILD_PREFIX}/bin/zig" build \
-  --prefix "${stage1_build_dir}" \
-  --search-prefix "${BUILD_PREFIX}" \
-  -Doptimize=ReleaseFast \
-  -Dstatic-llvm \
-  -Dskip-release-fast=true \
-  -Dversion-string="${PKG_VERSION}"
-cd -
 
 echo "Stage 1 Zig built at: ${stage1_zig}"
 "${stage1_zig}" version
