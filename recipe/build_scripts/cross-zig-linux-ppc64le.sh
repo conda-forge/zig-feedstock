@@ -10,6 +10,12 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 
+# Set up logging FIRST to capture all output
+mkdir -p "${SRC_DIR}/build-logs"
+LOG_FILE="${SRC_DIR}/build-logs/ppc64le-build-$(date +%Y%m%d-%H%M%S).log"
+echo "Capturing all build output to ${LOG_FILE}" | tee "${LOG_FILE}"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+
 cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 
@@ -34,17 +40,24 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   SAVED_CFLAGS="${CFLAGS}"
   SAVED_CXXFLAGS="${CXXFLAGS}"
   SAVED_LDFLAGS="${LDFLAGS}"
-  unset CFLAGS CXXFLAGS LDFLAGS
+
+  export CFLAGS="-march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem $BUILD_PREFIX/include"
+  export CPPFLAGS="-DNDEBUG -D_FORTIFY_SOURCE=2 -O2 -isystem $BUILD_PREFIX/include"
+  export CXXFLAGS="-fvisibility-inlines-hidden -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem $BUILD_PREFIX/include"
+  export LDFLAGS="-Wl,-O2 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,--disable-new-dtags -Wl,--gc-sections -Wl,--allow-shlib-undefined -Wl,-rpath,$BUILD_PREFIX/lib -Wl,-rpath-link,$BUILD_PREFIX/lib -L$BUILD_PREFIX/lib"
 
   cd "${stage1_build_dir}"
   "${BUILD_PREFIX}/bin/zig" build \
     --prefix "${stage1_build_dir}" \
-    --sysroot "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" \
     -fqemu \
     -Doptimize=ReleaseFast \
     -Dskip-release-fast=true \
-    -Dstatic-llvm \
+    -Denable-llvm \
+    -Dtarget=x86_64-linux-gnu \
     -Dversion-string="${PKG_VERSION}"
+    # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include" \
+    # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+    # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib" \
   cd -
 
   # Restore cross-compilation flags for Stage 2
@@ -109,13 +122,5 @@ export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 remove_failing_langref "${SRC_DIR}/conda-zig-source"
 
-# Capture full build output to log file
-mkdir -p "${SRC_DIR}/build-logs"
-LOG_FILE="${SRC_DIR}/build-logs/ppc64le-build-$(date +%Y%m%d-%H%M%S).log"
-echo "Capturing build output to ${LOG_FILE}" | tee "${LOG_FILE}"
-
-build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}" 2>&1 | tee -a "${LOG_FILE}"
-BUILD_STATUS=${PIPESTATUS[0]}
-
-echo "Build completed with status: ${BUILD_STATUS}" | tee -a "${LOG_FILE}"
-exit ${BUILD_STATUS}
+echo "=== STAGE 2: Building PowerPC64LE Zig using Stage 1 ==="
+build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
