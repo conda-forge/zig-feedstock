@@ -60,8 +60,6 @@ EXTRA_ZIG_ARGS+=(
   "-Duse-zig-libcxx=false"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
-  "-fqemu"
-  "--ld-path=${BUILD_PREFIX}/bin/${SYSROOT_ARCH}-conda-linux-gnu-ld.bfd"
 )
   # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"

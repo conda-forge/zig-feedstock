@@ -42,23 +42,17 @@ USE_CMAKE_ARGS=0
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-# cat << EOF >> "${cmake_build_dir}/config.zig"
-# pub const mem_leak_frames = 0;
-# EOF
-#sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${BUILD_PREFIX}/bin@g" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=(
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
   "-Duse-zig-libcxx=false"
+  "-Dstrip"
   "-Dtarget=${ZIG_ARCH}-linux-gnu"
   "-Dcpu=baseline"
-  "-fqemu"
 )
-  # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
-  # "-Dskip-libc=true"
 
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
