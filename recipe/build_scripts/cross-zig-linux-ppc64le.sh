@@ -28,10 +28,29 @@ export CFLAGS="${CFLAGS} -fuse-ld=bfd"
 export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd"
 export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
 
-zig=zig
+# STAGE 1: Build x86_64 Zig with PowerPC64LE patches for use as bootstrap compiler
+echo "=== STAGE 1: Building x86_64 Zig with PowerPC64LE support ==="
+stage1_build_dir="${SRC_DIR}/stage1-x86_64"
+stage1_zig="${stage1_build_dir}/bin/zig"
 
-# This is safe-keep for when non-backward compatible updates are introduced
-# zig="${SRC_DIR}/zig-bootstrap/zig"
+mkdir -p "${stage1_build_dir}"
+cp -r "${SRC_DIR}"/zig-source/* "${stage1_build_dir}"
+remove_failing_langref "${stage1_build_dir}"
+
+# Build native x86_64 Zig with patches applied (patches already applied during source extraction)
+cd "${stage1_build_dir}"
+"${BUILD_PREFIX}/bin/zig" build \
+  --prefix "${stage1_build_dir}" \
+  -Doptimize=ReleaseFast \
+  -Dskip-release-fast=true \
+  -Dversion-string="${PKG_VERSION}"
+cd -
+
+echo "Stage 1 Zig built at: ${stage1_zig}"
+"${stage1_zig}" version
+
+# Use stage 1 Zig for cross-compilation
+zig="${stage1_zig}"
 
 EXTRA_CMAKE_ARGS+=(
   "-DZIG_SHARED_LLVM=ON"

@@ -60,3 +60,6 @@ export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
 remove_failing_langref "${SRC_DIR}/conda-zig-source"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
+
+# Set interpreter so that conda relocates it
+patchelf --set_interpreter "${TARGET_INTERPRETER} "${PREFIX}"/bin/zig

@@ -4,7 +4,7 @@
      .{ .tlsdesc, .TLSDESC },
  });
 
-+const powerpc64_relocs = Table(11, elf.R_PPC64, .{
++const powerpc64_relocs = Table(10, elf.R_PPC64, .{
 +    .{ .none, .NONE },
 +    .{ .abs, .ADDR64 },
 +    .{ .copy, .COPY },
@@ -15,7 +15,6 @@
 +    .{ .dtpmod, .DTPMOD64 },
 +    .{ .dtpoff, .DTPREL64 },
 +    .{ .tpoff, .TPREL64 },
-+    .{ .tlsdesc, .TLSDESC },
 +});
 +
  pub fn decode(r_type: u32, cpu_arch: std.Target.Cpu.Arch) ?Kind {
