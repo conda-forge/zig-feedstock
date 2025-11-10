@@ -49,13 +49,13 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   cd "${stage1_build_dir}"
   "${BUILD_PREFIX}/bin/zig" build \
     --prefix "${stage1_build_dir}" \
+    -search-prefix "${BUILD_PREFIX}" \
     -fqemu \
     -Doptimize=ReleaseFast \
     -Dskip-release-fast=true \
     -Denable-llvm \
     -Dtarget=x86_64-linux-gnu \
     -Dversion-string="${PKG_VERSION}"
-    # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/include" \
     # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
     # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib" \
   cd -
