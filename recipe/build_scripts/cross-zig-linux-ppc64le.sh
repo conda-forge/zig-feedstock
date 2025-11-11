@@ -17,6 +17,7 @@ echo "Capturing all build output to ${LOG_FILE}" | tee "${LOG_FILE}"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
 cmake_build_dir="${SRC_DIR}/build-release"
+cmake_install_dir="${SRC_DIR}/cmake-built-install"
 zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
@@ -41,6 +42,7 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   SAVED_CFLAGS="${CFLAGS}"
   SAVED_CXXFLAGS="${CXXFLAGS}"
   SAVED_LDFLAGS="${LDFLAGS}"
+  SAVED_PATH="${PATH}"
 
   export CFLAGS="-march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem $BUILD_PREFIX/include"
   export CPPFLAGS="-DNDEBUG -D_FORTIFY_SOURCE=2 -O2 -isystem $BUILD_PREFIX/include"
@@ -48,14 +50,15 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   export LDFLAGS="-Wl,-O2 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,--disable-new-dtags -Wl,--gc-sections -Wl,--allow-shlib-undefined -Wl,-rpath,$BUILD_PREFIX/lib -Wl,-rpath-link,$BUILD_PREFIX/lib -L$BUILD_PREFIX/lib"
 
   EXTRA_CMAKE_ARGS+=(
-    "-DCMAKE_C_COMPILER=${CC_FOR_BUILD}"
-    "-DCMAKE_C_COMPILER=${CC_FOR_BUILD}"
-    "-DCMAKE_CXX_COMPILER=${CXX_FOR_BUILD}"
-    "-DZIG_SHARED_LLVM=ON"
-    "-DZIG_USE_LLVM_CONFIG=ON"
-    "-DZIG_TARGET_TRIPLE=x86_64-linux-gnu"
-    "-DZIG_TARGET_MCPU=baseline"
-    "-DZIG_SYSTEM_LIBCXX=stdc++"
+    -DCMAKE_PREFIX_PATH="${BUILD_PREFIX}"/bin
+    -DCMAKE_C_COMPILER="${CC_FOR_BUILD}"
+    -DCMAKE_C_COMPILER="${CC_FOR_BUILD}"
+    -DCMAKE_CXX_COMPILER="${CXX_FOR_BUILD}"
+    -DZIG_SHARED_LLVM=ON
+    -DZIG_USE_LLVM_CONFIG=ON
+    -DZIG_TARGET_TRIPLE=x86_64-linux-gnu
+    -DZIG_TARGET_MCPU=baseline
+    -DZIG_SYSTEM_LIBCXX=stdc++
   )
   #  "-DZIG_SINGLE_THREADED=ON"
 
@@ -135,14 +138,14 @@ EOF
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 # For ppc64le, we need to force use of ld.bfd instead of lld due to relocation issues
 EXTRA_ZIG_ARGS+=(
-  "-fqemu"
-  "--libc "${zig_build_dir}"/libc_file"
-  "--libc-runtimes ${SYSROOT_PATH}/lib64"
-  "-Dconfig_h=${cmake_build_dir}/config.h"
-  "-Dstatic-llvm"
-  "-Duse-zig-libcxx=false"
-  "-Dtarget=${ZIG_ARCH}-linux-gnu"
-  "-Dcpu=baseline"
+  -fqemu
+  --libc "${zig_build_dir}"/libc_file
+  --libc-runtimes ${SYSROOT_PATH}/lib64
+  -Dconfig_h=${cmake_build_dir}/config.h
+  -Dstatic-llvm
+  -Duse-zig-libcxx=false
+  -Dtarget=${ZIG_ARCH}-linux-gnu
+  -Dcpu=baseline
 )
 #  "-Dstrip"
 

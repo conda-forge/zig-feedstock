@@ -56,15 +56,15 @@ EOF
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=(
-  "--libc ${zig_build_dir}/libc_file"
-  "-fqemu"
-  "--libc-runtimes ${SYSROOT_PATH}/lib64"
-  "-Dconfig_h=${cmake_build_dir}/config.h"
-  "-Denable-llvm"
-  "-Duse-zig-libcxx=false"
-  "-Dsingle-threaded=true"
-  "-Dtarget=${ZIG_ARCH}-linux-gnu"
-  "-Dcpu=baseline"
+  -fqemu
+  --libc ${zig_build_dir}/libc_file
+  --libc-runtimes ${SYSROOT_PATH}/lib64
+  -Dconfig_h=${cmake_build_dir}/config.h
+  -Denable-llvm
+  -Duse-zig-libcxx=false
+  -Dsingle-threaded=true
+  -Dtarget=${ZIG_ARCH}-linux-gnu
+  -Dcpu=baseline
 )
   # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
