@@ -1,0 +1,62 @@
+--- a/src/link/Elf/relocation.zig
++++ b/src/link/Elf/relocation.zig
+@@ -72,10 +72,22 @@ const riscv64_relocs = Table(11, elf.R_RISCV, .{
+     .{ .tlsdesc, .TLSDESC },
+ });
+
++const powerpc64_relocs = Table(10, elf.R_PPC64, .{
++    .{ .none, .NONE },
++    .{ .abs, .ADDR64 },
++    .{ .copy, .COPY },
++    .{ .rel, .RELATIVE },
++    .{ .irel, .IRELATIVE },
++    .{ .glob_dat, .GLOB_DAT },
++    .{ .jump_slot, .JMP_SLOT },
++    .{ .dtpmod, .DTPMOD64 },
++    .{ .dtpoff, .DTPREL64 },
++    .{ .tpoff, .TPREL64 },
++});
++
+ pub fn decode(r_type: u32, cpu_arch: std.Target.Cpu.Arch) ?Kind {
+     return switch (cpu_arch) {
+         .x86_64 => x86_64_relocs.decode(r_type),
+         .aarch64 => aarch64_relocs.decode(r_type),
+         .riscv64 => riscv64_relocs.decode(r_type),
++        .powerpc64, .powerpc64le => powerpc64_relocs.decode(r_type),
+         else => @panic("TODO unhandled cpu arch"),
+     };
+ }
+@@ -85,6 +97,7 @@ pub fn encode(comptime kind: Kind, cpu_arch: std.Target.Cpu.Arch) u32 {
+         .x86_64 => x86_64_relocs.encode(kind),
+         .aarch64 => aarch64_relocs.encode(kind),
+         .riscv64 => riscv64_relocs.encode(kind),
++        .powerpc64, .powerpc64le => powerpc64_relocs.encode(kind),
+         else => @panic("TODO unhandled cpu arch"),
+     };
+ }
+@@ -105,6 +118,10 @@ pub const dwarf = struct {
+                 .@"32" => .@"32",
+                 .@"64" => .@"64",
+             })),
++            .powerpc64, .powerpc64le => @intFromEnum(@as(elf.R_PPC64, switch (format) {
++                .@"32" => .ADDR32,
++                .@"64" => .ADDR64,
++            })),
+             else => @panic("TODO unhandled cpu arch"),
+         };
+     }
+@@ -141,6 +158,14 @@ pub const dwarf = struct {
+                 },
+                 .debug_frame => unreachable,
+             })),
++            .powerpc64, .powerpc64le => @intFromEnum(@as(elf.R_PPC64, switch (source_section) {
++                else => switch (address_size) {
++                    .@"32" => .ADDR32,
++                    .@"64" => if (target.flags.is_tls) .DTPREL64 else .ADDR64,
++                    else => unreachable,
++                },
++                .debug_frame => .REL32,
++            })),
+             else => @panic("TODO unhandled cpu arch"),
+         };
+     }

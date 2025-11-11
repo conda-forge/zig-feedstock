@@ -28,11 +28,11 @@ zig=zig
 # This is safe-keep for when non-backward compatible updates are introduced
 # zig="${SRC_DIR}/zig-bootstrap/zig"
 
-EXTRA_CMAKE_ARGS+=( \
-  "-DZIG_SYSTEM_LIBCXX=c++" \
-  "-DZIG_USE_LLVM_CONFIG=OFF" \
-  "-DZIG_SHARED_LLVM=ON" \
-  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none" \
+EXTRA_CMAKE_ARGS+=(
+  "-DZIG_SHARED_LLVM=ON"
+  "-DZIG_SYSTEM_LIBCXX=c++"
+  "-DZIG_USE_LLVM_CONFIG=OFF"
+  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none"
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a
@@ -40,12 +40,12 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 sed -i "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
-EXTRA_ZIG_ARGS+=( \
-  "-Dconfig_h=${cmake_build_dir}/config.h" \
-  "-Denable-llvm" \
-  "-Dstrip" \
-  "-Duse-zig-libcxx=false" \
-  "-Dtarget=aarch64-macos-none" \
+EXTRA_ZIG_ARGS+=(
+  "-Dconfig_h=${cmake_build_dir}/config.h"
+  "-Denable-llvm"
+  "-Dstrip"
+  "-Duse-zig-libcxx=false"
+  "-Dtarget=aarch64-macos-none"
 )
 
 mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"

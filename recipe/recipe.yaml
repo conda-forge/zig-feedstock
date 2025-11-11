@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   name: zig
-  version: 0.15.1
+  version: 0.15.2
   llvm_version: "20"
 
 package:
@@ -11,17 +11,19 @@ package:
 
 source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
-    sha256: f7d587087e551a206ad2e1c1a10e8124f5ecaec1f1efc69b0de6df89af80245c
+    sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
-      # Only apply CMake patch when building with CMake (x86_64 or linux-aarch64)
-      - if: x86_64 or (linux and aarch64)
+      # Only apply CMake patch when cross-compiling (Needed to set the config.h)
+      - if: x86_64 or linux
         then:
           - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      - if: linux and aarch64
-        then:
           - patches/0001-cross-findllvm.patch
           - patches/0002-cross-CMakeLists.txt.patch
           - patches/0003-cross-install.cmake.patch
+      - if: ppc64le
+        then:
+          - patches/0001-ppc64le-no-lld-build.zig.patch
+          - patches/0002-ppc64le-add-relocations-relocation.zig.patch
       - if: win
         then:
           # May be combined into a single patch once the build is found robust (few versions of zig)
@@ -38,20 +40,20 @@ source:
   # - folder: zig-bootstrap
   #   if: win
   #   url: https://ziglang.org/download/${{ version }}/zig-windows-x86_64-${{ version }}.zip
-  #   sha256: f53e5f9011ba20bbc3e0e6d0a9441b31eb227a97bac0e7d24172f1b8b27b4371
+  #   sha256: ...
   #
   # - folder: zig-bootstrap
   #   if: osx
   #   url: https://ziglang.org/download/${{ version }}/zig-macos-x86_64-${{ version }}.tar.xz
-  #   sha256: 685816166f21f0b8d6fc7aa6a36e91396dcd82ca6556dfbe3e329deffc01fec3
+  #   sha256: ...
   #
   # - folder: zig-bootstrap
   #   if: linux
   #   url: https://ziglang.org/download/${{ version }}/zig-linux-x86_64-${{ version }}.tar.xz
-  #   sha256: 473ec26806133cf4d1918caf1a410f8403a13d979726a9045b421b685031a982
+  #   sha256: ...
 
 build:
-  number: 2
+  number: 1
   skip:
     - ppc64le
   script:
@@ -64,28 +66,26 @@ build:
           # The bld.bat script handles Windows builds
           - call %RECIPE_DIR%\build.bat
     env:
-      BUILD_WITH_CMAKE: ${{ "1" if x86_64 or (linux and aarch64) }}
+      BUILD_WITH_CMAKE: ${{ "1" if x86_64 }}
 
 requirements:
   build:
     - ${{ compiler('c') }}
     - ${{ compiler('cxx') }}
-    - zig
-    - if: linux and (aarch64 or ppc64le)
-      then:
-        - ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
     - ${{ stdlib("c") }}
     - cmake >=3.5
-    - if: (build_platform != target_platform) and osx
-      then:
-        - libxml2-devel
     - ninja
+    - if: arm64 or aarch64 or ppc64le
+      then: zig
+    - if: aarch64 or ppc64le
+      then: ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
+    - if: (build_platform != target_platform) and osx
+      then: libxml2-devel
     - if: unix
-      then:
-        - sed
+      then: sed
 
   host:
-    - if: linux and (aarch64 or ppc64le)
+    - if: aarch64 or ppc64le
       then:
         - ${{ compiler('cxx') }}
     - clangdev ${{ llvm_version }}.*
@@ -97,22 +97,19 @@ requirements:
     - llvmdev ${{ llvm_version }}.*
     - llvm ${{ llvm_version }}.*
     - lld ${{ llvm_version }}.*
-    - if: linux and (aarch64 or ppc64le)
+    - if: aarch64 or ppc64le
       then:
-        - sysroot_${{ target_platform }} >=2.28
+        - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
     - zlib
     - zstd
 
   run:
-    - if: linux and (aarch64 or ppc64le)
+    - if: aarch64 or ppc64le
       then:
-        - sysroot_${{ target_platform }} >=2.28
+        - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
 
   ignore_run_exports:
     by_name:
-      - if: linux and aarch64
-        then:
-          - __glibc
       - if: win
         then:
           - ucrt
@@ -146,32 +143,24 @@ tests:
         - if: linux and aarch64
           then:
             - patchelf
-        - if: linux and (aarch64 or ppc64le)
-          then:
-            - sysroot_${{ target_platform }} >=2.28
+        # - if: aarch64 or ppc64le
+        #   then:
+        #     - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
 
     files:
       source:
         - zig-source/test
 
     script:
-      # Functionality tests
-      - if: linux and (aarch64 or ppc64le)
-        then:
-          - readelf -l ${PREFIX}/bin/zig
-      - if: linux and aarch64
-        then:
-          - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-linux-aarch64.so.1 ${PREFIX}/bin/zig
-
       - zig version
       - zig zen
       - zig init
 
-      - if: not win
+      - if: unix
         then:
           - zig test zig-source/test/behavior.zig
       # One test fails on windows: 838/1932 behavior.floatop.test.@log2 with vectors...FAIL (TestUnexpectedResult)
-      - if: win
+      - if: not unix
         then:
           - zig test zig-source/test/behavior.zig || true
 
