@@ -49,7 +49,7 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   cd "${stage1_build_dir}"
   "${BUILD_PREFIX}/bin/zig" build \
     --prefix "${stage1_build_dir}" \
-    -search-prefix "${BUILD_PREFIX}" \
+    --search-prefix "${BUILD_PREFIX}" \
     -fqemu \
     -Doptimize=ReleaseFast \
     -Dskip-release-fast=true \
