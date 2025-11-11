@@ -44,11 +44,12 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   SAVED_LDFLAGS="${LDFLAGS}"
   SAVED_PATH="${PATH}"
 
-  export CFLAGS="-march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem $BUILD_PREFIX/include"
-  export CPPFLAGS="-DNDEBUG -D_FORTIFY_SOURCE=2 -O2 -isystem $BUILD_PREFIX/include"
-  export CXXFLAGS="-fvisibility-inlines-hidden -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem $BUILD_PREFIX/include"
-  export LDFLAGS="-Wl,-O2 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,--disable-new-dtags -Wl,--gc-sections -Wl,--allow-shlib-undefined -Wl,-rpath,$BUILD_PREFIX/lib -Wl,-rpath-link,$BUILD_PREFIX/lib -L$BUILD_PREFIX/lib"
-
+  export CFLAGS="-march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem ${BUILD_PREFIX}/include"
+  export CPPFLAGS="-DNDEBUG -D_FORTIFY_SOURCE=2 -O2 -isystem ${BUILD_PREFIX}/include"
+  export CXXFLAGS="-fvisibility-inlines-hidden -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem ${BUILD_PREFIX}/include"
+  export LDFLAGS="-Wl,-O2 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,--disable-new-dtags -Wl,--gc-sections -Wl,--allow-shlib-undefined -Wl,-rpath,${BUILD_PREFIX}/lib -Wl,-rpath-link,${BUILD_PREFIX}/lib -${BUILD_PREFIX}/lib"
+  export LLVM_CONFIG="${BUILD_PREFIX}"/bin/llvm-config
+  
   EXTRA_CMAKE_ARGS+=(
     -DCMAKE_PREFIX_PATH="${BUILD_PREFIX}"/bin
     -DCMAKE_C_COMPILER="${CC_FOR_BUILD}"
@@ -64,6 +65,8 @@ stage1_zig="${stage1_build_dir}/bin/zig"
 
   # For some reason using the defined CMAKE_ARGS makes the build fail
   USE_CMAKE_ARGS=0
+  # perl -pi -e "s#$PREFIX/lib#$PREFIX/lib#g" "${cmake_build_dir}"/config.h
+  grep libclang-cpp.so "${cmake_build_dir}"/config.h
 
   # When using installed c++ libs, zig needs libzigcpp.a
   configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
@@ -72,8 +75,9 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   "${BUILD_PREFIX}/bin/zig" build \
     --prefix "${stage1_build_dir}" \
     --search-prefix "${BUILD_PREFIX}" \
+    --search-prefix "${BUILD_PREFIX}/lib" \
     --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
-    -Dconfig_h=${cmake_build_dir}/config.h \
+    -Dconfig_h="${cmake_build_dir}"/config.h \
     -Doptimize=ReleaseFast \
     -Dskip-release-fast=true \
     -Denable-llvm \
