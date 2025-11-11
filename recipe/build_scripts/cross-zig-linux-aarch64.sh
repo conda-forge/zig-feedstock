@@ -12,8 +12,10 @@ export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 
 cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
+zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
+mkdir -p "${zig_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
@@ -43,9 +45,20 @@ USE_CMAKE_ARGS=0
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
+cat > "${zig_build_dir}"/libc_file << EOF
+include_dir=${SYSROOT_PATH}/usr/include
+sys_include_dir=${SYSROOT_PATH}/usr/include
+crt_dir=${SYSROOT_PATH}/usr/lib
+msvc_lib_dir=
+kernel32_lib_dir=
+gcc_dir=
+EOF
+
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=(
+  "--libc ${zig_build_dir}/libc_file"
   "-fqemu"
+  "--libc-runtimes ${SYSROOT_PATH}/lib64"
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Denable-llvm"
   "-Duse-zig-libcxx=false"
@@ -56,9 +69,9 @@ EXTRA_ZIG_ARGS+=(
   # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
 
-# export QEMU_LD_PREFIX="${SYSROOT_PATH}"
-# export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+ln -sf "$(which qemu-aarch64-static)" "${BUILD_PREFIX}/bin/qemu-aarch64"
+export QEMU_LD_PREFIX="${SYSROOT_PATH}"
+export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
-mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
-remove_failing_langref "${SRC_DIR}/conda-zig-source"
+remove_failing_langref "${zig_build_dir}"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"

@@ -17,9 +17,10 @@ echo "Capturing all build output to ${LOG_FILE}" | tee "${LOG_FILE}"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
 cmake_build_dir="${SRC_DIR}/build-release"
-cmake_install_dir="${SRC_DIR}/cmake-built-install"
+zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
+mkdir -p "${zig_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}"
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
@@ -46,11 +47,30 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   export CXXFLAGS="-fvisibility-inlines-hidden -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem $BUILD_PREFIX/include"
   export LDFLAGS="-Wl,-O2 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,--disable-new-dtags -Wl,--gc-sections -Wl,--allow-shlib-undefined -Wl,-rpath,$BUILD_PREFIX/lib -Wl,-rpath-link,$BUILD_PREFIX/lib -L$BUILD_PREFIX/lib"
 
+  EXTRA_CMAKE_ARGS+=(
+    "-DCMAKE_C_COMPILER=${CC_FOR_BUILD}"
+    "-DCMAKE_C_COMPILER=${CC_FOR_BUILD}"
+    "-DCMAKE_CXX_COMPILER=${CXX_FOR_BUILD}"
+    "-DZIG_SHARED_LLVM=ON"
+    "-DZIG_USE_LLVM_CONFIG=ON"
+    "-DZIG_TARGET_TRIPLE=x86_64-linux-gnu"
+    "-DZIG_TARGET_MCPU=baseline"
+    "-DZIG_SYSTEM_LIBCXX=stdc++"
+  )
+  #  "-DZIG_SINGLE_THREADED=ON"
+
+  # For some reason using the defined CMAKE_ARGS makes the build fail
+  USE_CMAKE_ARGS=0
+
+  # When using installed c++ libs, zig needs libzigcpp.a
+  configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+  
   cd "${stage1_build_dir}"
   "${BUILD_PREFIX}/bin/zig" build \
     --prefix "${stage1_build_dir}" \
     --search-prefix "${BUILD_PREFIX}" \
-    -fqemu \
+    --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
+    -Dconfig_h=${cmake_build_dir}/config.h \
     -Doptimize=ReleaseFast \
     -Dskip-release-fast=true \
     -Denable-llvm \
@@ -65,6 +85,8 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   export CXXFLAGS="${SAVED_CXXFLAGS}"
   export LDFLAGS="${SAVED_LDFLAGS}"
 
+  rm -rf "${cmake_build_dir}"/* "${cmake_install_dir}"/* && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
+  
   echo "Stage 1 Zig built at: ${stage1_zig}"
   "${stage1_zig}" version
 )
@@ -100,14 +122,22 @@ USE_CMAKE_ARGS=0
 
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-# cat <<EOF >> "${cmake_build_dir}/config.zig"
-# pub const mem_leak_frames = 0;
-# EOF
-#sed -i -E "s@#define ZIG_CXX_COMPILER \".*/bin@#define ZIG_CXX_COMPILER \"${BUILD_PREFIX}/bin@g" "${cmake_build_dir}/config.h"
+
+cat > "${zig_build_dir}"/libc_file << EOF
+include_dir=${SYSROOT_PATH}/usr/include
+sys_include_dir=${SYSROOT_PATH}/usr/include
+crt_dir=${SYSROOT_PATH}/usr/lib
+msvc_lib_dir=
+kernel32_lib_dir=
+gcc_dir=
+EOF
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 # For ppc64le, we need to force use of ld.bfd instead of lld due to relocation issues
 EXTRA_ZIG_ARGS+=(
+  "-fqemu"
+  "--libc "${zig_build_dir}"/libc_file"
+  "--libc-runtimes ${SYSROOT_PATH}/lib64"
   "-Dconfig_h=${cmake_build_dir}/config.h"
   "-Dstatic-llvm"
   "-Duse-zig-libcxx=false"
@@ -116,11 +146,11 @@ EXTRA_ZIG_ARGS+=(
 )
 #  "-Dstrip"
 
+ln -sf "$(which qemu-ppc64le-static)" "${BUILD_PREFIX}/bin/qemu-ppc64le"
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
-mkdir -p "${SRC_DIR}/conda-zig-source" && cp -r "${SRC_DIR}"/zig-source/* "${SRC_DIR}/conda-zig-source"
-remove_failing_langref "${SRC_DIR}/conda-zig-source"
+remove_failing_langref "${zig_build_dir}"
 
 echo "=== STAGE 2: Building PowerPC64LE Zig using Stage 1 ==="
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
