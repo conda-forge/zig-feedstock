@@ -110,7 +110,7 @@ function build_zig_with_zig() {
   echo "Building with ${_cmd[*]}"
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || exit 1
-      "${_cmd[*]}" build \
+      "${_cmd[@]}" build \
         --prefix "${install_dir}" \
         --search-prefix "${install_dir}" \
         "${EXTRA_ZIG_ARGS[@]}" \

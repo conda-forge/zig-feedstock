@@ -78,7 +78,7 @@ requirements:
     - if: arm64 or aarch64 or ppc64le
       then: zig
     - if: aarch64 or ppc64le
-      then: ${{ c_stdlib }}_${{ build_platform }} >=${{ c_stdlib_version }}
+      then: ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
     - if: ppc64le
       then:
         - clangdev ${{ llvm_version }}.*
@@ -109,7 +109,7 @@ requirements:
     - lld ${{ llvm_version }}.*
     - if: aarch64 or ppc64le
       then:
-        - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
+        - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
     - zlib
     - zstd
 

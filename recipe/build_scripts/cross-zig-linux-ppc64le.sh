@@ -53,7 +53,7 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   ${LLVM_CONFIG} --version
   ${LLVM_CONFIG} --help
   
-  
+  # single-threaded only in glibc 2.32
   EXTRA_CMAKE_ARGS+=(
     -DCMAKE_PREFIX_PATH="${BUILD_PREFIX}"/bin
     -DCMAKE_C_COMPILER="${CC_FOR_BUILD}"
@@ -64,8 +64,8 @@ stage1_zig="${stage1_build_dir}/bin/zig"
     -DZIG_TARGET_TRIPLE=x86_64-linux-gnu
     -DZIG_TARGET_MCPU=baseline
     -DZIG_SYSTEM_LIBCXX=stdc++
+    -DZIG_SINGLE_THREADED=OFF
   )
-  #  "-DZIG_SINGLE_THREADED=ON"
 
   # For some reason using the defined CMAKE_ARGS makes the build fail
   USE_CMAKE_ARGS=0
@@ -85,6 +85,7 @@ stage1_zig="${stage1_build_dir}/bin/zig"
     -Doptimize=ReleaseFast \
     -Dskip-release-fast=true \
     -Denable-llvm \
+    -Dsingle-threaded=false \
     -Dtarget=x86_64-linux-gnu \
     -Dversion-string="${PKG_VERSION}"
     # --search-prefix "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot/usr/lib64" \
@@ -97,8 +98,11 @@ stage1_zig="${stage1_build_dir}/bin/zig"
   export LDFLAGS="${SAVED_LDFLAGS}"
 
   rm -rf "${cmake_build_dir}"/* "${cmake_install_dir}"/* && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
-  
+
   echo "Stage 1 Zig built at: ${stage1_zig}"
+
+  # Set LD_LIBRARY_PATH to find libclang-cpp.so and other shared libraries
+  export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
   "${stage1_zig}" version
 )
 
@@ -112,6 +116,9 @@ ZIG_ARCH="powerpc64le"
 export CFLAGS="${CFLAGS} -fuse-ld=bfd"
 export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd"
 export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
+
+# Ensure LD_LIBRARY_PATH includes BUILD_PREFIX/lib for libclang-cpp.so
+export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 
 echo "Stage 1 Zig built at: ${stage1_zig}"
 "${stage1_zig}" version

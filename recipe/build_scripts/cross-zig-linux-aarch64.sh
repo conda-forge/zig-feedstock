@@ -63,16 +63,16 @@ EXTRA_ZIG_ARGS+=(
   -Dconfig_h=${cmake_build_dir}/config.h
   -Denable-llvm
   -Duse-zig-libcxx=false
+  -Dstrip
   -Dtarget=${ZIG_ARCH}-linux-gnu
   -Dcpu=baseline
 )
-  # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
   # -Dsingle-threaded=true
 
-ln -sf "$(which qemu-aarch64-static)" "${BUILD_PREFIX}/bin/qemu-aarch64"
-export QEMU_LD_PREFIX="${SYSROOT_PATH}"
-export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+# ln -sf "$(which qemu-aarch64-static)" "${BUILD_PREFIX}/bin/qemu-aarch64"
+# export QEMU_LD_PREFIX="${SYSROOT_PATH}"
+# export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
 remove_failing_langref "${zig_build_dir}"
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
