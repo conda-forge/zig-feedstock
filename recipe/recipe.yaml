@@ -86,6 +86,7 @@ requirements:
         - lld ${{ llvm_version }}.*
         - llvm ${{ llvm_version }}.*
         - llvmdev ${{ llvm_version }}.*
+        - libxml2-devel
         - zlib
         - zstd
     - if: (build_platform != target_platform) and osx

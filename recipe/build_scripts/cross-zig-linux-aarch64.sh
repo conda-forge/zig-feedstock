@@ -31,13 +31,13 @@ zig="${BUILD_PREFIX}"/bin/zig
 # zig="${SRC_DIR}/zig-bootstrap/zig"
 
 EXTRA_CMAKE_ARGS+=(
-  "-DZIG_SHARED_LLVM=ON"
-  "-DZIG_USE_LLVM_CONFIG=OFF"
-  "-DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu"
-  "-DZIG_TARGET_MCPU=baseline"
-  "-DZIG_SYSTEM_LIBCXX=stdc++"
-  "-DZIG_SINGLE_THREADED=ON"
+  -DZIG_SHARED_LLVM=ON
+  -DZIG_USE_LLVM_CONFIG=ON
+  -DZIG_TARGET_TRIPLE="${SYSROOT_ARCH}"-linux-gnu
+  -DZIG_TARGET_MCPU=baseline
+  -DZIG_SYSTEM_LIBCXX="stdc++"
 )
+#  "-DZIG_SINGLE_THREADED=ON"
 
 # For some reason using the defined CMAKE_ARGS makes the build fail
 USE_CMAKE_ARGS=0
@@ -59,18 +59,16 @@ EOF
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc
 EXTRA_ZIG_ARGS+=(
-  -fqemu
   --libc ${zig_build_dir}/libc_file
-  --libc-runtimes ${SYSROOT_PATH}/lib64
   -Dconfig_h=${cmake_build_dir}/config.h
   -Denable-llvm
   -Duse-zig-libcxx=false
-  -Dsingle-threaded=true
   -Dtarget=${ZIG_ARCH}-linux-gnu
   -Dcpu=baseline
 )
   # "-Dstrip"
   # "-Ddynamic-linker=${TARGET_INTERPRETER}"
+  # -Dsingle-threaded=true
 
 ln -sf "$(which qemu-aarch64-static)" "${BUILD_PREFIX}/bin/qemu-aarch64"
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
