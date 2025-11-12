@@ -20,13 +20,6 @@ source:
       - if: aarch64 or ppc64le
         then:
           - patches/0001-cross-findllvm.patch
-          # - patches/0002-cross-CMakeLists.txt.patch
-          # - patches/0003-cross-install.cmake.patch
-      - if: ppc64le or (linux and x86_64)
-        then:
-          - patches/0001-ppc64le-no-lld-build.zig.patch
-          - patches/0002-ppc64le-add-relocations-relocation.zig.patch
-          - patches/0003-ppc64le-ldscript-output-format.patch
       - if: win
         then:
           # May be combined into a single patch once the build is found robust (few versions of zig)
