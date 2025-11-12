@@ -138,6 +138,9 @@ EXTRA_CMAKE_ARGS+=(
 # For some reason using the defined CMAKE_ARGS makes the build fail
 USE_CMAKE_ARGS=0
 
+# Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
+modify_libc_libm_for_zig "${BUILD_PREFIX}"
+
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
@@ -156,6 +159,8 @@ EXTRA_ZIG_ARGS+=(
   -fqemu
   --libc "${zig_build_dir}"/libc_file
   --libc-runtimes ${SYSROOT_PATH}/lib64
+  --search-prefix "${SYSROOT_PATH}"/usr/lib
+  --search-prefix "${SYSROOT_PATH}"/usr/lib64
   -Dconfig_h=${cmake_build_dir}/config.h
   -Dstatic-llvm
   -Duse-zig-libcxx=false

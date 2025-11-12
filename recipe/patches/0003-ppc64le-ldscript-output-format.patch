@@ -1,0 +1,10 @@
+--- a/src/link/LdScript.zig
++++ b/src/link/LdScript.zig
+@@ -283,6 +283,7 @@ const Parser = struct {
+         };
+         if (std.mem.eql(u8, value, "elf64-x86-64")) return .x86_64;
+         if (std.mem.eql(u8, value, "elf64-littleaarch64")) return .aarch64;
++        if (std.mem.eql(u8, value, "elf64-powerpcle")) return .powerpc64le;
+         return error.UnknownCpuArch;
+     }
+

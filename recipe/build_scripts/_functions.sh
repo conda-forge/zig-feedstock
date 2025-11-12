@@ -29,6 +29,12 @@ function modify_libc_libm_for_zig() {
   sed -i -E 's@(/usr/lib(64)?/|/lib(64)?/)@@g' "${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
   sed -i -E 's@(/usr/lib(64)?/|/lib(64)?/)@@g' "${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
 
+  # Remove AS_NEEDED clause which Zig's ld script parser doesn't support yet
+  # Change: GROUP ( libc.so.6 libc_nonshared.a  AS_NEEDED ( ld64.so.2 ) )
+  # To:     GROUP ( libc.so.6 libc_nonshared.a ld64.so.2 )
+  sed -i -E 's@AS_NEEDED \( ([^)]+) \)@\1@g' "${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
+  sed -i -E 's@AS_NEEDED \( ([^)]+) \)@\1@g' "${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
+
   # So far, not clear how to add lib search paths to ZIG so we copy the needed libs to where ZIG look for them
   ln -s "${prefix}"/"${SYSROOT_ARCH}"-conda-linux-gnu/sysroot/lib64/libm.so.6 "${prefix}"/"${SYSROOT_ARCH}"-conda-linux-gnu/sysroot/usr/lib
   ln -s "${prefix}"/"${SYSROOT_ARCH}"-conda-linux-gnu/sysroot/lib64/libmvec.so.1 "${prefix}"/"${SYSROOT_ARCH}"-conda-linux-gnu/sysroot/usr/lib
