@@ -1,0 +1,54 @@
+--- a/build.zig
++++ b/build.zig
+@@ -204,8 +204,20 @@
+     exe.entitlements = entitlements;
+ 
+     const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
+-    exe.use_llvm = use_llvm;
+-    exe.use_lld = use_llvm;
++
++    // PowerPC64LE: Force LLVM backend + disable LLD in build.zig
++    // Runtime patches (Phase 0003) force LLD code path → external GCC
++    // link.zig: Forces LLD path at runtime (overrides use_lld=false)
++    // Lld.zig: Spawns external GCC instead of LLD
++    // Setting link_libc = true ensures proper libc linking
++    if (target.result.cpu.arch == .powerpc64le) {
++        exe.use_llvm = true;                // Force LLVM backend (ignores -Duse-llvm flag)
++        exe.use_lld = false;                // Disabled here, but Phase 0003 forces it at runtime
++        exe.root_module.link_libc = true;   // Force external linker via C compiler driver
++    } else {
++        exe.use_llvm = use_llvm;
++        exe.use_lld = use_llvm;
++    }
+ 
+     if (no_bin) {
+         b.getInstallStep().dependOn(&exe.step);
+@@ -367,6 +379,14 @@
+             exe.root_module.linkSystemLibrary("c++", .{ .use_pkg_config = .no });
+         }
+         exe.root_module.link_libc = true;
++        // GCC 14 + glibc 2.28 compatibility: link stub library for __libc_csu_init/fini
++        if (target.result.os.tag == .linux) {
++            exe.root_module.linkSystemLibrary("csu_compat", .{});
++        }
++        // PowerPC64LE needs libgcc for GPR save/restore functions (_savegpr0_*, _restgpr0_*, etc.)
++        if (target.result.cpu.arch == .powerpc64le) {
++            exe.root_module.linkSystemLibrary("gcc", .{});
++        }
+ 
+         if (target.result.os.tag == .windows) {
+             exe.root_module.linkSystemLibrary("dbghelp", .{});
+@@ -791,6 +811,13 @@
+     mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
+     mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });
+     mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
++
++    // Add PREFIX/lib for conda-forge cross-compilation (zlib, zstd, pthread, etc.)
++    if (b.graph.env_map.get("PREFIX")) |prefix| {
++        const prefix_lib = b.fmt("{s}/lib", .{prefix});
++        mod.addLibraryPath(.{ .cwd_relative = prefix_lib });
++    }
++
+     addCMakeLibraryList(mod, cfg.clang_libraries);
+     addCMakeLibraryList(mod, cfg.lld_libraries);
+     addCMakeLibraryList(mod, cfg.llvm_libraries);
