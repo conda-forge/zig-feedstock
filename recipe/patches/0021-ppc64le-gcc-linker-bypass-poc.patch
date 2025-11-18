@@ -151,15 +151,18 @@
 +                    try argv.append("-lpthread");
 +                    try argv.append("-lc");
 +
-+                    // PowerPC64LE requires ld64.so.2 for __tls_get_addr symbol
-+                    // The dynamic linker provides TLS runtime support (__tls_get_addr)
++                    // PowerPC64 requires the dynamic linker for __tls_get_addr symbol
++                    // The dynamic linker (ld*.so.*) provides TLS runtime support
 +                    // We need to link it explicitly when using -nostartfiles
-+                    // Find it in the libc crt_dir (usually sysroot/usr/lib -> ../lib64/ld64.so.2)
 +                    if (comp.libc_installation) |libc_installation| {
 +                        if (libc_installation.crt_dir) |crt_dir| {
-+                            // crt_dir is typically .../sysroot/usr/lib, ld64.so.2 is in .../sysroot/lib64
-+                            const ld_path = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "..", "lib64", "ld64.so.2" });
-+                            try argv.append(ld_path);
++                            if (target.dynamic_linker.get()) |dl_target_path| {
++                                // Extract basename from target path (e.g., "/lib64/ld64.so.2" -> "ld64.so.2")
++                                const dl_basename = std.fs.path.basename(dl_target_path);
++                                // crt_dir is .../sysroot/usr/lib, dynamic linker is in .../sysroot/lib64
++                                const ld_path = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "..", "lib64", dl_basename });
++                                try argv.append(ld_path);
++                            }
 +                        }
 +                    }
 +                }
