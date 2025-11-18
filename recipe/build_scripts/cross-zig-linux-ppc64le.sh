@@ -162,13 +162,16 @@ perl -pi -e 's|#define ZIG_LLVM_LIBRARIES ".*"|#define ZIG_LLVM_LIBRARIES "'${PR
 # Not supported: perl -pi -e 's|(#define ZIG_LLD_LIBRARIES "[^"]*)|$1;:pthread|' "${cmake_build_dir}/config.h"
 grep ZIG_LLVM_LIBRARIES "${cmake_build_dir}/config.h"
 
+# Determine GCC library directory (contains crtbegin.o, crtend.o)
+GCC_LIB_DIR=$(dirname "$(find "${BUILD_PREFIX}"/lib/gcc/${SYSROOT_ARCH}-conda-linux-gnu -name "crtbeginS.o" | head -1)")
+
 cat > "${zig_build_dir}"/libc_file << EOF
 include_dir=${SYSROOT_PATH}/usr/include
 sys_include_dir=${SYSROOT_PATH}/usr/include
 crt_dir=${SYSROOT_PATH}/usr/lib
 msvc_lib_dir=
 kernel32_lib_dir=
-gcc_dir=
+gcc_dir=${GCC_LIB_DIR}
 EOF
 
 # Zig needs the config.h to correctly (?) find the conda installed llvm, etc

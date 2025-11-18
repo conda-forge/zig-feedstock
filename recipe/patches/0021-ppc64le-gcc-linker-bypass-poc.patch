@@ -82,7 +82,19 @@
 +            const csu = try comp.getCrtPaths(arena);
 +            if (csu.crt0) |p| try argv.append(try p.toString(arena));
 +            if (csu.crti) |p| try argv.append(try p.toString(arena));
-+            if (csu.crtbegin) |p| try argv.append(try p.toString(arena));
++
++            // For cross-compilation, crtbegin/crtend may not be in csu paths
++            // We need to find them in the GCC lib directory for the target architecture
++            // These files provide __dso_handle and other C++ runtime support
++            if (csu.crtbegin) |p| {
++                try argv.append(try p.toString(arena));
++            } else if (comp.libc_installation) |libc_installation| {
++                if (libc_installation.gcc_dir) |gcc_dir| {
++                    // crtbegin.o is in gcc lib directory for shared libraries
++                    const crtbegin_path = try std.fs.path.join(arena, &[_][]const u8{ gcc_dir, "crtbeginS.o" });
++                    try argv.append(crtbegin_path);
++                }
++            }
 +
 +            // 10. Library search paths
 +            if (comp.config.link_libc) {
@@ -175,7 +187,15 @@
 +
 +            // 17. CRT postlude
 +            // Complete the startup/shutdown sequence with finalization CRT files
-+            if (csu.crtend) |p| try argv.append(try p.toString(arena));
++            if (csu.crtend) |p| {
++                try argv.append(try p.toString(arena));
++            } else if (comp.libc_installation) |libc_installation| {
++                if (libc_installation.gcc_dir) |gcc_dir| {
++                    // crtendS.o is the finalization counterpart to crtbeginS.o
++                    const crtend_path = try std.fs.path.join(arena, &[_][]const u8{ gcc_dir, "crtendS.o" });
++                    try argv.append(crtend_path);
++                }
++            }
 +            if (csu.crtn) |p| try argv.append(try p.toString(arena));
 +
 +            // 18. Spawn GCC directly (don't use spawnLld which expects LLD)
