@@ -154,9 +154,12 @@
 +                    // PowerPC64LE requires ld64.so.2 for __tls_get_addr symbol
 +                    // The dynamic linker provides TLS runtime support (__tls_get_addr)
 +                    // We need to link it explicitly when using -nostartfiles
++                    // Find it in the libc crt_dir (usually sysroot/usr/lib -> ../lib64/ld64.so.2)
 +                    if (comp.libc_installation) |libc_installation| {
-+                        if (libc_installation.dynamic_linker_path) |dl| {
-+                            try argv.append(try dl.toString(arena));
++                        if (libc_installation.crt_dir) |crt_dir| {
++                            // crt_dir is typically .../sysroot/usr/lib, ld64.so.2 is in .../sysroot/lib64
++                            const ld_path = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "..", "lib64", "ld64.so.2" });
++                            try argv.append(ld_path);
 +                        }
 +                    }
 +                }
