@@ -48,11 +48,9 @@
 +                try argv.append("-pie");
 +            }
 +
-+            // 5. Dynamic linker (interpreter) - save path for later linking
-+            var dynamic_linker_path: ?[]const u8 = null;
++            // 5. Dynamic linker (interpreter)
 +            if (have_dynamic_linker and (comp.config.link_libc or comp.root_mod.resolved_target.is_explicit_dynamic_linker)) {
 +                if (target.dynamic_linker.get()) |dynamic_linker| {
-+                    dynamic_linker_path = dynamic_linker;
 +                    try argv.append(try std.fmt.allocPrint(arena, "-Wl,--dynamic-linker,{s}", .{dynamic_linker}));
 +                }
 +            }
@@ -154,10 +152,12 @@
 +                    try argv.append("-lc");
 +
 +                    // PowerPC64LE requires ld64.so.2 for __tls_get_addr symbol
-+                    // This is the dynamic linker/loader which provides TLS runtime support
-+                    // Must be linked after -lc so the linker can resolve __tls_get_addr from it
-+                    if (dynamic_linker_path) |dl_path| {
-+                        try argv.append(dl_path);
++                    // The dynamic linker provides TLS runtime support (__tls_get_addr)
++                    // We need to link it explicitly when using -nostartfiles
++                    if (comp.libc_installation) |libc_installation| {
++                        if (libc_installation.dynamic_linker_path) |dl| {
++                            try argv.append(try dl.toString(arena));
++                        }
 +                    }
 +                }
 +            }
