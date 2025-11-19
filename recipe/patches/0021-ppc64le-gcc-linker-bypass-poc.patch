@@ -166,9 +166,12 @@
 +                // libc dep - With -nostartfiles, GCC doesn't auto-link libc
 +                if (comp.config.link_libc) {
 +                    // Must explicitly link both libc and pthread when using -nostartfiles
-+                    // Order matters: -lpthread before -lc (pthread depends on libc)
-+                    try argv.append("-lpthread");
++                    // pthread_atfork is in libc.a, but we need both libraries
++                    // Use --start-group/--end-group to handle circular dependencies
++                    try argv.append("-Wl,--start-group");
 +                    try argv.append("-lc");
++                    try argv.append("-lpthread");
++                    try argv.append("-Wl,--end-group");
 +
 +                    // PowerPC64 requires the dynamic linker for __tls_get_addr symbol
 +                    // The dynamic linker (ld*.so.*) provides TLS runtime support
