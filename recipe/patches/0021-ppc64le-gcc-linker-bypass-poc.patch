@@ -165,22 +165,13 @@
 +
 +                // libc dep - With -nostartfiles, GCC doesn't auto-link libc
 +                if (comp.config.link_libc) {
-+                    // Must explicitly link both libc and pthread when using -nostartfiles
-+                    // pthread_atfork is in libc.a (not in .so), so we must use static archives
-+                    // Use explicit paths to force static .a files, and link groups for circularity
-+                    if (comp.libc_installation) |libc_installation| {
-+                        if (libc_installation.crt_dir) |crt_dir| {
-+                            const lib64_dir = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "lib64" });
-+                            const libc_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libc.a" });
-+                            const libpthread_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libpthread.a" });
-+
-+                            // Use link group to handle circular dependencies between libc and libpthread
-+                            try argv.append("-Wl,--start-group");
-+                            try argv.append(libc_a);
-+                            try argv.append(libpthread_a);
-+                            try argv.append("-Wl,--end-group");
-+                        }
-+                    }
++                    // Link pthread and c dynamically - pthread_atfork is not in libc.so but
++                    // the actual implementation works at runtime through dlopen/dlsym
++                    try argv.append("-lpthread");
++                    try argv.append("-lc");
++                    try argv.append("-lm");
++                    try argv.append("-ldl");
++                    try argv.append("-lrt");
 +
 +                    // PowerPC64 requires the dynamic linker for __tls_get_addr symbol
 +                    // The dynamic linker (ld*.so.*) provides TLS runtime support
