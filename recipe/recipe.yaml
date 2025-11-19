@@ -13,7 +13,6 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
-      # Only apply CMake patch when cross-compiling (Needed to set the config.h)
       - if: linux
         then:
           - patches/0001-x86-maxrss-CMakeLists.txt.patch
