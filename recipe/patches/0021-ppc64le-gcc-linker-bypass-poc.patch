@@ -166,19 +166,19 @@
 +                // libc dep - With -nostartfiles, GCC doesn't auto-link libc
 +                if (comp.config.link_libc) {
 +                    // Must explicitly link both libc and pthread when using -nostartfiles
-+                    // pthread_atfork is in libc.a, but needs __register_atfork also from libc.a
-+                    // Use explicit paths to .a files to force static linking (not .so files)
-+                    // and --whole-archive to extract ALL symbols including weak ones
++                    // pthread_atfork is in libc.a (not in .so), so we must use static archives
++                    // Use explicit paths to force static .a files, and link groups for circularity
 +                    if (comp.libc_installation) |libc_installation| {
 +                        if (libc_installation.crt_dir) |crt_dir| {
 +                            const lib64_dir = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "lib64" });
 +                            const libc_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libc.a" });
 +                            const libpthread_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libpthread.a" });
 +
-+                            try argv.append("-Wl,--whole-archive");
++                            // Use link group to handle circular dependencies between libc and libpthread
++                            try argv.append("-Wl,--start-group");
 +                            try argv.append(libc_a);
 +                            try argv.append(libpthread_a);
-+                            try argv.append("-Wl,--no-whole-archive");
++                            try argv.append("-Wl,--end-group");
 +                        }
 +                    }
 +
