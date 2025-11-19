@@ -165,36 +165,14 @@
 +
 +                // libc dep - With -nostartfiles, GCC doesn't auto-link libc
 +                if (comp.config.link_libc) {
-+                    // pthread_atfork is in libpthread.a but causes multiple definition errors
-+                    // when linking both libc.a and libpthread.a statically.
-+                    // Solution: Extract just pthread_atfork.o from libpthread.a
-+                    if (comp.libc_installation) |libc_installation| {
-+                        if (libc_installation.crt_dir) |crt_dir| {
-+                            const lib64_dir = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "lib64" });
-+                            const libpthread_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libpthread.a" });
++                    // glibc 2.28 for PowerPC64LE doesn't export pthread_atfork
++                    // Link the stub object file created by build script
++                    const stub_obj = std.process.getEnvVarOwned(arena, "SRC_DIR") catch ".";
++                    const stub_path = try std.fs.path.join(arena, &[_][]const u8{ stub_obj, "pthread_atfork_stub.o" });
++                    try argv.append(stub_path);
 +
-+                            // Extract pthread_atfork.o to a temporary location
-+                            const cache_dir = comp.local_cache_directory.path orelse ".";
-+                            const pthread_atfork_o = try std.fs.path.join(arena, &[_][]const u8{ cache_dir, "pthread_atfork.o" });
-+
-+                            // Use ar to extract just pthread_atfork.o from libpthread.a
-+                            var extract_argv = std.ArrayList([]const u8).init(gpa);
-+                            defer extract_argv.deinit();
-+                            try extract_argv.append("ar");
-+                            try extract_argv.append("x");
-+                            try extract_argv.append(libpthread_a);
-+                            try extract_argv.append("pthread_atfork.o");
-+
-+                            var extract_child = std.process.Child.init(extract_argv.items, gpa);
-+                            extract_child.cwd = cache_dir;
-+                            _ = try extract_child.spawnAndWait();
-+
-+                            // Link the extracted object file
-+                            try argv.append(pthread_atfork_o);
-+                        }
-+                    }
-+
-+                    // Link other libraries dynamically
++                    // Link libraries dynamically
++                    try argv.append("-lpthread");
 +                    try argv.append("-lc");
 +                    try argv.append("-lm");
 +                    try argv.append("-ldl");

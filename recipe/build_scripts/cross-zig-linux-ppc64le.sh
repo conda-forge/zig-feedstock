@@ -44,7 +44,7 @@ export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 zig="${BUILD_PREFIX}"/bin/zig
 
 # Use stage 1 Zig for cross-compilation instead
-  if [[ "1" == "0" ]]; then
+  if [[ "1" == "1" ]]; then
     # STAGE 1: Build x86_64 Zig with PowerPC64LE patches for use as bootstrap compiler
     echo "=== STAGE 1: Building x86_64 Zig with PowerPC64LE support ==="
     stage1_build_dir="${SRC_DIR}/stage1-x86_64"
@@ -207,6 +207,22 @@ export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
 remove_failing_langref "${zig_build_dir}"
+
+# Create pthread_atfork stub for glibc 2.28 PowerPC64LE
+# glibc 2.28 for ppc64le doesn't export pthread_atfork symbol
+echo "=== Creating pthread_atfork stub for glibc 2.28 PowerPC64LE ==="
+cat > "${SRC_DIR}/pthread_atfork_stub.c" << 'EOF'
+// Weak stub for pthread_atfork when glibc 2.28 doesn't provide it
+__attribute__((weak))
+int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void)) {
+    // Stub implementation - returns success without doing anything
+    // This is safe because we're not actually using fork() in the Zig compiler
+    (void)prepare; (void)parent; (void)child;
+    return 0;  // Success
+}
+EOF
+
+${CC} -c "${SRC_DIR}/pthread_atfork_stub.c" -o "${SRC_DIR}/pthread_atfork_stub.o"
 
 echo "=== STAGE 2: Building PowerPC64LE Zig using Stage 1 ==="
 build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
