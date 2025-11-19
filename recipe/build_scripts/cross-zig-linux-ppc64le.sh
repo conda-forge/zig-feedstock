@@ -187,18 +187,19 @@ EXTRA_ZIG_ARGS+=(
   --search-prefix "${BUILD_PREFIX}"/${SYSROOT_ARCH}-conda-linux-gnu/lib
   -Dconfig_h=${cmake_build_dir}/config.h
   -Denable-llvm
+  -Doptimize=ReleaseSafe
   -Duse-llvm=true
   -Duse-zig-libcxx=false
   -Dsingle-threaded=false
   -Dtarget=${ZIG_ARCH}-linux-gnu
   -Dcpu=baseline
-
-  -Ddev=powerpc-linux
-  -Doptimize=Debug
-  -Dstrip=false
-  --verbose-link
-  --verbose-llvm-ir=/tmp/llvm-ir-output.txt
 )
+
+#  -Ddev=powerpc-linux
+#  -Doptimize=Debug
+#  -Dstrip=false
+#  --verbose-link
+#  --verbose-llvm-ir=/tmp/llvm-ir-output.txt
 #  --verbose
 #  --verbose-cc
 
