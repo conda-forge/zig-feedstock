@@ -167,11 +167,20 @@
 +                if (comp.config.link_libc) {
 +                    // Must explicitly link both libc and pthread when using -nostartfiles
 +                    // pthread_atfork is in libc.a, but needs __register_atfork also from libc.a
-+                    // Use --whole-archive to force all symbols to be extracted (handles weak symbols)
-+                    try argv.append("-Wl,--whole-archive");
-+                    try argv.append("-lc");
-+                    try argv.append("-lpthread");
-+                    try argv.append("-Wl,--no-whole-archive");
++                    // Use explicit paths to .a files to force static linking (not .so files)
++                    // and --whole-archive to extract ALL symbols including weak ones
++                    if (comp.libc_installation) |libc_installation| {
++                        if (libc_installation.crt_dir) |crt_dir| {
++                            const lib64_dir = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "lib64" });
++                            const libc_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libc.a" });
++                            const libpthread_a = try std.fs.path.join(arena, &[_][]const u8{ lib64_dir, "libpthread.a" });
++
++                            try argv.append("-Wl,--whole-archive");
++                            try argv.append(libc_a);
++                            try argv.append(libpthread_a);
++                            try argv.append("-Wl,--no-whole-archive");
++                        }
++                    }
 +
 +                    // PowerPC64 requires the dynamic linker for __tls_get_addr symbol
 +                    // The dynamic linker (ld*.so.*) provides TLS runtime support
