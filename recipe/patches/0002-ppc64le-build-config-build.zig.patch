@@ -7,15 +7,14 @@
 -    exe.use_llvm = use_llvm;
 -    exe.use_lld = use_llvm;
 +
-+    // PowerPC64LE: Force LLVM backend + disable LLD in build.zig
-+    // Runtime patches (Phase 0003) force LLD code path → external GCC
-+    // link.zig: Forces LLD path at runtime (overrides use_lld=false)
-+    // Lld.zig: Spawns external GCC instead of LLD
-+    // Setting link_libc = true ensures proper libc linking
++    // PowerPC64LE: Force LLVM backend + enable LLD code path
++    // With use_lld=true, Zig goes through src/link/Lld.zig::elfLink()
++    // Patch 0021 intercepts this path and spawns external GCC instead
++    // GCC handles PowerPC64 ABI properly (.TOC., __tls_get_addr, pthread_atfork)
 +    if (target.result.cpu.arch == .powerpc64le) {
-+        exe.use_llvm = true;                // Force LLVM backend (ignores -Duse-llvm flag)
-+        exe.use_lld = false;                // Disabled here, but Phase 0003 forces it at runtime
-+        exe.root_module.link_libc = true;   // Force external linker via C compiler driver
++        exe.use_llvm = true;                // Force LLVM backend for code generation
++        exe.use_lld = true;                 // Enable LLD code path (intercepted by patch 0021)
++        exe.root_module.link_libc = true;   // Force libc linking
 +    } else {
 +        exe.use_llvm = use_llvm;
 +        exe.use_lld = use_llvm;
