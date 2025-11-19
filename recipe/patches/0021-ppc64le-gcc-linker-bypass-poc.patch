@@ -99,7 +99,14 @@
 +            // 10. Library search paths
 +            if (comp.config.link_libc) {
 +                if (comp.libc_installation) |libc_installation| {
++                    // Add crt_dir (typically .../usr/lib)
 +                    try argv.append(try std.fmt.allocPrint(arena, "-L{s}", .{libc_installation.crt_dir.?}));
++
++                    // Also add lib64 directory for PowerPC64LE where system libraries actually reside
++                    // crt_dir is .../sysroot/usr/lib but pthread/libc are in .../sysroot/usr/lib64
++                    const crt_dir = libc_installation.crt_dir.?;
++                    const lib64_dir = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "lib64" });
++                    try argv.append(try std.fmt.allocPrint(arena, "-L{s}", .{lib64_dir}));
 +                }
 +            }
 +
