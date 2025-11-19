@@ -71,7 +71,7 @@ source:
 build:
   number: 3
   skip:
-    - not (ppc64le or (linux and x86_64))
+    - not ppc64le
   script:
     content:
       - if: unix
@@ -92,7 +92,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - if: arm64 or aarch64 or ppc64le or (linux and x86_64)
-      then: zig ==0.15.2 h930564d_3
+      then: zig ==0.15.2
     - if: aarch64 or ppc64le
       then: ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
     - if: ppc64le
