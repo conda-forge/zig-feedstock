@@ -10,12 +10,6 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
 
-# Set up logging FIRST to capture all output
-mkdir -p "${SRC_DIR}/build-logs"
-LOG_FILE="${SRC_DIR}/build-logs/ppc64le-build-$(date +%Y%m%d-%H%M%S).log"
-echo "Capturing all build output to ${LOG_FILE}" | tee "${LOG_FILE}"
-exec > >(tee -a "${LOG_FILE}") 2>&1
-
 cmake_build_dir="${SRC_DIR}/build-release"
 cmake_install_dir="${SRC_DIR}/cmake-built-install"
 zig_build_dir="${SRC_DIR}/conda-zig-source"

@@ -142,6 +142,9 @@ requirements:
     - if: aarch64 or ppc64le
       then:
         - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
+    - if: ppc64le
+      then:
+        - gcc_impl_${{ target_platform }} >=${{ c_stdlib_version }}
 
   ignore_run_exports:
     by_name:
@@ -178,9 +181,9 @@ tests:
         - if: linux and aarch64
           then:
             - patchelf
-        # - if: aarch64 or ppc64le
-        #   then:
-        #     - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
+        - if: ppc64le
+          then:
+            - gcc_impl
 
     files:
       source:
