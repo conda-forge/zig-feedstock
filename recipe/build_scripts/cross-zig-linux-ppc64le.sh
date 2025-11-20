@@ -48,7 +48,7 @@ export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 zig="${BUILD_PREFIX}"/bin/zig
 
 # Use stage 1 Zig for cross-compilation instead
-  if [[ "1" == "0" ]]; then
+  if [[ "1" == "1" ]]; then
     # STAGE 1: Build x86_64 Zig with PowerPC64LE patches for use as bootstrap compiler
     echo "=== STAGE 1: Building x86_64 Zig with PowerPC64LE support ==="
     stage1_build_dir="${SRC_DIR}/stage1-x86_64"
