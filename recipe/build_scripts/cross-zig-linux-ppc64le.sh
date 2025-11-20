@@ -33,12 +33,13 @@ TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="powerpc64le"
 
 # Add ld.bfd for relocation issue
-# CRITICAL: DO NOT use -no-pie for PowerPC64LE!
-# -no-pie forces direct branches (R_PPC64_REL24) which truncate at ±16MB
-# PIE/PIC mode uses PLT for function calls, allowing unlimited distance
-# Add -mcmodel=medium for TOC-relative data addressing (complements PIE for function calls)
-export CFLAGS="${CFLAGS} -fuse-ld=bfd -mcmodel=medium"
-export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd -mcmodel=medium"
+# CRITICAL: Remove conda's -fno-plt which breaks PowerPC64LE!
+# Conda's default flags include -fno-plt which disables PLT usage
+# -fno-plt forces direct branches (R_PPC64_REL24) which truncate at ±16MB
+# For PowerPC64LE large binaries, we NEED PLT for unlimited function call range
+# Remove -fno-plt and add -mcmodel=medium for TOC-relative addressing
+export CFLAGS="${CFLAGS//-fno-plt/} -fuse-ld=bfd -mcmodel=medium"
+export CXXFLAGS="${CXXFLAGS//-fno-plt/} -fuse-ld=bfd -mcmodel=medium"
 export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
 
 # Ensure LD_LIBRARY_PATH includes BUILD_PREFIX/lib for libclang-cpp.so

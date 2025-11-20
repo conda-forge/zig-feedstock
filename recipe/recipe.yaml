@@ -4,6 +4,7 @@ context:
   name: zig
   version: 0.15.2
   llvm_version: "20"
+  llvm_src_version: "20.1.8"
 
 package:
   name: ${{ name|lower }}
@@ -49,6 +50,12 @@ source:
           - patches/0004-win-remove-ucrt-Lld.zig.patch
     target_directory: zig-source
 
+  - if: ppc64le
+    then:
+      - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
+        sha256: a6cbad9b2243b17e87795817cfff2107d113543a12486586f8a055a2bb044963
+        target_directory: lld-source
+
   # Bootstrap fallback: Use upstream binary dist if conda ZIG cannot build a newer version
   # The zig variable in the build scripts would then need to be updated
   # Uncomment the following sections to enable bootstrap binaries:
@@ -71,7 +78,7 @@ source:
 build:
   number: 3
   skip:
-    - not ppc64le
+    - not (ppc64le or (linux and x86_64))
   script:
     content:
       - if: unix
@@ -180,21 +187,9 @@ tests:
         - zig-source/test
 
     script:
-      # Functionality tests
-      # - if: aarch64
-      #   then:
-      #     - patchelf --set-interpreter ${PREFIX}/aarch64-conda-linux-gnu/sysroot/lib64/ld-${{ c_stdlib_version }}.so ${PREFIX}/bin/zig
-      # - if: ppc64le
-      #   then:
-      #     - patchelf --set-interpreter ${PREFIX}/poweroc64le-conda-linux-gnu/sysroot/lib64/ld-${{ c_stdlib_version }}.so ${PREFIX}/bin/zig
-      - if: aarch64 or ppc64le
-        then:
-          - readelf -l ${PREFIX}/bin/zig
-          # - ldd ${PREFIX}/bin/zig
-
       - zig version
       - zig zen
-      # - zig init
+      - zig init
 
       - if: unix
         then:
@@ -207,7 +202,10 @@ tests:
 about:
   homepage: https://ziglang.org/
   license: MIT
-  license_file: zig-source/LICENSE
+  license_file:
+    - zig-source/LICENSE
+    - if: ppc64le
+      then: lld-source/lld/LICENSE.TXT
   summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
   description: |
     Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.

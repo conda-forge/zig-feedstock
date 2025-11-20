@@ -233,6 +233,167 @@ function configure_cmake() {
   cd "${current_dir}" || exit 1
 }
 
+function build_cmake_lld() {
+  local build_dir=$1
+  local install_dir=$2
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}" || exit 1
+    cmake "$ROOTDIR/llvm" \
+      -DCMAKE_INSTALL_PREFIX="${install_dir}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLLVM_ENABLE_BINDINGS=OFF \
+      -DLLVM_ENABLE_LIBEDIT=OFF \
+      -DLLVM_ENABLE_LIBPFM=OFF \
+      -DLLVM_ENABLE_LIBXML2=ON \
+      -DLLVM_ENABLE_OCAMLDOC=OFF \
+      -DLLVM_ENABLE_PLUGINS=OFF \
+      -DLLVM_ENABLE_PROJECTS="lld" \
+      -DLLVM_ENABLE_Z3_SOLVER=OFF \
+      -DLLVM_ENABLE_ZSTD=ON \
+      -DLLVM_INCLUDE_UTILS=OFF \
+      -DLLVM_INCLUDE_TESTS=OFF \
+      -DLLVM_INCLUDE_EXAMPLES=OFF \
+      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+      -DLLVM_INCLUDE_DOCS=OFF \
+      -DLLVM_TOOL_LLVM_LTO2_BUILD=OFF \
+      -DLLVM_TOOL_LLVM_LTO_BUILD=OFF \
+      -DLLVM_TOOL_LTO_BUILD=OFF \
+      -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF \
+      -DCLANG_BUILD_TOOLS=OFF \
+      -DCLANG_INCLUDE_DOCS=OFF \
+      -DCLANG_INCLUDE_TESTS=OFF \
+      -DCLANG_TOOL_CLANG_IMPORT_TEST_BUILD=OFF \
+      -DCLANG_TOOL_CLANG_LINKER_WRAPPER_BUILD=OFF \
+      -DCLANG_TOOL_C_INDEX_TEST_BUILD=OFF \
+      -DCLANG_TOOL_LIBCLANG_BUILD=OFF
+    cmake --build . --target install
+  cd "${current_dir}" || exit 1
+}
+
+function build_lld_ppc64le_mcmodel() {
+  # Build LLD libraries for PowerPC64LE with -mcmodel=medium to avoid R_PPC64_REL24 truncation
+  # Similar to configure_cmake_zigcpp but for LLD libraries
+
+  local llvm_source_dir=$1
+  local build_dir=$2
+  local target_arch="${3:-linux-ppc64le}"
+
+  # Cache LLD libraries per architecture
+  local cache_dir="${RECIPE_DIR}/.cache/lld/${target_arch}"
+  local cache_meta="${cache_dir}/build.meta"
+  local llvm_version
+  llvm_version=$(llvm-config --version 2>/dev/null || echo "unknown")
+  local compiler_id="$(basename "${CC:-gcc}")-$(${CC:-gcc} -dumpversion 2>/dev/null || echo "unknown")"
+  local cflags_hash=$(echo "${CFLAGS} ${CXXFLAGS}" | md5sum | cut -d' ' -f1)
+
+  mkdir -p "${cache_dir}"
+
+  # Check cache validity
+  local can_reuse_cache=false
+  if [[ -f "${cache_meta}" ]] && \
+     [[ -f "${cache_dir}/liblldELF.a" ]] && \
+     [[ -f "${cache_dir}/liblldCommon.a" ]]; then
+    local cached_info
+    cached_info=$(cat "${cache_meta}")
+    local cached_llvm=$(echo "${cached_info}" | cut -d'|' -f1)
+    local cached_compiler=$(echo "${cached_info}" | cut -d'|' -f2)
+    local cached_flags=$(echo "${cached_info}" | cut -d'|' -f3)
+
+    if [[ "${cached_llvm}" == "${llvm_version}" ]] && \
+       [[ "${cached_compiler}" == "${compiler_id}" ]] && \
+       [[ "${cached_flags}" == "${cflags_hash}" ]]; then
+      echo "✓ Found compatible cached LLD libraries (${target_arch}, LLVM ${llvm_version})"
+      can_reuse_cache=true
+    else
+      echo "⚠ LLD cache mismatch - rebuilding with current flags (mcmodel=medium)"
+    fi
+  else
+    echo "ℹ No cached LLD libraries found for ${target_arch} - building from scratch"
+  fi
+
+  if [[ "${can_reuse_cache}" == "true" ]]; then
+    # Copy cached libraries to build directory
+    echo "✓ Reusing cached LLD libraries - saved ~15-20 minutes!"
+    mkdir -p "${build_dir}/lib"
+    cp "${cache_dir}"/liblld*.a "${build_dir}/lib/"
+    return 0
+  fi
+
+  # Build LLD from scratch with mcmodel=medium
+  echo "Building LLD libraries for PowerPC64LE with -mcmodel=medium..."
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}" || exit 1
+
+  # Configure LLVM to build only LLD libraries
+  cmake "${llvm_source_dir}/lld" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="${CC}" \
+    -DCMAKE_CXX_COMPILER="${CXX}" \
+    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+    -DLLVM_ENABLE_PROJECTS="lld" \
+    -DLLVM_TARGETS_TO_BUILD="PowerPC" \
+    -DLLVM_BUILD_TOOLS=OFF \
+    -DLLVM_INCLUDE_TOOLS=OFF \
+    -DLLVM_BUILD_UTILS=OFF \
+    -DLLVM_INCLUDE_UTILS=OFF \
+    -DLLVM_BUILD_TESTS=OFF \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_BUILD_EXAMPLES=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF \
+    -DLLVM_BUILD_BENCHMARKS=OFF \
+    -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    -DLLVM_BUILD_DOCS=OFF \
+    -DLLVM_INCLUDE_DOCS=OFF \
+    -DLLVM_CONFIG_PATH=$BUILD_PREFIX/bin/llvm-config \
+    -DLLVM_TABLEGEN_EXE=$BUILD_PREFIX/bin/llvm-tblgen \
+    -DLLVM_ENABLE_RTTI=ON \
+    -G Ninja
+
+  # Build all LLD libraries (they're defined as add_lld_library in lld/*/CMakeLists.txt)
+  # Target names: lldELF, lldCommon, lldCOFF, lldMachO, lldWasm, lldMinGW
+  cmake --build . -- -j${CPU_COUNT}
+
+  cd "${current_dir}" || exit 1
+
+  # Cache the built libraries (LLD libraries are in tools/lld subdirectories)
+  # Find where the libraries actually ended up
+  local lld_lib_dir
+  if [[ -f "${build_dir}/lib/liblldELF.a" ]]; then
+    lld_lib_dir="${build_dir}/lib"
+  elif [[ -f "${build_dir}/tools/lld/lib/liblldELF.a" ]]; then
+    lld_lib_dir="${build_dir}/tools/lld/lib"
+  else
+    # Search for the libraries
+    lld_lib_dir=$(find "${build_dir}" -name "liblldELF.a" -exec dirname {} \; | head -1)
+  fi
+
+  if [[ -n "${lld_lib_dir}" ]] && [[ -f "${lld_lib_dir}/liblldELF.a" ]]; then
+    echo "Found LLD libraries in: ${lld_lib_dir}"
+    cp -f "${lld_lib_dir}"/liblld*.a "${cache_dir}/"
+    echo "${llvm_version}|${compiler_id}|${cflags_hash}" > "${cache_meta}"
+    echo "✓ Cached LLD libraries at ${cache_dir}"
+    # Also copy to expected location for config.h (only if not already there)
+    if [[ "${lld_lib_dir}" != "${build_dir}/lib" ]]; then
+      mkdir -p "${build_dir}/lib"
+      cp -f "${lld_lib_dir}"/liblld*.a "${build_dir}/lib/"
+    fi
+  else
+    echo "❌ ERROR: LLD build failed - liblldELF.a not found"
+    echo "Build directory contents:"
+    find "${build_dir}" -name "*.a" | head -20
+    return 1
+  fi
+}
+
 function configure_cmake_zigcpp() {
   local build_dir=$1
   local install_dir=$2

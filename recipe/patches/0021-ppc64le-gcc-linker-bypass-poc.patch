@@ -76,6 +76,16 @@
 +                try argv.append("-Wl,-z,now");
 +            }
 +
++            // PowerPC64 specific: Enable stub sections for long branches
++            // R_PPC64_REL24 relocations can only reach ±16MB (24-bit signed)
++            // Large binaries (ReleaseSafe) need linker to create branch stubs
++            // Problem: Pre-compiled LLVM/LLD static libs have distant function calls
++            // Solution: Use --relax to let linker insert trampolines automatically
++            try argv.append("-Wl,--relax");  // Enable linker relaxation for long branches
++            try argv.append("-Wl,--stub-group-size=-1");  // Auto stub placement
++            try argv.append("-Wl,--emit-stub-syms");  // Emit stub symbols for debugging
++            try argv.append("-Wl,--plt-align=5");  // 32-byte PLT alignment
++
 +            // 9. CRT files (startup/shutdown code)
 +            // We use -nostartfiles above and provide explicit CRT files to maintain control
 +            // over startup/shutdown sequence and avoid GCC's automatic CRT file addition
