@@ -5,7 +5,7 @@
 
 [workspace]
 name = "zig-feedstock-2"
-version = "3.53.0"  # conda-smithy version used to generate this file
+version = "3.53.1"  # conda-smithy version used to generate this file
 description = "Pixi configuration for conda-forge/zig-feedstock-2"
 authors = ["@conda-forge/zig-f"]
 channels = ["conda-forge"]
@@ -29,30 +29,12 @@ description = "Build zig-feedstock-2 with variant linux_64_ directly (without se
 [tasks."inspect-linux_64_"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_.yaml"
 description = "List contents of zig-feedstock-2 packages built for variant linux_64_"
-[tasks."build-linux_aarch64_"]
-cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_.yaml"
-description = "Build zig-feedstock-2 with variant linux_aarch64_ directly (without setup scripts)"
-[tasks."inspect-linux_aarch64_"]
-cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_.yaml"
-description = "List contents of zig-feedstock-2 packages built for variant linux_aarch64_"
-[tasks."build-osx_64_"]
-cmd = "rattler-build build --recipe recipe -m .ci_support/osx_64_.yaml"
-description = "Build zig-feedstock-2 with variant osx_64_ directly (without setup scripts)"
-[tasks."inspect-osx_64_"]
-cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_64_.yaml"
-description = "List contents of zig-feedstock-2 packages built for variant osx_64_"
-[tasks."build-osx_arm64_"]
-cmd = "rattler-build build --recipe recipe -m .ci_support/osx_arm64_.yaml"
-description = "Build zig-feedstock-2 with variant osx_arm64_ directly (without setup scripts)"
-[tasks."inspect-osx_arm64_"]
-cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_arm64_.yaml"
-description = "List contents of zig-feedstock-2 packages built for variant osx_arm64_"
-[tasks."build-win_64_"]
-cmd = "rattler-build build --recipe recipe -m .ci_support/win_64_.yaml"
-description = "Build zig-feedstock-2 with variant win_64_ directly (without setup scripts)"
-[tasks."inspect-win_64_"]
-cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/win_64_.yaml"
-description = "List contents of zig-feedstock-2 packages built for variant win_64_"
+[tasks."build-linux_ppc64le_"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_ppc64le_.yaml"
+description = "Build zig-feedstock-2 with variant linux_ppc64le_ directly (without setup scripts)"
+[tasks."inspect-linux_ppc64le_"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_ppc64le_.yaml"
+description = "List contents of zig-feedstock-2 packages built for variant linux_ppc64le_"
 
 [feature.smithy.dependencies]
 conda-smithy = "*"

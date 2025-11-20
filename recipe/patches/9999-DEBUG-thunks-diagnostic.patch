@@ -1,0 +1,44 @@
+--- a/src/link/Elf.zig	2025-11-16 20:54:27.789709940 -0600
++++ b/src/link/Elf.zig	2025-11-16 20:55:19.541584225 -0600
+@@ -2560,11 +2560,17 @@
+         atom_list.dirty = false;
+     }
+ 
++
++    const cpu_arch = self.getTarget().cpu.arch;
++    const requires_thunks = self.requiresThunks();
++    std.debug.print("DEBUG: CPU arch = {s}, requiresThunks = {}\n", .{@tagName(cpu_arch), requires_thunks});
++
+     if (self.requiresThunks()) {
+         for (slice.items(.shdr), slice.items(.atom_list_2)) |shdr, *atom_list| {
+             if (shdr.sh_flags & elf.SHF_EXECINSTR == 0) continue;
+             if (atom_list.atoms.keys().len == 0) continue;
+             if (!atom_list.dirty) continue;
++        std.debug.print("DEBUG: ENTERED thunk creation block for {s}\n", .{@tagName(cpu_arch)});
+ 
+             // Create jump/branch range extenders if needed.
+             try self.createThunks(atom_list);
+@@ -4099,11 +4105,14 @@
+ }
+ 
+ fn requiresThunks(self: Elf) bool {
+-    return switch (self.getTarget().cpu.arch) {
++    const cpu_arch = self.getTarget().cpu.arch;
++    const result = switch (cpu_arch) {
+         .aarch64 => true,
+         .x86_64, .riscv64, .powerpc64, .powerpc64le => false,
+         else => @panic("TODO unimplemented architecture"),
+     };
++    std.debug.print("DEBUG requiresThunks: arch={s} result={}\n", .{@tagName(cpu_arch), result});
++    return result;
+ }
+ 
+ /// The following three values are only observed at compile-time and used to emit a compile error
+@@ -4391,6 +4400,7 @@
+             const atom_ptr = elf_file.atom(ref).?;
+             const file_ptr = atom_ptr.file(elf_file).?;
+             log.debug("atom({f}) {s}", .{ ref, atom_ptr.name(elf_file) });
++            std.debug.print("DEBUG createThunks: Processing atom for arch {s}\n", .{@tagName(cpu_arch)});
+             for (atom_ptr.relocs(elf_file)) |rel| {
+                 const is_reachable = switch (cpu_arch) {
+                     .aarch64 => r: {

@@ -1,0 +1,52 @@
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -865,10 +865,33 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+         // Create an LLD command line and invoke it.
+         var argv = std.array_list.Managed([]const u8).init(gpa);
+         defer argv.deinit();
++
++        // PowerPC64/PowerPC64LE: Use external GCC linker instead of LLD
++        // LLD and Zig's self-hosted linker don't support PowerPC64 ABI properly:
++        // - Missing .TOC. symbol generation (Table of Contents)
++        // - Missing __tls_get_addr linking (Thread-Local Storage)
++        // - Incomplete relocation support for GCC-compiled libraries
++        const use_external_gcc_linker = target.cpu.arch == .powerpc64le or target.cpu.arch == .powerpc64;
++
++        if (use_external_gcc_linker) {
++            // Use GCC from environment (conda cross-compiler) or fallback to target-prefixed name
++            const gcc_path = std.process.getEnvVarOwned(arena, "CC") catch |err| switch (err) {
++                error.EnvironmentVariableNotFound => if (target.cpu.arch == .powerpc64le)
++                    "powerpc64le-conda-linux-gnu-gcc"
++                else
++                    "powerpc64-conda-linux-gnu-gcc",
++                else => return err,
++            };
++            // For external GCC: argv[0] is the GCC executable itself
++            try argv.append(gcc_path);
++        } else {
+         // We will invoke ourselves as a child process to gain access to LLD.
+         // This is necessary because LLD does not behave properly as a library -
+         // it calls exit() and does not reset all global data between invocations.
+         const linker_command = "ld.lld";
+-        try argv.appendSlice(&[_][]const u8{ comp.self_exe_path.?, linker_command });
++            // For LLD: argv[0] is zig, argv[1] is "ld.lld"
++            try argv.appendSlice(&[_][]const u8{ comp.self_exe_path.?, linker_command });
++        }
++
+         if (is_obj) {
+             try argv.append("-r");
+         }
+@@ -906,8 +929,13 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+         }
+
+         if (elf.entry_name) |name| {
++            if (use_external_gcc_linker) {
++                try argv.append(try std.fmt.allocPrint(arena, "-Wl,--entry,{s}", .{name}));
++            } else {
+             try argv.appendSlice(&.{ "--entry", name });
+         }
++        }
++
+         for (comp.force_undefined_symbols.keys()) |sym| {
+             try argv.append("-u");
+             try argv.append(sym);

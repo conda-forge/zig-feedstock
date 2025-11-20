@@ -1,0 +1,42 @@
+--- a/src/link/Elf/ZigObject.zig	2025-11-17 13:25:09.464662667 -0600
++++ b/src/link/Elf/ZigObject.zig	2025-11-17 13:28:23.884130623 -0600
+@@ -1981,13 +1981,12 @@
+ 
+ const max_trampoline_len = 12;
+ 
+-fn trampolineSize(cpu_arch: std.Target.Cpu.Arch) u64 {
+-    const len = switch (cpu_arch) {
++fn trampolineSize(cpu_arch: std.Target.Cpu.Arch) usize {
++    return switch (cpu_arch) {
+         .x86_64 => 5, // jmp rel32
++        .powerpc64, .powerpc64le => 8, // b (branch) instruction + nop for alignment
+         else => @panic("TODO implement trampoline size for this CPU arch"),
+     };
+-    comptime assert(len <= max_trampoline_len);
+-    return len;
+ }
+ 
+ fn writeTrampoline(tr_sym: Symbol, target: Symbol, elf_file: *Elf) !void {
+@@ -1997,6 +1996,22 @@
+     const target_addr = target.address(.{ .trampoline = false }, elf_file);
+     var buf: [max_trampoline_len]u8 = undefined;
+     const out = switch (elf_file.getTarget().cpu.arch) {
++        .powerpc64 => blk: {
++            // PowerPC64 BE unconditional branch: b target
++            const offset: i64 = target_addr - source_addr;
++            const branch_offset = @as(u32, @intCast(offset)) & 0x03FFFFFC;
++            std.mem.writeInt(u32, buf[0..4], 0x48000000 | branch_offset, .big);
++            std.mem.writeInt(u32, buf[4..8], 0x60000000, .big); // nop
++            break :blk buf[0..8];
++        },
++        .powerpc64le => blk: {
++            // PowerPC64 LE unconditional branch: b target
++            const offset: i64 = target_addr - source_addr;
++            const branch_offset = @as(u32, @intCast(offset)) & 0x03FFFFFC;
++            std.mem.writeInt(u32, buf[0..4], 0x48000000 | branch_offset, .little);
++            std.mem.writeInt(u32, buf[4..8], 0x60000000, .little); // nop
++            break :blk buf[0..8];
++        },
+         .x86_64 => try x86_64.writeTrampolineCode(source_addr, target_addr, &buf),
+         else => @panic("TODO implement write trampoline for this CPU arch"),
+     };
