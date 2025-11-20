@@ -33,10 +33,13 @@ TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="powerpc64le"
 
 # Add ld.bfd for relocation issue
-# Add -no-pie to fix GCC 14.3.0 + glibc 2.28 incompatibility (__libc_csu_init/fini symbols removed from GCC 14)
-export CFLAGS="${CFLAGS} -fuse-ld=bfd -no-pie"
-export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd -no-pie"
-export LDFLAGS="${LDFLAGS} -fuse-ld=bfd -Wl,-no-pie"
+# CRITICAL: DO NOT use -no-pie for PowerPC64LE!
+# -no-pie forces direct branches (R_PPC64_REL24) which truncate at ±16MB
+# PIE/PIC mode uses PLT for function calls, allowing unlimited distance
+# Add -mcmodel=medium for TOC-relative data addressing (complements PIE for function calls)
+export CFLAGS="${CFLAGS} -fuse-ld=bfd -mcmodel=medium"
+export CXXFLAGS="${CXXFLAGS} -fuse-ld=bfd -mcmodel=medium"
+export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
 
 # Ensure LD_LIBRARY_PATH includes BUILD_PREFIX/lib for libclang-cpp.so
 export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
@@ -44,7 +47,7 @@ export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 zig="${BUILD_PREFIX}"/bin/zig
 
 # Use stage 1 Zig for cross-compilation instead
-  if [[ "1" == "1" ]]; then
+  if [[ "1" == "0" ]]; then
     # STAGE 1: Build x86_64 Zig with PowerPC64LE patches for use as bootstrap compiler
     echo "=== STAGE 1: Building x86_64 Zig with PowerPC64LE support ==="
     stage1_build_dir="${SRC_DIR}/stage1-x86_64"
@@ -153,14 +156,35 @@ create_gcc14_glibc28_compat_lib
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}" "" "linux-ppc64le"
 
+# Build LLD libraries locally with -mcmodel=medium for PowerPC64LE
+# This solves R_PPC64_REL24 relocation truncation errors that occur when linking
+# large binaries (libzigcpp.a 50MB + liblldELF.a 11MB) with conda's pre-built LLD
+echo "Building LLD libraries with -mcmodel=medium for PowerPC64LE..."
+LLD_BUILD_DIR="${SRC_DIR}/lld-ppc64le-build"
+build_lld_ppc64le_mcmodel "${SRC_DIR}/lld-source" "${LLD_BUILD_DIR}" "linux-ppc64le"
+
 # Fix config.h to use shared LLVM linkage (ensures libstdc++.so instead of libstdc++.a)
 # CMake sets ZIG_LLVM_LINK_MODE to "static" even with -DZIG_SHARED_LLVM=ON during cross-compilation
 perl -pi -e 's/#define ZIG_LLVM_LINK_MODE "static"/#define ZIG_LLVM_LINK_MODE "shared"/g' "${cmake_build_dir}/config.h"
+
 # Clear the static library list when using shared linkage - the build system will use -lLLVM instead
+echo "Before LLVM config:"
 grep ZIG_LLVM_LIBRARIES "${cmake_build_dir}/config.h"
 perl -pi -e 's|#define ZIG_LLVM_LIBRARIES ".*"|#define ZIG_LLVM_LIBRARIES "'${PREFIX}'/lib/libLLVM-20.so;-lz;-lzstd"|g' "${cmake_build_dir}/config.h"
-# Not supported: perl -pi -e 's|(#define ZIG_LLD_LIBRARIES "[^"]*)|$1;:pthread|' "${cmake_build_dir}/config.h"
+echo "After LLVM config:"
 grep ZIG_LLVM_LIBRARIES "${cmake_build_dir}/config.h"
+
+# Replace conda's LLD libraries with our locally-built ones (compiled with -mcmodel=medium)
+echo "Replacing conda LLD libraries with locally-built mcmodel=medium versions..."
+echo "Before LLD config:"
+grep ZIG_LLD_LIBRARIES "${cmake_build_dir}/config.h" || echo "ZIG_LLD_LIBRARIES not found"
+
+# Build new LLD library list using our locally-built libraries
+LLD_LIBS="${LLD_BUILD_DIR}/lib/liblldMinGW.a;${LLD_BUILD_DIR}/lib/liblldELF.a;${LLD_BUILD_DIR}/lib/liblldCOFF.a;${LLD_BUILD_DIR}/lib/liblldWasm.a;${LLD_BUILD_DIR}/lib/liblldMachO.a;${LLD_BUILD_DIR}/lib/liblldCommon.a"
+perl -pi -e 's|#define ZIG_LLD_LIBRARIES ".*"|#define ZIG_LLD_LIBRARIES "'"${LLD_LIBS}"'"|g' "${cmake_build_dir}/config.h"
+
+echo "After LLD config (using mcmodel=medium libraries):"
+grep ZIG_LLD_LIBRARIES "${cmake_build_dir}/config.h"
 
 # Determine GCC library directory (contains crtbegin.o, crtend.o)
 GCC_LIB_DIR=$(dirname "$(find "${BUILD_PREFIX}"/lib/gcc/${SYSROOT_ARCH}-conda-linux-gnu -name "crtbeginS.o" | head -1)")
@@ -191,13 +215,13 @@ EXTRA_ZIG_ARGS+=(
   -Duse-llvm=true
   -Duse-zig-libcxx=false
   -Dsingle-threaded=false
+  -Dstrip=false
   -Dtarget=${ZIG_ARCH}-linux-gnu
   -Dcpu=baseline
 )
 
 #  -Ddev=powerpc-linux
 #  -Doptimize=Debug
-#  -Dstrip=false
 #  --verbose-link
 #  --verbose-llvm-ir=/tmp/llvm-ir-output.txt
 #  --verbose
