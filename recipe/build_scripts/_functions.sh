@@ -556,9 +556,9 @@ function create_patched_x86_zig() {
 
     # Configure build
     local build_zig="${zig_x86_env_path}/bin/zig"
-    "${build_zig}" build --help
+    (cd "${x86_build_dir}"; "${build_zig}" build --help)
     
-    modify_libc_libm_for_zig "${x86_install_dir}" "x86_64"
+    modify_libc_libm_for_zig "${BUILD_PREFIX}" "x86_64"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
 
@@ -574,6 +574,7 @@ function create_patched_x86_zig() {
       -Duse-zig-libcxx=false \
       -Dskip-libc \
       --prefix "${x86_install_dir}" \
+      --search-prefix "${x86_install_dir}" \
       --libc "${x86_build_dir}"/libc_file \
       install
 
