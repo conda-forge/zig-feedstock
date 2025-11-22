@@ -13,9 +13,13 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
-      - if: linux or not unix
+      - if: linux
         then:
           # x86_64-linux-gnu: this step declares an upper bound of 7800000000 bytes of memory, exceeding the available 7273205760 bytes of memory
+          - patches/0001-linux-maxrss-build.zig.patch
+      - if: not unix
+        then:
+          # non-unix: error: LLVM ERROR: out of memory
           - patches/0001-x86-maxrss-build.zig.patch
       - if: linux and (x86_64 or ppc64le)
         then:

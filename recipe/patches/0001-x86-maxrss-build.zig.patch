@@ -7,7 +7,7 @@ index 37523e6..a151dc6 100644
      const exe = b.addExecutable(.{
          .name = "zig",
 -        .max_rss = 7_800_000_000,
-+        .max_rss = 7_000_000_000,
++        .max_rss = 8_500_000_000,
          .root_module = addCompilerMod(b, options),
      });
      exe.stack_size = stack_size;

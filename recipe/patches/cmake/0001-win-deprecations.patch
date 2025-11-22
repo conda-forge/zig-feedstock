@@ -1,5 +1,5 @@
---- src/zig_llvm.cpp.orig	2024-06-29 18:28:29.158714044 -0500
-+++ src/zig_llvm.cpp	2024-06-29 18:30:04.008411123 -0500
+--- a/src/zig_llvm.cpp
++++ b/src/zig_llvm.cpp
 @@ -204,7 +204,7 @@
          std::error_code EC;
          dest_asm_ptr = new(std::nothrow) raw_fd_ostream(asm_filename, EC, sys::fs::OF_None);
@@ -43,8 +43,8 @@
              return true;
          }
      }
---- src/zig_llvm-ar.cpp.orig	2024-06-29 18:26:01.752074223 -0500
-+++ src/zig_llvm-ar.cpp	2024-06-29 18:29:36.007910238 -0500
+--- a/src/zig_llvm-ar.cpp
++++ b/src/zig_llvm-ar.cpp
 @@ -619,8 +619,8 @@
          sys::fs::setLastAccessAndModificationTime(FD, ModTimeOrErr.get()));
    }
