@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+# --- Functions ---
+
+source "${RECIPE_DIR}/build_scripts/_functions.sh"
+
+# --- Main ---
+
+SYSROOT_ARCH="x86_64"
+ZIG_ARCH="x86_64"
+
+EXTRA_CMAKE_ARGS+=(
+  -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu
+  -DZIG_TARGET_MCPU=native
+  -DZIG_SINGLE_THREADED=OFF
+)
+
+EXTRA_ZIG_ARGS+=(
+  -Dcpu=native
+  -Dsingle-threaded=false
+  -Dtarget=${ZIG_ARCH}-linux-gnu
+)
+
+CMAKE_PATCHES+=(
+  0001-x86-maxrss-CMakeLists.txt.patch
+)
+
+# Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
+modify_libc_libm_for_zig "${BUILD_PREFIX}"
+
+# Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
+create_gcc14_glibc28_compat_lib
+
+# When using installed c++ libs, zig needs libzigcpp.a
+configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}" "" "linux-64"
+
+# This script only sets up EXTRA_ZIG_ARGS and EXTRA_CMAKE_ARGS
+echo "Linux-64 configuration complete. EXTRA_ZIG_ARGS contains ${#EXTRA_ZIG_ARGS[@]} arguments."

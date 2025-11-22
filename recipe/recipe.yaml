@@ -4,6 +4,7 @@ context:
   name: zig
   version: 0.15.2
   llvm_version: "20"
+  llvm_src_version: "20.1.8"
 
 package:
   name: ${{ name|lower }}
@@ -13,21 +14,44 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
-      - if: linux
+      - if: linux or not unix
         then:
-          - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      - if: aarch64 or ppc64le
+          # x86_64-linux-gnu: this step declares an upper bound of 7800000000 bytes of memory, exceeding the available 7273205760 bytes of memory
+          - patches/0001-x86-maxrss-build.zig.patch
+      - if: linux and (x86_64 or ppc64le)
         then:
-          - patches/0001-cross-findllvm.patch
-          # Only apply other CMake patches when cross-compiling with CMake (not needed with zig)
+          # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
+          - patches/0001-ppc64le-arch-support-relocation.zig.patch
+          - patches/0001-ppc64le-arch-support-LdScript.zig.patch
+          - patches/0001-ppc64le-arch-support-Elf.zig.patch
+          - patches/0001-ppc64le-arch-support-Atom.zig.patch
+          - patches/0001-ppc64le-arch-support-LinkerDefined.zig.patch
+          - patches/0001-ppc64le-arch-support-ZigObject.zig.patch
+          - patches/0001-ppc64le-arch-support-synthetic_sections.zig.patch
+          - patches/0001-ppc64le-arch-support-eh_frame.zig.patch
+          - patches/0001-ppc64le-arch-support-Thunk.zig.patch
+          - patches/0001-ppc64le-arch-support-st-other-Object.zig.patch
+          - patches/0001-ppc64le-arch-support-st-other-SharedObject.zig.patch
+          # Phase 0002: Build Configuration (LLVM backend, library paths)
+          - patches/0002-ppc64le-build-config-build.zig.patch
+          # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
+          - patches/0003-ppc64le-linker-redirect-link.zig.patch
+          - patches/0003-ppc64le-ldscript-output-format.patch
+          - patches/0003-ppc64le-gcc-linker-comprehensive-Lld.zig.patch
       - if: win
         then:
           # May be combined into a single patch once the build is found robust (few versions of zig)
-          - patches/0001-win-deprecations.patch
+          # - patches/0001-win-deprecations.patch
           - patches/0002-win-libraries-CMakeLists.txt.patch
           - patches/0003-win-add-libdir-build.zig.patch
           - patches/0004-win-remove-ucrt-Lld.zig.patch
     target_directory: zig-source
+
+  - if: ppc64le
+    then:
+      - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
+        sha256: a6cbad9b2243b17e87795817cfff2107d113543a12486586f8a055a2bb044963
+        target_directory: lld-source
 
   # Bootstrap fallback: Use upstream binary dist if conda ZIG cannot build a newer version
   # The zig variable in the build scripts would then need to be updated
@@ -49,20 +73,7 @@ source:
   #   sha256: ...
 
 build:
-  number: 1
-  skip:
-    - ppc64le
-  script:
-    content:
-      - if: unix
-        then:
-          - bash ${RECIPE_DIR}/build.sh
-      - if: win
-        then:
-          # The bld.bat script handles Windows builds
-          - call %RECIPE_DIR%\build.bat
-    env:
-      BUILD_WITH_CMAKE: ${{ "1" if x86_64 }}
+  number: 3
 
 requirements:
   build:
@@ -71,33 +82,37 @@ requirements:
     - ${{ stdlib("c") }}
     - cmake >=3.5
     - ninja
-    - if: arm64 or aarch64 or ppc64le
-      then: zig
-    - if: aarch64 or ppc64le
-      then: ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
-    - if: (build_platform != target_platform) and osx
-      then: libxml2-devel
-    - if: unix
-      then: sed
-
-  host:
+    - perl 5.32.*
+    - zig
     - if: aarch64 or ppc64le
       then:
-        - ${{ compiler('cxx') }}
+        - ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
+    - if: (build_platform != target_platform) and osx
+      then:
+        - libxml2-devel
+    - if: unix
+      then:
+        - bash
+        - file
+      else:
+        - m2-bash
+        - m2-which
+  host:
     - clangdev ${{ llvm_version }}.*
     - libclang-cpp ${{ llvm_version }}.*
-    - if: osx
-      then:
-        - libcxx ${{ llvm_version }}.*
     - libxml2-devel
     - llvmdev ${{ llvm_version }}.*
     - llvm ${{ llvm_version }}.*
     - lld ${{ llvm_version }}.*
-    - if: aarch64 or ppc64le
-      then:
-        - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
     - zlib
     - zstd
+    - if: linux and (aarch64 or ppc64le)
+      then:
+        - ${{ compiler('cxx') }}
+        - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
+    - if: osx
+      then:
+        - libcxx ${{ llvm_version }}.*
 
   run:
     - if: aarch64 or ppc64le
@@ -134,16 +149,7 @@ tests:
             - lib/zig/std/**
 
   # Functional tests
-  - requirements:
-      run:
-        - if: linux and aarch64
-          then:
-            - patchelf
-        # - if: aarch64 or ppc64le
-        #   then:
-        #     - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
-
-    files:
+  - files:
       source:
         - zig-source/test
 
