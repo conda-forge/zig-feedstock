@@ -11,7 +11,8 @@ function cmake_build_install() {
 }
 
 function modify_libc_libm_for_zig() {
-  local prefix=$1
+  local prefix=${1:-$PREFIX}
+  local sysroot_arch=${2:-${SYSROOT_ARCH:-x86_64}}
 
   # Helper: Check if file is a text/script file (linker script)
   is_text_file() {
@@ -22,14 +23,14 @@ function modify_libc_libm_for_zig() {
   # Replace libc.so and libm.so linker scripts with symlinks (Zig doesn't support relative paths in linker scripts)
   # The linker scripts contain relative paths like "libc.so.6" which Zig can't handle (hits TODO panic at line 1074)
   # Just replace them with symlinks directly to the actual .so files
-  local libc_path="${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
+  local libc_path="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
   if is_text_file "$libc_path"; then
     echo "  - Replacing libc.so linker script with symlink"
     rm -f "$libc_path"
     ln -sf ../../lib64/libc.so.6 "$libc_path"
   fi
 
-  local libm_path="${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
+  local libm_path="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
   if is_text_file "$libm_path"; then
     echo "  - Replacing libm.so linker script with symlink"
     rm -f "$libm_path"
@@ -66,7 +67,7 @@ function modify_libc_libm_for_zig() {
 
   # Zig doesn't yet support custom lib search paths, so symlink needed libs to where Zig looks
   # Create symlinks from lib64 to usr/lib (Zig searches usr/lib by default)
-  local sysroot="${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
+  local sysroot="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot"
   echo "  - Creating symlinks in usr/lib for lib64 libraries"
 
   # Suppress error if symlink already exists
@@ -75,7 +76,7 @@ function modify_libc_libm_for_zig() {
   ln -sf ../../../lib64/libc.so.6 "${sysroot}/usr/lib/libc.so.6" 2>/dev/null || true
 
   # Architecture-specific dynamic linker symlinks
-  case "${SYSROOT_ARCH}" in
+  case "${sysroot_arch}" in
     aarch64)
       ln -sf ../../../lib64/ld-linux-aarch64.so.1 "${sysroot}/usr/lib/ld-linux-aarch64.so.1" 2>/dev/null || true
       ;;
@@ -557,7 +558,7 @@ function create_patched_x86_zig() {
     local build_zig="${zig_x86_env_path}/bin/zig"
     "${build_zig}" build --help
     
-    modify_libc_libm_for_zig "${x86_install_dir}"
+    modify_libc_libm_for_zig "${x86_install_dir}" "x86_64"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
 
