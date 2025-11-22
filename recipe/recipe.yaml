@@ -40,8 +40,8 @@ source:
         then:
           - patches/0001-win-maxrss-search-prefix-build.zig.patch
           - patches/0001-win-correct-LLVM_LIBRARIES-CMakeLists.txt.patch
-          - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
           - patches/0001-win-remove-ucrt-Lld.zig.patch
+          - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
     target_directory: zig-source
 
 build:

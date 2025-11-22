@@ -68,9 +68,6 @@ else
   echo "WARNING: zig build failed, falling back to cmake build"
   apply_cmake_patches "${cmake_build_dir}"
 
-  # Reconfigure CMake to pick up patched CMakeLists.txt
-  # configure_cmake "${cmake_build_dir}" "${PREFIX}"
-
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"
   else
