@@ -571,6 +571,7 @@ function create_patched_x86_zig() {
       -Denable-llvm \
       -Doptimize=ReleaseSafe \
       -Duse-zig-libcxx=false \
+      -Dskip-libc \
       --prefix "${x86_install_dir}" \
       --libc "${x86_build_dir}"/libc_file \
       install
