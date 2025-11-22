@@ -66,7 +66,7 @@ if build_zig_with_zig "${zig_build_dir}" "${BUILD_PREFIX}/bin/zig" "${PREFIX}"; 
   echo "SUCCESS: zig build completed successfully"
 else
   echo "WARNING: zig build failed, falling back to cmake build"
-  apply_cmake_patches
+  apply_cmake_patches "${cmake_build_dir}"
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"
   else
