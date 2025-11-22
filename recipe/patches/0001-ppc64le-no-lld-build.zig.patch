@@ -1,0 +1,24 @@
+--- a/build.zig
++++ b/build.zig
+@@ -206,8 +206,19 @@ pub fn build(b: *std.Build) !void {
+     const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
+-    exe.use_llvm = use_llvm;
+-    exe.use_lld = use_llvm;
++
++    // PowerPC64LE: Force LLVM backend + disable LLD in build.zig
++    // Runtime patches (0008, 0007, 0020) force LLD code path → ld.bfd → external GCC
++    // Patch 0008: Forces LLD path at runtime (overrides use_lld=false)
++    // Patch 0007: Replaces ld.lld with ld.bfd
++    // Patch 0020: Replaces ld.bfd with external GCC
++    // Setting link_libc = true ensures proper libc linking
++    if (target.result.cpu.arch == .powerpc64le) {
++        exe.use_llvm = true;                // Force LLVM backend (ignores -Duse-llvm flag)
++        exe.use_lld = false;                // Disabled here, but patch 0008 forces it at runtime
++        exe.root_module.link_libc = true;   // Force external linker via C compiler driver
++    } else {
++        exe.use_llvm = use_llvm;
++        exe.use_lld = use_llvm;
++    }
+
+     if (no_bin) {
+         b.getInstallStep().dependOn(&exe.step);
