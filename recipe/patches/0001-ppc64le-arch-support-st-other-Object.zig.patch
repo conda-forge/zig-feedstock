@@ -1,0 +1,22 @@
+--- a/src/link/Elf/Object.zig
++++ b/src/link/Elf/Object.zig
+@@ -634,7 +634,8 @@ pub fn resolveSymbols(self: *Object, elf_file: *Elf) void {
+
+         const is_import = blk: {
+             if (!elf_file.isEffectivelyDynLib()) break :blk false;
+-            const vis = @as(elf.STV, @enumFromInt(esym.st_other));
++            // st_other contains visibility in lower 2 bits, upper bits are arch-specific flags
++            const vis = @as(elf.STV, @enumFromInt(esym.st_other & 0x3));
+             if (vis == .HIDDEN) break :blk false;
+             break :blk true;
+         };
+@@ -707,7 +708,8 @@ pub fn markImportsExports(self: *Object, elf_file: *Elf) void {
+         const file = sym.file(elf_file).?;
+         // https://github.com/ziglang/zig/issues/21678
+         if (@as(u16, @bitCast(sym.version_index)) == @as(u16, @bitCast(elf.Versym.LOCAL))) continue;
+-        const vis: elf.STV = @enumFromInt(sym.elfSym(elf_file).st_other);
++        // st_other contains visibility in lower 2 bits, upper bits are arch-specific flags
++        const vis: elf.STV = @enumFromInt(sym.elfSym(elf_file).st_other & 0x3);
+         if (vis == .HIDDEN) continue;
+         if (file == .shared_object and !sym.isAbs(elf_file)) {
+             sym.flags.import = true;

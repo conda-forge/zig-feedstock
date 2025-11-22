@@ -1,0 +1,37 @@
+--- a/src/link/Elf.zig
++++ b/src/link/Elf.zig
+@@ -3721,6 +3721,7 @@ pub fn tpAddress(self: *Elf) i64 {
+         .x86_64 => mem.alignForward(u64, phdr.p_vaddr + phdr.p_memsz, phdr.p_align),
+         .aarch64 => mem.alignBackward(u64, phdr.p_vaddr - 16, phdr.p_align),
+         .riscv64 => phdr.p_vaddr,
++        .powerpc64, .powerpc64le => mem.alignForward(u64, phdr.p_vaddr + phdr.p_memsz, phdr.p_align),
+         else => |arch| std.debug.panic("TODO implement getTpAddress for {s}", .{@tagName(arch)}),
+     };
+     return @intCast(addr);
+@@ -4099,7 +4100,7 @@ pub fn getTarget(self: *const Elf) *const std.Target {
+ fn requiresThunks(self: Elf) bool {
+     return switch (self.getTarget().cpu.arch) {
+         .aarch64 => true,
+-        .x86_64, .riscv64 => false,
++        .x86_64, .riscv64, .powerpc64, .powerpc64le => false,
+         else => @panic("TODO unimplemented architecture"),
+     };
+ }
+@@ -4345,7 +4346,7 @@ fn createThunks(elf_file: *Elf, atom_list: *AtomList) !void {
+     // `2^(jump_bits - 1) - margin` where margin is some arbitrary number.
+     const max_distance = switch (cpu_arch) {
+         .aarch64 => 0x500_000,
+-        .x86_64, .riscv64 => unreachable,
++        .x86_64, .riscv64, .powerpc64, .powerpc64le => unreachable,
+         else => @panic("unhandled arch"),
+     };
+
+@@ -4407,7 +4408,7 @@
+                         _ = math.cast(i28, taddr + rel.r_addend - saddr) orelse break :r false;
+                         break :r true;
+                     },
+-                    .x86_64, .riscv64 => unreachable,
++                    .x86_64, .riscv64, .powerpc64, .powerpc64le => unreachable,
+                     else => @panic("unsupported arch"),
+                 };
+                 if (is_reachable) continue;
