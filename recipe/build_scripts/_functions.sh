@@ -568,7 +568,6 @@ function create_patched_x86_zig() {
       -Dconfig_h="${x86_cmake_dir}/config.h" \
       -Denable-llvm \
       -Doptimize=ReleaseSafe \
-      -Dskip-releasesafe \
       -Duse-zig-libcxx=false \
       --prefix "${x86_install_dir}" \
       --libc "${x86_build_dir}"/libc_file \
