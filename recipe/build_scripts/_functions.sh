@@ -543,14 +543,7 @@ function create_patched_x86_zig() {
     local build_zig="${zig_x86_env_path}/bin/zig"
 
     # Setup cmake config
-    cd "${x86_cmake_dir}"
-    cmake -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX="${x86_install_dir}" \
-      -DZIG_SHARED_LLVM=ON \
-      -DZIG_USE_LLVM_CONFIG=ON \
-      -DZIG_SYSTEM_LIBCXX=stdc++ \
-      .
+    configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
 
     # modify_libc_libm_for_zig "${zig_x86_env_path}"
     remove_failing_langref "${x86_build_dir}"
