@@ -11,7 +11,8 @@ function cmake_build_install() {
 }
 
 function modify_libc_libm_for_zig() {
-  local prefix=$1
+  local prefix=${1:-$PREFIX}
+  local sysroot_arch=${2:-${SYSROOT_ARCH:-x86_64}}
 
   # Helper: Check if file is a text/script file (linker script)
   is_text_file() {
@@ -22,14 +23,14 @@ function modify_libc_libm_for_zig() {
   # Replace libc.so and libm.so linker scripts with symlinks (Zig doesn't support relative paths in linker scripts)
   # The linker scripts contain relative paths like "libc.so.6" which Zig can't handle (hits TODO panic at line 1074)
   # Just replace them with symlinks directly to the actual .so files
-  local libc_path="${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
+  local libc_path="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
   if is_text_file "$libc_path"; then
     echo "  - Replacing libc.so linker script with symlink"
     rm -f "$libc_path"
     ln -sf ../../lib64/libc.so.6 "$libc_path"
   fi
 
-  local libm_path="${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
+  local libm_path="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
   if is_text_file "$libm_path"; then
     echo "  - Replacing libm.so linker script with symlink"
     rm -f "$libm_path"
@@ -66,7 +67,7 @@ function modify_libc_libm_for_zig() {
 
   # Zig doesn't yet support custom lib search paths, so symlink needed libs to where Zig looks
   # Create symlinks from lib64 to usr/lib (Zig searches usr/lib by default)
-  local sysroot="${prefix}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
+  local sysroot="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot"
   echo "  - Creating symlinks in usr/lib for lib64 libraries"
 
   # Suppress error if symlink already exists
@@ -75,7 +76,7 @@ function modify_libc_libm_for_zig() {
   ln -sf ../../../lib64/libc.so.6 "${sysroot}/usr/lib/libc.so.6" 2>/dev/null || true
 
   # Architecture-specific dynamic linker symlinks
-  case "${SYSROOT_ARCH}" in
+  case "${sysroot_arch}" in
     aarch64)
       ln -sf ../../../lib64/ld-linux-aarch64.so.1 "${sysroot}/usr/lib/ld-linux-aarch64.so.1" 2>/dev/null || true
       ;;
@@ -153,7 +154,9 @@ patch_crt_object() {
 # GCC 14 removed __libc_csu_init and __libc_csu_fini from crtbegin/crtend
 # but glibc 2.28 crt1.o still references them
 function create_gcc14_glibc28_compat_lib() {
-  local stub_dir="${BUILD_PREFIX}/lib/gcc14-glibc28-compat"
+  local prefix="${1:-$BUILD_PREFIX}"
+  
+  local stub_dir="${prefix}/lib/gcc14-glibc28-compat"
   mkdir -p "${stub_dir}" || return 1
 
   # Create stub source file
@@ -173,9 +176,9 @@ EOF
   # Compile stub objects for all available architectures
   # We need architecture-specific object files to patch architecture-specific CRT files
   local arch_compilers=(
-    "x86_64:${BUILD_PREFIX}/bin/x86_64-conda-linux-gnu-cc:libc_csu_stubs_x86_64.o"
-    "powerpc64le:${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-cc:libc_csu_stubs_ppc64le.o"
-    "aarch64:${BUILD_PREFIX}/bin/aarch64-conda-linux-gnu-cc:libc_csu_stubs_aarch64.o"
+    "x86_64:${prefix}/bin/x86_64-conda-linux-gnu-cc:libc_csu_stubs_x86_64.o"
+    "powerpc64le:${prefix}/bin/powerpc64le-conda-linux-gnu-cc:libc_csu_stubs_ppc64le.o"
+    "aarch64:${prefix}/bin/aarch64-conda-linux-gnu-cc:libc_csu_stubs_aarch64.o"
   )
 
   for entry in "${arch_compilers[@]}"; do
@@ -194,14 +197,14 @@ EOF
   "${AR}" rcs "${stub_dir}/libcsu_compat.a" "${stub_dir}/libc_csu_stubs.o" || return 1
 
   # Copy to standard library location
-  cp "${stub_dir}/libcsu_compat.a" "${BUILD_PREFIX}/lib/" || return 1
+  cp "${stub_dir}/libcsu_compat.a" "${prefix}/lib/" || return 1
 
   # Patch glibc crt1.o files which reference __libc_csu_init/fini
   # NOTE: We do NOT patch GCC's crtbegin*.o files to avoid duplicate symbol definitions
   echo "Patching glibc crt1.o files..."
   local crt_files=(crt1.o Scrt1.o gcrt1.o grcrt1.o)
 
-  for sysroot_dir in "${BUILD_PREFIX}"/*-conda-linux-gnu/sysroot/usr/lib; do
+  for sysroot_dir in "${prefix}"/*-conda-linux-gnu/sysroot/usr/lib; do
     [[ -d "${sysroot_dir}" ]] || continue
 
     for crt_file in "${crt_files[@]}"; do
@@ -210,7 +213,7 @@ EOF
   done
 
   echo "Created GCC 14 + glibc 2.28 compatibility:"
-  echo "  - ${BUILD_PREFIX}/lib/libcsu_compat.a"
+  echo "  - ${prefix}/lib/libcsu_compat.a"
   echo "  - Patched all glibc crt1*.o files with stub symbols"
 }
 
