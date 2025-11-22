@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 # --- Functions ---
 
@@ -23,6 +23,3 @@ EXTRA_ZIG_ARGS+=(
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
 perl -pi -e "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
-
-# This script only sets up EXTRA_ZIG_ARGS and EXTRA_CMAKE_ARGS
-echo "macOS-64 configuration complete. EXTRA_ZIG_ARGS contains ${#EXTRA_ZIG_ARGS[@]} arguments."

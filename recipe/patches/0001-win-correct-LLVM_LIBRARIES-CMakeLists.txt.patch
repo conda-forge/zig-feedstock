@@ -1,0 +1,17 @@
+# Fix library linking and build configuration for conda MSVC toolchain
+#
+# Changes:
+# - Strip .dll extensions from library names to prevent double-extension (zstd.dll.lib)
+# - Add required Windows libraries (msvcrt.lib)
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -147,6 +147,8 @@
+     find_library(ZLIB NAMES libz.a libzlibstatic.a z zlib libz NAMES_PER_DIR)
+     list(APPEND LLVM_LIBRARIES "${ZLIB}")
+ endif()
++string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
++list(APPEND LLVM_LIBRARIES "msvcrt.lib")
+
+ if(ZIG_STATIC_ZSTD)
+     if (MSVC)

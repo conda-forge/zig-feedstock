@@ -1,0 +1,23 @@
+# Linux: Link pthread_atfork stub into zig2 executable
+#
+# glibc 2.28 on some architectures (x86_64, aarch64, ppc64le) doesn't
+# export pthread_atfork symbol. Zig's crypto.tlcsprng module needs this
+# symbol, so we link a stub implementation.
+#
+# The stub is created in ZIG_LOCAL_CACHE_DIR/pthread_atfork_stub.o
+# during the build script execution.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -827,6 +827,11 @@ target_link_libraries(zig2
+   ${ZIG_LIB_DIR}/compiler_rt.o
+ )
+
++# Link pthread_atfork stub if it exists (needed for glibc 2.28)
++if(EXISTS "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
++  target_link_libraries(zig2 PRIVATE "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
++endif()
++
+ if(MSVC)
+   target_link_options(zig1 PRIVATE /STACK:0x10000000)
+ else()

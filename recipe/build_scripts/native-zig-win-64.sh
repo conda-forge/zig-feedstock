@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 # --- Functions ---
 
@@ -40,14 +40,9 @@ EXTRA_ZIG_ARGS+=(
   -Dtarget=${ZIG_ARCH}-windows-msvc
 )
 
-#  0001-x86-maxrss-CMakeLists.txt.patch
 CMAKE_PATCHES+=(
-  0001-win-deprecations.patch
+  0001-win-deprecations-zig_llvm.cpp.patch
+  0001-win-deprecations-zig_llvm-ar.cpp.patch
 )
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}"
-perl -pi -e 's/zstd\.dll/zstd/g' "${cmake_build_dir}/config.h"
-cat "${cmake_build_dir}/config.h"
-
-# This script only sets up EXTRA_ZIG_ARGS and EXTRA_CMAKE_ARGS
-echo "Windows-64 configuration complete. EXTRA_ZIG_ARGS contains ${#EXTRA_ZIG_ARGS[@]} arguments."

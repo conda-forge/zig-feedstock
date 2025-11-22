@@ -15,12 +15,7 @@ source:
     patches:
       - if: linux
         then:
-          # x86_64-linux-gnu: this step declares an upper bound of 7800000000 bytes of memory, exceeding the available 7273205760 bytes of memory
           - patches/0001-linux-maxrss-build.zig.patch
-      - if: not unix
-        then:
-          # non-unix: error: LLVM ERROR: out of memory
-          - patches/0001-x86-maxrss-build.zig.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -41,33 +36,13 @@ source:
           - patches/0003-ppc64le-linker-redirect-link.zig.patch
           - patches/0003-ppc64le-ldscript-output-format.patch
           - patches/0003-ppc64le-gcc-linker-comprehensive-Lld.zig.patch
-      - if: win
+      - if: not unix
         then:
-          # May be combined into a single patch once the build is found robust (few versions of zig)
-          # - patches/0001-win-deprecations.patch
-          - patches/0002-win-libraries-CMakeLists.txt.patch
-          - patches/0003-win-add-libdir-build.zig.patch
-          - patches/0004-win-remove-ucrt-Lld.zig.patch
+          - patches/0001-win-maxrss-search-prefix-build.zig.patch
+          - patches/0001-win-correct-LLVM_LIBRARIES-CMakeLists.txt.patch
+          - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
+          - patches/0001-win-remove-ucrt-Lld.zig.patch
     target_directory: zig-source
-
-  # Bootstrap fallback: Use upstream binary dist if conda ZIG cannot build a newer version
-  # The zig variable in the build scripts would then need to be updated
-  # Uncomment the following sections to enable bootstrap binaries:
-  #
-  # - folder: zig-bootstrap
-  #   if: win
-  #   url: https://ziglang.org/download/${{ version }}/zig-windows-x86_64-${{ version }}.zip
-  #   sha256: ...
-  #
-  # - folder: zig-bootstrap
-  #   if: osx
-  #   url: https://ziglang.org/download/${{ version }}/zig-macos-x86_64-${{ version }}.tar.xz
-  #   sha256: ...
-  #
-  # - folder: zig-bootstrap
-  #   if: linux
-  #   url: https://ziglang.org/download/${{ version }}/zig-linux-x86_64-${{ version }}.tar.xz
-  #   sha256: ...
 
 build:
   number: 2
@@ -94,7 +69,6 @@ requirements:
         - file
       else:
         - m2-bash
-        - m2-which
   host:
     - clangdev ${{ llvm_version }}.*
     - libclang-cpp ${{ llvm_version }}.*

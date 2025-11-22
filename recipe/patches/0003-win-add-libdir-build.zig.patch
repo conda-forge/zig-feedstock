@@ -1,3 +1,9 @@
+# Windows: Add library search paths for LLVM/Clang dependencies
+#
+# Adds CMAKE_PREFIX_PATH/lib to library search directories to help
+# the linker find zlib, zstd, and other LLVM dependencies installed
+# via conda packages.
+
 --- a/build.zig
 +++ b/build.zig
 @@ -790,7 +790,11 @@

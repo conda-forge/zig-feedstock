@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 # --- Functions ---
 
@@ -23,7 +23,8 @@ EXTRA_ZIG_ARGS+=(
 )
 
 CMAKE_PATCHES+=(
-  0001-x86-maxrss-CMakeLists.txt.patch
+  0001-linux-maxrss-CMakeLists.txt.patch
+  0002-linux-pthread-atfork-stub-zig2-CMakeLists.txt.patch
 )
 
 # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
@@ -35,5 +36,5 @@ create_gcc14_glibc28_compat_lib
 # When using installed c++ libs, zig needs libzigcpp.a
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}" "" "linux-64"
 
-# This script only sets up EXTRA_ZIG_ARGS and EXTRA_CMAKE_ARGS
-echo "Linux-64 configuration complete. EXTRA_ZIG_ARGS contains ${#EXTRA_ZIG_ARGS[@]} arguments."
+# Prepare CMake fallback (not needed by zig build)
+create_pthread_atfork_stub "x86_64" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"

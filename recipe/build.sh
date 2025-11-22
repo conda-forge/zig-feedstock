@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euxo pipefail
+set -euo pipefail
 
 # --- Functions ---
 
@@ -62,11 +62,15 @@ case "${target_platform}" in
     ;;
 esac
 
-if build_zig_with_zig "${zig_build_dir}" "${BUILD_PREFIX}/bin/zig" "${PREFIX}"; then
+if build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
 else
   echo "WARNING: zig build failed, falling back to cmake build"
   apply_cmake_patches "${cmake_build_dir}"
+
+  # Reconfigure CMake to pick up patched CMakeLists.txt
+  # configure_cmake "${cmake_build_dir}" "${PREFIX}"
+
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"
   else
