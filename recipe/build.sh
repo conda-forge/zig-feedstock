@@ -8,11 +8,8 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
 
-if [[ "${BUILD_WITH_CMAKE:-0}" == "0" ]]; then
-  builder=zig
-else
-  builder=cmake
-fi
+builder=zig
+force_cmake=0
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
@@ -62,7 +59,7 @@ case "${target_platform}" in
     ;;
 esac
 
-if build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
+if [[ "${force_cmake:-0}" == "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
 else
   echo "WARNING: zig build failed, falling back to cmake build"
