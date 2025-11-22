@@ -539,6 +539,18 @@ function create_patched_x86_zig() {
     # eval "$(conda shell.bash hook)"
     conda activate "${env_name}"
 
+    # Override BUILD_PREFIX to point to x86_64 environment (not ppc64le toolchain)
+    export BUILD_PREFIX="${zig_x86_env_path}"
+    export PREFIX="${x86_install_dir}"
+
+    # Clear cross-compilation variables that might interfere
+    unset CROSSCOMPILING_EMULATOR
+    unset SYSROOT_ARCH
+    unset SYSROOT_PATH
+
+    # Ensure we're building for native x86_64
+    export target_platform="linux-64"
+
     # Configure build
     local build_zig="${zig_x86_env_path}/bin/zig"
 
@@ -547,7 +559,7 @@ function create_patched_x86_zig() {
 
     # modify_libc_libm_for_zig "${zig_x86_env_path}"
     remove_failing_langref "${x86_build_dir}"
-    
+
     # Build with zig
     cd "${x86_build_dir}"
     "${build_zig}" build \
