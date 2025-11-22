@@ -40,8 +40,8 @@ EXTRA_ZIG_ARGS+=(
 )
 #  --maxrss 8500000000
 
+#  0001-x86-maxrss-CMakeLists.txt.patch
 CMAKE_PATCHES+=(
-  0001-x86-maxrss-CMakeLists.txt.patch
   0001-win-deprecations.patch
 )
 
