@@ -153,7 +153,9 @@ patch_crt_object() {
 # GCC 14 removed __libc_csu_init and __libc_csu_fini from crtbegin/crtend
 # but glibc 2.28 crt1.o still references them
 function create_gcc14_glibc28_compat_lib() {
-  local stub_dir="${BUILD_PREFIX}/lib/gcc14-glibc28-compat"
+  local prefix="${1:-$BUILD_PREFIX}"
+  
+  local stub_dir="${prefix}/lib/gcc14-glibc28-compat"
   mkdir -p "${stub_dir}" || return 1
 
   # Create stub source file
@@ -173,9 +175,9 @@ EOF
   # Compile stub objects for all available architectures
   # We need architecture-specific object files to patch architecture-specific CRT files
   local arch_compilers=(
-    "x86_64:${BUILD_PREFIX}/bin/x86_64-conda-linux-gnu-cc:libc_csu_stubs_x86_64.o"
-    "powerpc64le:${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-cc:libc_csu_stubs_ppc64le.o"
-    "aarch64:${BUILD_PREFIX}/bin/aarch64-conda-linux-gnu-cc:libc_csu_stubs_aarch64.o"
+    "x86_64:${prefix}/bin/x86_64-conda-linux-gnu-cc:libc_csu_stubs_x86_64.o"
+    "powerpc64le:${prefix}/bin/powerpc64le-conda-linux-gnu-cc:libc_csu_stubs_ppc64le.o"
+    "aarch64:${prefix}/bin/aarch64-conda-linux-gnu-cc:libc_csu_stubs_aarch64.o"
   )
 
   for entry in "${arch_compilers[@]}"; do
@@ -194,14 +196,14 @@ EOF
   "${AR}" rcs "${stub_dir}/libcsu_compat.a" "${stub_dir}/libc_csu_stubs.o" || return 1
 
   # Copy to standard library location
-  cp "${stub_dir}/libcsu_compat.a" "${BUILD_PREFIX}/lib/" || return 1
+  cp "${stub_dir}/libcsu_compat.a" "${prefix}/lib/" || return 1
 
   # Patch glibc crt1.o files which reference __libc_csu_init/fini
   # NOTE: We do NOT patch GCC's crtbegin*.o files to avoid duplicate symbol definitions
   echo "Patching glibc crt1.o files..."
   local crt_files=(crt1.o Scrt1.o gcrt1.o grcrt1.o)
 
-  for sysroot_dir in "${BUILD_PREFIX}"/*-conda-linux-gnu/sysroot/usr/lib; do
+  for sysroot_dir in "${prefix}"/*-conda-linux-gnu/sysroot/usr/lib; do
     [[ -d "${sysroot_dir}" ]] || continue
 
     for crt_file in "${crt_files[@]}"; do
@@ -210,7 +212,7 @@ EOF
   done
 
   echo "Created GCC 14 + glibc 2.28 compatibility:"
-  echo "  - ${BUILD_PREFIX}/lib/libcsu_compat.a"
+  echo "  - ${prefix}/lib/libcsu_compat.a"
   echo "  - Patched all glibc crt1*.o files with stub symbols"
 }
 
@@ -553,13 +555,13 @@ function create_patched_x86_zig() {
 
     # Configure build
     local build_zig="${zig_x86_env_path}/bin/zig"
-
-    # Setup cmake config
+    "${build_zig}" build --help
+    
+    modify_libc_libm_for_zig "${x86_install_dir}"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
+    create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
 
-    # modify_libc_libm_for_zig "${zig_x86_env_path}"
     remove_failing_langref "${x86_build_dir}"
-
     create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
     
     # Build with zig
