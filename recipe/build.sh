@@ -9,7 +9,7 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 # --- Main ---
 
 builder=zig
-force_cmake=0
+force_cmake=1
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
@@ -59,10 +59,12 @@ case "${target_platform}" in
     ;;
 esac
 
-if [[ "${force_cmake:-0}" == "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
+if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
+elif "${target_platform}" == "osx-arm64"
+  echo "ERROR: zig build failed. We cannot build with CMake without an emulator"
+  exit 1
 else
-  echo "WARNING: zig build failed, falling back to cmake build"
   apply_cmake_patches "${cmake_build_dir}"
 
   if cmake_build_install "${cmake_build_dir}"; then

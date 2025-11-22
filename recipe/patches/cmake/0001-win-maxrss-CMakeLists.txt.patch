@@ -6,7 +6,7 @@ index ef371fc..01a4f23 100644
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
  
    -Dno-langref
-+  --maxrss 8500000000
++  --maxrss 7500000000
  )
  
  set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")
