@@ -61,7 +61,7 @@ esac
 
 if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
-elif "${target_platform}" == "osx-arm64"
+elif [[ "${target_platform}" == "osx-arm64" ]]; then
   echo "ERROR: zig build failed. We cannot build with CMake without an emulator"
   exit 1
 else
