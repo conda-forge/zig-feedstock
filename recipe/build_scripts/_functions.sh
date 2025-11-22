@@ -536,7 +536,7 @@ function create_patched_x86_zig() {
   # Build using the environment's zig
   (
     # Activate environment (use source to keep in same shell context)
-    eval "$(conda shell.bash hook)"
+    # eval "$(conda shell.bash hook)"
     conda activate "${env_name}"
 
     # Configure build
