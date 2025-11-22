@@ -552,6 +552,9 @@ function create_patched_x86_zig() {
       -DZIG_SYSTEM_LIBCXX=stdc++ \
       .
 
+    # modify_libc_libm_for_zig "${zig_x86_env_path}"
+    remove_failing_langref "${x86_build_dir}"
+    
     # Build with zig
     cd "${x86_build_dir}"
     "${build_zig}" build \
