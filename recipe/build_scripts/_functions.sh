@@ -560,14 +560,18 @@ function create_patched_x86_zig() {
     # modify_libc_libm_for_zig "${zig_x86_env_path}"
     remove_failing_langref "${x86_build_dir}"
 
+    create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
+    
     # Build with zig
     cd "${x86_build_dir}"
     "${build_zig}" build \
       -Dconfig_h="${x86_cmake_dir}/config.h" \
       -Denable-llvm \
       -Doptimize=ReleaseSafe \
+      -Dskip-releasesafe \
       -Duse-zig-libcxx=false \
       --prefix "${x86_install_dir}" \
+      --libc "${x86_build_dir}"/libc_file \
       install
 
     conda deactivate
