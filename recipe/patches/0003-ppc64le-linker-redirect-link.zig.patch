@@ -1,0 +1,42 @@
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -522,9 +522,17 @@
+         emit: Path,
+         options: OpenOptions,
+     ) !*File {
+-        if (comp.config.use_lld) {
++        // PowerPC64LE workaround: Force LLD backend which will invoke external system linker
++        // The self-hosted ELF linker doesn't support PowerPC64LE architecture
++        const target = &comp.root_mod.resolved_target.result;
++        const force_lld_for_external = switch (target.cpu.arch) {
++            .powerpc64le => target.ofmt == .elf,
++            else => false,
++        };
++
++        if (comp.config.use_lld or force_lld_for_external) {
+             dev.check(.lld_linker);
+-            assert(comp.zcu == null or comp.config.use_llvm);
++            assert(comp.zcu == null or comp.config.use_llvm or force_lld_for_external);
+             // LLD does not support incremental linking.
+             const lld: *Lld = try .createEmpty(arena, comp, emit, options);
+             return &lld.base;
+@@ -546,9 +554,17 @@
+         emit: Path,
+         options: OpenOptions,
+     ) !*File {
+-        if (comp.config.use_lld) {
++        // PowerPC64LE workaround: Force LLD backend which will invoke external system linker
++        // The self-hosted ELF linker doesn't support PowerPC64LE architecture
++        const target = &comp.root_mod.resolved_target.result;
++        const force_lld_for_external = switch (target.cpu.arch) {
++            .powerpc64le => target.ofmt == .elf,
++            else => false,
++        };
++
++        if (comp.config.use_lld or force_lld_for_external) {
+             dev.check(.lld_linker);
+-            assert(comp.zcu == null or comp.config.use_llvm);
++            assert(comp.zcu == null or comp.config.use_llvm or force_lld_for_external);
+             const lld: *Lld = try .createEmpty(arena, comp, emit, options);
+             return &lld.base;
+         }

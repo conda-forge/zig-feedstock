@@ -1,0 +1,23 @@
+--- a/src/link/Elf/LinkerDefined.zig
++++ b/src/link/Elf/LinkerDefined.zig
+@@ -291,12 +291,15 @@
+     }
+ 
+     // __global_pointer$
++    // Only for RISC-V - skip for other architectures including PowerPC64LE
+     if (self.global_pointer_index) |index| {
+-        const value, const osec = if (elf_file.sectionByName(".sdata")) |shndx| .{
+-            shdrs[shndx].sh_addr + 0x800,
+-            shndx,
+-        } else .{ 0, 0 };
+-        allocSymbol(self, index, value, osec, elf_file);
++        if (elf_file.getTarget().cpu.arch.isRISCV()) {
++            const value, const osec = if (elf_file.sectionByName(".sdata")) |shndx| .{
++                shdrs[shndx].sh_addr + 0x800,
++                shndx,
++            } else .{ 0, 0 };
++            allocSymbol(self, index, value, osec, elf_file);
++        }
+     }
+ 
+     // __start_*, __stop_*

@@ -1,0 +1,52 @@
+--- a/src/link/Elf/relocation.zig
++++ b/src/link/Elf/relocation.zig
+@@ -75,2 +75,15 @@
+
++const powerpc64_relocs = Table(10, elf.R_PPC64, .{
++    .{ .none, .NONE },
++    .{ .abs, .ADDR64 },
++    .{ .copy, .COPY },
++    .{ .rel, .RELATIVE },
++    .{ .irel, .IRELATIVE },
++    .{ .glob_dat, .GLOB_DAT },
++    .{ .jump_slot, .JMP_SLOT },
++    .{ .dtpmod, .DTPMOD64 },
++    .{ .dtpoff, .DTPREL64 },
++    .{ .tpoff, .TPREL64 },
++});
++
+ pub fn decode(r_type: u32, cpu_arch: std.Target.Cpu.Arch) ?Kind {
+@@ -80,2 +93,3 @@
+         .riscv64 => riscv64_relocs.decode(r_type),
++        .powerpc64, .powerpc64le => powerpc64_relocs.decode(r_type),
+         else => @panic("TODO unhandled cpu arch"),
+@@ -89,2 +103,3 @@
+         .riscv64 => riscv64_relocs.encode(kind),
++        .powerpc64, .powerpc64le => powerpc64_relocs.encode(kind),
+         else => @panic("TODO unhandled cpu arch"),
+@@ -108,2 +123,6 @@
+             })),
++            .powerpc64, .powerpc64le => @intFromEnum(@as(elf.R_PPC64, switch (format) {
++                .@"32" => .ADDR32,
++                .@"64" => .ADDR64,
++            })),
+             else => @panic("TODO unhandled cpu arch"),
+@@ -143,2 +162,10 @@
+             })),
++            .powerpc64, .powerpc64le => @intFromEnum(@as(elf.R_PPC64, switch (source_section) {
++                else => switch (address_size) {
++                    .@"32" => .ADDR32,
++                    .@"64" => .ADDR64,
++                    else => unreachable,
++                },
++                .debug_frame => .REL32,
++            })),
+             else => @panic("TODO unhandled cpu arch"),
+@@ -192,6 +219,7 @@ fn formatRelocType(ctx: FormatRelocTypeCtx, writer: anytype) @TypeOf(writer).Er
+         .x86_64 => try writer.print("R_X86_64_{s}", .{@tagName(@as(elf.R_X86_64, @enumFromInt(r_type)))}),
+         .aarch64 => try writer.print("R_AARCH64_{s}", .{@tagName(@as(elf.R_AARCH64, @enumFromInt(r_type)))}),
+         .riscv64 => try writer.print("R_RISCV_{s}", .{@tagName(@as(elf.R_RISCV, @enumFromInt(r_type)))}),
++        .powerpc64, .powerpc64le => try writer.print("R_PPC64_{}", .{r_type}),
+         else => unreachable,
+     }
+ }

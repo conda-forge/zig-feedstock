@@ -1,5 +1,5 @@
---- CMakeLists.txt.orig	2024-06-06 14:05:11.000000000 -0500
-+++ CMakeLists.txt	2024-06-22 11:27:13.931633400 -0500
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
 @@ -147,6 +147,8 @@
      find_library(ZLIB NAMES libz.a libzlibstatic.a z zlib libz NAMES_PER_DIR)
      list(APPEND LLVM_LIBRARIES "${ZLIB}")
