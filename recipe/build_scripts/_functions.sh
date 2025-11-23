@@ -532,7 +532,6 @@ function create_patched_x86_zig() {
   local x86_install_dir="${SRC_DIR}/install-x86-patched"
 
   mkdir -p "${x86_build_dir}" "${x86_cmake_dir}" "${x86_install_dir}"
-  cp -r "${SRC_DIR}"/zig-source/* "${x86_build_dir}"
   cp -r "${SRC_DIR}"/zig-source/* "${x86_cmake_dir}"
 
   echo "================================================================"
@@ -566,7 +565,6 @@ function create_patched_x86_zig() {
 
     # Configure build
     local build_zig="${zig_x86_env_path}/bin/zig"
-    (cd "${x86_build_dir}"; "${build_zig}" build --help)
     
     EXTRA_CMAKE_ARGS=(
       -DCMAKE_PREFIX_PATH="${zig_x86_env_path}"
@@ -578,7 +576,7 @@ function create_patched_x86_zig() {
     modify_libc_libm_for_zig "${BUILD_PREFIX}" "x86_64"
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
-    perl -pi -e 's///'
+    cat "${x86_cmake_dir}"/config.h
 
     remove_failing_langref "${x86_build_dir}"
     create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
@@ -592,7 +590,7 @@ function create_patched_x86_zig() {
       -Duse-zig-libcxx=false \
       -Dskip-libc \
       --prefix "${x86_install_dir}" \
-      --search-prefix "${x86_install_dir}" \
+      --search-prefix "${zig_x86_env_path}" \
       --libc "${x86_build_dir}"/libc_file \
       install
 
