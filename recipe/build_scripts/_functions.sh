@@ -501,11 +501,14 @@ function create_patched_x86_zig() {
     --platform linux-64 \
     -c conda-forge \
         clangdev=="${llvm_version}.*" \
+        gcc=="14.*" \
+        gxx=="14.*" \
         libclang-cpp=="${llvm_version}.*" \
         lld=="${llvm_version}.*" \
         llvm=="${llvm_version}.*" \
         llvmdev=="${llvm_version}.*" \
         libxml2-devel \
+        sysroot_linux-64==2.28 \
         zlib \
         zstd \
         ninja \
