@@ -97,23 +97,18 @@ index ef371fc..e5548b7 100644
    DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
    COMMENT "Running zig1.wasm to produce ${ZIG_COMPILER_RT_C_SOURCE}"
    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-@@ -908,13 +950,14 @@
+@@ -950,8 +992,8 @@
    --zig-lib-dir "${PROJECT_SOURCE_DIR}/lib"
- 
+
    "-Dversion-string=${RESOLVED_ZIG_VERSION}"
 -  "-Dtarget=${ZIG_TARGET_TRIPLE}"
 -  "-Dcpu=${ZIG_TARGET_MCPU}"
 +  "-Dtarget=${ZIG_CROSS_TARGET_TRIPLE}"
 +  "-Dcpu=${ZIG_CROSS_TARGET_MCPU}" --verbose --verbose-link --summary all
- 
+
    -Denable-llvm
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
-+  --maxrss 7000000000
- )
- 
- set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")
-@@ -971,13 +1014,16 @@
- 
+@@ -981,11 +1015,13 @@
  add_custom_command(
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
 -  COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
@@ -122,10 +117,9 @@ index ef371fc..e5548b7 100644
    COMMENT "Building stage3"
    WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
  )
- 
+
  set(ZIG_EXECUTABLE "$<TARGET_FILE:zig2>")
- 
+
 +install(CODE "set(CROSSCOMPILING_EMULATOR \"${CROSSCOMPILING_EMULATOR}\")")
  install(CODE "set(ZIG_EXECUTABLE \"${ZIG_EXECUTABLE}\")")
  install(CODE "set(ZIG_BUILD_ARGS \"${ZIG_BUILD_ARGS}\")")
- install(CODE "set(ZIG2_WORKING_DIR \"${ZIG2_WORKING_DIR}\")")
