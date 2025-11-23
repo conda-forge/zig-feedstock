@@ -23,7 +23,8 @@ export zig_build_dir="${SRC_DIR}/conda-zig-source"
 # Set zig: This may need to be changed when the previous conda zig fails to compile a new version
 export zig="${BUILD_PREFIX}"/bin/zig
 
-mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
+mkdir -p "${cmake_build_dir}"
+# mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
 mkdir -p "${zig_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
 mkdir -p "${SRC_DIR}"/build-level-patches
@@ -66,10 +67,10 @@ elif [[ "${target_platform}" == "osx-arm64" ]]; then
   exit 1
 else
   echo "Applying CMake patches..."
-  apply_cmake_patches "${cmake_build_dir}"
+  apply_cmake_patches "${SRC_DIR}"/zig-source
 
-  echo "Reconfiguring CMake to pick up patched files..."
-  configure_cmake "${cmake_build_dir}" "${PREFIX}"
+  #echo "Reconfiguring CMake to pick up patched files..."
+  #configure_cmake "${cmake_build_dir}" "${PREFIX}"
 
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"

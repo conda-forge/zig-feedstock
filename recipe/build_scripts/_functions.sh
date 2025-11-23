@@ -258,11 +258,12 @@ function configure_cmake() {
   mkdir -p "${build_dir}" || return 1
 
   (
-    cd "${build_dir}" || return 1
+    cd "${build_dir}" &&
     cmake "${SRC_DIR}/zig-source" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       "${cmake_args[@]}" \
-      -G Ninja
+      -G Ninja \
+      .
   ) || return 1
 }
 
