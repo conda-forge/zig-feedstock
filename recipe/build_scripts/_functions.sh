@@ -553,6 +553,9 @@ function create_patched_x86_zig() {
     unset CROSSCOMPILING_EMULATOR
     unset SYSROOT_ARCH
     unset SYSROOT_PATH
+    export CC="${zig_x86_env_path}"/bin/gcc
+    export CXX="${zig_x86_env_path}"/bin/g++
+    export PATH="${zig_x86_env_path}/bin:${PATH}"
 
     # Ensure we're building for native x86_64
     export target_platform="linux-64"
