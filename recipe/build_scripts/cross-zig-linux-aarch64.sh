@@ -11,6 +11,12 @@ SYSROOT_ARCH="aarch64"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
 ZIG_ARCH="aarch64"
 
+# Disable stack protection for cross-compilation build tools
+# The intermediate build tools (zig-wasm2c, zig1) don't need stack protection
+# and glibc 2.28 aarch64 has issues with __stack_chk_guard symbol
+export CFLAGS="${CFLAGS} -fno-stack-protector"
+export CXXFLAGS="${CXXFLAGS} -fno-stack-protector"
+
 qemu_prg=qemu-aarch64-static
 
 # Update global arrays
@@ -63,5 +69,8 @@ create_pthread_atfork_stub "aarch64" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 remove_failing_langref "${zig_build_dir}"
 
 # Prepare fallback CMake
-perl -pi -e 's/COMMAND ${LLVM_CONFIG_EXE}/COMMAND $ENV{CROSSCOMPILING_EMULATOR} ${LLVM_CONFIG_EXE}/' "${cmake_build_dir}"/cmake/Findllvm.cmake
-perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_build_dir}"/cmake/install.cmake
+# This will break the reconfigure: perl -pi -e 's/COMMAND ${LLVM_CONFIG_EXE}/COMMAND $ENV{CROSSCOMPILING_EMULATOR} ${LLVM_CONFIG_EXE}/' "${cmake_source_dir}"/cmake/Findllvm.cmake
+perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_source_dir}"/cmake/install.cmake
+
+export ZIG_CROSS_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
+export ZIG_CROSS_TARGET_MCPU="baseline"

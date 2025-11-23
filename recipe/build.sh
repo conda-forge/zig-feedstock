@@ -16,6 +16,7 @@ export CMAKE_GENERATOR=Ninja
 export ZIG_GLOBAL_CACHE_DIR="${SRC_DIR}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${SRC_DIR}/zig-local-cache"
 
+export cmake_source_dir="${SRC_DIR}/zig-source"
 export cmake_build_dir="${SRC_DIR}/build-release"
 export cmake_install_dir="${SRC_DIR}/cmake-built-install"
 export zig_build_dir="${SRC_DIR}/conda-zig-source"
@@ -23,9 +24,7 @@ export zig_build_dir="${SRC_DIR}/conda-zig-source"
 # Set zig: This may need to be changed when the previous conda zig fails to compile a new version
 export zig="${BUILD_PREFIX}"/bin/zig
 
-mkdir -p "${cmake_build_dir}"
-# mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
-mkdir -p "${zig_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${zig_build_dir}"
+mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
@@ -63,11 +62,18 @@ esac
 if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
 elif [[ "${target_platform}" == "osx-arm64" ]]; then
-  echo "ERROR: zig build failed. We cannot build with CMake without an emulator"
+  echo "***"
+  echo "* ERROR: We cannot build with CMake without an emulator - Temporarily skip ARM64 and rebuild with the new ZIG x86_64"
+  echo "***"
+  exit 1
+elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  echo "***"
+  echo "* ERROR: zig build fails to complete with CMake (>6hrs) - Temporarily skip PPC64LE and rebuild with the new ZIG x86_64"
+  echo "***"
   exit 1
 else
   echo "Applying CMake patches..."
-  apply_cmake_patches "${SRC_DIR}"/zig-source
+  apply_cmake_patches "${cmake_source_dir}"
 
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"

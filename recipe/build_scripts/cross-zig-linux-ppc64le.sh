@@ -17,8 +17,9 @@ ZIG_ARCH="powerpc64le"
 # -fno-plt forces direct branches (R_PPC64_REL24) which truncate at ±16MB
 # For PowerPC64LE large binaries, we NEED PLT for unlimited function call range
 # Remove -fno-plt and add -mcmodel=medium for TOC-relative addressing
-export CFLAGS="${CFLAGS//-fno-plt/} -fuse-ld=bfd -mcmodel=medium"
-export CXXFLAGS="${CXXFLAGS//-fno-plt/} -fuse-ld=bfd -mcmodel=medium"
+# Also disable stack protection for build tools (glibc 2.28 __stack_chk_guard issues)
+export CFLAGS="${CFLAGS//-fno-plt/} -fuse-ld=bfd -mcmodel=medium -fno-stack-protector"
+export CXXFLAGS="${CXXFLAGS//-fno-plt/} -fuse-ld=bfd -mcmodel=medium -fno-stack-protector"
 export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
 
 # Ensure LD_LIBRARY_PATH includes BUILD_PREFIX/lib for libclang-cpp.so
@@ -85,5 +86,8 @@ create_pthread_atfork_stub "PowerPC64LE" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 remove_failing_langref "${zig_build_dir}"
 
 # Prepare fallback CMake
-perl -pi -e 's/COMMAND ${LLVM_CONFIG_EXE}#COMMAND $ENV{CROSSCOMPILING_EMULATOR} ${LLVM_CONFIG_EXE}/' "${cmake_build_dir}"/cmake/Findllvm.cmake
-perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_build_dir}"/cmake/install.cmake
+# perl -pi -e 's/COMMAND ${LLVM_CONFIG_EXE}#COMMAND $ENV{CROSSCOMPILING_EMULATOR} ${LLVM_CONFIG_EXE}/' "${cmake_source_dir}"/cmake/Findllvm.cmake
+perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_source_dir}"/cmake/install.cmake
+
+export ZIG_CROSS_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
+export ZIG_CROSS_TARGET_MCPU="baseline"
