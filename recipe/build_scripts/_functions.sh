@@ -567,7 +567,11 @@ function create_patched_x86_zig() {
     local build_zig="${zig_x86_env_path}/bin/zig"
     
     EXTRA_CMAKE_ARGS=(
+      -DCMAKE_BUILD_TYPE=Release
       -DCMAKE_PREFIX_PATH="${zig_x86_env_path}"
+      -DZIG_SHARED_LLVM=ON
+      -DZIG_USE_LLVM_CONFIG=ON
+      -DZIG_SYSTEM_LIBCXX=stdc++
       -DZIG_TARGET_TRIPLE=x86_64-linux-gnu
       -DZIG_TARGET_MCPU=native
       -DZIG_SINGLE_THREADED=OFF
