@@ -258,7 +258,7 @@ function configure_cmake() {
   mkdir -p "${build_dir}" || return 1
 
   (
-    cd "${build_dir}" || return 1
+    cd "${build_dir}" &&
     cmake "${SRC_DIR}/zig-source" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       "${cmake_args[@]}" \
@@ -557,6 +557,10 @@ function create_patched_x86_zig() {
     export CXX="${zig_x86_env_path}"/bin/g++
     export PATH="${zig_x86_env_path}/bin:${PATH}"
 
+    export CFLAGS="-march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem ${BUILD_PREFIX}/include"
+    export CXXFLAGS="-march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem ${BUILD_PREFIX}/include"
+    export LDFLAGS="-L${BUILD_PREFIX}/lib"
+    
     # Ensure we're building for native x86_64
     export target_platform="linux-64"
 
@@ -564,9 +568,17 @@ function create_patched_x86_zig() {
     local build_zig="${zig_x86_env_path}/bin/zig"
     (cd "${x86_build_dir}"; "${build_zig}" build --help)
     
+    EXTRA_CMAKE_ARGS=(
+      -DCMAKE_PREFIX_PATH="${zig_x86_env_path}"
+      -DZIG_TARGET_TRIPLE=x86_64-linux-gnu
+      -DZIG_TARGET_MCPU=native
+      -DZIG_SINGLE_THREADED=OFF
+    )
+    
     modify_libc_libm_for_zig "${BUILD_PREFIX}" "x86_64"
-    configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
+    configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
+    perl -pi -e 's///'
 
     remove_failing_langref "${x86_build_dir}"
     create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
