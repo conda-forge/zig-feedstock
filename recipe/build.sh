@@ -9,7 +9,7 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 # --- Main ---
 
 builder=zig
-force_cmake=1
+force_cmake=0
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
