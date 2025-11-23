@@ -9,15 +9,17 @@
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -827,6 +827,11 @@ target_link_libraries(zig2
-   ${ZIG_LIB_DIR}/compiler_rt.o
- )
-
+@@ -881,4 +881,13 @@ target_link_libraries(zig2
+ target_link_libraries(zig2 LINK_PUBLIC zigcpp)
+ 
 +# Link pthread_atfork stub if it exists (needed for glibc 2.28)
-+if(EXISTS "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
-+  target_link_libraries(zig2 PRIVATE "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
++set(PTHREAD_STUB "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
++if(EXISTS "${PTHREAD_STUB}")
++  message(STATUS "Linking pthread_atfork stub: ${PTHREAD_STUB}")
++  target_link_libraries(zig2 PRIVATE "${PTHREAD_STUB}")
++else()
++  message(STATUS "pthread_atfork stub not found at: ${PTHREAD_STUB}")
 +endif()
 +
  if(MSVC)
-   target_link_options(zig1 PRIVATE /STACK:0x10000000)
- else()
+   target_link_libraries(zig2 LINK_PUBLIC ntdll.lib ws2_32.lib)

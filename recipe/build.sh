@@ -13,8 +13,8 @@ force_cmake=1
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
-export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
-export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
+export ZIG_GLOBAL_CACHE_DIR="${SRC_DIR}/zig-global-cache"
+export ZIG_LOCAL_CACHE_DIR="${SRC_DIR}/zig-local-cache"
 
 export cmake_build_dir="${SRC_DIR}/build-release"
 export cmake_install_dir="${SRC_DIR}/cmake-built-install"
@@ -65,7 +65,11 @@ elif [[ "${target_platform}" == "osx-arm64" ]]; then
   echo "ERROR: zig build failed. We cannot build with CMake without an emulator"
   exit 1
 else
+  echo "Applying CMake patches..."
   apply_cmake_patches "${cmake_build_dir}"
+
+  echo "Reconfiguring CMake to pick up patched files..."
+  configure_cmake "${cmake_build_dir}" "${PREFIX}"
 
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"

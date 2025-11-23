@@ -24,6 +24,7 @@ EXTRA_CMAKE_ARGS+=(
   -DZIG_SYSTEM_LIBCXX=c++
   -DZIG_USE_LLVM_CONFIG=OFF
   -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none
+  -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
 )
 
 EXTRA_ZIG_ARGS+=(

@@ -479,7 +479,15 @@ int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(vo
 }
 EOF
 
-  "${cc_compiler}" -c "${output_dir}/pthread_atfork_stub.c" -o "${output_dir}/pthread_atfork_stub.o"
+  "${cc_compiler}" -c "${output_dir}/pthread_atfork_stub.c" -o "${output_dir}/pthread_atfork_stub.o" || {
+    echo "ERROR: Failed to compile pthread_atfork stub" >&2
+    return 1
+  }
+
+  if [[ ! -f "${output_dir}/pthread_atfork_stub.o" ]]; then
+    echo "ERROR: pthread_atfork_stub.o was not created" >&2
+    return 1
+  fi
 
   echo "=== pthread_atfork stub created: ${output_dir}/pthread_atfork_stub.o ==="
 }
