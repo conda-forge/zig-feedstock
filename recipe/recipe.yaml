@@ -74,6 +74,7 @@ source:
 
 build:
   number: 3
+  skip: not ppc64le
 
 requirements:
   build:
