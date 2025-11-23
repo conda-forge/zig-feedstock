@@ -112,7 +112,7 @@ index ef371fc..e5548b7 100644
  )
  
  set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")
-@@ -971,13 +1014,15 @@
+@@ -971,13 +1014,16 @@
  
  add_custom_command(
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
