@@ -37,7 +37,6 @@ create_gcc14_glibc28_compat_lib
 configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}" "" "linux-64"
 
 # Create pthread_atfork stub for CMake fallback
-echo "Creating pthread_atfork stub in: ${ZIG_LOCAL_CACHE_DIR}"
 create_pthread_atfork_stub "x86_64" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 
 if [[ -f "${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o" ]]; then

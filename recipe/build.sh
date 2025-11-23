@@ -69,9 +69,6 @@ else
   echo "Applying CMake patches..."
   apply_cmake_patches "${SRC_DIR}"/zig-source
 
-  #echo "Reconfiguring CMake to pick up patched files..."
-  #configure_cmake "${cmake_build_dir}" "${PREFIX}"
-
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"
   else

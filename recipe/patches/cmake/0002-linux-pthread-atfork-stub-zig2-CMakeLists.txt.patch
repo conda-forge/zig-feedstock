@@ -9,19 +9,16 @@
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -881,4 +881,16 @@ target_link_libraries(zig2
+@@ -881,4 +881,13 @@ target_link_libraries(zig2
  target_link_libraries(zig2 LINK_PUBLIC zigcpp)
- 
+
 +# Link pthread_atfork stub if it exists (needed for glibc 2.28)
-+message(STATUS "DEBUG: ZIG_LOCAL_CACHE_DIR env var = '$ENV{ZIG_LOCAL_CACHE_DIR}'")
 +set(PTHREAD_STUB "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
-+message(STATUS "DEBUG: PTHREAD_STUB path = '${PTHREAD_STUB}'")
-+message(STATUS "DEBUG: Checking if file exists: ${PTHREAD_STUB}")
 +if(EXISTS "${PTHREAD_STUB}")
-+  message(STATUS "✓ Linking pthread_atfork stub: ${PTHREAD_STUB}")
++  message(STATUS "Linking pthread_atfork stub: ${PTHREAD_STUB}")
 +  target_link_libraries(zig2 PRIVATE "${PTHREAD_STUB}")
 +else()
-+  message(WARNING "✗ pthread_atfork stub not found at: ${PTHREAD_STUB}")
++  message(STATUS "pthread_atfork stub not found at: ${PTHREAD_STUB}")
 +endif()
 +
  if(MSVC)

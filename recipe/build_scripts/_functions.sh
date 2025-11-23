@@ -262,8 +262,7 @@ function configure_cmake() {
     cmake "${SRC_DIR}/zig-source" \
       -D CMAKE_INSTALL_PREFIX="${install_dir}" \
       "${cmake_args[@]}" \
-      -G Ninja \
-      .
+      -G Ninja
   ) || return 1
 }
 
