@@ -540,9 +540,8 @@ function create_patched_x86_zig() {
 
   # Build using the environment's zig
   (
-    # Activate environment (use source to keep in same shell context)
-    # eval "$(conda shell.bash hook)"
-    conda activate "${env_name}"
+    # Try to activate environment (non-fatal - we set all variables explicitly anyway)
+    conda activate "${env_name}" 2>/dev/null || echo "Note: conda activate skipped (not critical)"
 
     # Override BUILD_PREFIX to point to x86_64 environment (not ppc64le toolchain)
     export BUILD_PREFIX="${zig_x86_env_path}"
@@ -581,11 +580,55 @@ function create_patched_x86_zig() {
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
     remove_failing_langref "${x86_build_dir}"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
-    cat "${x86_cmake_dir}"/config.h
 
-    # Build with zig
+    # Build with zig (fast path)
+    echo "Building patched x86_64 Zig with zig build..."
     create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
-    cd "${x86_build_dir}"
+
+    # Create pthread_atfork stub (LLD can't handle versioned pthread_atfork@GLIBC_2.2.5 symbol)
+    echo "Creating pthread_atfork stub for Stage 1..."
+    create_pthread_atfork_stub "x86_64" "${BUILD_PREFIX}/bin/gcc" "${ZIG_LOCAL_CACHE_DIR}"
+
+    # Add stub to config.h ZIG_LLVM_LIBRARIES
+    echo "Adding pthread_atfork stub to config.h..."
+    local stub_path="${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o"
+    echo "Stub path: ${stub_path}"
+
+    # Check if stub exists before modifying config.h
+    if [[ ! -f "${stub_path}" ]]; then
+      echo "ERROR: pthread_atfork stub not found at ${stub_path}"
+      return 1
+    fi
+
+    # Modify config.h to add stub
+    perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${stub_path}\"|g" "${x86_cmake_dir}/config.h" || {
+      echo "ERROR: Failed to modify config.h"
+      return 1
+    }
+
+    echo "Verifying stub was added to config.h..."
+    grep "pthread_atfork_stub.o" "${x86_cmake_dir}/config.h" || {
+      echo "ERROR: Stub not found in config.h after modification"
+      return 1
+    }
+
+    echo "Changing to build directory: ${x86_build_dir}"
+    cd "${x86_build_dir}" || {
+      echo "ERROR: Failed to cd to ${x86_build_dir}"
+      return 1
+    }
+
+    echo "Current directory: $(pwd)"
+    echo "build_zig variable: ${build_zig}"
+    echo "Checking if zig binary exists..."
+    ls -lh "${build_zig}" || {
+      echo "ERROR: zig binary not found at ${build_zig}"
+      return 1
+    }
+
+    echo "Starting zig build command..."
+    echo "Command: ${build_zig} build -Dconfig_h=${x86_cmake_dir}/config.h -Denable-llvm -Doptimize=ReleaseSafe ..."
+
     "${build_zig}" build \
       -Dconfig_h="${x86_cmake_dir}/config.h" \
       -Denable-llvm \
@@ -595,11 +638,16 @@ function create_patched_x86_zig() {
       --prefix "${x86_install_dir}" \
       --search-prefix "${zig_x86_env_path}/lib" \
       --libc "${x86_build_dir}"/libc_file \
-      install
+      install || {
+      echo "ERROR: zig build install failed"
+      return 1
+    }
 
-    conda deactivate
+    # Try to deactivate (non-fatal)
+    conda deactivate 2>/dev/null || echo "Note: conda deactivate skipped (not critical)"
+
   ) || {
-    echo "ERROR: x86_64 patched Zig build failed"
+    echo "ERROR: Stage 1 subshell failed"
     return 1
   }
 
@@ -621,3 +669,165 @@ function create_patched_x86_zig() {
 
   return 0
 }
+
+function build_cmake_lld() {
+  local build_dir=$1
+  local install_dir=$2
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}" || exit 1
+    cmake "$ROOTDIR/llvm" \
+      -DCMAKE_INSTALL_PREFIX="${install_dir}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLLVM_ENABLE_BINDINGS=OFF \
+      -DLLVM_ENABLE_LIBEDIT=OFF \
+      -DLLVM_ENABLE_LIBPFM=OFF \
+      -DLLVM_ENABLE_LIBXML2=ON \
+      -DLLVM_ENABLE_OCAMLDOC=OFF \
+      -DLLVM_ENABLE_PLUGINS=OFF \
+      -DLLVM_ENABLE_PROJECTS="lld" \
+      -DLLVM_ENABLE_Z3_SOLVER=OFF \
+      -DLLVM_ENABLE_ZSTD=ON \
+      -DLLVM_INCLUDE_UTILS=OFF \
+      -DLLVM_INCLUDE_TESTS=OFF \
+      -DLLVM_INCLUDE_EXAMPLES=OFF \
+      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+      -DLLVM_INCLUDE_DOCS=OFF \
+      -DLLVM_TOOL_LLVM_LTO2_BUILD=OFF \
+      -DLLVM_TOOL_LLVM_LTO_BUILD=OFF \
+      -DLLVM_TOOL_LTO_BUILD=OFF \
+      -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF \
+      -DCLANG_BUILD_TOOLS=OFF \
+      -DCLANG_INCLUDE_DOCS=OFF \
+      -DCLANG_INCLUDE_TESTS=OFF \
+      -DCLANG_TOOL_CLANG_IMPORT_TEST_BUILD=OFF \
+      -DCLANG_TOOL_CLANG_LINKER_WRAPPER_BUILD=OFF \
+      -DCLANG_TOOL_C_INDEX_TEST_BUILD=OFF \
+      -DCLANG_TOOL_LIBCLANG_BUILD=OFF
+    cmake --build . --target install
+  cd "${current_dir}" || exit 1
+}
+
+function build_lld_ppc64le_mcmodel() {
+  # Build LLD libraries for PowerPC64LE with -mcmodel=medium to avoid R_PPC64_REL24 truncation
+  # Similar to configure_cmake_zigcpp but for LLD libraries
+
+  local llvm_source_dir=$1
+  local build_dir=$2
+  local target_arch="${3:-linux-ppc64le}"
+
+  # Cache LLD libraries per architecture
+  local cache_dir="${RECIPE_DIR}/.cache/lld/${target_arch}"
+  local cache_meta="${cache_dir}/build.meta"
+  local llvm_version
+  llvm_version=$(llvm-config --version 2>/dev/null || echo "unknown")
+  local compiler_id="$(basename "${CC:-gcc}")-$(${CC:-gcc} -dumpversion 2>/dev/null || echo "unknown")"
+  local cflags_hash=$(echo "${CFLAGS} ${CXXFLAGS}" | md5sum | cut -d' ' -f1)
+
+  mkdir -p "${cache_dir}"
+
+  # Check cache validity
+  local can_reuse_cache=false
+  if [[ -f "${cache_meta}" ]] && \
+     [[ -f "${cache_dir}/liblldELF.a" ]] && \
+     [[ -f "${cache_dir}/liblldCommon.a" ]]; then
+    local cached_info
+    cached_info=$(cat "${cache_meta}")
+    local cached_llvm=$(echo "${cached_info}" | cut -d'|' -f1)
+    local cached_compiler=$(echo "${cached_info}" | cut -d'|' -f2)
+    local cached_flags=$(echo "${cached_info}" | cut -d'|' -f3)
+
+    if [[ "${cached_llvm}" == "${llvm_version}" ]] && \
+       [[ "${cached_compiler}" == "${compiler_id}" ]] && \
+       [[ "${cached_flags}" == "${cflags_hash}" ]]; then
+      echo "✓ Found compatible cached LLD libraries (${target_arch}, LLVM ${llvm_version})"
+      can_reuse_cache=true
+    else
+      echo "⚠ LLD cache mismatch - rebuilding with current flags (mcmodel=medium)"
+    fi
+  else
+    echo "ℹ No cached LLD libraries found for ${target_arch} - building from scratch"
+  fi
+
+  if [[ "${can_reuse_cache}" == "true" ]]; then
+    # Copy cached libraries to build directory
+    echo "✓ Reusing cached LLD libraries - saved ~15-20 minutes!"
+    mkdir -p "${build_dir}/lib"
+    cp "${cache_dir}"/liblld*.a "${build_dir}/lib/"
+    return 0
+  fi
+
+  # Build LLD from scratch with mcmodel=medium
+  echo "Building LLD libraries for PowerPC64LE with -mcmodel=medium..."
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}" || exit 1
+
+  # Configure LLVM to build only LLD libraries
+  cmake "${llvm_source_dir}/lld" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="${CC}" \
+    -DCMAKE_CXX_COMPILER="${CXX}" \
+    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+    -DLLVM_ENABLE_PROJECTS="lld" \
+    -DLLVM_TARGETS_TO_BUILD="PowerPC" \
+    -DLLVM_BUILD_TOOLS=OFF \
+    -DLLVM_INCLUDE_TOOLS=OFF \
+    -DLLVM_BUILD_UTILS=OFF \
+    -DLLVM_INCLUDE_UTILS=OFF \
+    -DLLVM_BUILD_TESTS=OFF \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_BUILD_EXAMPLES=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF \
+    -DLLVM_BUILD_BENCHMARKS=OFF \
+    -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    -DLLVM_BUILD_DOCS=OFF \
+    -DLLVM_INCLUDE_DOCS=OFF \
+    -DLLVM_CONFIG_PATH=$BUILD_PREFIX/bin/llvm-config \
+    -DLLVM_TABLEGEN_EXE=$BUILD_PREFIX/bin/llvm-tblgen \
+    -DLLVM_ENABLE_RTTI=ON \
+    -G Ninja
+
+  # Build all LLD libraries (they're defined as add_lld_library in lld/*/CMakeLists.txt)
+  # Target names: lldELF, lldCommon, lldCOFF, lldMachO, lldWasm, lldMinGW
+  cmake --build . -- -j${CPU_COUNT}
+
+  cd "${current_dir}" || exit 1
+
+  # Cache the built libraries (LLD libraries are in tools/lld subdirectories)
+  # Find where the libraries actually ended up
+  local lld_lib_dir
+  if [[ -f "${build_dir}/lib/liblldELF.a" ]]; then
+    lld_lib_dir="${build_dir}/lib"
+  elif [[ -f "${build_dir}/tools/lld/lib/liblldELF.a" ]]; then
+    lld_lib_dir="${build_dir}/tools/lld/lib"
+  else
+    # Search for the libraries
+    lld_lib_dir=$(find "${build_dir}" -name "liblldELF.a" -exec dirname {} \; | head -1)
+  fi
+
+  if [[ -n "${lld_lib_dir}" ]] && [[ -f "${lld_lib_dir}/liblldELF.a" ]]; then
+    echo "Found LLD libraries in: ${lld_lib_dir}"
+    cp -f "${lld_lib_dir}"/liblld*.a "${cache_dir}/"
+    echo "${llvm_version}|${compiler_id}|${cflags_hash}" > "${cache_meta}"
+    echo "✓ Cached LLD libraries at ${cache_dir}"
+    # Also copy to expected location for config.h (only if not already there)
+    if [[ "${lld_lib_dir}" != "${build_dir}/lib" ]]; then
+      mkdir -p "${build_dir}/lib"
+      cp -f "${lld_lib_dir}"/liblld*.a "${build_dir}/lib/"
+    fi
+  else
+    echo "❌ ERROR: LLD build failed - liblldELF.a not found"
+    echo "Build directory contents:"
+    find "${build_dir}" -name "*.a" | head -20
+    return 1
+  fi
+}
+

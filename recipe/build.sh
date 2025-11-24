@@ -54,13 +54,12 @@ case "${target_platform}" in
     source "${RECIPE_DIR}"/build_scripts/native-"${builder}-${target_platform}".sh
     ;;
 
-  # Temporary Multi-stage PPC64LE build for debugging
   linux-ppc64le)
     echo "================================================================"
     echo "Two-Stage Build: Stage 1 - Building patched x86_64 Zig"
     echo "================================================================"
 
-    # Stage 1: Build patched x86_64 Zig in separate environment
+    # Stage 1: Build patched x86_64 Zig with PowerPC64LE patches applied
     create_patched_x86_zig || {
       echo "ERROR: Failed to build patched x86_64 Zig"
       exit 1
@@ -70,13 +69,11 @@ case "${target_platform}" in
     echo "Using patched x86_64 Zig: ${zig}"
 
     echo "================================================================"
-    echo "Two-Stage Build: Stage 2 - Configuring ppc64le cross-compilation"
+    echo "Two-Stage Build: Stage 2 - Cross-compiling ppc64le"
     echo "================================================================"
 
-    # Stage 2: Source ppc64le configuration (uses $zig from Stage 1)
+    # Stage 2: Source ppc64le configuration (uses patched $zig from Stage 1)
     source "${RECIPE_DIR}"/build_scripts/cross-"${builder}-${target_platform}".sh
-
-    echo "ppc64le configuration complete. Build will proceed below."
     ;;
 
   osx-arm64|linux-aarch64)
