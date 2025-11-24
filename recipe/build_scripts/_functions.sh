@@ -532,7 +532,7 @@ function create_patched_x86_zig() {
   local x86_install_dir="${SRC_DIR}/install-x86-patched"
 
   mkdir -p "${x86_build_dir}" "${x86_cmake_dir}" "${x86_install_dir}"
-  cp -r "${SRC_DIR}"/zig-source/* "${x86_cmake_dir}"
+  cp -r "${SRC_DIR}"/zig-source/* "${x86_build_dir}"
 
   echo "================================================================"
   echo "Building patched x86_64 Zig (Stage 1)"
