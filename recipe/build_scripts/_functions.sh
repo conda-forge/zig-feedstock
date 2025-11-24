@@ -593,7 +593,7 @@ function create_patched_x86_zig() {
       -Duse-zig-libcxx=false \
       -Dskip-libc \
       --prefix "${x86_install_dir}" \
-      --search-prefix "${zig_x86_env_path}" \
+      --search-prefix "${zig_x86_env_path}/lib" \
       --libc "${x86_build_dir}"/libc_file \
       install
 
