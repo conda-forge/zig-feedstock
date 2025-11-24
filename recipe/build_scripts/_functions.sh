@@ -579,7 +579,7 @@ function create_patched_x86_zig() {
     
     modify_libc_libm_for_zig "${BUILD_PREFIX}" "x86_64"
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
-    remove_failing_langref "${x86_cmake_dir}"
+    remove_failing_langref "${x86_build_dir}"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
     cat "${x86_cmake_dir}"/config.h
 
