@@ -579,13 +579,12 @@ function create_patched_x86_zig() {
     
     modify_libc_libm_for_zig "${BUILD_PREFIX}" "x86_64"
     create_gcc14_glibc28_compat_lib "${zig_x86_env_path}"
+    remove_failing_langref "${x86_cmake_dir}"
     configure_cmake_zigcpp "${x86_cmake_dir}" "${x86_install_dir}" "" "linux-64"
     cat "${x86_cmake_dir}"/config.h
 
-    remove_failing_langref "${x86_build_dir}"
-    create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
-    
     # Build with zig
+    create_zig_libc_file "${x86_build_dir}/libc_file" "${BUILD_PREFIX}/x86_64-conda-linux-gnu/sysroot" "x86_64"
     cd "${x86_build_dir}"
     "${build_zig}" build \
       -Dconfig_h="${x86_cmake_dir}/config.h" \
