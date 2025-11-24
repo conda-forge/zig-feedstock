@@ -719,47 +719,6 @@ function build_lld_ppc64le_mcmodel() {
   local build_dir=$2
   local target_arch="${3:-linux-ppc64le}"
 
-  # Cache LLD libraries per architecture
-  local cache_dir="${RECIPE_DIR}/.cache/lld/${target_arch}"
-  local cache_meta="${cache_dir}/build.meta"
-  local llvm_version
-  llvm_version=$(llvm-config --version 2>/dev/null || echo "unknown")
-  local compiler_id="$(basename "${CC:-gcc}")-$(${CC:-gcc} -dumpversion 2>/dev/null || echo "unknown")"
-  local cflags_hash=$(echo "${CFLAGS} ${CXXFLAGS}" | md5sum | cut -d' ' -f1)
-
-  mkdir -p "${cache_dir}"
-
-  # Check cache validity
-  local can_reuse_cache=false
-  if [[ -f "${cache_meta}" ]] && \
-     [[ -f "${cache_dir}/liblldELF.a" ]] && \
-     [[ -f "${cache_dir}/liblldCommon.a" ]]; then
-    local cached_info
-    cached_info=$(cat "${cache_meta}")
-    local cached_llvm=$(echo "${cached_info}" | cut -d'|' -f1)
-    local cached_compiler=$(echo "${cached_info}" | cut -d'|' -f2)
-    local cached_flags=$(echo "${cached_info}" | cut -d'|' -f3)
-
-    if [[ "${cached_llvm}" == "${llvm_version}" ]] && \
-       [[ "${cached_compiler}" == "${compiler_id}" ]] && \
-       [[ "${cached_flags}" == "${cflags_hash}" ]]; then
-      echo "✓ Found compatible cached LLD libraries (${target_arch}, LLVM ${llvm_version})"
-      can_reuse_cache=true
-    else
-      echo "⚠ LLD cache mismatch - rebuilding with current flags (mcmodel=medium)"
-    fi
-  else
-    echo "ℹ No cached LLD libraries found for ${target_arch} - building from scratch"
-  fi
-
-  if [[ "${can_reuse_cache}" == "true" ]]; then
-    # Copy cached libraries to build directory
-    echo "✓ Reusing cached LLD libraries - saved ~15-20 minutes!"
-    mkdir -p "${build_dir}/lib"
-    cp "${cache_dir}"/liblld*.a "${build_dir}/lib/"
-    return 0
-  fi
-
   # Build LLD from scratch with mcmodel=medium
   echo "Building LLD libraries for PowerPC64LE with -mcmodel=medium..."
 
@@ -800,34 +759,5 @@ function build_lld_ppc64le_mcmodel() {
   cmake --build . -- -j${CPU_COUNT}
 
   cd "${current_dir}" || exit 1
-
-  # Cache the built libraries (LLD libraries are in tools/lld subdirectories)
-  # Find where the libraries actually ended up
-  local lld_lib_dir
-  if [[ -f "${build_dir}/lib/liblldELF.a" ]]; then
-    lld_lib_dir="${build_dir}/lib"
-  elif [[ -f "${build_dir}/tools/lld/lib/liblldELF.a" ]]; then
-    lld_lib_dir="${build_dir}/tools/lld/lib"
-  else
-    # Search for the libraries
-    lld_lib_dir=$(find "${build_dir}" -name "liblldELF.a" -exec dirname {} \; | head -1)
-  fi
-
-  if [[ -n "${lld_lib_dir}" ]] && [[ -f "${lld_lib_dir}/liblldELF.a" ]]; then
-    echo "Found LLD libraries in: ${lld_lib_dir}"
-    cp -f "${lld_lib_dir}"/liblld*.a "${cache_dir}/"
-    echo "${llvm_version}|${compiler_id}|${cflags_hash}" > "${cache_meta}"
-    echo "✓ Cached LLD libraries at ${cache_dir}"
-    # Also copy to expected location for config.h (only if not already there)
-    if [[ "${lld_lib_dir}" != "${build_dir}/lib" ]]; then
-      mkdir -p "${build_dir}/lib"
-      cp -f "${lld_lib_dir}"/liblld*.a "${build_dir}/lib/"
-    fi
-  else
-    echo "❌ ERROR: LLD build failed - liblldELF.a not found"
-    echo "Build directory contents:"
-    find "${build_dir}" -name "*.a" | head -20
-    return 1
-  fi
 }
 

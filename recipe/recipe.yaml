@@ -88,6 +88,9 @@ requirements:
     - if: aarch64 or ppc64le
       then:
         - ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
+    - if: ppc64le
+      then:
+        - llvmdev ${{ llvm_version }}.*
     - if: (build_platform != target_platform) and osx
       then:
         - libxml2-devel
