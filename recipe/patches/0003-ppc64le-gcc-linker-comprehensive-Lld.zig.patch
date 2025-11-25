@@ -32,12 +32,20 @@ index 18682705..1fe344a7 100644
 +                try argv.append("-static");
 +            } else if (is_dyn_lib) {
 +                try argv.append("-shared");
-+            } else if (comp.config.pie and output_mode == .Exe) {
++            }
++
++            // Prevent GCC from adding its own CRT files (we provide them explicitly below)
++            // This avoids duplicate definition errors when both Zig's CRT files and GCC's
++            // auto-added CRT files (via specs) are present
++            try argv.append("-nostartfiles");
++
++            // PIE for executables
++            if (comp.config.pie and output_mode == .Exe) {
 +                try argv.append("-pie");
 +            }
 +
 +            // Essential flags (comprehensive - following LLD structure)
-+            try argv.append("-Wl,--error-limit=0");
++            // NOTE: --error-limit is LLD-specific, not supported by GNU ld
 +
 +            if (comp.sysroot) |sysroot| {
 +                try argv.append(try std.fmt.allocPrint(arena, "--sysroot={s}", .{sysroot}));
@@ -161,10 +169,21 @@ index 18682705..1fe344a7 100644
 +                try argv.append(try p.toString(arena));
 +            }
 +
-+            // Link inputs
++            // Sanitizer libraries
++            if (comp.tsan_lib) |lib| {
++                try argv.append(try lib.full_object_path.toString(arena));
++            }
++            if (comp.fuzzer_lib) |lib| {
++                try argv.append(try lib.full_object_path.toString(arena));
++            }
++            if (ubsan_rt_path) |p| {
++                try argv.append(try p.toString(arena));
++            }
++
++            // Link inputs (objects and archives only)
 +            for (base.comp.link_inputs) |link_input| switch (link_input) {
 +                .res => unreachable,
-+                .dso => continue,
++                .dso => continue, // Handled separately below
 +                .object, .archive => |obj| {
 +                    try argv.append(try obj.path.toString(arena));
 +                },
@@ -175,23 +194,54 @@ index 18682705..1fe344a7 100644
 +                },
 +            };
 +
-+            // Libraries
-+            if (comp.config.link_libc) {
-+                try argv.append("-lpthread");
-+                try argv.append("-lc");
-+                try argv.append("-lm");
-+                try argv.append("-ldl");
++            // Shared libraries and libc (for executables and dynamic libraries)
++            if (is_exe_or_dyn_lib) {
++                // Shared library files (.dso) - includes libLLVM-20.so
++                for (base.comp.link_inputs) |link_input| switch (link_input) {
++                    .res, .object, .archive, .dso_exact => continue,
++                    .dso => |dso| {
++                        try argv.append(try dso.path.toString(arena));
++                    },
++                };
 +
-+                // PowerPC64: Dynamic linker provides __tls_get_addr (TLS support)
-+                // The dynamic linker (ld*.so.*) provides TLS runtime support
-+                if (comp.libc_installation) |libc_installation| {
-+                    if (libc_installation.crt_dir) |crt_dir| {
-+                        if (target.dynamic_linker.get()) |dl_target_path| {
-+                            // Extract basename from target path (e.g., "/lib64/ld64.so.2" -> "ld64.so.2")
-+                            const dl_basename = std.fs.path.basename(dl_target_path);
-+                            // crt_dir is .../sysroot/usr/lib, dynamic linker is in .../sysroot/lib64
-+                            const ld_path = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "..", "lib64", dl_basename });
-+                            try argv.append(ld_path);
++                // libc++ dependency
++                if (comp.config.link_libcpp) {
++                    try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
++                    try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++                }
++
++                // libunwind dependency
++                if (comp.config.link_libunwind) {
++                    try argv.append(try comp.libunwind_static_lib.?.full_object_path.toString(arena));
++                }
++
++                // libc dependency - With -nostartfiles, GCC doesn't auto-link libc
++                if (comp.config.link_libc) {
++                    // glibc 2.28 for PowerPC64LE doesn't export pthread_atfork
++                    // Link the stub object file created by build script
++                    const stub_obj = std.process.getEnvVarOwned(arena, "SRC_DIR") catch ".";
++                    const stub_path = try std.fs.path.join(arena, &[_][]const u8{ stub_obj, "zig-local-cache", "pthread_atfork_stub.o" });
++                    try argv.append(stub_path);
++
++                    // Link system libraries dynamically
++                    try argv.append("-lpthread");
++                    try argv.append("-lc");
++                    try argv.append("-lm");
++                    try argv.append("-ldl");
++                    try argv.append("-lrt");
++
++                    // PowerPC64: Dynamic linker provides __tls_get_addr (TLS support)
++                    // The dynamic linker (ld*.so.*) provides TLS runtime support
++                    // We need to link it explicitly when using -nostartfiles
++                    if (comp.libc_installation) |libc_installation| {
++                        if (libc_installation.crt_dir) |crt_dir| {
++                            if (target.dynamic_linker.get()) |dl_target_path| {
++                                // Extract basename from target path (e.g., "/lib64/ld64.so.2" -> "ld64.so.2")
++                                const dl_basename = std.fs.path.basename(dl_target_path);
++                                // crt_dir is .../sysroot/usr/lib, dynamic linker is in .../sysroot/lib64
++                                const ld_path = try std.fs.path.join(arena, &[_][]const u8{ crt_dir, "..", "..", "lib64", dl_basename });
++                                try argv.append(ld_path);
++                            }
 +                        }
 +                    }
 +                }
@@ -219,24 +269,31 @@ index 18682705..1fe344a7 100644
 +                Compilation.dump_argv(argv.items);
 +            }
 +
++            // Spawn GCC as a child process with inherited stdio for debugging
 +            var child = std.process.Child.init(argv.items, arena);
-+            child.stdin_behavior = .Ignore;
-+            child.stdout_behavior = .Ignore;
++            child.stdin_behavior = .Inherit;
++            child.stdout_behavior = .Inherit;
 +            child.stderr_behavior = .Inherit;
-+            const term = try child.spawnAndWait();
++
++            const term = child.spawnAndWait() catch |err| {
++                std.log.err("Failed to spawn GCC: {s}", .{@errorName(err)});
++                return error.LinkFailed;
++            };
++
 +            switch (term) {
-+                .Exited => |code| if (code != 0) {
-+                    std.log.err("GCC linker exited with code {d}", .{code});
++                .Exited => |code| {
++                    if (code == 0) return; // Success!
++                    std.log.err("GCC linker exited with code: {d}", .{code});
 +                    return error.LinkFailed;
 +                },
-+                else => {
-+                    std.log.err("GCC linker terminated unexpectedly: {}", .{term});
++                else => |sig| {
++                    std.log.err("GCC linker terminated: {}", .{sig});
 +                    return error.LinkFailed;
 +                },
 +            }
-+            return; // Skip LLD path
 +        }
 +
++         // Original LLD code path continues below for non-PowerPC64 targets
          // Create an LLD command line and invoke it.
          var argv = std.array_list.Managed([]const u8).init(gpa);
          defer argv.deinit();
