@@ -38,9 +38,12 @@ EXTRA_CMAKE_ARGS=(
 )
 
 EXTRA_ZIG_ARGS=(
-  -Dconfig_h=${cmake_build_dir}/config.h
+  --search-prefix "${BUILD_PREFIX}"/lib
+  -Dconfig_h="${cmake_build_dir}"/config.h
   -Denable-llvm
   -Doptimize=ReleaseSafe
+  -Dskip-linux=true
+  -Dskip-release-safe=true
   -Duse-zig-libcxx=false
 )
 
