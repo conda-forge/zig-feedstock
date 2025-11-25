@@ -114,9 +114,6 @@ requirements:
       then:
         - ${{ compiler('cxx') }}
         - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
-    - if: ppc64le
-      then:
-        - gcc_impl_${{ target_platform }} >=14
     - if: osx
       then:
         - libcxx ${{ llvm_version }}.*
@@ -125,6 +122,10 @@ requirements:
     - if: aarch64 or ppc64le
       then:
         - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
+    - if: ppc64le
+      then:
+        - binutils_impl_${{ target_platform }}
+        - gcc_impl_${{ target_platform }} >=14
 
   ignore_run_exports:
     by_name:
@@ -159,7 +160,6 @@ tests:
   - files:
       source:
         - zig-source/test
-
     script:
       - zig version
       - zig zen
