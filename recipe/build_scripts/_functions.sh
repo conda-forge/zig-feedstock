@@ -491,3 +491,94 @@ EOF
 
   echo "=== pthread_atfork stub created: ${output_dir}/pthread_atfork_stub.o ==="
 }
+
+function build_cmake_lld() {
+  local build_dir=$1
+  local install_dir=$2
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}" || exit 1
+    cmake "$ROOTDIR/llvm" \
+      -DCMAKE_INSTALL_PREFIX="${install_dir}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLLVM_ENABLE_BINDINGS=OFF \
+      -DLLVM_ENABLE_LIBEDIT=OFF \
+      -DLLVM_ENABLE_LIBPFM=OFF \
+      -DLLVM_ENABLE_LIBXML2=ON \
+      -DLLVM_ENABLE_OCAMLDOC=OFF \
+      -DLLVM_ENABLE_PLUGINS=OFF \
+      -DLLVM_ENABLE_PROJECTS="lld" \
+      -DLLVM_ENABLE_Z3_SOLVER=OFF \
+      -DLLVM_ENABLE_ZSTD=ON \
+      -DLLVM_INCLUDE_UTILS=OFF \
+      -DLLVM_INCLUDE_TESTS=OFF \
+      -DLLVM_INCLUDE_EXAMPLES=OFF \
+      -DLLVM_INCLUDE_BENCHMARKS=OFF \
+      -DLLVM_INCLUDE_DOCS=OFF \
+      -DLLVM_TOOL_LLVM_LTO2_BUILD=OFF \
+      -DLLVM_TOOL_LLVM_LTO_BUILD=OFF \
+      -DLLVM_TOOL_LTO_BUILD=OFF \
+      -DLLVM_TOOL_REMARKS_SHLIB_BUILD=OFF \
+      -DCLANG_BUILD_TOOLS=OFF \
+      -DCLANG_INCLUDE_DOCS=OFF \
+      -DCLANG_INCLUDE_TESTS=OFF \
+      -DCLANG_TOOL_CLANG_IMPORT_TEST_BUILD=OFF \
+      -DCLANG_TOOL_CLANG_LINKER_WRAPPER_BUILD=OFF \
+      -DCLANG_TOOL_C_INDEX_TEST_BUILD=OFF \
+      -DCLANG_TOOL_LIBCLANG_BUILD=OFF
+    cmake --build . --target install
+  cd "${current_dir}" || exit 1
+}
+
+function build_lld_ppc64le_mcmodel() {
+  # Build LLD libraries for PowerPC64LE with -mcmodel=medium to avoid R_PPC64_REL24 truncation
+  # Similar to configure_cmake_zigcpp but for LLD libraries
+
+  local llvm_source_dir=$1
+  local build_dir=$2
+  local target_arch="${3:-linux-ppc64le}"
+
+  # Build LLD from scratch with mcmodel=medium
+  echo "Building LLD libraries for PowerPC64LE with -mcmodel=medium..."
+
+  local current_dir
+  current_dir=$(pwd)
+
+  mkdir -p "${build_dir}"
+  cd "${build_dir}" || exit 1
+
+  # Configure LLVM to build only LLD libraries
+  cmake "${llvm_source_dir}/lld" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="${CC}" \
+    -DCMAKE_CXX_COMPILER="${CXX}" \
+    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+    -DLLVM_ENABLE_PROJECTS="lld" \
+    -DLLVM_TARGETS_TO_BUILD="PowerPC" \
+    -DLLVM_BUILD_TOOLS=OFF \
+    -DLLVM_INCLUDE_TOOLS=OFF \
+    -DLLVM_BUILD_UTILS=OFF \
+    -DLLVM_INCLUDE_UTILS=OFF \
+    -DLLVM_BUILD_TESTS=OFF \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_BUILD_EXAMPLES=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF \
+    -DLLVM_BUILD_BENCHMARKS=OFF \
+    -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    -DLLVM_BUILD_DOCS=OFF \
+    -DLLVM_INCLUDE_DOCS=OFF \
+    -DLLVM_CONFIG_PATH=$BUILD_PREFIX/bin/llvm-config \
+    -DLLVM_TABLEGEN_EXE=$BUILD_PREFIX/bin/llvm-tblgen \
+    -DLLVM_ENABLE_RTTI=ON \
+    -G Ninja
+
+  # Build all LLD libraries (they're defined as add_lld_library in lld/*/CMakeLists.txt)
+  # Target names: lldELF, lldCommon, lldCOFF, lldMachO, lldWasm, lldMinGW
+  cmake --build . -- -j${CPU_COUNT}
+
+  cd "${current_dir}" || exit 1
+}
