@@ -317,13 +317,13 @@ function create_qemu_llvm_config_wrapper() {
   echo "Creating QEMU wrapper for llvm-config"
 
   # Backup original llvm-config
-  mv "${PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config.real || return 1
+  mv "${PREFIX}"/bin/llvm-config "${BUILD_PREFIX}"/bin/llvm-config.real || return 1
 
   # Create wrapper script that runs llvm-config under QEMU
   cat > "${PREFIX}"/bin/llvm-config << EOF
 #!/usr/bin/env bash
 export QEMU_LD_PREFIX="${sysroot_path}"
-"${CROSSCOMPILING_EMULATOR}" "${PREFIX}"/bin/llvm-config.real "\$@"
+"${CROSSCOMPILING_EMULATOR}" "${BUILD_PREFIX}"/bin/llvm-config.real "\$@"
 EOF
 
   chmod +x "${PREFIX}"/bin/llvm-config || return 1

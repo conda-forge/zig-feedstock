@@ -53,6 +53,10 @@ source:
 build:
   number: 2
   skip: ppc64le
+  dynamic_linking:
+    missing_dso_allowlist:
+      - if: osx and arm64
+        then: /usr/lib/libSystem.B.dylib
 
 requirements:
   build:
@@ -81,15 +85,16 @@ requirements:
   host:
     - clangdev ${{ llvm_version }}.*
     - libxml2-devel
-    - libclang-cpp ${{ llvm_version }}.*
     - llvm ${{ llvm_version }}.*
     - lld ${{ llvm_version }}.*
     - zlib
     - zstd
+    - if: not arm64
+      then:
+        - libclang-cpp ${{ llvm_version }}.*
     - if: aarch64 or ppc64le
       then:
         - ${{ compiler('cxx') }}
-        # - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
     - if: osx
       then:
         - libcxx ${{ llvm_version }}.*
@@ -100,11 +105,12 @@ requirements:
         - gcc_impl_${{ target_platform }} ==14.3
   ignore_run_exports:
     by_name:
-      - libxml2
       - if: win
         then:
           - ucrt
           - vc14_runtime
+    from_package:
+      - libxml2-devel
       - if: osx and arm64
         then:
           - libclang-cpp
