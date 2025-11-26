@@ -4,6 +4,7 @@ context:
   name: zig
   version: 0.15.2
   llvm_version: "20"
+  llvm_src_version: "20.1.8"
 
 package:
   name: ${{ name|lower }}
@@ -15,54 +16,49 @@ source:
     patches:
       - if: linux
         then:
-          - patches/0001-x86-maxrss-CMakeLists.txt.patch
-      - if: aarch64 or ppc64le
+          - patches/0001-linux-maxrss-build.zig.patch
+      - if: linux and (x86_64 or ppc64le)
         then:
-          - patches/0001-cross-findllvm.patch
-          # Only apply other CMake patches when cross-compiling with CMake (not needed with zig)
-      - if: win
+          # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
+          - patches/0001-ppc64le-arch-support-relocation.zig.patch
+          - patches/0001-ppc64le-arch-support-LdScript.zig.patch
+          - patches/0001-ppc64le-arch-support-Elf.zig.patch
+          - patches/0001-ppc64le-arch-support-Atom.zig.patch
+          - patches/0001-ppc64le-arch-support-LinkerDefined.zig.patch
+          - patches/0001-ppc64le-arch-support-ZigObject.zig.patch
+          - patches/0001-ppc64le-arch-support-synthetic_sections.zig.patch
+          - patches/0001-ppc64le-arch-support-eh_frame.zig.patch
+          - patches/0001-ppc64le-arch-support-Thunk.zig.patch
+          - patches/0001-ppc64le-arch-support-st-other-Object.zig.patch
+          - patches/0001-ppc64le-arch-support-st-other-SharedObject.zig.patch
+          # Phase 0002: Build Configuration (LLVM backend, library paths)
+          - patches/0002-ppc64le-build-config-build.zig.patch
+          # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
+          - patches/0003-ppc64le-linker-redirect-link.zig.patch
+          - patches/0003-ppc64le-ldscript-output-format.patch
+          - patches/0003-ppc64le-gcc-linker-comprehensive-Lld.zig.patch
+      - if: not unix
         then:
-          # May be combined into a single patch once the build is found robust (few versions of zig)
-          - patches/0001-win-deprecations.patch
-          - patches/0002-win-libraries-CMakeLists.txt.patch
-          - patches/0003-win-add-libdir-build.zig.patch
-          - patches/0004-win-remove-ucrt-Lld.zig.patch
+          - patches/0001-win-maxrss-search-prefix-build.zig.patch
+          - patches/0001-win-correct-LLVM_LIBRARIES-CMakeLists.txt.patch
+          - patches/0001-win-remove-ucrt-Lld.zig.patch
+          - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
     target_directory: zig-source
-
-  # Bootstrap fallback: Use upstream binary dist if conda ZIG cannot build a newer version
-  # The zig variable in the build scripts would then need to be updated
-  # Uncomment the following sections to enable bootstrap binaries:
-  #
-  # - folder: zig-bootstrap
-  #   if: win
-  #   url: https://ziglang.org/download/${{ version }}/zig-windows-x86_64-${{ version }}.zip
-  #   sha256: ...
-  #
-  # - folder: zig-bootstrap
-  #   if: osx
-  #   url: https://ziglang.org/download/${{ version }}/zig-macos-x86_64-${{ version }}.tar.xz
-  #   sha256: ...
-  #
-  # - folder: zig-bootstrap
-  #   if: linux
-  #   url: https://ziglang.org/download/${{ version }}/zig-linux-x86_64-${{ version }}.tar.xz
-  #   sha256: ...
+  - if: ppc64le
+    then:
+      - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
+        sha256: a6cbad9b2243b17e87795817cfff2107d113543a12486586f8a055a2bb044963
+        target_directory: lld-source
 
 build:
-  number: 1
-  skip:
-    - ppc64le
-  script:
-    content:
-      - if: unix
-        then:
-          - bash ${RECIPE_DIR}/build.sh
-      - if: win
-        then:
-          # The bld.bat script handles Windows builds
-          - call %RECIPE_DIR%\build.bat
-    env:
-      BUILD_WITH_CMAKE: ${{ "1" if x86_64 }}
+  number: 2
+  skip: ppc64le
+  dynamic_linking:
+    missing_dso_allowlist:
+      - if: osx
+        then: /usr/lib/libSystem.B.dylib
+      - if: not unix
+        then: "*/VERSION.dll"
 
 requirements:
   build:
@@ -71,45 +67,58 @@ requirements:
     - ${{ stdlib("c") }}
     - cmake >=3.5
     - ninja
-    - if: arm64 or aarch64 or ppc64le
-      then: zig
+    - perl 5.32.*
+    - zig
     - if: aarch64 or ppc64le
-      then: ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
+      then:
+        # Needed to contrain x86 glibc version
+        - ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
+    - if: ppc64le
+      then:
+        # Needed to cross-compile ppc64le LLD with mcmodel=medium to prevent unsupported relocation
+        - llvmdev ${{ llvm_version }}.*
     - if: (build_platform != target_platform) and osx
-      then: libxml2-devel
+      then:
+        - libxml2-devel
     - if: unix
-      then: sed
-
+      then:
+        - bash
+        - file
+      else:
+        - m2-bash
   host:
+    - clangdev ${{ llvm_version }}.*
+    - libclang-cpp ${{ llvm_version }}.*
+    - libxml2-devel
+    - llvm ${{ llvm_version }}.*
+    - llvmdev ${{ llvm_version }}.*
+    - lld ${{ llvm_version }}.*
+    - zlib
+    - zstd
     - if: aarch64 or ppc64le
       then:
         - ${{ compiler('cxx') }}
-    - clangdev ${{ llvm_version }}.*
-    - libclang-cpp ${{ llvm_version }}.*
     - if: osx
       then:
         - libcxx ${{ llvm_version }}.*
-    - libxml2-devel
-    - llvmdev ${{ llvm_version }}.*
-    - llvm ${{ llvm_version }}.*
-    - lld ${{ llvm_version }}.*
-    - if: aarch64 or ppc64le
-      then:
-        - sysroot_${{ target_platform }} ==${{ c_stdlib_version }}
-    - zlib
-    - zstd
-
   run:
-    - if: aarch64 or ppc64le
+    - if: ppc64le
       then:
-        - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
-
+        # We redirect linking to gcc/ld.bfd
+        - binutils_impl_${{ target_platform }} >=2.45,<2.46
+        - gcc_impl_${{ target_platform }} ==14.3
   ignore_run_exports:
     by_name:
       - if: win
         then:
           - ucrt
           - vc14_runtime
+    from_package:
+      - libxml2-devel
+      - if: osx and arm64
+        then:
+          - libclang-cpp
+          - llvm
 
 tests:
   # Package contents verification
@@ -134,16 +143,7 @@ tests:
             - lib/zig/std/**
 
   # Functional tests
-  - requirements:
-      run:
-        - if: linux and aarch64
-          then:
-            - patchelf
-        # - if: aarch64 or ppc64le
-        #   then:
-        #     - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
-
-    files:
+  - files:
       source:
         - zig-source/test
 
@@ -151,14 +151,7 @@ tests:
       - zig version
       - zig zen
       - zig init
-
-      - if: unix
-        then:
-          - zig test zig-source/test/behavior.zig
-      # One test fails on windows: 838/1932 behavior.floatop.test.@log2 with vectors...FAIL (TestUnexpectedResult)
-      - if: not unix
-        then:
-          - zig test zig-source/test/behavior.zig || true
+      - zig test zig-source/test/behavior.zig
 
 about:
   homepage: https://ziglang.org/

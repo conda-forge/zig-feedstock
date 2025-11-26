@@ -1,0 +1,26 @@
+diff --git a/build.zig b/build.zig
+index 37523e6..a151dc6 100644
+--- a/build.zig
++++ b/build.zig
+@@ -738,7 +738,7 @@ fn addCompilerMod(b: *std.Build, options: AddCompilerModOptions) *std.Build.Modu
+ fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Step.Compile {
+     const exe = b.addExecutable(.{
+         .name = "zig",
+-        .max_rss = 7_800_000_000,
++        .max_rss = 7_500_000_000,
+         .root_module = addCompilerMod(b, options),
+     });
+     exe.stack_size = stack_size;
+@@ -790,7 +790,11 @@
+     assert(cfg.lld_include_dir.len != 0);
+     mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
+     mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });
+-    mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
++    // Split system_lib_dir by semicolon and add each path
++    var it = std.mem.splitScalar(u8, cfg.llvm_lib_dir, ';');
++    while (it.next()) |path| {
++        mod.addLibraryPath(.{ .cwd_relative = path });
++    }
+     addCMakeLibraryList(mod, cfg.clang_libraries);
+     addCMakeLibraryList(mod, cfg.lld_libraries);
+     addCMakeLibraryList(mod, cfg.llvm_libraries);

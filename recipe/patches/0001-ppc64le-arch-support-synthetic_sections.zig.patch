@@ -1,0 +1,22 @@
+--- a/src/link/Elf/synthetic_sections.zig
++++ b/src/link/Elf/synthetic_sections.zig
+@@ -656,2 +656,3 @@
+             .aarch64 => 8 * @sizeOf(u32),
++            .powerpc64le => 0,
+             else => @panic("TODO implement preambleSize for this cpu arch"),
+@@ -664,2 +665,3 @@
+             .aarch64 => 4 * @sizeOf(u32),
++            .powerpc64le => 0,
+             else => @panic("TODO implement entrySize for this cpu arch"),
+@@ -673,2 +675,3 @@
+             .aarch64 => try aarch64.write(plt, elf_file, writer),
++            .powerpc64le => {}, // No PLT entries needed
+             else => return error.UnsupportedCpuArch,
+@@ -901,2 +904,3 @@
+             .x86_64 => 16,
++            .powerpc64le => 16,
+             .aarch64 => 4 * @sizeOf(u32),
+@@ -911,2 +915,3 @@
+             .aarch64 => try aarch64.write(plt_got, elf_file, writer),
++            .powerpc64le => {}, // No PLT GOT entries needed
+             else => return error.UnsupportedCpuArch,

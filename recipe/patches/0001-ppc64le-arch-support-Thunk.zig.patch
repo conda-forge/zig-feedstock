@@ -1,0 +1,10 @@
+--- a/src/link/Elf/Thunk.zig
++++ b/src/link/Elf/Thunk.zig
+@@ -28,2 +28,3 @@
+         .x86_64, .riscv64 => unreachable,
++        .powerpc64, .powerpc64le => unreachable, // No thunks needed (requiresThunks = false)
+         else => @panic("unhandled arch"),
+@@ -63,2 +64,3 @@
+         .x86_64, .riscv64 => unreachable,
++        .powerpc64, .powerpc64le => unreachable, // No thunks needed
+         else => @panic("unhandled arch"),

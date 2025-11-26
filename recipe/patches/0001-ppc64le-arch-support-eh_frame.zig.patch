@@ -1,0 +1,6 @@
+--- a/src/link/Elf/eh_frame.zig
++++ b/src/link/Elf/eh_frame.zig
+@@ -290,2 +290,3 @@
+         .riscv64 => try riscv.resolveReloc(rec, elf_file, rel, P, S + A, contents[offset..]),
++        .powerpc64, .powerpc64le => {}, // PowerPC64 uses system linker for EH frame relocations
+         else => return error.UnsupportedCpuArch,

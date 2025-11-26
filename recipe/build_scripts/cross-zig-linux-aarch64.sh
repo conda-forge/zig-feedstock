@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 # --- Functions ---
 
@@ -7,72 +7,69 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
 
-export ZIG_GLOBAL_CACHE_DIR="${PWD}/zig-global-cache"
-export ZIG_LOCAL_CACHE_DIR="${PWD}/zig-local-cache"
-
-cmake_build_dir="${SRC_DIR}/build-release"
-cmake_install_dir="${SRC_DIR}/cmake-built-install"
-zig_build_dir="${SRC_DIR}/conda-zig-source"
-
-mkdir -p "${cmake_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${cmake_build_dir}"
-mkdir -p "${zig_build_dir}" && cp -r "${SRC_DIR}"/zig-source/* "${zig_build_dir}"
-mkdir -p "${cmake_install_dir}"
-mkdir -p "${SRC_DIR}"/build-level-patches
-cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
-
 SYSROOT_ARCH="aarch64"
 SYSROOT_PATH="${BUILD_PREFIX}/${SYSROOT_ARCH}-conda-linux-gnu/sysroot"
-TARGET_INTERPRETER="${SYSROOT_PATH}/lib64/ld-2.28.so"
 ZIG_ARCH="aarch64"
 
-zig="${BUILD_PREFIX}"/bin/zig
+# Disable stack protection for cross-compilation build tools
+# The intermediate build tools (zig-wasm2c, zig1) don't need stack protection
+# and glibc 2.28 aarch64 has issues with __stack_chk_guard symbol
+export CFLAGS="${CFLAGS} -fno-stack-protector"
+export CXXFLAGS="${CXXFLAGS} -fno-stack-protector"
 
-# This is safe-keep for when non-backward compatible updates are introduced
-# zig="${SRC_DIR}/zig-bootstrap/zig"
+qemu_prg=qemu-aarch64-static
 
+# Update global arrays
 EXTRA_CMAKE_ARGS+=(
-  -DZIG_SHARED_LLVM=ON
-  -DZIG_USE_LLVM_CONFIG=ON
   -DZIG_TARGET_TRIPLE="${SYSROOT_ARCH}"-linux-gnu
   -DZIG_TARGET_MCPU=baseline
-  -DZIG_SYSTEM_LIBCXX="stdc++"
 )
-#  "-DZIG_SINGLE_THREADED=ON"
 
-# For some reason using the defined CMAKE_ARGS makes the build fail
-USE_CMAKE_ARGS=0
+EXTRA_ZIG_ARGS+=(
+  -fqemu
+  --libc "${zig_build_dir}"/libc_file
+  --libc-runtimes ${SYSROOT_PATH}/lib64
+  -Dtarget=${ZIG_ARCH}-linux-gnu
+  -Dcpu=baseline
+)
+
+CMAKE_PATCHES+=(
+  0001-linux-maxrss-CMakeLists.txt.patch
+  0002-linux-pthread-atfork-stub-zig2-CMakeLists.txt.patch
+  0003-cross-CMakeLists.txt.patch
+)
 
 # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
 modify_libc_libm_for_zig "${BUILD_PREFIX}"
 
-# When using installed c++ libs, zig needs libzigcpp.a
+# Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
+create_gcc14_glibc28_compat_lib
+setup_crosscompiling_emulator "${qemu_prg}"
+create_qemu_llvm_config_wrapper "${SYSROOT_PATH}"
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+remove_qemu_llvm_config_wrapper
 
-cat > "${zig_build_dir}"/libc_file << EOF
-include_dir=${SYSROOT_PATH}/usr/include
-sys_include_dir=${SYSROOT_PATH}/usr/include
-crt_dir=${SYSROOT_PATH}/usr/lib
-msvc_lib_dir=
-kernel32_lib_dir=
-gcc_dir=
-EOF
+# perl -pi -e 's/#define ZIG_LLVM_LINK_MODE "static"/#define ZIG_LLVM_LINK_MODE "shared"/g' "${cmake_build_dir}/config.h"
+perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
+cat "${cmake_build_dir}/config.h"
 
-# Zig needs the config.h to correctly (?) find the conda installed llvm, etc
-EXTRA_ZIG_ARGS+=(
-  --libc ${zig_build_dir}/libc_file
-  -Dconfig_h=${cmake_build_dir}/config.h
-  -Denable-llvm
-  -Duse-zig-libcxx=false
-  -Dstrip
-  -Dtarget=${ZIG_ARCH}-linux-gnu
-  -Dcpu=baseline
-)
-  # "-Ddynamic-linker=${TARGET_INTERPRETER}"
-  # -Dsingle-threaded=true
+# Create Zig libc configuration file
+create_zig_libc_file "${zig_build_dir}/libc_file" "${SYSROOT_PATH}" "${SYSROOT_ARCH}"
 
-# ln -sf "$(which qemu-aarch64-static)" "${BUILD_PREFIX}/bin/qemu-aarch64"
-# export QEMU_LD_PREFIX="${SYSROOT_PATH}"
-# export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+# Setup QEMU for the ZIG build (It is likely not used, but when in doubt ...)
+ln -sf "$(which qemu-aarch64-static)" "${BUILD_PREFIX}/bin/qemu-aarch64"
+export QEMU_LD_PREFIX="${SYSROOT_PATH}"
+export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
+# Create pthread_atfork stub for glibc 2.28 (missing on aarch64)
+create_pthread_atfork_stub "aarch64" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+
+# Remove documentation tests that fail during cross-compilation
 remove_failing_langref "${zig_build_dir}"
-build_zig_with_zig "${SRC_DIR}/conda-zig-source" "${zig}" "${PREFIX}"
+
+# Prepare fallback CMake
+# This will break the reconfigure: perl -pi -e 's/COMMAND ${LLVM_CONFIG_EXE}/COMMAND $ENV{CROSSCOMPILING_EMULATOR} ${LLVM_CONFIG_EXE}/' "${cmake_source_dir}"/cmake/Findllvm.cmake
+perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_source_dir}"/cmake/install.cmake
+
+export ZIG_CROSS_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
+export ZIG_CROSS_TARGET_MCPU="baseline"

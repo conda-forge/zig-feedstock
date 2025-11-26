@@ -1,0 +1,64 @@
+--- a/src/link/Elf/ZigObject.zig	2025-11-17 13:25:09.464662667 -0600
++++ b/src/link/Elf/ZigObject.zig	2025-11-17 13:28:23.884130623 -0600
+@@ -1981,13 +1981,12 @@
+ 
+ const max_trampoline_len = 12;
+ 
+-fn trampolineSize(cpu_arch: std.Target.Cpu.Arch) u64 {
+-    const len = switch (cpu_arch) {
++fn trampolineSize(cpu_arch: std.Target.Cpu.Arch) usize {
++    return switch (cpu_arch) {
+         .x86_64 => 5, // jmp rel32
++        .powerpc64, .powerpc64le => 8, // b (branch) instruction + nop for alignment
+         else => @panic("TODO implement trampoline size for this CPU arch"),
+     };
+-    comptime assert(len <= max_trampoline_len);
+-    return len;
+ }
+ 
+ fn writeTrampoline(tr_sym: Symbol, target: Symbol, elf_file: *Elf) !void {
+@@ -1997,6 +1996,22 @@
+     const target_addr = target.address(.{ .trampoline = false }, elf_file);
+     var buf: [max_trampoline_len]u8 = undefined;
+     const out = switch (elf_file.getTarget().cpu.arch) {
++        .powerpc64 => blk: {
++            // PowerPC64 BE unconditional branch: b target
++            const offset: i64 = target_addr - source_addr;
++            const branch_offset = @as(u32, @intCast(offset)) & 0x03FFFFFC;
++            std.mem.writeInt(u32, buf[0..4], 0x48000000 | branch_offset, .big);
++            std.mem.writeInt(u32, buf[4..8], 0x60000000, .big); // nop
++            break :blk buf[0..8];
++        },
++        .powerpc64le => blk: {
++            // PowerPC64 LE unconditional branch: b target
++            const offset: i64 = target_addr - source_addr;
++            const branch_offset = @as(u32, @intCast(offset)) & 0x03FFFFFC;
++            std.mem.writeInt(u32, buf[0..4], 0x48000000 | branch_offset, .little);
++            std.mem.writeInt(u32, buf[4..8], 0x60000000, .little); // nop
++            break :blk buf[0..8];
++        },
+         .x86_64 => try x86_64.writeTrampolineCode(source_addr, target_addr, &buf),
+         else => @panic("TODO implement write trampoline for this CPU arch"),
+     };
+--- a/src/link/Elf/ZigObject.zig
++++ b/src/link/Elf/ZigObject.zig
+@@ -617,7 +617,8 @@ pub fn resolveSymbols(self: *ZigObject, elf_file: *Elf) void {
+
+         const is_import = blk: {
+             if (!elf_file.isEffectivelyDynLib()) break :blk false;
+-            const vis = @as(elf.STV, @enumFromInt(esym.st_other));
++            // st_other contains visibility in lower 2 bits, upper bits are arch-specific flags
++            const vis = @as(elf.STV, @enumFromInt(esym.st_other & 0x3));
+             if (vis == .HIDDEN) break :blk false;
+             break :blk true;
+         };
+@@ -695,7 +696,8 @@ pub fn markImportsExports(self: *ZigObject, elf_file: *Elf) void {
+         const file = sym.file(elf_file).?;
+         // https://github.com/ziglang/zig/issues/21678
+         if (@as(u16, @bitCast(sym.version_index)) == @as(u16, @bitCast(elf.Versym.LOCAL))) continue;
+-        const vis: elf.STV = @enumFromInt(sym.elfSym(elf_file).st_other);
++        // st_other contains visibility in lower 2 bits, upper bits are arch-specific flags
++        const vis: elf.STV = @enumFromInt(sym.elfSym(elf_file).st_other & 0x3);
+         if (vis == .HIDDEN) continue;
+         if (file == .shared_object and !sym.isAbs(elf_file)) {
+             sym.flags.import = true;

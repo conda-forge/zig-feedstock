@@ -1,0 +1,17 @@
+# Windows: Remove automatic ucrt library linking (LLD linker)
+#
+# The Universal C Runtime (ucrt) is provided by conda's MSVC toolchain
+# and should not be automatically added by Zig's LLD linker.
+# Automatic inclusion causes duplicate symbol errors.
+
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -684,7 +684,7 @@
+                             .dynamic => "",
+                         };
+                         try argv.append(try allocPrint(arena, "{s}vcruntime.lib", .{lib_str}));
+-                        try argv.append(try allocPrint(arena, "{s}ucrt.lib", .{lib_str}));
++                        // try argv.append(try allocPrint(arena, "{s}ucrt.lib", .{lib_str}));
+
+                         //Visual C++ 2015 Conformance Changes
+                         //https://msdn.microsoft.com/en-us/library/bb531344.aspx

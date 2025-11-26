@@ -1,0 +1,67 @@
+# Windows: Replace deprecated POSIX functions with MSVC equivalents
+#
+# MSVC marks strdup() and close() as deprecated, preferring _strdup()
+# and _close() respectively. This patch updates:
+# - src/zig_llvm.cpp: 5 instances of strdup -> _strdup
+# - src/zig_llvm-ar.cpp: close -> _close
+#
+# Eliminates deprecation warnings during Windows builds.
+
+--- a/src/zig_llvm.cpp
++++ b/src/zig_llvm.cpp
+@@ -204,7 +204,7 @@
+         std::error_code EC;
+         dest_asm_ptr = new(std::nothrow) raw_fd_ostream(asm_filename, EC, sys::fs::OF_None);
+         if (EC) {
+-            *error_message = strdup((const char *)StringRef(EC.message()).bytes_begin());
++            *error_message = _strdup((const char *)StringRef(EC.message()).bytes_begin());
+             return true;
+         }
+     }
+@@ -212,7 +212,7 @@
+         std::error_code EC;
+         dest_bin_ptr = new(std::nothrow) raw_fd_ostream(bin_filename, EC, sys::fs::OF_None);
+         if (EC) {
+-            *error_message = strdup((const char *)StringRef(EC.message()).bytes_begin());
++            *error_message = _strdup((const char *)StringRef(EC.message()).bytes_begin());
+             return true;
+         }
+     }
+@@ -220,7 +220,7 @@
+         std::error_code EC;
+         dest_bitcode_ptr = new(std::nothrow) raw_fd_ostream(bitcode_filename, EC, sys::fs::OF_None);
+         if (EC) {
+-            *error_message = strdup((const char *)StringRef(EC.message()).bytes_begin());
++            *error_message = _strdup((const char *)StringRef(EC.message()).bytes_begin());
+             return true;
+         }
+     }
+@@ -337,13 +337,13 @@
+
+     if (dest_bin && !lto) {
+         if (target_machine.addPassesToEmitFile(codegen_pm, *dest_bin, nullptr, CodeGenFileType::ObjectFile)) {
+-            *error_message = strdup("TargetMachine can't emit an object file");
++            *error_message = _strdup("TargetMachine can't emit an object file");
+             return true;
+         }
+     }
+     if (dest_asm) {
+         if (target_machine.addPassesToEmitFile(codegen_pm, *dest_asm, nullptr, CodeGenFileType::AssemblyFile)) {
+-            *error_message = strdup("TargetMachine can't emit an assembly file");
++            *error_message = _strdup("TargetMachine can't emit an assembly file");
+             return true;
+         }
+     }
+--- a/src/zig_llvm-ar.cpp
++++ b/src/zig_llvm-ar.cpp
+@@ -619,8 +619,8 @@
+         sys::fs::setLastAccessAndModificationTime(FD, ModTimeOrErr.get()));
+   }
+
+-  if (close(FD))
+-    fail("Could not close the file");
++  if (_close(FD))
++    fail("Could not _close the file");
+ }
+
+ static bool shouldCreateArchive(ArchiveOperation Op) {

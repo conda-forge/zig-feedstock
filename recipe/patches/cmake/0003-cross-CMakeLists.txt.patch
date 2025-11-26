@@ -1,0 +1,125 @@
+commit e048c4b13c41f9eeabe0222c13727f9eae9de2f0
+Author: Tim de Jager <tdejager89@gmail.com>
+Date:   Fri Nov 7 12:17:37 2025 +0100
+
+    add default
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ef371fc..e5548b7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -784,6 +784,36 @@
+ endif()
+ 
+ set(ZIG_HOST_TARGET_TRIPLE "${ZIG_HOST_TARGET_ARCH}-${ZIG_HOST_TARGET_OS}${ZIG_HOST_TARGET_ABI}" CACHE STRING "Host zig target triple.")
++if(DEFINED ENV{CROSSCOMPILING_EMULATOR})
++  set(CROSSCOMPILING_EMULATOR $ENV{CROSSCOMPILING_EMULATOR})
++  if(NOT DEFINED ENV{CROSSCOMPILING_LIBC})
++    set(CROSSCOMPILING_LIBC "-lc")
++  else()
++    set(CROSSCOMPILING_LIBC $ENV{CROSSCOMPILING_LIBC})
++    message(STATUS "Setting CROSSCOMPILING_LIBC ${CROSSCOMPILING_LIBC}")
++  endif()
++  if(DEFINED ENV{ZIG_CROSS_TARGET_TRIPLE})
++    set(ZIG_CROSS_TARGET_TRIPLE $ENV{ZIG_CROSS_TARGET_TRIPLE} CACHE STRING "Host zig target triple.")
++    message(STATUS "Setting ZIG_CROSS_TARGET_TRIPLE ${ZIG_CROSS_TARGET_TRIPLE}")
++  else()
++    message(SEND_ERROR "ZIG_CROSS_TARGET_TRIPLE is not set while cross-compiling")
++  endif()
++  if(DEFINED ENV{ZIG_CROSS_TARGET_MCPU})
++    set(ZIG_CROSS_TARGET_MCPU $ENV{ZIG_CROSS_TARGET_MCPU} CACHE STRING "Host zig target cpu.")
++    message(STATUS "Setting ZIG_CROSS_TARGET_MCPU ${ZIG_CROSS_TARGET_MCPU}")
++  else()
++    set(ZIG_CROSS_TARGET_MCPU "baseline" CACHE STRING "Host zig target cpu.")
++    message(STATUS "Setting ZIG_CROSS_TARGET_MCPU ${ZIG_CROSS_TARGET_MCPU}")
++  endif()
++else()
++  set(CROSSCOMPILING_EMULATOR "")
++  set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_TARGET_TRIPLE})
++  set(ZIG_CROSS_TARGET_MCPU ${ZIG_TARGET_MCPU})
++endif()
++
++if(NOT DEFINED CROSSCOMPILING_LIBC)
++  set(CROSSCOMPILING_LIBC "-lc")
++endif()
+ 
+ if(MSVC)
+   set(ZIG_WASM2C_COMPILE_FLAGS "")
+@@ -816,7 +846,7 @@
+ 
+ add_custom_command(
+   OUTPUT "${ZIG1_C_SOURCE}"
+-  COMMAND zig-wasm2c "${ZIG1_WASM_MODULE}" "${ZIG1_C_SOURCE}"
++  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig-wasm2c "${ZIG1_WASM_MODULE}" "${ZIG1_C_SOURCE}"
+   DEPENDS zig-wasm2c "${ZIG1_WASM_MODULE}"
+   COMMENT "Converting ${ZIG1_WASM_MODULE} to ${ZIG1_C_SOURCE}"
+   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+@@ -834,12 +864,15 @@
+   endif()
+ endif()
+ 
++if(NOT DEFINED ZIG_CROSS_TARGET_TRIPLE)
++    set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_HOST_TARGET_TRIPLE})
++endif()
+ set(BUILD_ZIG2_ARGS
+   "${PROJECT_SOURCE_DIR}/lib"
+-  build-exe -ofmt=c -lc -OReleaseSmall
++  build-exe -ofmt=c "${CROSSCOMPILING_LIBC}" -OReleaseSmall
+   --name zig2
+   -femit-bin="${ZIG2_C_SOURCE}"
+-  -target "${ZIG_HOST_TARGET_TRIPLE}"
++  -target "${ZIG_CROSS_TARGET_TRIPLE}"
+   --dep "build_options"
+   --dep "aro"
+   "-Mroot=src/main.zig"
+@@ -849,7 +882,7 @@
+ 
+ add_custom_command(
+   OUTPUT "${ZIG2_C_SOURCE}"
+-  COMMAND zig1 ${BUILD_ZIG2_ARGS}
++  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig1 ${BUILD_ZIG2_ARGS}
+   DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
+   COMMENT "Running zig1.wasm to produce ${ZIG2_C_SOURCE}"
+   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+@@ -860,13 +893,13 @@
+   build-obj -ofmt=c -OReleaseSmall
+   --name compiler_rt
+   -femit-bin="${ZIG_COMPILER_RT_C_SOURCE}"
+-  -target "${ZIG_HOST_TARGET_TRIPLE}"
++  -target "${ZIG_CROSS_TARGET_TRIPLE}"
+   "-Mroot=lib/compiler_rt.zig"
+ )
+ 
+ add_custom_command(
+   OUTPUT "${ZIG_COMPILER_RT_C_SOURCE}"
+-  COMMAND zig1 ${BUILD_COMPILER_RT_ARGS}
++  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig1 ${BUILD_COMPILER_RT_ARGS}
+   DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
+   COMMENT "Running zig1.wasm to produce ${ZIG_COMPILER_RT_C_SOURCE}"
+   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+@@ -950,8 +992,8 @@
+   --zig-lib-dir "${PROJECT_SOURCE_DIR}/lib"
+
+   "-Dversion-string=${RESOLVED_ZIG_VERSION}"
+-  "-Dtarget=${ZIG_TARGET_TRIPLE}"
+-  "-Dcpu=${ZIG_TARGET_MCPU}"
++  "-Dtarget=${ZIG_CROSS_TARGET_TRIPLE}"
++  "-Dcpu=${ZIG_CROSS_TARGET_MCPU}" --verbose --verbose-link --summary all
+
+   -Denable-llvm
+   "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
+@@ -981,11 +1015,13 @@
+ add_custom_command(
+   OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
+-  COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
++  COMMAND ${CROSSCOMPILING_EMULATOR} ${PROJECT_BINARY_DIR}/zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}
++  DEPENDS zig2
+   COMMENT "Building stage3"
+   WORKING_DIRECTORY "${ZIG2_WORKING_DIR}"
+ )
+
+ set(ZIG_EXECUTABLE "$<TARGET_FILE:zig2>")
+
++install(CODE "set(CROSSCOMPILING_EMULATOR \"${CROSSCOMPILING_EMULATOR}\")")
+ install(CODE "set(ZIG_EXECUTABLE \"${ZIG_EXECUTABLE}\")")
+ install(CODE "set(ZIG_BUILD_ARGS \"${ZIG_BUILD_ARGS}\")")

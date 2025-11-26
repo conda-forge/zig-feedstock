@@ -1,0 +1,12 @@
+--- a/src/link/Elf/SharedObject.zig
++++ b/src/link/Elf/SharedObject.zig
+@@ -357,7 +357,8 @@ pub fn markImportExports(self: *SharedObject, elf_file: *Elf) void {
+         const ref = self.resolveSymbol(@intCast(i), elf_file);
+         const ref_sym = elf_file.symbol(ref) orelse continue;
+         const ref_file = ref_sym.file(elf_file).?;
+-        const vis = @as(elf.STV, @enumFromInt(ref_sym.elfSym(elf_file).st_other));
++        // st_other contains visibility in lower 2 bits, upper bits are arch-specific flags
++        const vis = @as(elf.STV, @enumFromInt(ref_sym.elfSym(elf_file).st_other & 0x3));
+         if (ref_file != .shared_object and vis != .HIDDEN) ref_sym.flags.@"export" = true;
+     }
+ }
