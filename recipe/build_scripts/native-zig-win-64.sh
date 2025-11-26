@@ -19,15 +19,7 @@ ZIG_ARCH="x86_64"
 _UCRT_LIB_PATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 _MSVC_LIB_PATH="${VSINSTALLDIR//\\/\/}/VC/Tools/MSVC/$(get_msvc_version)/lib/x64"
 
-new_args=()
-for arg in "${EXTRA_CMAKE_ARGS[@]}"; do
-  case "$arg" in
-    -DZIG_SHARED_LLVM=*) ;;
-    *) new_args+=("$arg") ;;
-  esac
-done
-EXTRA_CMAKE_ARGS=("${new_args[@]}")
-
+filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SHARED_LLVM=*"
 EXTRA_CMAKE_ARGS+=(
   -DZIG_CMAKE_PREFIX_PATH="${_MSVC_LIB_PATH};${_UCRT_LIB_PATH};${LIBPATH}"
   -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc

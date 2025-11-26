@@ -10,15 +10,7 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 SYSROOT_ARCH="aarch64"
 ZIG_ARCH="aarch64"
 
-new_args=()
-for arg in "${EXTRA_CMAKE_ARGS[@]}"; do
-  case "$arg" in
-    -DZIG_SYSTEM_LIBCXX=*) ;;
-    -DZIG_USE_LLVM_CONFIG=*) ;;
-    *) new_args+=("$arg") ;;
-  esac
-done
-EXTRA_CMAKE_ARGS=("${new_args[@]}")
+filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*" "-DZIG_USE_LLVM_CONFIG=*"
 
 EXTRA_CMAKE_ARGS+=(
   -DZIG_SYSTEM_LIBCXX=c++

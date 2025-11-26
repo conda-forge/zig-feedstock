@@ -51,14 +51,10 @@ modify_libc_libm_for_zig "${BUILD_PREFIX}"
 
 # Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
 create_gcc14_glibc28_compat_lib
-
-# Set CROSSCOMPILING_EMULATOR if not already set
 setup_crosscompiling_emulator "${qemu_prg}"
-
-# Create QEMU wrapper for llvm-config
 create_qemu_llvm_config_wrapper "${SYSROOT_PATH}"
-
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}" "" "linux-ppc64le"
+remove_qemu_llvm_config_wrapper
 
 # Build LLD libraries locally with -mcmodel=medium for PowerPC64LE
 # This solves R_PPC64_REL24 relocation truncation errors that occur when linking
@@ -76,6 +72,7 @@ perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pt
 # Create Zig libc configuration file
 create_zig_libc_file "${zig_build_dir}/libc_file" "${SYSROOT_PATH}" "${SYSROOT_ARCH}"
 
+# Setup QEMU for the ZIG build (It is likely not used, but when in doubt ...)
 ln -sf "$(which qemu-ppc64le-static)" "${BUILD_PREFIX}/bin/qemu-ppc64le"
 export QEMU_LD_PREFIX="${SYSROOT_PATH}"
 export QEMU_SET_ENV="LD_LIBRARY_PATH=${SYSROOT_PATH}/lib64:${LD_LIBRARY_PATH:-}"

@@ -1,3 +1,34 @@
+# Filter out arguments matching patterns from an array
+# Usage: filter_array_args ARRAY_NAME "pattern1" "pattern2" ...
+# Example: filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*" "-DZIG_USE_LLVM_CONFIG=*"
+function filter_array_args() {
+  local array_name="$1"
+  shift  # Remove array name, rest are patterns to filter
+
+  # Use nameref to work with the array indirectly
+  local -n arr_ref="$array_name"
+  local new_args=()
+  local arg
+  local pattern
+  local skip
+
+  for arg in "${arr_ref[@]}"; do
+    skip=false
+    for pattern in "$@"; do
+      case "$arg" in
+        $pattern) skip=true; break ;;
+      esac
+    done
+
+    if [[ "$skip" == "false" ]]; then
+      new_args+=("$arg")
+    fi
+  done
+
+  # Replace original array
+  arr_ref=("${new_args[@]}")
+}
+
 function cmake_build_install() {
   local build_dir=$1
 
@@ -317,17 +348,24 @@ function create_qemu_llvm_config_wrapper() {
   echo "Creating QEMU wrapper for llvm-config"
 
   # Backup original llvm-config
-  mv "${PREFIX}"/bin/llvm-config "${BUILD_PREFIX}"/bin/llvm-config.real || return 1
+  mv "${PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config.zig_conda_real || return 1
 
   # Create wrapper script that runs llvm-config under QEMU
   cat > "${PREFIX}"/bin/llvm-config << EOF
 #!/usr/bin/env bash
 export QEMU_LD_PREFIX="${sysroot_path}"
-"${CROSSCOMPILING_EMULATOR}" "${BUILD_PREFIX}"/bin/llvm-config.real "\$@"
+"${CROSSCOMPILING_EMULATOR}" "${PREFIX}"/bin/llvm-config.zig_conda_real "\$@"
 EOF
 
   chmod +x "${PREFIX}"/bin/llvm-config || return 1
   echo "✓ llvm-config wrapper created"
+  return 0
+}
+
+function remove_qemu_llvm_config_wrapper() {
+  if [[ -f "${PREFIX}"/bin/llvm-config.zig_conda_real ]]; then
+    rm -f "${PREFIX}"/bin/llvm-config && mv "${PREFIX}"/bin/llvm-config.zig_conda_real "${PREFIX}"/bin/llvm-config || return 1
+  fi
   return 0
 }
 
