@@ -58,7 +58,7 @@ build:
       - if: osx
         then: /usr/lib/libSystem.B.dylib
       - if: not unix
-        then: C:\\Windows\\system32\\VERSION.dll
+        then: "*/VERSION.dll"
 
 requirements:
   build:

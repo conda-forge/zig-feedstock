@@ -98,3 +98,6 @@ else
     exit 1
   fi
 fi
+
+# Odd random occurence of zig.pdb
+rm -f ${PREFIX}/bin/zig.pdb
