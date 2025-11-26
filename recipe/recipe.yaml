@@ -51,8 +51,7 @@ source:
         target_directory: lld-source
 
 build:
-  number: 2
-  skip: ppc64le
+  number: 3
   dynamic_linking:
     missing_dso_allowlist:
       - if: osx
