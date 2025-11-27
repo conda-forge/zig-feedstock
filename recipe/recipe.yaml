@@ -68,7 +68,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - perl 5.32.*
-    - zig ==0.15.2 h930564d_1  # Pin to _1: _2 is broken (SIGILL crash)
+    - zig ==0.15.2 *_1  # Pin to _1: _2 is broken (SIGILL crash)
     - if: aarch64 or ppc64le
       then:
         # Needed to contrain x86 glibc version
