@@ -12,13 +12,11 @@ ZIG_ARCH="x86_64"
 
 EXTRA_CMAKE_ARGS+=(
   -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none
-  -DZIG_TARGET_MCPU=native
   -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
 )
 
 EXTRA_ZIG_ARGS+=(
   -Dtarget=${ZIG_ARCH}-macos-none
-  -Dcpu=native
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a

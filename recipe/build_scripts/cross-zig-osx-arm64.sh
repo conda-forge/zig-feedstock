@@ -21,7 +21,6 @@ EXTRA_CMAKE_ARGS+=(
 
 EXTRA_ZIG_ARGS+=(
   -Dtarget=${ZIG_ARCH}-macos-none
-  -Dcpu=baseline
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a

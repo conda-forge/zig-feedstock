@@ -23,12 +23,10 @@ filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SHARED_LLVM=*"
 EXTRA_CMAKE_ARGS+=(
   -DZIG_CMAKE_PREFIX_PATH="${_MSVC_LIB_PATH};${_UCRT_LIB_PATH};${LIBPATH}"
   -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-windows-msvc
-  -DZIG_TARGET_MCPU=native
 )
 
 EXTRA_ZIG_ARGS+=(
   --maxrss 8500000000
-  -Dcpu=native
   -Dtarget=${ZIG_ARCH}-windows-msvc
 )
 

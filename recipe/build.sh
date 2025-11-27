@@ -49,12 +49,15 @@ cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 EXTRA_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
   -DZIG_SHARED_LLVM=ON
-  -DZIG_USE_LLVM_CONFIG=ON
   -DZIG_SYSTEM_LIBCXX=stdc++
+  -DZIG_TARGET_MCPU=baseline
+  -DZIG_USE_LLVM_CONFIG=ON
 )
 
+# Critical, CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
   -Dconfig_h="${cmake_build_dir}"/config.h
+  -Dcpu=baseline
   -Denable-llvm
   -Doptimize=ReleaseSafe
   -Duse-zig-libcxx=false

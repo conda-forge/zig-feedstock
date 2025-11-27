@@ -459,9 +459,9 @@ function build_zig_with_zig() {
     cd "${build_dir}" || return 1
       "${zig}" build \
         --prefix "${install_dir}" \
-        --search-prefix "${install_dir}" \
         ${EXTRA_ZIG_ARGS[@]+"${EXTRA_ZIG_ARGS[@]}"} \
         -Dversion-string="${PKG_VERSION}" || return 1
+        # --search-prefix "${install_dir}" \
     cd "${current_dir}" || return 1
   else
     echo "No build directory found" >&2
