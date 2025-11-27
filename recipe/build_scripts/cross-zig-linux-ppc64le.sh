@@ -28,7 +28,7 @@ export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 qemu_prg=qemu-ppc64le-static
 
 EXTRA_CMAKE_ARGS+=(
-  -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu
+  -DZIG_TARGET_TRIPLE=${ZIG_ARCH}-linux-gnu
 )
 
 EXTRA_ZIG_ARGS+=(
