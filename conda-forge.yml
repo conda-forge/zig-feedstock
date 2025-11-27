@@ -16,4 +16,4 @@ azure:
   settings_win:
     variables:
       SET_PAGEFILE: "True"
-      CONDA_BLD_PATH: "C:\bld"
+      CONDA_BLD_PATH: "C:/bld"
