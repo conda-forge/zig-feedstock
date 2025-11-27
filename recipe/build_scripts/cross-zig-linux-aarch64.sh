@@ -22,7 +22,6 @@ qemu_prg=qemu-aarch64-static
 # Update global arrays
 EXTRA_CMAKE_ARGS+=(
   -DZIG_TARGET_TRIPLE="${SYSROOT_ARCH}"-linux-gnu
-  -DZIG_TARGET_MCPU=baseline
 )
 
 EXTRA_ZIG_ARGS+=(
@@ -30,7 +29,6 @@ EXTRA_ZIG_ARGS+=(
   --libc "${zig_build_dir}"/libc_file
   --libc-runtimes ${SYSROOT_PATH}/lib64
   -Dtarget=${ZIG_ARCH}-linux-gnu
-  -Dcpu=baseline
 )
 
 CMAKE_PATCHES+=(

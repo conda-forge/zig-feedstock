@@ -29,7 +29,6 @@ qemu_prg=qemu-ppc64le-static
 
 EXTRA_CMAKE_ARGS+=(
   -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu
-  -DZIG_TARGET_MCPU=baseline
 )
 
 EXTRA_ZIG_ARGS+=(
@@ -37,7 +36,6 @@ EXTRA_ZIG_ARGS+=(
   --libc "${zig_build_dir}"/libc_file
   --libc-runtimes ${SYSROOT_PATH}/lib64
   -Dtarget=${ZIG_ARCH}-linux-gnu
-  -Dcpu=baseline
 )
 
 CMAKE_PATCHES+=(
@@ -54,6 +52,7 @@ create_gcc14_glibc28_compat_lib
 setup_crosscompiling_emulator "${qemu_prg}"
 create_qemu_llvm_config_wrapper "${SYSROOT_PATH}"
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}" "" "linux-ppc64le"
+cat "${cmake_build_dir}"/config.h
 remove_qemu_llvm_config_wrapper
 
 # Build LLD libraries locally with -mcmodel=medium for PowerPC64LE

@@ -51,7 +51,7 @@ source:
         target_directory: lld-source
 
 build:
-  number: 2
+  number: 3
   skip: ppc64le
   dynamic_linking:
     missing_dso_allowlist:
@@ -68,7 +68,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - perl 5.32.*
-    - zig
+    - zig ==0.15.2 *_1  # Pin to _1: _2 is broken (SIGILL crash)
     - if: aarch64 or ppc64le
       then:
         # Needed to contrain x86 glibc version

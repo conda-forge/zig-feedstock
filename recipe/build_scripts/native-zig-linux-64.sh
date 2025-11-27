@@ -12,13 +12,9 @@ ZIG_ARCH="x86_64"
 
 EXTRA_CMAKE_ARGS+=(
   -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-linux-gnu
-  -DZIG_TARGET_MCPU=native
-  -DZIG_SINGLE_THREADED=OFF
 )
 
 EXTRA_ZIG_ARGS+=(
-  -Dcpu=native
-  -Dsingle-threaded=false
   -Dtarget=${ZIG_ARCH}-linux-gnu
 )
 
