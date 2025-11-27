@@ -26,7 +26,7 @@ EXTRA_CMAKE_ARGS+=(
 )
 
 EXTRA_ZIG_ARGS+=(
-  --maxrss 8500000000
+  --maxrss 7500000000
   -Dtarget=${ZIG_ARCH}-windows-msvc
 )
 
