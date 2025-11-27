@@ -51,8 +51,7 @@ source:
         target_directory: lld-source
 
 build:
-  number: 3
-  skip: ppc64le
+  number: 4
   dynamic_linking:
     missing_dso_allowlist:
       - if: osx
@@ -68,11 +67,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - perl 5.32.*
-    - zig ==0.15.2 h930564d_1  # Pin to _1: _2 is broken (SIGILL crash)
-    - if: aarch64 or ppc64le
-      then:
-        # Needed to contrain x86 glibc version
-        - ${{ c_stdlib }}_${{ build_platform }} ==${{ c_stdlib_version }}
+    - zig ==0.15.2 *_3  # Pin to _3: _2 is broken (SIGILL crash)
     - if: ppc64le
       then:
         # Needed to cross-compile ppc64le LLD with mcmodel=medium to prevent unsupported relocation
