@@ -21,7 +21,7 @@ qemu_prg=qemu-aarch64-static
 
 # Update global arrays
 EXTRA_CMAKE_ARGS+=(
-  -DZIG_TARGET_TRIPLE="${SYSROOT_ARCH}"-linux-gnu
+  -DZIG_TARGET_TRIPLE="${ZIG_ARCH}"-linux-gnu
 )
 
 EXTRA_ZIG_ARGS+=(

@@ -15,7 +15,7 @@ filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*" "-DZIG_USE_LLVM_CONFI
 EXTRA_CMAKE_ARGS+=(
   -DZIG_SYSTEM_LIBCXX=c++
   -DZIG_USE_LLVM_CONFIG=OFF
-  -DZIG_TARGET_TRIPLE=${SYSROOT_ARCH}-macos-none
+  -DZIG_TARGET_TRIPLE=${ZIG_ARCH}-macos-none
   -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
 )
 
