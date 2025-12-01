@@ -51,7 +51,7 @@ source:
         target_directory: lld-source
 
 build:
-  number: 4
+  number: 5
   dynamic_linking:
     missing_dso_allowlist:
       - if: osx
