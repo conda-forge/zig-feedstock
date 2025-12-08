@@ -51,7 +51,7 @@ source:
         target_directory: lld-source
 
 build:
-  number: 5
+  number: 6
   dynamic_linking:
     missing_dso_allowlist:
       - if: osx
@@ -97,6 +97,9 @@ requirements:
       then:
         - libcxx ${{ llvm_version }}.*
   run:
+    - if: not unix
+      then:
+        - libxml2
     - if: ppc64le
       then:
         # We redirect linking to gcc/ld.bfd
