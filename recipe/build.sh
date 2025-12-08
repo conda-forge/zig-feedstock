@@ -65,11 +65,12 @@ EXTRA_ZIG_ARGS=(
 
 CMAKE_PATCHES=()
 
+# Now that build scripts are much simpler, scripts could remove native/cross
 case "${target_platform}" in
   linux-64|osx-64|win-64)
     source "${RECIPE_DIR}"/build_scripts/native-"${builder}-${target_platform}".sh
     ;;
-  osx-arm64|linux-ppc64le|linux-aarch64)
+  osx-arm64|linux-ppc64le|linux-aarch64|win-arm64)
     source "${RECIPE_DIR}"/build_scripts/cross-"${builder}-${target_platform}".sh
     ;;
   *)
