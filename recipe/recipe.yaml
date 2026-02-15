@@ -1,6 +1,7 @@
 schema_version: 1
 
 context:
+  build_number: 7
   name: zig
   version: 0.15.2
   llvm_version: "20"
@@ -51,7 +52,7 @@ source:
         target_directory: lld-source
 
 build:
-  number: 6
+  number: ${{ build_number }}
   dynamic_linking:
     missing_dso_allowlist:
       - if: osx
@@ -67,7 +68,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - perl 5.32.*
-    - zig ==0.15.2 *_3  # Pin to _3: _2 is broken (SIGILL crash)
+    - zig >=0.15.2 *_3
     - if: ppc64le
       then:
         # Needed to cross-compile ppc64le LLD with mcmodel=medium to prevent unsupported relocation
@@ -97,14 +98,11 @@ requirements:
       then:
         - libcxx ${{ llvm_version }}.*
   run:
-    - if: not unix
-      then:
-        - libxml2
     - if: ppc64le
       then:
         # We redirect linking to gcc/ld.bfd
-        - binutils_impl_${{ target_platform }} >=2.45,<2.46
-        - gcc_impl_${{ target_platform }} ==14.3
+        - binutils_impl_${{ target_platform }} >=2.45
+        - gcc_impl_${{ target_platform }} >=14.3
   ignore_run_exports:
     by_name:
       - if: win
@@ -112,7 +110,10 @@ requirements:
           - ucrt
           - vc14_runtime
     from_package:
-      - libxml2-devel
+      - if: linux
+        then:
+          # Linux: zig doesn't directly link libxml2, it's transitive via libllvm20
+          - libxml2-devel
       - if: osx and arm64
         then:
           - libclang-cpp
@@ -121,25 +122,28 @@ requirements:
 tests:
   # Package contents verification
   - package_contents:
+      strict: true
       bin:
         - zig
       files:
-        - lib/zig/c.zig
-        - lib/zig/compiler_rt.zig
+        - doc/langref.html
+        - lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
         - lib/zig/zig.h
-        - if: not (osx and arm64)
-          then:
-            - lib/zig/compiler/**
-            - lib/zig/compiler_rt/**
-            - lib/zig/docs/**
-            - lib/zig/include/**
-            - lib/zig/init/**
-            - lib/zig/libc/**
-            - lib/zig/libcxx/**
-            - lib/zig/libcxxabi/**
-            - lib/zig/libunwind/**
-            - lib/zig/std/**
-
+        - lib/zig/build-web/*
+        - lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
+        - lib/zig/compiler/**
+        - lib/zig/compiler_rt/**
+        - lib/zig/docs/**
+        - lib/zig/include/**
+        - lib/zig/init/**
+        - lib/zig/libc/**
+        - lib/zig/libcxx/**
+        - lib/zig/libcxxabi/**
+        - lib/zig/libunwind/**
+        - lib/zig/libtsan/**
+        - lib/zig/std/**
+        # Test data
+        - etc/conda/test-files/zig/*
   # Functional tests
   - files:
       source:
