@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 7
+  build_number: 8
   name: zig
   version: 0.15.2
   llvm_version: "20"
@@ -68,7 +68,7 @@ requirements:
     - cmake >=3.5
     - ninja
     - perl 5.32.*
-    - zig >=0.15.2 *_3
+    - zig >=0.15.2
     - if: ppc64le
       then:
         # Needed to cross-compile ppc64le LLD with mcmodel=medium to prevent unsupported relocation
@@ -142,7 +142,7 @@ tests:
         - lib/zig/libunwind/**
         - lib/zig/libtsan/**
         - lib/zig/std/**
-        # Test data
+        # Post-install tests
         - etc/conda/test-files/zig/*
   # Functional tests
   - files:
