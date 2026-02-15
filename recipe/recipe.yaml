@@ -110,6 +110,10 @@ requirements:
           - ucrt
           - vc14_runtime
     from_package:
+      - if: linux
+        then:
+          # Linux: zig doesn't directly link libxml2, it's transitive via libllvm20
+          - libxml2-devel
       - if: osx and arm64
         then:
           - libclang-cpp
@@ -122,27 +126,24 @@ tests:
       bin:
         - zig
       files:
-        - lib/zig/c.zig
-        - lib/zig/compiler_rt.zig
+        - doc/langref.html
+        - lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
         - lib/zig/zig.h
-        - if: not (osx and arm64)
-          then:
-            - lib/zig/build-web/*
-            - lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
-            - lib/zig/compiler/**
-            - lib/zig/compiler_rt/**
-            - lib/zig/docs/**
-            - lib/zig/*.zig
-            - lib/zig/include/**
-            - lib/zig/init/**
-            - lib/zig/libc/**
-            - lib/zig/libcxx/**
-            - lib/zig/libcxxabi/**
-            - lib/zig/libunwind/**
-            - lib/zig/libtsan/**
-            - lib/zig/std/**
-            # Test data
-            - etc/conda/test-files/zig/*
+        - lib/zig/build-web/*
+        - lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
+        - lib/zig/compiler/**
+        - lib/zig/compiler_rt/**
+        - lib/zig/docs/**
+        - lib/zig/include/**
+        - lib/zig/init/**
+        - lib/zig/libc/**
+        - lib/zig/libcxx/**
+        - lib/zig/libcxxabi/**
+        - lib/zig/libunwind/**
+        - lib/zig/libtsan/**
+        - lib/zig/std/**
+        # Test data
+        - etc/conda/test-files/zig/*
   # Functional tests
   - files:
       source:
