@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """
-Test script for conda-zig-* wrapper validation.
-Validates that wrappers respect CONDA_ZIG_* environment variables.
+Test script for zig wrapper validation.
+Validates triplet-prefixed wrappers (zig_$TG_) and generic conda-zig-* wrappers (zig metapackage).
 
 Tests:
-1. Default behavior: wrappers execute zig subcommands when env vars unset
-2. Override behavior: wrappers execute custom commands when env vars set
-3. Argument passthrough: arguments are correctly forwarded
+1. Wrapper existence and functionality
+2. Compilation with wrapper
+3. Archive creation
 """
 
 import os
@@ -16,97 +16,68 @@ import tempfile
 from pathlib import Path
 
 
-def run_command(cmd: list[str], env: dict | None = None, check: bool = True) -> subprocess.CompletedProcess:
-    """Run command with optional environment override."""
-    run_env = os.environ.copy()
-    if env:
-        run_env.update(env)
-    return subprocess.run(cmd, capture_output=True, text=True, env=run_env, check=check)
+def run_command(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    """Run command and capture output."""
+    return subprocess.run(cmd, capture_output=True, text=True, check=check)
 
 
-def get_wrapper_path(name: str) -> str:
-    """Get the full path to a conda-zig wrapper."""
+def get_bin_dir() -> Path:
+    """Get the bin directory for the current platform."""
+    prefix = Path(os.environ["CONDA_PREFIX"])
     if sys.platform == "win32":
-        return str(Path(os.environ["CONDA_PREFIX"]) / "Library" / "bin" / f"{name}.bat")
-    else:
-        return str(Path(os.environ["CONDA_PREFIX"]) / "bin" / name)
+        return prefix / "Library" / "bin"
+    return prefix / "bin"
 
 
-def test_wrapper_exists(wrapper: str) -> bool:
-    """Test that wrapper script exists."""
-    path = get_wrapper_path(wrapper)
-    exists = Path(path).exists()
-    print(f"  {'✓' if exists else '✗'} {wrapper} exists at {path}")
-    return exists
+def find_available_wrappers() -> dict[str, Path]:
+    """Find available zig wrappers in the environment."""
+    bin_dir = get_bin_dir()
+    wrappers = {}
+
+    # Check for generic conda-zig-* wrappers (from zig metapackage)
+    generic_names = ["conda-zig-cc", "conda-zig-cxx", "conda-zig-ar", "conda-zig-ld"]
+    for name in generic_names:
+        if sys.platform == "win32":
+            path = bin_dir / f"{name}.bat"
+        else:
+            path = bin_dir / name
+        if path.exists():
+            wrappers[name] = path
+
+    # Check for triplet-prefixed wrappers (from zig_$TG_)
+    # Look for patterns like x86_64-conda-linux-gnu-zig-cc
+    for f in bin_dir.iterdir():
+        if f.is_file():
+            name = f.name
+            if sys.platform == "win32":
+                name = name.replace(".bat", "").replace(".cmd", "")
+            if "-zig-cc" in name and name not in wrappers:
+                wrappers["triplet-cc"] = f
+            elif "-zig-c++" in name and name not in wrappers:
+                wrappers["triplet-cxx"] = f
+            elif "-zig-ar" in name and name not in wrappers:
+                wrappers["triplet-ar"] = f
+
+    return wrappers
 
 
-def test_default_behavior(wrapper: str, expected_subcommand: str) -> bool:
-    """Test that wrapper executes zig subcommand by default."""
-    # Unset the override variable
-    env_var = f"CONDA_ZIG_{expected_subcommand.upper().replace('+', 'X')}"
-    env = {env_var: ""} if env_var in os.environ else {}
-
-    # For cc/c++, test --version which zig supports
-    if expected_subcommand in ("cc", "c++"):
-        try:
-            result = run_command([get_wrapper_path(wrapper), "--version"], env=env, check=False)
-            # zig cc --version outputs zig version info
-            success = result.returncode == 0 and "zig" in result.stdout.lower()
-            print(f"  {'✓' if success else '✗'} {wrapper} executes zig {expected_subcommand} by default")
-            if not success:
-                print(f"      stdout: {result.stdout[:100]}")
-                print(f"      stderr: {result.stderr[:100]}")
-            return success
-        except Exception as e:
-            print(f"  ✗ {wrapper} failed: {e}")
-            return False
-    else:
-        # For ar/ld, just check they can be invoked (may fail without args, but shouldn't crash)
-        try:
-            result = run_command([get_wrapper_path(wrapper), "--help"], env=env, check=False)
-            # Just check it ran (ar/ld may not support --help cleanly)
-            success = True  # If we got here without exception, the wrapper works
-            print(f"  {'✓' if success else '✗'} {wrapper} can invoke zig {expected_subcommand}")
-            return success
-        except Exception as e:
-            print(f"  ✗ {wrapper} failed: {e}")
-            return False
-
-
-def test_override_behavior(wrapper: str, env_var: str) -> bool:
-    """Test that wrapper respects environment variable override."""
-    # Create a simple script that echoes a marker
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write('import sys; print("OVERRIDE_MARKER"); print(" ".join(sys.argv[1:]))')
-        test_script = f.name
-
+def test_wrapper_version(name: str, path: Path) -> bool:
+    """Test that wrapper can execute --version."""
     try:
-        # Set the override to our test script
-        override_cmd = f"{sys.executable} {test_script}"
-        env = {env_var: override_cmd}
-
-        result = run_command([get_wrapper_path(wrapper), "test_arg1", "test_arg2"], env=env, check=False)
-
-        # Check that our marker is in output (meaning override was used)
-        has_marker = "OVERRIDE_MARKER" in result.stdout
-        has_args = "test_arg1" in result.stdout and "test_arg2" in result.stdout
-        success = has_marker and has_args
-
-        print(f"  {'✓' if success else '✗'} {wrapper} respects {env_var} override")
+        result = run_command([str(path), "--version"], check=False)
+        success = result.returncode == 0 and "zig" in result.stdout.lower()
+        print(f"  {'✓' if success else '✗'} {name} --version")
         if not success:
-            print(f"      Expected OVERRIDE_MARKER and args in output")
-            print(f"      stdout: {result.stdout[:200]}")
-            print(f"      stderr: {result.stderr[:200]}")
+            print(f"      stdout: {result.stdout[:100]}")
+            print(f"      stderr: {result.stderr[:100]}")
         return success
     except Exception as e:
-        print(f"  ✗ {wrapper} override test failed: {e}")
+        print(f"  ✗ {name} failed: {e}")
         return False
-    finally:
-        Path(test_script).unlink(missing_ok=True)
 
 
-def test_compilation(wrapper: str) -> bool:
-    """Test actual compilation with conda-zig-cc."""
+def test_compilation(cc_path: Path) -> bool:
+    """Test compilation with a zig cc wrapper."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -117,20 +88,20 @@ def test_compilation(wrapper: str) -> bool:
         obj_file = tmpdir / "test.o"
 
         try:
-            result = run_command([get_wrapper_path(wrapper), "-c", str(c_file), "-o", str(obj_file)], check=False)
+            result = run_command([str(cc_path), "-c", str(c_file), "-o", str(obj_file)], check=False)
             success = result.returncode == 0 and obj_file.exists()
-            print(f"  {'✓' if success else '✗'} {wrapper} can compile C code")
+            print(f"  {'✓' if success else '✗'} {cc_path.name} can compile C code")
             if not success:
                 print(f"      returncode: {result.returncode}")
                 print(f"      stderr: {result.stderr[:200]}")
             return success
         except Exception as e:
-            print(f"  ✗ {wrapper} compilation test failed: {e}")
+            print(f"  ✗ Compilation test failed: {e}")
             return False
 
 
-def test_archive_creation() -> bool:
-    """Test archive creation with conda-zig-ar."""
+def test_archive_creation(cc_path: Path, ar_path: Path) -> bool:
+    """Test archive creation with zig ar wrapper."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -141,28 +112,28 @@ def test_archive_creation() -> bool:
 
         try:
             # Compile to object
-            result = run_command([get_wrapper_path("conda-zig-cc"), "-c", str(c_file), "-o", str(obj_file)], check=False)
+            result = run_command([str(cc_path), "-c", str(c_file), "-o", str(obj_file)], check=False)
             if result.returncode != 0 or not obj_file.exists():
-                print(f"  ✗ conda-zig-ar: prerequisite compilation failed")
+                print("  ✗ Archive test: prerequisite compilation failed")
                 return False
 
             # Create archive
             archive_file = tmpdir / "test.a"
-            result = run_command([get_wrapper_path("conda-zig-ar"), "rcs", str(archive_file), str(obj_file)], check=False)
+            result = run_command([str(ar_path), "rcs", str(archive_file), str(obj_file)], check=False)
             success = result.returncode == 0 and archive_file.exists()
-            print(f"  {'✓' if success else '✗'} conda-zig-ar can create archives")
+            print(f"  {'✓' if success else '✗'} {ar_path.name} can create archives")
             if not success:
                 print(f"      returncode: {result.returncode}")
                 print(f"      stderr: {result.stderr[:200]}")
             return success
         except Exception as e:
-            print(f"  ✗ conda-zig-ar test failed: {e}")
+            print(f"  ✗ Archive test failed: {e}")
             return False
 
 
 def main():
     print("=" * 60)
-    print("conda-zig-* Wrapper Validation Tests")
+    print("Zig Wrapper Validation Tests")
     print("=" * 60)
 
     if "CONDA_PREFIX" not in os.environ:
@@ -172,37 +143,38 @@ def main():
     print(f"\nCONDA_PREFIX: {os.environ['CONDA_PREFIX']}")
     print(f"Platform: {sys.platform}")
 
-    wrappers = {
-        "conda-zig-cc": ("cc", "CONDA_ZIG_CC"),
-        "conda-zig-cxx": ("c++", "CONDA_ZIG_CXX"),
-        "conda-zig-ar": ("ar", "CONDA_ZIG_AR"),
-        "conda-zig-ld": ("ld", "CONDA_ZIG_LD"),
-    }
+    # Find available wrappers
+    wrappers = find_available_wrappers()
+
+    if not wrappers:
+        print("\nERROR: No zig wrappers found!")
+        return 1
+
+    print(f"\nFound wrappers: {list(wrappers.keys())}")
 
     results = []
 
-    # Test 1: Wrapper existence
-    print("\n--- Test 1: Wrapper Existence ---")
-    for wrapper in wrappers:
-        results.append(("existence", wrapper, test_wrapper_exists(wrapper)))
+    # Test version for cc/cxx wrappers
+    print("\n--- Test 1: Wrapper Version ---")
+    for name, path in wrappers.items():
+        if "cc" in name.lower() or "cxx" in name.lower():
+            results.append(("version", name, test_wrapper_version(name, path)))
 
-    # Test 2: Default behavior (executes zig subcommand)
-    print("\n--- Test 2: Default Behavior ---")
-    for wrapper, (subcommand, _) in wrappers.items():
-        results.append(("default", wrapper, test_default_behavior(wrapper, subcommand)))
+    # Test compilation
+    print("\n--- Test 2: Compilation ---")
+    cc_path = wrappers.get("conda-zig-cc") or wrappers.get("triplet-cc")
+    if cc_path:
+        results.append(("compile", cc_path.name, test_compilation(cc_path)))
+    else:
+        print("  ⊘ No cc wrapper found, skipping compilation test")
 
-    # Test 3: Override behavior (respects env var)
-    print("\n--- Test 3: Override Behavior ---")
-    for wrapper, (_, env_var) in wrappers.items():
-        results.append(("override", wrapper, test_override_behavior(wrapper, env_var)))
-
-    # Test 4: Actual compilation
-    print("\n--- Test 4: Compilation Test ---")
-    results.append(("compile", "conda-zig-cc", test_compilation("conda-zig-cc")))
-
-    # Test 5: Archive creation
-    print("\n--- Test 5: Archive Creation ---")
-    results.append(("archive", "conda-zig-ar", test_archive_creation()))
+    # Test archive creation
+    print("\n--- Test 3: Archive Creation ---")
+    ar_path = wrappers.get("conda-zig-ar") or wrappers.get("triplet-ar")
+    if cc_path and ar_path:
+        results.append(("archive", ar_path.name, test_archive_creation(cc_path, ar_path)))
+    else:
+        print("  ⊘ Missing cc or ar wrapper, skipping archive test")
 
     # Summary
     print("\n" + "=" * 60)

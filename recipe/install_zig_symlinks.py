@@ -15,10 +15,14 @@ def main():
 
     prefix = Path(os.environ.get("PREFIX", sys.prefix))
     target_triplet = os.environ.get("CONDA_TOOLCHAIN_HOST", "x86_64-conda-linux-gnu")
-    is_windows = sys.platform == "win32"
+    target_platform = os.environ.get("target_platform", "")
+
+    # Check target platform, not build platform (for cross-compilation)
+    is_windows = target_platform.startswith("win") or sys.platform == "win32"
 
     print(f"Prefix: {prefix}")
     print(f"Target triplet: {target_triplet}")
+    print(f"target_platform: {target_platform}")
     print(f"Platform: {'Windows' if is_windows else 'Unix'}")
 
     bin_dir = prefix / "Library" / "bin" if is_windows else prefix / "bin"
@@ -38,6 +42,12 @@ def main():
         else:
             create_unix_symlink(bin_dir, link_name, target_name)
 
+    # Install generic conda-zig-* wrappers (only in zig metapackage, no collision)
+    if is_windows:
+        install_windows_conda_zig_wrappers(bin_dir)
+    else:
+        install_unix_conda_zig_wrappers(bin_dir)
+
     print("=== Zig Metapackage Installation Complete ===")
 
 
@@ -46,10 +56,10 @@ def create_unix_symlink(bin_dir: Path, link_name: str, target_name: str):
     link_path = bin_dir / link_name
     target_path = bin_dir / target_name
 
-    # Only create if target exists (from zig_impl package)
+    # Verify target exists (from host dependency)
     if not target_path.exists():
-        print(f"  Skipping {link_name} -> {target_name} (target not found)")
-        return
+        print(f"  ERROR: {link_name} -> {target_name} (target not found)")
+        raise FileNotFoundError(f"Symlink target not found: {target_path}")
 
     # Remove existing symlink if present
     if link_path.is_symlink() or link_path.exists():
@@ -62,13 +72,14 @@ def create_unix_symlink(bin_dir: Path, link_name: str, target_name: str):
 
 def create_windows_wrapper(bin_dir: Path, link_name: str, target_name: str):
     """Create a Windows batch wrapper."""
-    # Check for .exe target
+    # Verify target exists (from host dependency)
     target_exe = bin_dir / f"{target_name}.exe"
     if not target_exe.exists():
+        # Also check without .exe
         target_exe = bin_dir / target_name
         if not target_exe.exists():
-            print(f"  Skipping {link_name} -> {target_name} (target not found)")
-            return
+            print(f"  ERROR: {link_name} -> {target_name} (target not found)")
+            raise FileNotFoundError(f"Wrapper target not found: {target_name}")
 
     # Create .bat wrapper
     bat_path = bin_dir / f"{link_name}.bat"
@@ -81,6 +92,38 @@ def create_windows_wrapper(bin_dir: Path, link_name: str, target_name: str):
     cmd_path = bin_dir / f"{link_name}.cmd"
     cmd_path.write_text(bat_content)
     print(f"  Created wrapper: {link_name}.cmd -> {target_name}.exe")
+
+
+def install_unix_conda_zig_wrappers(bin_dir: Path):
+    """Install generic conda-zig-* wrappers that call zig subcommands."""
+    wrappers = {
+        "conda-zig-cc": '#!/bin/bash\nexec zig cc "$@"\n',
+        "conda-zig-cxx": '#!/bin/bash\nexec zig c++ "$@"\n',
+        "conda-zig-ar": '#!/bin/bash\nexec zig ar "$@"\n',
+        "conda-zig-ld": '#!/bin/bash\nexec zig ld "$@"\n',
+    }
+
+    for name, content in wrappers.items():
+        wrapper_path = bin_dir / name
+        wrapper_path.write_text(content)
+        wrapper_path.chmod(0o755)
+        print(f"  Installed: {wrapper_path}")
+
+
+def install_windows_conda_zig_wrappers(bin_dir: Path):
+    """Install generic conda-zig-* wrappers for Windows."""
+    wrappers = {
+        "conda-zig-cc": '@echo off\n"%~dp0zig.exe" cc %*\n',
+        "conda-zig-cxx": '@echo off\n"%~dp0zig.exe" c++ %*\n',
+        "conda-zig-ar": '@echo off\n"%~dp0zig.exe" ar %*\n',
+        "conda-zig-ld": '@echo off\n"%~dp0zig.exe" ld %*\n',
+    }
+
+    for name, content in wrappers.items():
+        for ext in [".bat", ".cmd"]:
+            wrapper_path = bin_dir / f"{name}{ext}"
+            wrapper_path.write_text(content)
+            print(f"  Installed: {wrapper_path}")
 
 
 if __name__ == "__main__":

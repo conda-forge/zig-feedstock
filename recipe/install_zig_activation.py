@@ -20,7 +20,9 @@ def main():
     zig_target = os.environ.get("ZIG_TARGET", "native")
     target_triplet = os.environ.get("TARGET_TRIPLET", "x86_64-conda-linux-gnu")
     build_mode = detect_build_mode()
-    is_windows = sys.platform == "win32"
+    # Check target platform, not build platform (for cross-compilation)
+    target_platform = os.environ.get("target_platform", "")
+    is_windows = target_platform.startswith("win") or sys.platform == "win32"
 
     print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
     print(f"TG_: {tg}")
@@ -70,7 +72,7 @@ def install_native_activation(prefix: Path, recipe_dir: Path, conda_triplet: str
 
     if is_windows:
         install_activation_from_template(prefix, recipe_dir, is_windows=True)
-        install_windows_wrappers(prefix)
+        install_windows_wrappers(prefix, conda_triplet)
     else:
         install_activation_from_template(prefix, recipe_dir, is_windows=False)
         install_unix_wrappers(prefix, conda_triplet)
@@ -148,25 +150,12 @@ def install_activation_from_template(prefix: Path, recipe_dir: Path, is_windows:
 
 
 def install_unix_wrappers(prefix: Path, conda_triplet: str):
-    """Install Unix wrapper scripts."""
+    """Install Unix triplet-prefixed wrapper scripts."""
     bin_dir = prefix / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
-    # conda-zig-* wrappers that use environment variables
-    wrappers = {
-        "conda-zig-cc": '#!/bin/bash\nexec ${CONDA_ZIG_CC:-zig cc} "$@"\n',
-        "conda-zig-cxx": '#!/bin/bash\nexec ${CONDA_ZIG_CXX:-zig c++} "$@"\n',
-        "conda-zig-ar": '#!/bin/bash\nexec ${CONDA_ZIG_AR:-zig ar} "$@"\n',
-        "conda-zig-ld": '#!/bin/bash\nexec ${CONDA_ZIG_LD:-zig ld} "$@"\n',
-    }
-
-    for name, content in wrappers.items():
-        wrapper_path = bin_dir / name
-        wrapper_path.write_text(content)
-        wrapper_path.chmod(0o755)
-        print(f"  Installed: {wrapper_path}")
-
-    # Triplet-prefixed tool wrappers
+    # Tool wrappers only - main zig binary is in zig_impl_$TG_ package
+    # (no generic conda-zig-* to avoid collision with metapackage)
     for tool in ["cc", "c++", "ar"]:
         wrapper_path = bin_dir / f"{conda_triplet}-zig-{tool}"
         content = f'#!/bin/bash\nexec "${{CONDA_PREFIX}}/bin/{conda_triplet}-zig" {tool} "$@"\n'
@@ -175,22 +164,16 @@ def install_unix_wrappers(prefix: Path, conda_triplet: str):
         print(f"  Installed: {wrapper_path}")
 
 
-def install_windows_wrappers(prefix: Path):
-    """Install Windows wrapper scripts."""
+def install_windows_wrappers(prefix: Path, conda_triplet: str):
+    """Install Windows triplet-prefixed wrapper scripts."""
     bin_dir = prefix / "Library" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
-    # conda-zig-* batch wrappers
-    wrappers = {
-        "conda-zig-cc": '@echo off\n"%CONDA_PREFIX%\\Library\\bin\\zig.exe" cc %*\n',
-        "conda-zig-cxx": '@echo off\n"%CONDA_PREFIX%\\Library\\bin\\zig.exe" c++ %*\n',
-        "conda-zig-ar": '@echo off\n"%CONDA_PREFIX%\\Library\\bin\\zig.exe" ar %*\n',
-        "conda-zig-ld": '@echo off\n"%CONDA_PREFIX%\\Library\\bin\\zig.exe" ld %*\n',
-    }
-
-    for name, content in wrappers.items():
+    # Triplet-prefixed tool wrappers only (no generic conda-zig-* to avoid collision)
+    for tool in ["cc", "c++", "ar"]:
         for ext in [".bat", ".cmd"]:
-            wrapper_path = bin_dir / f"{name}{ext}"
+            wrapper_path = bin_dir / f"{conda_triplet}-zig-{tool}{ext}"
+            content = f'@echo off\n"%CONDA_PREFIX%\\Library\\bin\\{conda_triplet}-zig.exe" {tool} %*\n'
             wrapper_path.write_text(content)
             print(f"  Installed: {wrapper_path}")
 

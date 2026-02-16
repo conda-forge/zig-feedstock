@@ -19,6 +19,22 @@ if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO
   fi
 fi
 
+# === Stub mode for quick recipe iteration ===
+# Set ZIG_STUB_MODE=1 to skip full compilation and install placeholder binaries
+if [[ "${ZIG_STUB_MODE:-0}" == "1" ]]; then
+    echo "=== STUB MODE ENABLED ==="
+    echo "Installing stub binaries instead of full compilation"
+    echo "  TARGET_TRIPLET=${TARGET_TRIPLET}"
+    echo "  TG_=${TG_:-not set}"
+    echo "  ZIG_TARGET=${ZIG_TARGET:-not set}"
+    python "${RECIPE_DIR}/scripts/install_zig_stub.py"
+    # Rename to triplet-prefixed (same as real build post-install)
+    mv "${PREFIX}/bin/zig" "${PREFIX}/bin/${TARGET_TRIPLET}-zig"
+    echo "  Renamed: zig -> ${TARGET_TRIPLET}-zig"
+    echo "=== STUB MODE COMPLETE ==="
+    exit 0
+fi
+
 # === Package output detection ===
 # rattler-build sets PKG_NAME for the current output being built
 # PKG_VARIANT is set by recipe.yaml script env for impl packages
@@ -129,7 +145,7 @@ rm -f ${PREFIX}/bin/zig.pdb
 case "${PKG_NAME:-}" in
     zig_impl_*)
         echo "Post-install implementation package: ${PKG_NAME}"
-        mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TOOLCHAIN_HOST}"-zig
+        mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${TARGET_TRIPLET}"-zig
         ;;
     *)
         echo "WARNING: Unknown package name: ${PKG_NAME}"
