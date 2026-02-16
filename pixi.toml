@@ -47,6 +47,12 @@ description = "Build zig-feedstock with variant linux_64_TG_linux-riscv64 direct
 [tasks."inspect-linux_64_TG_linux-riscv64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_TG_linux-riscv64.yaml"
 description = "List contents of zig-feedstock packages built for variant linux_64_TG_linux-riscv64"
+[tasks."build-linux_64_TG_linux-s390x"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_64_TG_linux-s390x.yaml"
+description = "Build zig-feedstock with variant linux_64_TG_linux-s390x directly (without setup scripts)"
+[tasks."inspect-linux_64_TG_linux-s390x"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_TG_linux-s390x.yaml"
+description = "List contents of zig-feedstock packages built for variant linux_64_TG_linux-s390x"
 [tasks."build-linux_aarch64_TG_linux-aarch64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_TG_linux-aarch64.yaml"
 description = "Build zig-feedstock with variant linux_aarch64_TG_linux-aarch64 directly (without setup scripts)"

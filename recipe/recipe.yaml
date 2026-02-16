@@ -10,7 +10,6 @@ context:
   library: ${{ "Library/" if not unix }}
   m2: ${{ "m2-" if not unix }}
   sh: ${{ ".bat" if not unix else ".sh" }}
-  bat: ${{ ".bat" if not unix }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_target: >-
@@ -18,6 +17,8 @@ context:
       "x86_64-linux-gnu"            if TG_ == "linux-64"       else
       "aarch64-linux-gnu"           if TG_ == "linux-aarch64"  else
       "powerpc64le-linux-gnu"       if TG_ == "linux-ppc64le"  else
+      "riscv64-linux-gnu"           if TG_ == "linux-riscv64"  else
+      "s390x-linux-gnu"             if TG_ == "linux-s390x"    else
       "x86_64-macos-none"           if TG_ == "osx-64"         else
       "aarch64-macos-none"          if TG_ == "osx-arm64"      else
       "x86_64-windows-gnu"          if TG_ == "win-64"         else
@@ -30,6 +31,8 @@ context:
       "x86_64-conda-linux-gnu"      if TG_ == "linux-64"       else
       "aarch64-conda-linux-gnu"     if TG_ == "linux-aarch64"  else
       "powerpc64le-conda-linux-gnu" if TG_ == "linux-ppc64le"  else
+      "riscv64-conda-linux-gnu"     if TG_ == "linux-riscv64"  else
+      "s390x-conda-linux-gnu"       if TG_ == "linux-s390x"    else
       "x86_64-apple-darwin13.4.0"   if TG_ == "osx-64"         else
       "arm64-apple-darwin20.0.0"    if TG_ == "osx-arm64"      else
       "x86_64-w64-mingw32"          if TG_ == "win-64"         else
@@ -301,7 +304,11 @@ outputs:
     build:
       skip: TG_ != target_platform
       # Not noarch - creates symlinks (Unix) or wrappers (Windows) to platform-specific binaries
-      script: install_zig_symlinks.py
+      script:
+        file: install_zig_symlinks.py
+        env:
+          TARGET_TRIPLET: ${{ target_triplet }}
+          TG_: ${{ TG_ }}
     requirements:
       build:
         - python 3.12.*

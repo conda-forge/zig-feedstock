@@ -14,7 +14,8 @@ def main():
     print("=== Installing Zig Metapackage Symlinks ===")
 
     prefix = Path(os.environ.get("PREFIX", sys.prefix))
-    target_triplet = os.environ.get("CONDA_TOOLCHAIN_HOST", "x86_64-conda-linux-gnu")
+    # Prefer explicit TARGET_TRIPLET from recipe, fallback to CONDA_TOOLCHAIN_HOST
+    target_triplet = os.environ.get("TARGET_TRIPLET") or os.environ.get("CONDA_TOOLCHAIN_HOST", "x86_64-conda-linux-gnu")
     target_platform = os.environ.get("target_platform", "")
 
     # Check target platform, not build platform (for cross-compilation)
