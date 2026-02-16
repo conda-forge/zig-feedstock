@@ -219,7 +219,7 @@ outputs:
               - ${{ target_triplet }}-zig test zig-source/test/behavior.zig
             else:
               - echo "Skip test on arm64"
-        file:
+        files:
           source:
             - zig-source/test/behavior.zig
 
@@ -247,29 +247,32 @@ outputs:
     tests:
       - package_contents:
           strict: true
+          bin:
+            - conda-zig-cc
+            - conda-zig-cxx
+            - conda-zig-ar
+            - conda-zig-ld
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-            - bin/conda-zig-cc
-            - bin/conda-zig-cxx
-            - bin/conda-zig-ar
-            - bin/conda-zig-ld
             # Post-install tests
             - etc/conda/test-files/zig*
       # Comprehensive wrapper validation tests
-      - requirements:
-          run:
-            - python >=3.10
-        files:
-          source:
-            - testing/test_conda_zig_wrappers.py
-        script:
+      - script:
           - if: not arm64
             then:
               # Test zig command via activation
               - zig version
               # Run comprehensive wrapper validation
               - python testing/test_conda_zig_wrappers.py
+            else:
+              - echo "Skip for arm64:
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          source:
+            - testing/test_conda_zig_wrappers.py
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
