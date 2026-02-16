@@ -1,3 +1,5 @@
+TG_:
+- linux-ppc64le
 c_compiler:
 - gcc
 c_compiler_version:

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Zig C compiler wrapper
+# Expands CONDA_ZIG_CC environment variable
+exec ${CONDA_ZIG_CC:-zig cc} "$@"

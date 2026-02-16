@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+set -euxo pipefail
+IFS=$'\n\t'
+
 # CRITICAL: Ensure we're using conda bash 5.2+, not system bash
 # The shebang uses /bin/bash, but conda-build will invoke this with the
 # build environment's bash through its own execution wrapper.
@@ -16,7 +19,19 @@ if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO
   fi
 fi
 
-set -euo pipefail
+# === Package output detection ===
+# rattler-build sets PKG_NAME for the current output being built
+# PKG_VARIANT is set by recipe.yaml script env for impl packages
+case "${PKG_NAME:-}" in
+    zig_impl_*)
+        echo "Building implementation package: ${PKG_NAME}"
+        echo "  PKG_VARIANT=${PKG_VARIANT:-not set}"
+        ;;
+    *)
+        echo "WARNING: Unknown package name: ${PKG_NAME}"
+        exit 1
+        ;;
+esac
 
 # --- Functions ---
 
@@ -37,8 +52,13 @@ export cmake_build_dir="${SRC_DIR}/build-release"
 export cmake_install_dir="${SRC_DIR}/cmake-built-install"
 export zig_build_dir="${SRC_DIR}/conda-zig-source"
 
-# Set zig: This may need to be changed when the previous conda zig fails to compile a new version
-export zig="${BUILD_PREFIX}"/bin/zig
+if [[ "${PKG_VERSION}" == "0.15.2" ]] && [[ "${BUILD_NUMBER}" == "8" ]]; then
+  # Install bootstrap zig via mamba (avoids rattler-build cycle detection)
+  # This installs the previous zig version needed to build the new one
+  # REMOVE after 0.15.2 build_number 8
+  install_bootstrap_zig "0.15.2" "*_7"
+  export zig="${BOOTSTRAP_ZIG:-${BUILD_PREFIX}/bin/zig}"
+fi
 
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
@@ -105,3 +125,14 @@ fi
 
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb
+
+case "${PKG_NAME:-}" in
+    zig_impl_*)
+        echo "Post-install implementation package: ${PKG_NAME}"
+        mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TOOLCHAIN_HOST}"-zig
+        ;;
+    *)
+        echo "WARNING: Unknown package name: ${PKG_NAME}"
+        exit 1
+        ;;
+esac

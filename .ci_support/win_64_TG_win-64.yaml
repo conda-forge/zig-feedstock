@@ -1,3 +1,5 @@
+TG_:
+- win-64
 c_compiler:
 - vs2022
 c_stdlib:

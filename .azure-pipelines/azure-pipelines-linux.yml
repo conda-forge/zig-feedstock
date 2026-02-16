@@ -8,16 +8,24 @@ jobs:
     vmImage: ubuntu-latest
   strategy:
     matrix:
-      linux_64_:
-        CONFIG: linux_64_
+      linux_64_TG_linux-64:
+        CONFIG: linux_64_TG_linux-64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_aarch64_:
-        CONFIG: linux_aarch64_
+      linux_64_TG_linux-aarch64:
+        CONFIG: linux_64_TG_linux-aarch64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_ppc64le_:
-        CONFIG: linux_ppc64le_
+      linux_64_TG_linux-ppc64le:
+        CONFIG: linux_64_TG_linux-ppc64le
+        UPLOAD_PACKAGES: 'True'
+        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
+      linux_aarch64_TG_linux-aarch64:
+        CONFIG: linux_aarch64_TG_linux-aarch64
+        UPLOAD_PACKAGES: 'True'
+        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
+      linux_ppc64le_TG_linux-ppc64le:
+        CONFIG: linux_ppc64le_TG_linux-ppc64le
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
   timeoutInMinutes: 360

@@ -1,9 +1,18 @@
-# C standard library version requirements
-# For Linux
+# Zig Compiler Package Variant Configuration
+# Following GCC-style TG_ pattern
+
+# Target platform variant key
+TG_:
+  - linux-64
+  - linux-aarch64
+  - linux-ppc64le
+  - osx-64
+  - osx-arm64
+  - win-64
+
+# C standard library version (keep existing)
 c_stdlib_version:
   - if: linux
-    then: 2.28
-
-  # Note: osx-arm64: 11.0 failed, using 11.3
+    then: "2.28"
   - if: osx
-    then: 11.3
+    then: "11.3"
