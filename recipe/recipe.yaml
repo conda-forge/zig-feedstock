@@ -30,8 +30,8 @@ context:
       "x86_64-conda-linux-gnu"      if TG_ == "linux-64"       else
       "aarch64-conda-linux-gnu"     if TG_ == "linux-aarch64"  else
       "powerpc64le-conda-linux-gnu" if TG_ == "linux-ppc64le"  else
-      "x86_64-apple-darwin"         if TG_ == "osx-64"         else
-      "arm64-apple-darwin"          if TG_ == "osx-arm64"      else
+      "x86_64-apple-darwin13.4.0"   if TG_ == "osx-64"         else
+      "arm64-apple-darwin20.0.0"    if TG_ == "osx-arm64"      else
       "x86_64-w64-mingw32"          if TG_ == "win-64"         else
       "unknown"
     }}
@@ -117,6 +117,7 @@ outputs:
           ZIG_TARGET: ${{ zig_target }}
           BUILD_NUMBER: ${{ build_number }}
           PKG_VARIANT: impl
+          TARGET_TRIPLET: ${{ target_triplet }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -221,7 +222,7 @@ outputs:
               - echo "Skip test on arm64"
         files:
           source:
-            - zig-source/test/behavior.zig
+            - zig-source/test
 
   # ==========================================================================
   # ACTIVATION: zig_$TG_ (scripts + wrappers ONLY)
@@ -232,7 +233,7 @@ outputs:
       name: zig_${{ TG_ }}
     build:
       skip: not (is_native or is_cross_compiler or is_cross_target)
-      noarch: generic
+      # Not noarch - wrappers have platform-specific content
       script:
         file: install_zig_activation.py
         env:
@@ -242,36 +243,52 @@ outputs:
     requirements:
       build:
         - python 3.12.*
+      # No host dep needed - install script just creates wrapper text, doesn't need impl binary
       run:
-        - ${{ pin_subpackage("zig_impl_" ~ TG_, exact=True) }}
+        # Cross-compiler needs NATIVE impl (runs on target_platform, produces code for TG_)
+        # Uses previous build (bootstrapping cycle - can't use current build number)
+        # Native/cross-target needs TG_ impl (same matrix entry, can pin)
+        - if: is_cross_compiler
+          then:
+            - if: match(version, ">=0.15.2") and (build_number > 8)
+              then:
+                - zig_impl_${{ target_platform }} >=${{ version }}
+          else:
+            - ${{ pin_subpackage("zig_impl_" ~ TG_, exact=True) }}
     tests:
       - package_contents:
           strict: true
           bin:
-            - conda-zig-cc
-            - conda-zig-cxx
-            - conda-zig-ar
-            - conda-zig-ld
+            # Main wrapper only created for cross-compiler builds
+            - if: is_cross_compiler
+              then:
+                - ${{ target_triplet }}-zig
+            # Tool wrappers (all build types)
+            - ${{ target_triplet }}-zig-cc
+            - ${{ target_triplet }}-zig-c++
+            - ${{ target_triplet }}-zig-ar
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
             # Post-install tests
-            - etc/conda/test-files/zig*
+            - etc/conda/test-files/zig_${{ TG_ }}/*
       # Comprehensive wrapper validation tests
       - script:
-          - if: not arm64
+          - if: match(version, ">=0.15.2") and (build_number > 8)
             then:
-              # Test zig command via activation
-              - zig version
-              # Run comprehensive wrapper validation
-              - python testing/test_conda_zig_wrappers.py
+              - if: not arm64
+                then:
+                  - ${{ target_triplet }}-zig version
+                  - python testing/test_conda_zig_wrappers.py
+                else:
+                  - echo "Skip functional tests on arm64"
             else:
-              - echo "Skip for arm64:
+              - echo "Skip tests on build _8"
         requirements:
           run:
             - python >=3.10
         files:
-          source:
+          recipe:
             - testing/test_conda_zig_wrappers.py
 
   # ==========================================================================
@@ -283,11 +300,14 @@ outputs:
       name: zig
     build:
       skip: TG_ != target_platform
-      noarch: generic
+      # Not noarch - creates symlinks (Unix) or wrappers (Windows) to platform-specific binaries
       script: install_zig_symlinks.py
     requirements:
       build:
         - python 3.12.*
+      host:
+        # Host dep ensures targets exist during build for symlink validation
+        - ${{ pin_subpackage("zig_" ~ TG_, exact=True) }}
       run:
         - ${{ pin_subpackage("zig_" ~ TG_, exact=True) }}
       run_exports:
@@ -296,14 +316,18 @@ outputs:
       - package_contents:
           strict: true
           bin:
-            - if: unix
-              then: zig
-            - if: win
-              then: zig.bat
+            # Unprefixed symlinks to triplet-prefixed binaries
+            - zig
+            - zig-cc
+            - zig-c++
+            - zig-ar
+            # NOTE: No conda-zig-* wrappers (unlike OCaml, zig doesn't bake paths)
       - script:
-          - if: build_platform == target_platform
-            then: zig version
-            else: echo "Skip on cross-compiled platform"
+          - if: not arm64
+            then:
+              - zig version
+            else:
+              - echo "Skip on cross-compiled platform"
 
   # ==========================================================================
   # TOOLCHAIN META-PACKAGE: zig-compiler (toolchain metapackage)

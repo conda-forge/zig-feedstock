@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 """
 Test script for zig wrapper validation.
-Validates triplet-prefixed wrappers (zig_$TG_) and generic conda-zig-* wrappers (zig metapackage).
+Validates triplet-prefixed wrappers (zig_$TG_).
 
 Tests:
 1. Wrapper existence and functionality
 2. Compilation with wrapper
 3. Archive creation
+
+NOTE: No conda-zig-* generic wrappers (unlike OCaml, zig doesn't bake paths).
 """
 
 import os
@@ -34,16 +36,6 @@ def find_available_wrappers() -> dict[str, Path]:
     bin_dir = get_bin_dir()
     wrappers = {}
 
-    # Check for generic conda-zig-* wrappers (from zig metapackage)
-    generic_names = ["conda-zig-cc", "conda-zig-cxx", "conda-zig-ar", "conda-zig-ld"]
-    for name in generic_names:
-        if sys.platform == "win32":
-            path = bin_dir / f"{name}.bat"
-        else:
-            path = bin_dir / name
-        if path.exists():
-            wrappers[name] = path
-
     # Check for triplet-prefixed wrappers (from zig_$TG_)
     # Look for patterns like x86_64-conda-linux-gnu-zig-cc
     for f in bin_dir.iterdir():
@@ -51,11 +43,11 @@ def find_available_wrappers() -> dict[str, Path]:
             name = f.name
             if sys.platform == "win32":
                 name = name.replace(".bat", "").replace(".cmd", "")
-            if "-zig-cc" in name and name not in wrappers:
+            if "-zig-cc" in name:
                 wrappers["triplet-cc"] = f
-            elif "-zig-c++" in name and name not in wrappers:
+            elif "-zig-c++" in name:
                 wrappers["triplet-cxx"] = f
-            elif "-zig-ar" in name and name not in wrappers:
+            elif "-zig-ar" in name:
                 wrappers["triplet-ar"] = f
 
     return wrappers
@@ -162,7 +154,7 @@ def main():
 
     # Test compilation
     print("\n--- Test 2: Compilation ---")
-    cc_path = wrappers.get("conda-zig-cc") or wrappers.get("triplet-cc")
+    cc_path = wrappers.get("triplet-cc")
     if cc_path:
         results.append(("compile", cc_path.name, test_compilation(cc_path)))
     else:
@@ -170,7 +162,7 @@ def main():
 
     # Test archive creation
     print("\n--- Test 3: Archive Creation ---")
-    ar_path = wrappers.get("conda-zig-ar") or wrappers.get("triplet-ar")
+    ar_path = wrappers.get("triplet-ar")
     if cc_path and ar_path:
         results.append(("archive", ar_path.name, test_archive_creation(cc_path, ar_path)))
     else:

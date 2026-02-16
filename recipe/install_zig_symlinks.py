@@ -42,11 +42,8 @@ def main():
         else:
             create_unix_symlink(bin_dir, link_name, target_name)
 
-    # Install generic conda-zig-* wrappers (only in zig metapackage, no collision)
-    if is_windows:
-        install_windows_conda_zig_wrappers(bin_dir)
-    else:
-        install_unix_conda_zig_wrappers(bin_dir)
+    # NOTE: No conda-zig-* generic wrappers needed (unlike OCaml which bakes paths)
+    # Users can call `zig cc` directly or use triplet-prefixed wrappers
 
     print("=== Zig Metapackage Installation Complete ===")
 
@@ -94,36 +91,6 @@ def create_windows_wrapper(bin_dir: Path, link_name: str, target_name: str):
     print(f"  Created wrapper: {link_name}.cmd -> {target_name}.exe")
 
 
-def install_unix_conda_zig_wrappers(bin_dir: Path):
-    """Install generic conda-zig-* wrappers that call zig subcommands."""
-    wrappers = {
-        "conda-zig-cc": '#!/bin/bash\nexec zig cc "$@"\n',
-        "conda-zig-cxx": '#!/bin/bash\nexec zig c++ "$@"\n',
-        "conda-zig-ar": '#!/bin/bash\nexec zig ar "$@"\n',
-        "conda-zig-ld": '#!/bin/bash\nexec zig ld "$@"\n',
-    }
-
-    for name, content in wrappers.items():
-        wrapper_path = bin_dir / name
-        wrapper_path.write_text(content)
-        wrapper_path.chmod(0o755)
-        print(f"  Installed: {wrapper_path}")
-
-
-def install_windows_conda_zig_wrappers(bin_dir: Path):
-    """Install generic conda-zig-* wrappers for Windows."""
-    wrappers = {
-        "conda-zig-cc": '@echo off\n"%~dp0zig.exe" cc %*\n',
-        "conda-zig-cxx": '@echo off\n"%~dp0zig.exe" c++ %*\n',
-        "conda-zig-ar": '@echo off\n"%~dp0zig.exe" ar %*\n',
-        "conda-zig-ld": '@echo off\n"%~dp0zig.exe" ld %*\n',
-    }
-
-    for name, content in wrappers.items():
-        for ext in [".bat", ".cmd"]:
-            wrapper_path = bin_dir / f"{name}{ext}"
-            wrapper_path.write_text(content)
-            print(f"  Installed: {wrapper_path}")
 
 
 if __name__ == "__main__":
