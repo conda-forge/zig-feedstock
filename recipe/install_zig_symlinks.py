@@ -70,26 +70,35 @@ def create_unix_symlink(bin_dir: Path, link_name: str, target_name: str):
 
 def create_windows_wrapper(bin_dir: Path, link_name: str, target_name: str):
     """Create a Windows batch wrapper."""
-    # Verify target exists (from host dependency)
-    target_exe = bin_dir / f"{target_name}.exe"
-    if not target_exe.exists():
-        # Also check without .exe
-        target_exe = bin_dir / target_name
-        if not target_exe.exists():
-            print(f"  ERROR: {link_name} -> {target_name} (target not found)")
-            raise FileNotFoundError(f"Wrapper target not found: {target_name}")
+    prefix = bin_dir.parent.parent  # Library/bin -> Library -> PREFIX
+
+    # Verify target exists - check both Library/bin and bin locations
+    target_in_lib = bin_dir / f"{target_name}.exe"
+    target_in_bin = prefix / "bin" / f"{target_name}.exe"
+
+    if target_in_lib.exists():
+        # Target in Library/bin - use relative path
+        bat_content = f'@echo off\n"%~dp0{target_name}.exe" %*\n'
+        target_location = "Library/bin"
+    elif target_in_bin.exists():
+        # Target in bin - use absolute CONDA_PREFIX path
+        bat_content = f'@echo off\n"%CONDA_PREFIX%\\bin\\{target_name}.exe" %*\n'
+        target_location = "bin"
+    else:
+        print(f"  ERROR: {link_name} -> {target_name} (target not found)")
+        print(f"  Checked: {target_in_lib}")
+        print(f"  Checked: {target_in_bin}")
+        raise FileNotFoundError(f"Wrapper target not found: {target_name}")
 
     # Create .bat wrapper
     bat_path = bin_dir / f"{link_name}.bat"
-    bat_content = f'@echo off\n"%~dp0{target_name}.exe" %*\n'
-
     bat_path.write_text(bat_content)
-    print(f"  Created wrapper: {link_name}.bat -> {target_name}.exe")
+    print(f"  Created wrapper: {link_name}.bat -> {target_location}/{target_name}.exe")
 
     # Also create .cmd for PowerShell compatibility
     cmd_path = bin_dir / f"{link_name}.cmd"
     cmd_path.write_text(bat_content)
-    print(f"  Created wrapper: {link_name}.cmd -> {target_name}.exe")
+    print(f"  Created wrapper: {link_name}.cmd -> {target_location}/{target_name}.exe")
 
 
 
