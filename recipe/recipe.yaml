@@ -166,7 +166,9 @@ outputs:
   - package:
       name: zig_impl_${{ TG_ }}
     build:
-      skip: needs_zig_llvmdev or not (is_native or is_cross_compiler or is_cross_target) and TG_ != target_platform
+      # Build zig_impl ONLY for native and cross-target (actual binary compilation)
+      # Skip cross-compiler: uses native zig configured as cross-compiler, no new binary
+      skip: needs_zig_llvmdev or not (is_native or is_cross_target)
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx

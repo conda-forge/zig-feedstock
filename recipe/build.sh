@@ -123,9 +123,9 @@ CMAKE_PATCHES=()
 #   cross-compiler: TG_ != target_platform, build_platform == target_platform
 #                   Binary RUNS on target_platform, TARGETS TG_ (no sysroot needed!)
 
-if [[ "${TG_}" != "${target_platform}" && "${build_platform}" == "${target_platform}" ]]; then
+if [[ "${TG_}" != "${target_platform}" && "${build_platform:-${target_platform}}" == "${target_platform}" ]]; then
     build_mode="cross-compiler"
-elif [[ "${TG_}" == "${target_platform}" && "${build_platform}" != "${target_platform}" ]]; then
+elif [[ "${TG_}" == "${target_platform}" && "${build_platform:-${target_platform}}" != "${target_platform}" ]]; then
     build_mode="cross-target"
 else
     build_mode="native"
@@ -142,9 +142,21 @@ ZIG_BUILD_MODE="${ZIG_BUILD_MODE:-zig-native}"
 echo "=== Build Configuration ==="
 echo "  build_mode:      ${build_mode}"
 echo "  ZIG_BUILD_MODE:  ${ZIG_BUILD_MODE}"
-echo "  build_platform:  ${build_platform}"
+echo "  build_platform:  ${build_platform:-${target_platform}}"
 echo "  target_platform: ${target_platform}"
 echo "  TG_:             ${TG_}"
+
+# === Cross-compiler: No compilation needed ===
+# Cross-compiler uses the NATIVE zig binary configured to target TG_
+# The zig_$TG_ activation package handles wrapper creation
+# zig_impl_$TG_ should be skipped for cross-compiler in recipe.yaml
+if [[ "${build_mode}" == "cross-compiler" ]]; then
+    echo "ERROR: build.sh should not run for cross-compiler mode"
+    echo "  Cross-compiler uses native zig configured as cross-compiler"
+    echo "  zig_impl_\$TG_ should be skipped for is_cross_compiler in recipe.yaml"
+    echo "  Only zig_\$TG_ (activation package) is built for cross-compiler"
+    exit 1
+fi
 
 # Dispatch to appropriate build script based on mode, TG_, and ZIG_BUILD_MODE
 case "${build_mode}" in
