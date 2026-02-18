@@ -96,25 +96,23 @@ EXTRA_ZIG_ARGS=(
 )
 
 if [[ "${target_platform}" == "osx-"* ]]; then
-  EXTRA_ZIG_ARGS+=(
-    -DZIG_SYSTEM_LIBCXX=c++
-  )
   EXTRA_CMAKE_ARGS+=(
+    -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
 else
-  EXTRA_ZIG_ARGS+=(
+  EXTRA_CMAKE_ARGS+=(
     -DZIG_SYSTEM_LIBCXX=stdc++
   )
 fi
 
 if [[ "${target_platform}" == "win-"* ]]; then
   # windows LLVM is static only
-  EXTRA_ZIG_ARGS+=(
+  EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=OFF
   )
 else
-  EXTRA_ZIG_ARGS+=(
+  EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=ON
   )
 fi
