@@ -99,7 +99,7 @@ esac
 
 if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${target_platform}" == "linux-*" ]]; then
   if [[ "$CROSSCOMPILING_EMULATOR" == "" ]]; then
-    echo "We require a crosscompiling_emulator for linux;
+    echo "We require a crosscompiling_emulator for linux;"
     exit 1
   fi
   EXTRA_ZIG_ARGS+=(
