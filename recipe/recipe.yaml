@@ -18,6 +18,8 @@ source:
       - if: linux
         then:
           - patches/0001-linux-maxrss-build.zig.patch
+          - patches/cmake/0001-linux-maxrss-CMakeLists.txt.patch
+          - patches/cmake/0002-linux-pthread-atfork-stub-zig2-CMakeLists.txt.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -44,6 +46,13 @@ source:
           - patches/0001-win-correct-LLVM_LIBRARIES-CMakeLists.txt.patch
           - patches/0001-win-remove-ucrt-Lld.zig.patch
           - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
+          - patches/cmake/0001-win-maxrss-CMakeLists.txt.patch
+          - patches/cmake/0001-win-deprecations.patch
+          - patches/cmake/0001-win-deprecations-zig_llvm-ar.cpp.patch
+          - patches/cmake/0001-win-deprecations-zig_llvm.cpp.patch
+      - if: build_platform != host_platform
+        then:
+          - patches/cmake/0003-cross-CMakeLists.txt.patch
     target_directory: zig-source
   - if: ppc64le
     then:
@@ -73,6 +82,10 @@ requirements:
       then:
         # Needed to cross-compile ppc64le LLD with mcmodel=medium to prevent unsupported relocation
         - llvmdev ${{ llvm_version }}.*
+    - if: (build_platform != target_platform)
+      then:
+        # for llvm-config
+        - llvmdev
     - if: (build_platform != target_platform) and osx
       then:
         - libxml2-devel

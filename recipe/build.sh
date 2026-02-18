@@ -52,6 +52,7 @@ EXTRA_CMAKE_ARGS=(
   -DZIG_SYSTEM_LIBCXX=stdc++
   -DZIG_TARGET_MCPU=baseline
   -DZIG_USE_LLVM_CONFIG=ON
+  -DZIG_TARGET_TRIPLE=${ZIG_TARGET_TRIPLE}
 )
 
 # Critical, CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
@@ -61,9 +62,66 @@ EXTRA_ZIG_ARGS=(
   -Denable-llvm
   -Doptimize=ReleaseSafe
   -Duse-zig-libcxx=false
+  -Dtarget=${ZIG_TARGET_TRIPLE}
 )
 
-CMAKE_PATCHES=()
+case "${target_platform}" in
+  *-64)
+    ZIG_ARCH="x86_64"
+    ;;
+  osx-arm64linux-aarch64|win-arm64)
+    ZIG_ARCH="aarch64"
+    ;;
+  linux-ppc64le)
+    ZIG_ARCH="powerpc64le"
+    ;;
+  *)
+    echo "Unsupported target_platform: ${target_platform}"
+    exit 1
+    ;;
+esac
+
+case "${target_platform}" in
+  linux-*)
+    ZIG_TARGET_TRIPLE=${ZIG_ARCH}-linux-gnu
+    ;;
+  osx-*)
+    ZIG_TARGET_TRIPLE=${ZIG_ARCH}-macos-none
+    ;;
+  win-*)
+    ZIG_TARGET_TRIPLE=${ZIG_ARCH}-windows-msvc
+    ;;
+  *)
+    echo "Unsupported target_platform: ${target_platform}"
+    exit 1
+    ;;
+esac
+
+if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${target_platform}" == "linux-*" ]]; then
+  if [[ "$CROSSCOMPILING_EMULATOR" == "" ]]; then
+    echo "We require a crosscompiling_emulator for linux;
+    exit 1
+  fi
+  EXTRA_ZIG_ARGS+=(
+    -fqemu
+    --libc "${zig_build_dir}"/libc_file
+    --libc-runtimes ${CONDA_BUILD_SYSROOT}/lib
+  )
+fi
+
+if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${CMAKE_CROSSCOMPILING_EMULATOR:-}" == "" ]]; then
+  rm $PREFIX/bin/llvm-config
+  cp $BUILD_PREFIX/bin/llvm-config $PREFIX/bin/llvm-config
+  if [[ "$target_platform" == osx-* ]]; then
+    ${INSTALL_NAME_TOOL:-install_name_tool} -add_rpath $BUILD_PREFIX/lib $PREFIX/bin/llvm-config
+  fi
+fi
+
+if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" ]]; then
+  export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TARGET_TRIPLE}"
+  export ZIG_CROSS_TARGET_MCPU="baseline"
+fi
+
 
 # Now that build scripts are much simpler, scripts could remove native/cross
 case "${target_platform}" in

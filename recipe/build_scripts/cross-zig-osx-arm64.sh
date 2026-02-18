@@ -7,20 +7,11 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
 
-SYSROOT_ARCH="aarch64"
-ZIG_ARCH="aarch64"
-
-filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*" "-DZIG_USE_LLVM_CONFIG=*"
+filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*"
 
 EXTRA_CMAKE_ARGS+=(
   -DZIG_SYSTEM_LIBCXX=c++
-  -DZIG_USE_LLVM_CONFIG=OFF
-  -DZIG_TARGET_TRIPLE=${ZIG_ARCH}-macos-none
   -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
-)
-
-EXTRA_ZIG_ARGS+=(
-  -Dtarget=${ZIG_ARCH}-macos-none
 )
 
 # When using installed c++ libs, zig needs libzigcpp.a
