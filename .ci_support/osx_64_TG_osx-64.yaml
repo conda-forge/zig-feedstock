@@ -7,7 +7,7 @@ TG_:
 c_compiler:
 - clang
 c_compiler_version:
-- '19'
+- '20'
 c_stdlib:
 - macosx_deployment_target
 c_stdlib_version:
@@ -22,6 +22,10 @@ cxx_compiler_version:
 - '19'
 libxml2_devel:
 - '2.14'
+llvm_src_version:
+- 20.1.8
+llvm_version:
+- '20'
 macos_machine:
 - x86_64-apple-darwin13.4.0
 target_platform:

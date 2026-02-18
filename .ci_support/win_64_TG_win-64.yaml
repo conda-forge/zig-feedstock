@@ -12,6 +12,10 @@ cxx_compiler:
 - vs2022
 libxml2_devel:
 - '2.14'
+llvm_src_version:
+- 20.1.8
+llvm_version:
+- '20'
 target_platform:
 - win-64
 zlib:

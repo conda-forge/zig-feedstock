@@ -72,17 +72,28 @@ def create_windows_wrapper(bin_dir: Path, link_name: str, target_name: str):
     """Create a Windows batch wrapper."""
     prefix = bin_dir.parent.parent  # Library/bin -> Library -> PREFIX
 
-    # Verify target exists - check both Library/bin and bin locations
-    target_in_lib = bin_dir / f"{target_name}.exe"
-    target_in_bin = prefix / "bin" / f"{target_name}.exe"
+    # Tool wrappers (zig-cc, zig-c++, zig-ar) are .bat scripts from zig_$TG_
+    # Main zig binary is .exe from zig_impl
+    is_tool_wrapper = "-" in link_name  # zig-cc, zig-c++, zig-ar
+
+    if is_tool_wrapper:
+        # Tool wrappers are .bat scripts created by zig_$TG_ activation package
+        target_in_lib = bin_dir / f"{target_name}.bat"
+        target_in_bin = prefix / "bin" / f"{target_name}.bat"
+        target_ext = ".bat"
+    else:
+        # Main zig binary is .exe from zig_impl
+        target_in_lib = bin_dir / f"{target_name}.exe"
+        target_in_bin = prefix / "bin" / f"{target_name}.exe"
+        target_ext = ".exe"
 
     if target_in_lib.exists():
         # Target in Library/bin - use relative path
-        bat_content = f'@echo off\n"%~dp0{target_name}.exe" %*\n'
+        bat_content = f'@echo off\n"%~dp0{target_name}{target_ext}" %*\n'
         target_location = "Library/bin"
     elif target_in_bin.exists():
         # Target in bin - use absolute CONDA_PREFIX path
-        bat_content = f'@echo off\n"%CONDA_PREFIX%\\bin\\{target_name}.exe" %*\n'
+        bat_content = f'@echo off\n"%CONDA_PREFIX%\\bin\\{target_name}{target_ext}" %*\n'
         target_location = "bin"
     else:
         print(f"  ERROR: {link_name} -> {target_name} (target not found)")
@@ -93,12 +104,12 @@ def create_windows_wrapper(bin_dir: Path, link_name: str, target_name: str):
     # Create .bat wrapper
     bat_path = bin_dir / f"{link_name}.bat"
     bat_path.write_text(bat_content)
-    print(f"  Created wrapper: {link_name}.bat -> {target_location}/{target_name}.exe")
+    print(f"  Created wrapper: {link_name}.bat -> {target_location}/{target_name}{target_ext}")
 
     # Also create .cmd for PowerShell compatibility
     cmd_path = bin_dir / f"{link_name}.cmd"
     cmd_path.write_text(bat_content)
-    print(f"  Created wrapper: {link_name}.cmd -> {target_location}/{target_name}.exe")
+    print(f"  Created wrapper: {link_name}.cmd -> {target_location}/{target_name}{target_ext}")
 
 
 

@@ -4,8 +4,6 @@ context:
   build_number: 8
   name: zig
   version: 0.15.2
-  llvm_version: "20"
-  llvm_src_version: "20.1.8"
   zig_build_mode: "bootstrap"
 
   # Targets that need zig-llvmdev (no conda-forge LLVM/GCC available)
@@ -17,7 +15,7 @@ context:
   sh: ${{ ".bat" if not unix else ".sh" }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
-  zig_target: >-
+  zig_triplet: >-
     ${{
       "x86_64-linux-gnu"            if TG_ == "linux-64"       else
       "aarch64-linux-gnu"           if TG_ == "linux-aarch64"  else
@@ -32,7 +30,7 @@ context:
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
-  target_triplet: >-
+  conda_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"      if TG_ == "linux-64"       else
       "aarch64-conda-linux-gnu"     if TG_ == "linux-aarch64"  else
@@ -55,12 +53,10 @@ context:
           "linux-aarch64",
           "linux-ppc64le",
           "linux-riscv64",
-          "linux-s390x",
-          "osx-arm64",
-          "win-arm64"
+          "linux-s390x"
        ]                                                      else
-      "osx-64"   if TG_ in ["osx-64"]                         else
-      "win-64"   if TG_ == "win-64"                           else
+      "osx-64"   if TG_ in ["osx-64", "osx-arm64"]            else
+      "win-64"   if TG_ == ["win-64", "win-arm64"]            else
       target_platform
     }}
   is_native: ${{ TG_ == build_platform }}
@@ -132,7 +128,7 @@ outputs:
 #      script:
 #        file: build_llvmdev.sh
 #        env:
-#          ZIG_TARGET: ${{ zig_target }}
+#          ZIG_TRIPLET: ${{ zig_triplet }}
 #    requirements:
 #      build:
 #        - ${{ m2 }}bash >=5.2
@@ -178,10 +174,9 @@ outputs:
       script:
         env:
           BUILD_NUMBER: ${{ build_number }}
-          PKG_VARIANT: impl
-          TARGET_TRIPLET: ${{ target_triplet }}
+          CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_BUILD_MODE: ${{ zig_build_mode }}
-          ZIG_TARGET: ${{ zig_target }}
+          ZIG_TRIPLET: ${{ zig_triplet }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -193,7 +188,13 @@ outputs:
         - cmake >=3.5
         - ninja
         - perl 5.32.*
-
+        - if: not unix
+          then:
+            - ${{ m2 }}coreutils
+            - ${{ m2 }}findutils
+        - if: (build_platform != target_platform)
+          then:
+            - llvmdev ${{ llvm_version }}.*
         - if: (build_platform != target_platform) and osx
           then:
             - libxml2-devel
@@ -260,7 +261,7 @@ outputs:
       - package_contents:
           strict: true
           bin:
-            - ${{ target_triplet }}-zig
+            - ${{ conda_triplet }}-zig
           files:
             - doc/langref.html
             - lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -284,10 +285,10 @@ outputs:
       - script:
           - if: not arm64
             then:
-              - ${{ target_triplet }}-zig version
-              - ${{ target_triplet }}-zig zen
-              - ${{ target_triplet }}-zig init
-              - ${{ target_triplet }}-zig test zig-source/test/behavior.zig
+              - ${{ conda_triplet }}-zig version
+              - ${{ conda_triplet }}-zig zen
+              - ${{ conda_triplet }}-zig init
+              - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
               - echo "Skip test on arm64"
         files:
@@ -307,8 +308,8 @@ outputs:
       script:
         file: install_zig_activation.py
         env:
-          ZIG_TARGET: ${{ zig_target }}
-          TARGET_TRIPLET: ${{ target_triplet }}
+          ZIG_TRIPLET: ${{ zig_triplet }}
+          CONDA_TRIPLET: ${{ conda_triplet }}
           TG_: ${{ TG_ }}
     requirements:
       build:
@@ -332,11 +333,11 @@ outputs:
             # Main wrapper only created for cross-compiler builds
             - if: is_cross_compiler
               then:
-                - ${{ target_triplet }}-zig
+                - ${{ conda_triplet }}-zig
             # Tool wrappers (all build types)
-            - ${{ target_triplet }}-zig-cc
-            - ${{ target_triplet }}-zig-c++
-            - ${{ target_triplet }}-zig-ar
+            - ${{ conda_triplet }}-zig-cc
+            - ${{ conda_triplet }}-zig-c++
+            - ${{ conda_triplet }}-zig-ar
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
@@ -348,7 +349,7 @@ outputs:
             then:
               - if: not arm64
                 then:
-                  - ${{ target_triplet }}-zig version
+                  - ${{ conda_triplet }}-zig version
                   - python testing/test_conda_zig_wrappers.py
                 else:
                   - echo "Skip functional tests on arm64"
@@ -374,7 +375,7 @@ outputs:
       script:
         file: install_zig_symlinks.py
         env:
-          TARGET_TRIPLET: ${{ target_triplet }}
+          CONDA_TRIPLET: ${{ conda_triplet }}
           TG_: ${{ TG_ }}
     requirements:
       build:
