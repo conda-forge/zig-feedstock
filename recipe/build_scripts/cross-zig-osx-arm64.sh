@@ -7,10 +7,7 @@ source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
 # --- Main ---
 
-filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*"
-
 EXTRA_CMAKE_ARGS+=(
-  -DZIG_SYSTEM_LIBCXX=c++
   -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
 )
 

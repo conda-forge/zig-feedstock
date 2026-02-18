@@ -45,26 +45,6 @@ mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
-# Declare global arrays with common flags
-EXTRA_CMAKE_ARGS=(
-  -DCMAKE_BUILD_TYPE=Release
-  -DZIG_SHARED_LLVM=ON
-  -DZIG_SYSTEM_LIBCXX=stdc++
-  -DZIG_TARGET_MCPU=baseline
-  -DZIG_USE_LLVM_CONFIG=ON
-  -DZIG_TARGET_TRIPLE=${ZIG_TARGET_TRIPLE}
-)
-
-# Critical, CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
-EXTRA_ZIG_ARGS=(
-  -Dconfig_h="${cmake_build_dir}"/config.h
-  -Dcpu=baseline
-  -Denable-llvm
-  -Doptimize=ReleaseSafe
-  -Duse-zig-libcxx=false
-  -Dtarget=${ZIG_TARGET_TRIPLE}
-)
-
 case "${target_platform}" in
   *-64)
     ZIG_ARCH="x86_64"
@@ -96,6 +76,35 @@ case "${target_platform}" in
     exit 1
     ;;
 esac
+
+# Declare global arrays with common flags
+EXTRA_CMAKE_ARGS=(
+  -DCMAKE_BUILD_TYPE=Release
+  -DZIG_SHARED_LLVM=ON
+  -DZIG_TARGET_MCPU=baseline
+  -DZIG_USE_LLVM_CONFIG=ON
+  -DZIG_TARGET_TRIPLE=${ZIG_TARGET_TRIPLE}
+)
+
+# Critical, CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
+EXTRA_ZIG_ARGS=(
+  -Dconfig_h="${cmake_build_dir}"/config.h
+  -Dcpu=baseline
+  -Denable-llvm
+  -Doptimize=ReleaseSafe
+  -Duse-zig-libcxx=false
+  -Dtarget=${ZIG_TARGET_TRIPLE}
+)
+
+if [[ "${target_platform}" == "osx-"* ]]; then
+  EXTRA_ZIG_ARGS+=(
+    -DZIG_SYSTEM_LIBCXX=c++
+  )
+else
+  EXTRA_ZIG_ARGS+=(
+    -DZIG_SYSTEM_LIBCXX=stdc++
+  )
+fi
 
 if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${target_platform}" == "linux-*" ]]; then
   if [[ "$CROSSCOMPILING_EMULATOR" == "" ]]; then
