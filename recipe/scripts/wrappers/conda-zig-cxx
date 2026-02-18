@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Zig C++ compiler wrapper
-exec ${CONDA_ZIG_CXX:-zig c++} "$@"

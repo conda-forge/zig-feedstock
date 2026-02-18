@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 """
 Build script for zig_$TG_ activation package.
-Installs activation scripts (from templates) and wrappers.
-Binaries come from zig_impl_$TG_ dependency.
+
+For CROSS-COMPILER builds: Installs activation scripts and wrappers.
+For NATIVE/CROSS-TARGET builds: No activation needed (just dependency on zig_impl).
+
 Works on both Unix and Windows.
 """
 
@@ -16,89 +18,42 @@ def main():
 
     prefix = Path(os.environ.get("PREFIX", sys.prefix))
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
-    tg = os.environ.get("TG_", "linux-64")
-    zig_target = os.environ.get("ZIG_TARGET", "native")
-    target_triplet = os.environ.get("TARGET_TRIPLET", "x86_64-conda-linux-gnu")
-    build_mode = detect_build_mode()
-    # Check target platform, not build platform (for cross-compilation)
-    target_platform = os.environ.get("target_platform", "")
-    is_windows = target_platform.startswith("win") or sys.platform == "win32"
+    zig_triplet = os.environ.get("ZIG_TRIPLET", "native")
+    cross_compiler = os.environ.get("CROSS_COMPILER", "false")
+
+    # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
+    target_triplet = os.environ.get("CONDA_TRIPLET", "")
+    is_nonunix = "mingw32" in target_triplet
 
     print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
-    print(f"TG_: {tg}")
-    print(f"ZIG_TARGET: {zig_target}")
-    print(f"TARGET_TRIPLET: {target_triplet}")
-    print(f"BUILD_MODE: {build_mode}")
-    print(f"Platform: {'Windows' if is_windows else 'Unix'}")
-    print(f"RECIPE_DIR: {recipe_dir}")
+    print(f"zig_triplet: {zig_triplet}")
+    print(f"CROSS_COMPILER: {cross_compiler}")
+    print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
 
-    # Get conda triplet from environment or use target_triplet
-    conda_triplet = os.environ.get("CONDA_TOOLCHAIN_HOST", target_triplet)
+    if cross_compiler == "true":
+        # Cross-compiler: install activation scripts and wrappers
+        # target_triplet already set from CONDA_TRIPLET above
+        native_triplet = os.environ.get("NATIVE_TRIPLET", "x86_64-conda-linux-gnu")
 
-    if build_mode in ("native", "cross-target"):
-        install_native_activation(prefix, recipe_dir, conda_triplet, is_windows)
-    elif build_mode == "cross-compiler":
-        install_cross_activation(prefix, recipe_dir, zig_target, is_windows)
+        print(f"Native triplet: {native_triplet}")
+        print(f"Target triplet: {target_triplet}")
+
+        install_activation_scripts(prefix, recipe_dir, target_triplet, is_nonunix)
+
+        if is_nonunix:
+            install_nonunix_cross_wrappers(prefix, native_triplet, target_triplet, zig_triplet)
+        else:
+            install_unix_cross_wrappers(prefix, native_triplet, target_triplet, zig_triplet)
     else:
-        print(f"ERROR: Unknown BUILD_MODE: {build_mode}")
-        sys.exit(1)
-
-    # Install test files
-    install_test_files(prefix, tg)
+        # Native or cross-target: no activation scripts needed
+        # The package just provides dependency on zig_impl
+        print("Native/cross-target build: no activation scripts needed")
 
     print("=== Zig Activation Package Installation Complete ===")
 
 
-def detect_build_mode() -> str:
-    """Detect build mode from environment variables."""
-    tg = os.environ.get("TG_", "")
-    target_platform = os.environ.get("target_platform", "")
-    build_platform = os.environ.get("build_platform", "")
-    cross_compilation = os.environ.get("CONDA_BUILD_CROSS_COMPILATION", "0")
-
-    if tg == build_platform:
-        return "native"
-    elif tg != target_platform:
-        return "cross-compiler"
-    elif cross_compilation == "1":
-        return "cross-target"
-    else:
-        return "native"
-
-
-def install_native_activation(prefix: Path, recipe_dir: Path, conda_triplet: str, is_windows: bool):
-    """Install activation scripts and wrappers for native builds."""
-    print("Installing native activation scripts and wrappers")
-
-    if is_windows:
-        install_activation_from_template(prefix, recipe_dir, is_windows=True)
-        install_windows_wrappers(prefix, conda_triplet)
-    else:
-        install_activation_from_template(prefix, recipe_dir, is_windows=False)
-        install_unix_wrappers(prefix, conda_triplet)
-
-
-def install_cross_activation(prefix: Path, recipe_dir: Path, zig_target: str, is_windows: bool):
-    """Install cross-compiler activation and wrappers."""
-    print("Installing cross-compiler activation and wrappers")
-
-    native_triplet = os.environ.get("CONDA_TOOLCHAIN_BUILD", "x86_64-conda-linux-gnu")
-    target_triplet = os.environ.get("CONDA_TOOLCHAIN_HOST", os.environ.get("TARGET_TRIPLET", ""))
-
-    print(f"Native triplet: {native_triplet}")
-    print(f"Target triplet: {target_triplet}")
-    print(f"Zig target: {zig_target}")
-
-    if is_windows:
-        install_activation_from_template(prefix, recipe_dir, is_windows=True, cross_target_triplet=target_triplet)
-        install_windows_cross_wrappers(prefix, native_triplet, target_triplet, zig_target)
-    else:
-        install_activation_from_template(prefix, recipe_dir, is_windows=False, cross_target_triplet=target_triplet)
-        install_unix_cross_wrappers(prefix, native_triplet, target_triplet, zig_target)
-
-
-def install_activation_from_template(prefix: Path, recipe_dir: Path, is_windows: bool, cross_target_triplet: str = ""):
-    """Install activation/deactivation scripts from templates with placeholder substitution."""
+def install_activation_scripts(prefix: Path, recipe_dir: Path, target_triplet: str, is_nonunix: bool):
+    """Install activation/deactivation scripts for cross-compiler builds."""
     activate_dir = prefix / "etc" / "conda" / "activate.d"
     deactivate_dir = prefix / "etc" / "conda" / "deactivate.d"
     activate_dir.mkdir(parents=True, exist_ok=True)
@@ -106,126 +61,97 @@ def install_activation_from_template(prefix: Path, recipe_dir: Path, is_windows:
 
     scripts_dir = recipe_dir / "scripts"
 
-    if is_windows:
-        # Windows: use .bat templates
+    if is_nonunix:
         activate_src = scripts_dir / "activate.bat"
         deactivate_src = scripts_dir / "deactivate.bat"
         activate_dst = activate_dir / "zig_activate.bat"
         deactivate_dst = deactivate_dir / "zig_deactivate.bat"
     else:
-        # Unix: use .sh templates
         activate_src = scripts_dir / "activate.sh"
         deactivate_src = scripts_dir / "deactivate.sh"
         activate_dst = activate_dir / "zig_activate.sh"
         deactivate_dst = deactivate_dir / "zig_deactivate.sh"
 
-    # Get compiler basenames from environment for placeholder substitution
-    substitutions = {
-        "@CC@": os.path.basename(os.environ.get("CC", "gcc")),
-        "@CXX@": os.path.basename(os.environ.get("CXX", "g++")),
-        "@AR@": os.path.basename(os.environ.get("AR", "ar")),
-        "@LD@": os.path.basename(os.environ.get("LD", "ld")),
-        "@CROSS_TARGET_TRIPLET@": cross_target_triplet,
-    }
-
-    # Process and install activation script
-    if activate_src.exists():
-        content = activate_src.read_text()
-        for placeholder, value in substitutions.items():
-            content = content.replace(placeholder, value)
-        activate_dst.write_text(content)
-        print(f"  Installed: {activate_dst}")
-    else:
-        print(f"  WARNING: Template not found: {activate_src}")
-
-    # Process and install deactivation script
-    if deactivate_src.exists():
-        content = deactivate_src.read_text()
-        for placeholder, value in substitutions.items():
-            content = content.replace(placeholder, value)
-        deactivate_dst.write_text(content)
-        print(f"  Installed: {deactivate_dst}")
-    else:
-        print(f"  WARNING: Template not found: {deactivate_src}")
+    # Placeholder substitutions for cross-compiler
+    for src, dst in [(activate_src, activate_dst), (deactivate_src, deactivate_dst)]:
+        if src.exists():
+            content = src.read_text()
+            content = content.replace("@CROSS_TARGET_TRIPLET@", target_triplet)
+            dst.write_text(content)
+            print(f"  Installed: {dst}")
+        else:
+            print(f"  WARNING: Template not found: {src}")
 
 
-def install_unix_wrappers(prefix: Path, conda_triplet: str):
-    """Install Unix triplet-prefixed wrapper scripts."""
-    bin_dir = prefix / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-
-    # Tool wrappers only - main zig binary is in zig_impl_$TG_ package
-    # (no generic conda-zig-* to avoid collision with metapackage)
-    for tool in ["cc", "c++", "ar"]:
-        wrapper_path = bin_dir / f"{conda_triplet}-zig-{tool}"
-        content = f'#!/bin/bash\nexec "${{CONDA_PREFIX}}/bin/{conda_triplet}-zig" {tool} "$@"\n'
-        wrapper_path.write_text(content)
-        wrapper_path.chmod(0o755)
-        print(f"  Installed: {wrapper_path}")
-
-
-def install_windows_wrappers(prefix: Path, conda_triplet: str):
-    """Install Windows triplet-prefixed wrapper scripts."""
-    bin_dir = prefix / "Library" / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-
-    # Triplet-prefixed tool wrappers only (no generic conda-zig-* to avoid collision)
-    for tool in ["cc", "c++", "ar"]:
-        for ext in [".bat", ".cmd"]:
-            wrapper_path = bin_dir / f"{conda_triplet}-zig-{tool}{ext}"
-            content = f'@echo off\n"%CONDA_PREFIX%\\Library\\bin\\{conda_triplet}-zig.exe" {tool} %*\n'
-            wrapper_path.write_text(content)
-            print(f"  Installed: {wrapper_path}")
-
-
-def install_unix_cross_wrappers(prefix: Path, native_triplet: str, target_triplet: str, zig_target: str):
+def install_unix_cross_wrappers(prefix: Path, native_triplet: str, target_triplet: str, zig_triplet: str):
     """Install Unix cross-compiler wrappers."""
     bin_dir = prefix / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
-    # Main cross-compiler wrapper
+    # Check if native triplet zig exists, fallback to plain zig
+    build_prefix = Path(os.environ.get("BUILD_PREFIX", os.environ.get("CONDA_PREFIX", "")))
+    native_zig = f"{native_triplet}-zig"
+    if not (build_prefix / "bin" / native_zig).exists():
+        native_zig = "zig"
+
+    # Main cross-compiler wrapper - smart passthrough that injects -target after command
     main_wrapper = bin_dir / f"{target_triplet}-zig"
-    content = f'#!/bin/bash\nexec "${{CONDA_PREFIX}}/bin/{native_triplet}-zig" -target {zig_target} "$@"\n'
+    content = f'''#!/bin/bash
+# Cross-compiler wrapper: injects -target for commands that support it
+case "$1" in
+  cc|c++|build-exe|build-lib|build-obj|test|run|translate-c)
+    cmd="$1"; shift
+    exec "${{CONDA_PREFIX}}/bin/{native_zig}" "$cmd" -target {zig_triplet} "$@"
+    ;;
+  *)
+    exec "${{CONDA_PREFIX}}/bin/{native_zig}" "$@"
+    ;;
+esac
+'''
     main_wrapper.write_text(content)
     main_wrapper.chmod(0o755)
     print(f"  Installed: {main_wrapper}")
 
-    # Tool wrappers
-    for tool in ["cc", "c++", "ar"]:
-        wrapper_path = bin_dir / f"{target_triplet}-zig-{tool}"
-        content = f'#!/bin/bash\nexec "${{CONDA_PREFIX}}/bin/{native_triplet}-zig" {tool} -target {zig_target} "$@"\n'
-        wrapper_path.write_text(content)
-        wrapper_path.chmod(0o755)
-        print(f"  Installed: {wrapper_path}")
 
-
-def install_windows_cross_wrappers(prefix: Path, native_triplet: str, target_triplet: str, zig_target: str):
-    """Install Windows cross-compiler wrappers."""
+def install_nonunix_cross_wrappers(prefix: Path, native_triplet: str, target_triplet: str, zig_triplet: str):
+    """Install non-Unix cross-compiler wrappers."""
     bin_dir = prefix / "Library" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
-    # Main cross-compiler wrapper
+    # Check if native triplet zig exists, fallback to plain zig
+    build_prefix = Path(os.environ.get("BUILD_PREFIX", os.environ.get("CONDA_PREFIX", "")))
+    native_zig = f"{native_triplet}-zig"
+    native_zig_ext = f"{native_triplet}-zig.exe"
+    if not (build_prefix / "Library" / "bin" / native_zig_ext).exists():
+        native_zig = "zig"
+        native_zig_ext = "zig.exe"
+
+    # Main cross-compiler wrapper - smart passthrough that injects -target after command
     for ext in [".bat", ".cmd"]:
         wrapper_path = bin_dir / f"{target_triplet}-zig{ext}"
-        content = f'@echo off\n"%CONDA_PREFIX%\\Library\\bin\\{native_triplet}-zig.exe" -target {zig_target} %*\n'
+        content = f'''@echo off
+setlocal
+set "CMD=%1"
+if "%CMD%"=="cc" goto inject_target
+if "%CMD%"=="c++" goto inject_target
+if "%CMD%"=="build-exe" goto inject_target
+if "%CMD%"=="build-lib" goto inject_target
+if "%CMD%"=="build-obj" goto inject_target
+if "%CMD%"=="test" goto inject_target
+if "%CMD%"=="run" goto inject_target
+if "%CMD%"=="translate-c" goto inject_target
+goto passthrough
+
+:inject_target
+shift
+"%CONDA_PREFIX%\\Library\\bin\\{native_zig_ext}" %CMD% -target {zig_triplet} %*
+goto :eof
+
+:passthrough
+"%CONDA_PREFIX%\\Library\\bin\\{native_zig_ext}" %*
+'''
         wrapper_path.write_text(content)
         print(f"  Installed: {wrapper_path}")
-
-    # Tool wrappers
-    for tool in ["cc", "c++", "ar"]:
-        for ext in [".bat", ".cmd"]:
-            wrapper_path = bin_dir / f"{target_triplet}-zig-{tool}{ext}"
-            content = f'@echo off\n"%CONDA_PREFIX%\\Library\\bin\\{native_triplet}-zig.exe" {tool} -target {zig_target} %*\n'
-            wrapper_path.write_text(content)
-            print(f"  Installed: {wrapper_path}")
-
-
-def install_test_files(prefix: Path, tg: str):
-    """Install test files."""
-    test_dir = prefix / "etc" / "conda" / "test-files" / f"zig_{tg}"
-    test_dir.mkdir(parents=True, exist_ok=True)
-    (test_dir / "README").write_text(f"Test placeholder for zig_{tg}\n")
-    print(f"  Installed test files: {test_dir}")
 
 
 if __name__ == "__main__":

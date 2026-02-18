@@ -1,47 +1,4 @@
 # CMake Configuration and Build Helpers for Zig Compilation
-#
-# This file contains helper functions for configuring and building zig using CMake.
-# These functions handle both native and cross-compilation scenarios, with support
-# for using zig as the C/C++ compiler via setup_zig_cc wrappers.
-#
-# Functions:
-#   - filter_array_args: Filter arguments from arrays by pattern
-#   - cmake_build_install: Build and install with cmake
-#   - configure_cmake: Configure cmake with zig or standard compilers
-#   - configure_cmake_zigcpp: Configure cmake and build zigcpp target
-#   - apply_cmake_patches: Apply cmake patches from CMAKE_PATCHES array
-
-# Filter out arguments matching patterns from an array
-# Usage: filter_array_args ARRAY_NAME "pattern1" "pattern2" ...
-# Example: filter_array_args EXTRA_CMAKE_ARGS "-DZIG_SYSTEM_LIBCXX=*" "-DZIG_USE_LLVM_CONFIG=*"
-function filter_array_args() {
-  local array_name="$1"
-  shift  # Remove array name, rest are patterns to filter
-
-  # Use nameref to work with the array indirectly
-  local -n arr_ref="$array_name"
-  local new_args=()
-  local arg
-  local pattern
-  local skip
-
-  for arg in "${arr_ref[@]}"; do
-    skip=false
-    for pattern in "$@"; do
-      case "$arg" in
-        $pattern) skip=true; break ;;
-      esac
-    done
-
-    if [[ "$skip" == "false" ]]; then
-      new_args+=("$arg")
-    fi
-  done
-
-  # Replace original array
-  arr_ref=("${new_args[@]}")
-}
-
 function cmake_build_install() {
   local build_dir=$1
 
@@ -110,17 +67,6 @@ function configure_cmake() {
       "${cmake_args[@]}" \
       -G Ninja
   ) || return 1
-}
-
-function configure_cmake_zigcpp() {
-  local build_dir=$1
-  local install_dir=$2
-  local zig=${3:-}
-
-  configure_cmake "${build_dir}" "${install_dir}" "${zig}"
-  pushd "${build_dir}"
-    cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
-  popd
 }
 
 function apply_cmake_patches() {

@@ -1,61 +1,58 @@
 #!/usr/bin/env bash
 
-set -euxo pipefail
+set -euo pipefail
 IFS=$'\n\t'
 
-# CRITICAL: Ensure we're using conda bash 5.2+, not system bash
-# The shebang uses /bin/bash, but conda-build will invoke this with the
-# build environment's bash through its own execution wrapper.
 if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
-  echo "ERROR: This script requires bash 5.2 or later (found ${BASH_VERSION})"
-  echo "Attempting to re-exec with conda bash..."
   if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
     exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
-  elif [[ -x "${BUILD_PREFIX}/Library/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/Library/bin/bash" "$0" "$@"
   else
     echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
     exit 1
   fi
 fi
 
-# === Stub mode for quick recipe iteration ===
-# Set ZIG_STUB_MODE=1 to skip full compilation and install placeholder binaries
-if [[ "${ZIG_STUB_MODE:-0}" == "1" ]]; then
-    echo "=== STUB MODE ENABLED ==="
-    echo "Installing stub binaries instead of full compilation"
-    echo "  TARGET_TRIPLET=${TARGET_TRIPLET}"
-    echo "  TG_=${TG_:-not set}"
-    echo "  ZIG_TARGET=${ZIG_TARGET:-not set}"
-    python "${RECIPE_DIR}/scripts/install_zig_stub.py"
-    # Rename to triplet-prefixed (same as real build post-install)
-    mv "${PREFIX}/bin/zig" "${PREFIX}/bin/${TARGET_TRIPLET}-zig"
-    echo "  Renamed: zig -> ${TARGET_TRIPLET}-zig"
-    echo "=== STUB MODE COMPLETE ==="
-    exit 0
-fi
-
-# === Package output detection ===
-# rattler-build sets PKG_NAME for the current output being built
-# PKG_VARIANT is set by recipe.yaml script env for impl packages
-case "${PKG_NAME:-}" in
-    zig_impl_*)
-        echo "Building implementation package: ${PKG_NAME}"
-        echo "  PKG_VARIANT=${PKG_VARIANT:-not set}"
-        ;;
-    *)
-        echo "WARNING: Unknown package name: ${PKG_NAME}"
-        exit 1
-        ;;
-esac
-
 # --- Functions ---
 
-source "${RECIPE_DIR}/build_scripts/_functions.sh"
+source "${RECIPE_DIR}/build_scripts/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig, remove_failing_langref
+
+build_platform="${build_platform:-${target_platform}}"
+
+is_linux() { [[ "${target_platform}" == "linux-"* ]]; }
+is_osx() { [[ "${target_platform}" == "osx-"* ]]; }
+is_unix() { [[ "${target_platform}" == "linux-"* || "${target_platform}" == "osx-"* ]]; }
+is_not_unix() { ! is_unix; }
+is_cross() { [[ "${build_platform}" != "${target_platform}" ]]; }
+
+is_debug() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; }
+
+# --- Early exits ---
+
+[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
+[[ -z "${CONDA_TRIPLET:-}" ]] && { echo "CONDA_TRIPLET must be specified in recipe.yaml env"; exit 1; }
+
+if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
+  echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
+  exit 1
+fi
+
+# === Build caching for quick recipe iteration ===
+# Set ZIG_USE_CACHE=1 to enable build caching:
+#   - First run: builds normally, caches result
+#   - Subsequent runs: restores from cache, skips build
+if [[ "${ZIG_USE_CACHE:-0}" == "1" ]]; then
+  source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
+  if stub_cache_restore; then
+    echo "=== Build restored from cache (skipping compilation) ==="
+    exit 0
+  fi
+  echo "=== No cache found - will build and cache result ==="
+  # Continue with normal build, cache will be saved at the end
+fi
 
 # --- Main ---
 
-builder=zig
+# This allows to skip a known failing zig build with zig
 force_cmake=0
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
@@ -69,18 +66,9 @@ export cmake_install_dir="${SRC_DIR}/cmake-built-install"
 export zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 # Install bootstrap zig via mamba for:
-# - build_number 8 (initial bootstrap)
-# - needs_zig_llvmdev targets (no zig_impl dependency to avoid cycle)
-NEEDS_MAMBA_BOOTSTRAP=0
-if [[ "${PKG_VERSION}" == "0.15.2" ]] && [[ "${BUILD_NUMBER}" == "8" ]]; then
-  NEEDS_MAMBA_BOOTSTRAP=1
-fi
-# Check if using zig-llvmdev (ZIG_BUILD_MODE=zig-native + no zig in BUILD_PREFIX)
-if [[ "${ZIG_BUILD_MODE:-zig-native}" == "zig-native" ]] && [[ ! -x "${BUILD_PREFIX}/bin/zig" ]]; then
-  NEEDS_MAMBA_BOOTSTRAP=1
-fi
-
-if [[ "${NEEDS_MAMBA_BOOTSTRAP}" == "1" ]]; then
+# - This should only be needed for 0.15.2 *_8 (it avoid output cycles due to zig -> metapackage)
+if [[ "${PKG_VERSION}" == "0.15.2" ]] && [[ "${BUILD_NUMBER}" == "8" ]] || [[ ! -x "${BUILD_PREFIX}/bin/zig" ]]; then
+  source "${RECIPE_DIR}/build_scripts/_bootstrap.sh"
   install_bootstrap_zig "0.15.2" "*_7"
   export zig="${BOOTSTRAP_ZIG:-${BUILD_PREFIX}/bin/zig}"
 fi
@@ -90,128 +78,133 @@ mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR
 mkdir -p "${SRC_DIR}"/build-level-patches
 cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
-# Declare global arrays with common flags
+# --- Common CMake/zig configuration ---
+
 EXTRA_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
   -DZIG_SHARED_LLVM=ON
-  -DZIG_SYSTEM_LIBCXX=stdc++
   -DZIG_TARGET_MCPU=baseline
+  -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
   -DZIG_USE_LLVM_CONFIG=ON
 )
 
-# Critical, CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
+# Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
+  --search-prefix "${PREFIX}"
+  -fallow-so-scripts
   -Dconfig_h="${cmake_build_dir}"/config.h
   -Dcpu=baseline
   -Denable-llvm
   -Doptimize=ReleaseSafe
+  -Dstatic-llvm=false
+  -Dstrip=true
+  -Dtarget=${ZIG_TRIPLET}
   -Duse-zig-libcxx=false
 )
 
-CMAKE_PATCHES=()
+# --- Platform Configuration ---
 
-# === Build Mode Detection ===
-# Determines which type of build script to use based on platform configuration
-#
-# Three build modes:
-#   native:         TG_ == target_platform == build_platform
-#                   Binary runs on same platform it's built on
-#
-#   cross-target:   TG_ == target_platform, but build_platform differs
-#                   Binary RUNS on TG_ (cross-compiled, needs sysroot/QEMU)
-#
-#   cross-compiler: TG_ != target_platform, build_platform == target_platform
-#                   Binary RUNS on target_platform, TARGETS TG_ (no sysroot needed!)
-
-if [[ "${TG_}" != "${target_platform}" && "${build_platform:-${target_platform}}" == "${target_platform}" ]]; then
-    build_mode="cross-compiler"
-elif [[ "${TG_}" == "${target_platform}" && "${build_platform:-${target_platform}}" != "${target_platform}" ]]; then
-    build_mode="cross-target"
+if is_osx; then
+  EXTRA_CMAKE_ARGS+=(
+    -DZIG_SYSTEM_LIBCXX=c++
+    -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
+  )
 else
-    build_mode="native"
+  EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
+  EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
 fi
 
-# === Build Compiler Selection ===
-# ZIG_BUILD_MODE controls whether to use zig cc or GCC as the C/C++ compiler
-#
-#   zig-native (default): Use zig as C/C++ compiler (eliminates GCC workarounds)
-#   bootstrap:            Use GCC as C/C++ compiler (fallback, archived scripts)
-#
-ZIG_BUILD_MODE="${ZIG_BUILD_MODE:-zig-native}"
-
-echo "=== Build Configuration ==="
-echo "  build_mode:      ${build_mode}"
-echo "  ZIG_BUILD_MODE:  ${ZIG_BUILD_MODE}"
-echo "  build_platform:  ${build_platform:-${target_platform}}"
-echo "  target_platform: ${target_platform}"
-echo "  TG_:             ${TG_}"
-
-# === Cross-compiler: No compilation needed ===
-# Cross-compiler uses the NATIVE zig binary configured to target TG_
-# The zig_$TG_ activation package handles wrapper creation
-# zig_impl_$TG_ should be skipped for cross-compiler in recipe.yaml
-if [[ "${build_mode}" == "cross-compiler" ]]; then
-    echo "ERROR: build.sh should not run for cross-compiler mode"
-    echo "  Cross-compiler uses native zig configured as cross-compiler"
-    echo "  zig_impl_\$TG_ should be skipped for is_cross_compiler in recipe.yaml"
-    echo "  Only zig_\$TG_ (activation package) is built for cross-compiler"
-    exit 1
-fi
-
-# Dispatch to appropriate build script based on mode, TG_, and ZIG_BUILD_MODE
-case "${build_mode}" in
-    native)
-        if [[ "${ZIG_BUILD_MODE}" == "bootstrap" ]]; then
-            script_path="${RECIPE_DIR}/build_scripts/archived/gcc-based/native/${TG_}.sh"
-        else
-            script_path="${RECIPE_DIR}/build_scripts/native/${TG_}.sh"
-        fi
-        ;;
-    cross-target)
-        if [[ "${ZIG_BUILD_MODE}" == "bootstrap" ]]; then
-            script_path="${RECIPE_DIR}/build_scripts/archived/gcc-based/cross-target/${TG_}.sh"
-        else
-            script_path="${RECIPE_DIR}/build_scripts/cross-target/${TG_}.sh"
-        fi
-        ;;
-    cross-compiler)
-        if [[ "${ZIG_BUILD_MODE}" == "bootstrap" ]]; then
-            script_path="${RECIPE_DIR}/build_scripts/archived/gcc-based/cross-compiler/${TG_}.sh"
-        else
-            script_path="${RECIPE_DIR}/build_scripts/cross-compiler/${TG_}.sh"
-        fi
-        ;;
-    *)
-        echo "ERROR: Unknown build_mode: ${build_mode}"
-        exit 1
-        ;;
-esac
-
-if [[ -f "${script_path}" ]]; then
-    echo "  Loading: ${script_path}"
-    source "${script_path}"
+if is_not_unix; then
+  EXTRA_CMAKE_ARGS+=(
+    -DZIG_SHARED_LLVM=OFF
+  )
 else
-    echo "ERROR: Build script not found: ${script_path}"
-    echo "  Available scripts:"
-    ls -la "${RECIPE_DIR}/build_scripts/${build_mode}/" 2>/dev/null || echo "    (directory not found)"
-    exit 1
+  EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
 fi
 
+if is_linux && is_cross; then
+  EXTRA_ZIG_ARGS+=(
+    -fqemu
+    --libc "${zig_build_dir}"/libc_file
+    --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
+  )
+fi
+
+# --- libzigcpp Configuration ---
+
+if is_linux; then
+  source "${RECIPE_DIR}/build_scripts/_libc_tuning.sh"
+  modify_libc_libm_for_zig "${BUILD_PREFIX}"
+  create_gcc14_glibc28_compat_lib
+  
+  is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+  is_cross && is_osx && ${INSTALL_NAME_TOOL:-install_name_tool} -add_rpath "${BUILD_PREFIX}"/lib "${PREFIX}"/bin/llvm-config
+fi
+
+configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+
+is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
+
+# --- Post CMake Configuration ---
+
+# Add conda separated library dependencies to config.h - This seems to be doing the same thing ... odd
+is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
+is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
+is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
+
+if is_linux && is_cross; then
+  source "${RECIPE_DIR}/build_scripts/_cross.sh"
+  source "${RECIPE_DIR}/build_scripts/_atfork.sh"
+  create_zig_linux_libc_file "${zig_build_dir}/libc_file"
+  remove_failing_langref "${zig_build_dir}"
+  perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
+  create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+fi
+
+echo "=== Building with ZIG ==="
 if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
-elif [[ "${build_mode}" == "cross-target" && "${TG_}" == "osx-arm64" ]]; then
+elif [[ "${TG_}" == "osx-arm64" ]]; then
   echo "***"
   echo "* ERROR: We cannot build cross-target osx-arm64 with CMake without an emulator"
   echo "* Temporarily skip and rebuild with the new ZIG from osx-64"
   echo "***"
   exit 1
-elif [[ "${build_mode}" == "cross-target" && "${TG_}" == "linux-ppc64le" ]]; then
+elif [[ "${TG_}" == "linux-ppc64le" ]]; then
   echo "***"
   echo "* ERROR: zig build fails to complete cross-target linux-ppc64le with CMake (>6hrs)"
   echo "* Temporarily skip and rebuild with the new ZIG from linux-64"
   echo "***"
   exit 1
 else
+  source "${RECIPE_DIR}/build_scripts/_cmake.sh"  # apply_cmake_patches, cmake_build_install
+  CMAKE_PATCHES=()
+
+  if is_linux; then
+    CMAKE_PATCHES+=(
+      0001-linux-maxrss-CMakeLists.txt.patch
+      0002-linux-pthread-atfork-stub-zig2-CMakeLists.txt.patch
+    )
+    if is_cross; then
+      CMAKE_PATCHES+=(0003-cross-CMakeLists.txt.patch)
+      perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_source_dir}"/cmake/install.cmake
+      export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TRIPLET}"
+      export ZIG_CROSS_TARGET_MCPU="baseline"
+    fi
+  fi
+  if is_not_unix; then
+    _version=$(ls -1v "${VSINSTALLDIR}/VC/Tools/MSVC" | tail -n 1)
+    _UCRT_LIB_PATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
+    _MSVC_LIB_PATH="${VSINSTALLDIR//\\/\/}/VC/Tools/MSVC/${_version}/lib/x64"
+    EXTRA_CMAKE_ARGS+=(
+      -DZIG_CMAKE_PREFIX_PATH="${_MSVC_LIB_PATH};${_UCRT_LIB_PATH};${LIBPATH}"
+    )
+    CMAKE_PATCHES+=(
+      0001-win-deprecations-zig_llvm.cpp.patch
+      0001-win-deprecations-zig_llvm-ar.cpp.patch
+    )
+  fi
+
   echo "Applying CMake patches..."
   apply_cmake_patches "${cmake_source_dir}"
 
@@ -226,13 +219,14 @@ fi
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb
 
-case "${PKG_NAME:-}" in
-    zig_impl_*)
-        echo "Post-install implementation package: ${PKG_NAME}"
-        mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${TARGET_TRIPLET}"-zig
-        ;;
-    *)
-        echo "WARNING: Unknown package name: ${PKG_NAME}"
-        exit 1
-        ;;
-esac
+echo "Post-install implementation package: ${PKG_NAME}"
+mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
+echo "=== Build installed for package: ${PKG_NAME} ==="
+
+# Cache successful build (saves before rattler-build cleanup)
+if [[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]; then
+  # stub_cache.sh already sourced at the top if ZIG_USE_CACHE=1
+  [[ "$(type -t stub_cache_save)" != "function" ]] && source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
+  stub_cache_save
+  echo "=== Build cached for future restoration ==="
+fi
