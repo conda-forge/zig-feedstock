@@ -49,10 +49,10 @@ case "${target_platform}" in
   *-64)
     ZIG_ARCH="x86_64"
     ;;
-  osx-arm64linux-aarch64|win-arm64)
+  *-arm64|*-aarch64)
     ZIG_ARCH="aarch64"
     ;;
-  linux-ppc64le)
+  *-ppc64le)
     ZIG_ARCH="powerpc64le"
     ;;
   *)
@@ -118,8 +118,8 @@ else
     -DZIG_SHARED_LLVM=ON
   )
 fi
-if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${target_platform}" == "linux-*" ]]; then
-  if [[ "$CROSSCOMPILING_EMULATOR" == "" ]]; then
+if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" && "${target_platform}" == "linux-*" ]]; then
+  if [[ "${CROSSCOMPILING_EMULATOR:-}" == "" ]]; then
     echo "We require a crosscompiling_emulator for linux;"
     exit 1
   fi
@@ -130,7 +130,7 @@ if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${target_platform}" == "linux-
   )
 fi
 
-if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${CMAKE_CROSSCOMPILING_EMULATOR:-}" == "" ]]; then
+if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" && "${CMAKE_CROSSCOMPILING_EMULATOR:-}" == "" ]]; then
   rm $PREFIX/bin/llvm-config
   cp $BUILD_PREFIX/bin/llvm-config $PREFIX/bin/llvm-config
   if [[ "$target_platform" == osx-* ]]; then
@@ -138,7 +138,7 @@ if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${CMAKE_CROSSCOMPILING_EMULATO
   fi
 fi
 
-if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" ]]; then
+if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" ]]; then
   export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TARGET_TRIPLE}"
   export ZIG_CROSS_TARGET_MCPU="baseline"
 fi
