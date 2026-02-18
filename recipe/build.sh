@@ -177,9 +177,6 @@ elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
   echo "***"
   exit 1
 else
-  echo "Applying CMake patches..."
-  apply_cmake_patches "${cmake_source_dir}"
-
   if cmake_build_install "${cmake_build_dir}"; then
     echo "SUCCESS: cmake fallback build completed successfully"
   else
