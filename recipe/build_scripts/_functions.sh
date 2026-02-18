@@ -1,3 +1,298 @@
+# ZIG CC COMPILER WRAPPERS (Primary build method - zig as C/C++ compiler)
+
+# === Setup zig as C/C++ compiler ===
+# Creates wrapper scripts for CMake that invoke zig cc/c++/ar/ranlib
+# This eliminates the need for GCC workarounds since zig bundles its own libc
+#
+# Args:
+#   $1 - zig binary path (required)
+#   $2 - target triple (default: native)
+#   $3 - mcpu (default: baseline)
+#
+# Exports: ZIG_CC, ZIG_CXX, ZIG_AR, ZIG_RANLIB
+#
+# Usage:
+#   setup_zig_cc "${BOOTSTRAP_ZIG}" "x86_64-linux-gnu" "baseline"
+#   cmake ... -DCMAKE_C_COMPILER="${ZIG_CC}" ...
+#
+setup_zig_cc() {
+    local zig="$1"
+    local target="${2:-native}"
+    local mcpu="${3:-baseline}"
+    local wrapper_dir="${SRC_DIR}/zig-cc-wrappers"
+
+    if [[ -z "${zig}" ]] || [[ ! -x "${zig}" ]]; then
+        echo "ERROR: setup_zig_cc requires valid zig binary path" >&2
+        return 1
+    fi
+
+    mkdir -p "${wrapper_dir}"
+
+    # zig-cc wrapper - filters out GCC-specific flags that zig doesn't support
+    cat > "${wrapper_dir}/zig-cc" << 'WRAPPER_EOF'
+#!/usr/bin/env bash
+# Filter out flags that zig cc doesn't support
+# Handles both -Wl,FLAG and -Xlinker FLAG patterns
+args=()
+is_linking=0
+skip_next=0
+
+# Helper to check if a linker arg should be filtered
+is_filtered_linker_arg() {
+    case "$1" in
+        -Bsymbolic-functions|-Bsymbolic) return 0 ;;
+        -soname|-soname,*) return 0 ;;
+        --version-script|--version-script,*) return 0 ;;
+        -z|--as-needed|--no-as-needed) return 0 ;;
+        -O|-O[0-9]*) return 0 ;;
+        --gc-sections|--no-gc-sections) return 0 ;;
+        --build-id|--build-id=*) return 0 ;;
+        --disable-new-dtags) return 0 ;;
+        --allow-shlib-undefined|--no-allow-shlib-undefined) return 0 ;;
+        -rpath-link|-rpath-link,*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+for arg in "$@"; do
+    # Skip this arg if marked by -Xlinker handling
+    if [[ $skip_next -eq 1 ]]; then
+        skip_next=0
+        continue
+    fi
+
+    case "$arg" in
+        # Detect if this is a link step (has -o but no -c)
+        -o) is_linking=1; args+=("$arg") ;;
+        -c) is_linking=0; args+=("$arg") ;;
+
+        # Handle -Xlinker FLAG (passes next arg directly to linker)
+        -Xlinker)
+            # Peek at next argument - we need to check if it should be filtered
+            # For now, just skip -Xlinker entirely as zig handles linker args differently
+            skip_next=1
+            continue ;;
+
+        # Unsupported linker flags in -Wl, format
+        -Wl,-rpath-link|-Wl,-rpath-link,*|-Wl,--disable-new-dtags)
+            continue ;;
+        -Wl,--allow-shlib-undefined|-Wl,--no-allow-shlib-undefined)
+            continue ;;
+        -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic)
+            continue ;;
+        -Wl,-soname|-Wl,-soname,*)
+            continue ;;
+        -Wl,--version-script|-Wl,--version-script,*)
+            continue ;;
+        -Wl,-z,*|-Wl,-z)
+            continue ;;
+        -Wl,--as-needed|-Wl,--no-as-needed)
+            continue ;;
+        -Wl,-O*)
+            continue ;;
+        -Wl,--gc-sections|-Wl,--no-gc-sections)
+            continue ;;
+        -Wl,--build-id|-Wl,--build-id=*)
+            continue ;;
+        -Wl,--color-diagnostics)
+            continue ;;
+
+        # Standalone linker flags (shouldn't appear but filter anyway)
+        -Bsymbolic-functions|-Bsymbolic)
+            continue ;;
+
+        # GCC-specific optimization flags
+        -march=*|-mtune=*|-ftree-vectorize)
+            continue ;;
+        # Stack protector handled differently by zig
+        -fstack-protector-strong|-fstack-protector)
+            continue ;;
+        -fno-plt)
+            continue ;;
+        # Debug prefix maps - zig handles differently
+        -fdebug-prefix-map=*)
+            continue ;;
+        *)
+            args+=("$arg") ;;
+    esac
+done
+# Add libstdc++ when linking (LLVM libs need it)
+if [[ $is_linking -eq 1 ]]; then
+    args+=("-lstdc++")
+fi
+WRAPPER_EOF
+    echo "exec \"${zig}\" cc -target ${target} -mcpu=${mcpu} \"\${args[@]}\"" >> "${wrapper_dir}/zig-cc"
+    chmod +x "${wrapper_dir}/zig-cc"
+
+    # zig-c++ wrapper - same filtering as zig-cc, always links libstdc++ for C++
+    cat > "${wrapper_dir}/zig-cxx" << 'WRAPPER_EOF'
+#!/usr/bin/env bash
+# Filter out flags that zig c++ doesn't support
+# Handles both -Wl,FLAG and -Xlinker FLAG patterns
+args=()
+is_linking=0
+skip_next=0
+
+for arg in "$@"; do
+    # Skip this arg if marked by -Xlinker handling
+    if [[ $skip_next -eq 1 ]]; then
+        skip_next=0
+        continue
+    fi
+
+    case "$arg" in
+        # Detect if this is a link step (has -o but no -c)
+        -o) is_linking=1; args+=("$arg") ;;
+        -c) is_linking=0; args+=("$arg") ;;
+
+        # Handle -Xlinker FLAG (passes next arg directly to linker)
+        -Xlinker)
+            # Skip -Xlinker and its following argument - zig handles linker args differently
+            skip_next=1
+            continue ;;
+
+        # Unsupported linker flags in -Wl, format
+        -Wl,-rpath-link|-Wl,-rpath-link,*|-Wl,--disable-new-dtags)
+            continue ;;
+        -Wl,--allow-shlib-undefined|-Wl,--no-allow-shlib-undefined)
+            continue ;;
+        -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic)
+            continue ;;
+        -Wl,-soname|-Wl,-soname,*)
+            continue ;;
+        -Wl,--version-script|-Wl,--version-script,*)
+            continue ;;
+        -Wl,-z,*|-Wl,-z)
+            continue ;;
+        -Wl,--as-needed|-Wl,--no-as-needed)
+            continue ;;
+        -Wl,-O*)
+            continue ;;
+        -Wl,--gc-sections|-Wl,--no-gc-sections)
+            continue ;;
+        -Wl,--build-id|-Wl,--build-id=*)
+            continue ;;
+        -Wl,--color-diagnostics)
+            continue ;;
+
+        # Standalone linker flags (shouldn't appear but filter anyway)
+        -Bsymbolic-functions|-Bsymbolic)
+            continue ;;
+
+        # GCC-specific optimization flags
+        -march=*|-mtune=*|-ftree-vectorize)
+            continue ;;
+        -fstack-protector-strong|-fstack-protector)
+            continue ;;
+        -fno-plt)
+            continue ;;
+        -fdebug-prefix-map=*)
+            continue ;;
+        *)
+            args+=("$arg") ;;
+    esac
+done
+# Add libstdc++ when linking (LLVM libs need it)
+if [[ $is_linking -eq 1 ]]; then
+    args+=("-lstdc++")
+fi
+WRAPPER_EOF
+    echo "exec \"${zig}\" c++ -target ${target} -mcpu=${mcpu} \"\${args[@]}\"" >> "${wrapper_dir}/zig-cxx"
+    chmod +x "${wrapper_dir}/zig-cxx"
+
+    # zig-ar wrapper
+    cat > "${wrapper_dir}/zig-ar" << EOF
+#!/usr/bin/env bash
+exec "${zig}" ar "\$@"
+EOF
+    chmod +x "${wrapper_dir}/zig-ar"
+
+    # zig-ranlib wrapper
+    cat > "${wrapper_dir}/zig-ranlib" << EOF
+#!/usr/bin/env bash
+exec "${zig}" ranlib "\$@"
+EOF
+    chmod +x "${wrapper_dir}/zig-ranlib"
+
+    export ZIG_CC="${wrapper_dir}/zig-cc"
+    export ZIG_CXX="${wrapper_dir}/zig-cxx"
+    export ZIG_AR="${wrapper_dir}/zig-ar"
+    export ZIG_RANLIB="${wrapper_dir}/zig-ranlib"
+
+    # Clear conda's compiler flags - zig handles optimization internally
+    # These contain GCC-specific flags that break zig cc
+    unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
+    export CFLAGS="" CXXFLAGS="" LDFLAGS="" CPPFLAGS=""
+
+    echo "=== setup_zig_cc: Created zig compiler wrappers ==="
+    echo "  ZIG_CC:     ${ZIG_CC}"
+    echo "  ZIG_CXX:    ${ZIG_CXX}"
+    echo "  ZIG_AR:     ${ZIG_AR}"
+    echo "  ZIG_RANLIB: ${ZIG_RANLIB}"
+    echo "  Target:     ${target}"
+    echo "  MCPU:       ${mcpu}"
+    echo "  (Cleared CFLAGS/LDFLAGS - zig handles optimization internally)"
+}
+
+# LLVM-CONFIG WRAPPER
+
+# Create a filtered llvm-config wrapper that removes flags unsupported by zig's linker
+# Args:
+#   $1 - Path to llvm-config binary to wrap
+# Creates a wrapper in place that filters out -Bsymbolic-functions and similar flags
+create_filtered_llvm_config() {
+    local llvm_config="$1"
+
+    if [[ ! -x "${llvm_config}" ]]; then
+        echo "ERROR: llvm-config not found or not executable: ${llvm_config}" >&2
+        return 1
+    fi
+
+    # Don't wrap if already wrapped
+    if [[ -f "${llvm_config}.real" ]]; then
+        echo "  llvm-config already wrapped: ${llvm_config}"
+        return 0
+    fi
+
+    echo "Creating filtered llvm-config wrapper: ${llvm_config}"
+    mv "${llvm_config}" "${llvm_config}.real"
+
+    cat > "${llvm_config}" << 'WRAPPER_EOF'
+#!/usr/bin/env bash
+# Wrapper for llvm-config that filters out flags unsupported by zig's linker
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REAL_CONFIG="${SCRIPT_DIR}/$(basename "$0").real"
+
+# Run the real llvm-config
+output=$("${REAL_CONFIG}" "$@")
+
+# Filter output for --ldflags and --system-libs which may contain unsupported flags
+for arg in "$@"; do
+    case "$arg" in
+        --ldflags|--system-libs|--libs|--link-static|--link-shared)
+            # Filter out GNU ld specific flags that zig's linker doesn't support
+            output=$(echo "$output" | sed \
+                -e 's/-Wl,-Bsymbolic-functions//g' \
+                -e 's/-Bsymbolic-functions//g' \
+                -e 's/-Wl,-Bsymbolic//g' \
+                -e 's/-Bsymbolic//g' \
+                -e 's/-Wl,--disable-new-dtags//g' \
+                -e 's/  */ /g' \
+                -e 's/^ *//' \
+                -e 's/ *$//')
+            break
+            ;;
+    esac
+done
+
+echo "$output"
+WRAPPER_EOF
+    chmod +x "${llvm_config}"
+    echo "  ✓ Created wrapper: ${llvm_config}"
+}
+
+# BOOTSTRAP UTILITIES
+
 # Install bootstrap zig using mamba (avoids recipe cycle detection)
 # Usage: install_bootstrap_zig [version] [build_string]
 # Example: install_bootstrap_zig "0.15.2" "*_7"
@@ -79,6 +374,20 @@ function cmake_build_install() {
     cmake --install . || return 1
   cd "${current_dir}" || return 1
 }
+
+# ARCHIVED: GCC-BASED BUILD HELPERS (Bootstrap/Fallback only)
+# These functions are kept for bootstrap/fallback builds using GCC as the C/C++
+# compiler. When using zig cc (setup_zig_cc), these workarounds are NOT needed
+# because zig bundles its own libc headers and handles sysroot internally.
+#
+# Functions in this section:
+#   - modify_libc_libm_for_zig: Fix linker scripts for GCC sysroot (zig doesn't need)
+#   - patch_crt_object: Patch CRT objects for GCC 14 + glibc 2.28 (zig doesn't need)
+#   - create_gcc14_glibc28_compat_lib: Create stub library for GCC 14 (zig doesn't need)
+#   - create_pthread_atfork_stub: Create pthread_atfork stub (zig doesn't need)
+#   - build_lld_ppc64le_mcmodel: Build LLD for ppc64le (only for zig link step on ppc64le)
+#
+# To use GCC-based builds, set ZIG_BUILD_MODE=bootstrap in the environment.
 
 function modify_libc_libm_for_zig() {
   local prefix=${1:-$PREFIX}
@@ -296,9 +605,18 @@ function configure_cmake() {
   local cmake_args=()
 
   # Add zig compiler configuration if provided
-  if [[ -n "${zig}" ]]; then
-    local _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
-    local _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+  # Prefer ZIG_CC/ZIG_CXX from setup_zig_cc, fallback to legacy zig parameter
+  if [[ -n "${ZIG_CC:-}" ]] && [[ -n "${ZIG_CXX:-}" ]]; then
+    # Use wrappers created by setup_zig_cc (preferred)
+    cmake_args+=("-DCMAKE_C_COMPILER=${ZIG_CC}")
+    cmake_args+=("-DCMAKE_CXX_COMPILER=${ZIG_CXX}")
+    cmake_args+=("-DCMAKE_AR=${ZIG_AR:-${zig:-ar}}")
+    cmake_args+=("-DCMAKE_RANLIB=${ZIG_RANLIB:-ranlib}")
+  elif [[ -n "${zig}" ]]; then
+    # Legacy path: construct zig compiler args (requires ZIG_TARGET)
+    local _target="${ZIG_TARGET:-x86_64-linux-gnu}"
+    local _c="${zig};cc;-target;${_target};-mcpu=${MCPU:-baseline}"
+    local _cxx="${zig};c++;-target;${_target};-mcpu=${MCPU:-baseline}"
 
     # Add QEMU flag for native (non-cross) compilation
     if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
@@ -660,9 +978,7 @@ function build_lld_ppc64le_mcmodel() {
   cd "${current_dir}" || exit 1
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # BUILD MODE DETECTION (Phase 5 - Compiler Package)
-# ═══════════════════════════════════════════════════════════════════════════════
 
 # === Build Mode Detection ===
 # Determines build mode based on TG_, target_platform, and cross-compilation flag
@@ -672,21 +988,10 @@ function build_lld_ppc64le_mcmodel() {
 #   cross-compiler: TG_ != target_platform (building cross-compiler)
 #   cross-target:   TG_ == target_platform but CONDA_BUILD_CROSS_COMPILATION=1
 #
-# Returns: Sets BUILD_MODE, TARGET_TRIPLET, IS_CROSS_* variables
+# Returns: Sets BUILD_MODE, IS_CROSS_* variables
+# Note: ZIG_TARGET is provided by recipe.yaml - no mapping needed here
 detect_build_mode() {
     local tg="${TG_:-${target_platform}}"
-
-    # Target triplet mapping
-    case "${tg}" in
-        linux-64)       TARGET_TRIPLET="x86_64-linux-gnu" ;;
-        linux-aarch64)  TARGET_TRIPLET="aarch64-linux-gnu" ;;
-        linux-ppc64le)  TARGET_TRIPLET="powerpc64le-linux-gnu" ;;
-        osx-64)         TARGET_TRIPLET="x86_64-apple-darwin" ;;
-        osx-arm64)      TARGET_TRIPLET="arm64-apple-darwin" ;;
-        win-64)         TARGET_TRIPLET="x86_64-windows-msvc" ;;
-        *)              TARGET_TRIPLET="unknown" ;;
-    esac
-    export TARGET_TRIPLET
 
     # Build mode detection
     if [[ "${tg}" != "${target_platform}" ]]; then
@@ -713,7 +1018,7 @@ detect_build_mode() {
     echo "target_platform: ${target_platform}"
     echo "build_platform:  ${build_platform:-unknown}"
     echo "BUILD_MODE:      ${BUILD_MODE}"
-    echo "TARGET_TRIPLET:  ${TARGET_TRIPLET}"
+    echo "ZIG_TARGET:      ${ZIG_TARGET:-not set}"
     echo "============================"
 }
 
@@ -912,9 +1217,7 @@ EOF
     echo "  → Forward to ${native_triplet}-zig with -target ${zig_target}"
 }
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # CROSS-COMPILER INSTALLATION (Phase 7 - Compiler Package)
-# ═══════════════════════════════════════════════════════════════════════════════
 
 # === Install Cross-Compiler ===
 # Installs zig as a cross-compiler using conda-style triplet wrappers

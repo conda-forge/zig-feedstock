@@ -24,56 +24,24 @@ jobs:
         CONFIG: linux_64_TG_linux-riscv64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_64_TG_linux-s390x:
-        CONFIG: linux_64_TG_linux-s390x
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_64_TG_win-arm64:
-        CONFIG: linux_64_TG_win-arm64
+      linux_64_TG_osx-arm64:
+        CONFIG: linux_64_TG_osx-arm64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
       linux_aarch64_TG_linux-aarch64:
         CONFIG: linux_aarch64_TG_linux-aarch64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_aarch64_TG_win-arm64:
-        CONFIG: linux_aarch64_TG_win-arm64
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
       linux_ppc64le_TG_linux-ppc64le:
         CONFIG: linux_ppc64le_TG_linux-ppc64le
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_ppc64le_TG_win-arm64:
-        CONFIG: linux_ppc64le_TG_win-arm64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
       linux_riscv64_TG_linux-riscv64:
         CONFIG: linux_riscv64_TG_linux-riscv64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_riscv64_TG_win-arm64:
-        CONFIG: linux_riscv64_TG_win-arm64
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_s390x_TG_linux-s390x:
-        CONFIG: linux_s390x_TG_linux-s390x
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_s390x_TG_win-arm64:
-        CONFIG: linux_s390x_TG_win-arm64
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
       osx_arm64_TG_osx-arm64:
         CONFIG: osx_arm64_TG_osx-arm64
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      osx_arm64_TG_win-arm64:
-        CONFIG: osx_arm64_TG_win-arm64
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      win_arm64_TG_win-arm64:
-        CONFIG: win_arm64_TG_win-arm64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
   timeoutInMinutes: 360

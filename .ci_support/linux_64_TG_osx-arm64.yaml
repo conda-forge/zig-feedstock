@@ -1,5 +1,5 @@
 TG_:
-- win-arm64
+- osx-arm64
 c_compiler:
 - gcc
 c_compiler_version:
@@ -21,7 +21,7 @@ docker_image:
 libxml2_devel:
 - '2.14'
 target_platform:
-- linux-s390x
+- linux-64
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version

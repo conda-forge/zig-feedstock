@@ -6,6 +6,11 @@ context:
   version: 0.15.2
   llvm_version: "20"
   llvm_src_version: "20.1.8"
+  zig_build_mode: "bootstrap"
+
+  # Targets that need zig-llvmdev (no conda-forge LLVM/GCC available)
+  # For bootstrap mode, only exotic archs without GCC toolchain need this
+  needs_zig_llvmdev: ${{ TG_ in ["linux-riscv64", "linux-s390x"] }}
   
   library: ${{ "Library/" if not unix }}
   m2: ${{ "m2-" if not unix }}
@@ -22,6 +27,7 @@ context:
       "x86_64-macos-none"           if TG_ == "osx-64"         else
       "aarch64-macos-none"          if TG_ == "osx-arm64"      else
       "x86_64-windows-gnu"          if TG_ == "win-64"         else
+      "aarch64-windows-gnu"         if TG_ == "win-arm64"      else
       "native"
     }}
 
@@ -36,6 +42,7 @@ context:
       "x86_64-apple-darwin13.4.0"   if TG_ == "osx-64"         else
       "arm64-apple-darwin20.0.0"    if TG_ == "osx-arm64"      else
       "x86_64-w64-mingw32"          if TG_ == "win-64"         else
+      "aarch64-w64-mingw32"         if TG_ == "win-arm64"      else
       "unknown"
     }}
 
@@ -43,9 +50,17 @@ context:
   # Which platform builds cross-compilers for each target
   cross_build_platform: >-
     ${{
-      "linux-64" if TG_ in ["linux-64", "linux-aarch64", "linux-ppc64le", "linux-riscv64", "linux-s390x"] else
-      "osx-64"   if TG_ in ["osx-64", "osx-arm64"]                        else
-      "win-64"   if TG_ == "win-64"                                       else
+      "linux-64" if TG_ in [
+          "linux-64",
+          "linux-aarch64",
+          "linux-ppc64le",
+          "linux-riscv64",
+          "linux-s390x",
+          "osx-arm64",
+          "win-arm64"
+       ]                                                      else
+      "osx-64"   if TG_ in ["osx-64"]                         else
+      "win-64"   if TG_ == "win-64"                           else
       target_platform
     }}
   is_native: ${{ TG_ == build_platform }}
@@ -95,11 +110,54 @@ source:
       - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
         sha256: a6cbad9b2243b17e87795817cfff2107d113543a12486586f8a055a2bb044963
         target_directory: lld-source
+  # LLVM source for zig-llvmdev (targets without conda-forge LLVM)
+  - if: needs_zig_llvmdev
+    then:
+      - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
+        sha256: a6cbad9b2243b17e87795817cfff2107d113543a12486586f8a055a2bb044963
+        target_directory: llvm-source
 
 build:
   number: ${{ build_number }}
 
 outputs:
+  # ==========================================================================
+  # ZIG-LLVMDEV: LLVM built with zig cc (for targets without conda-forge LLVM)
+  # Produces shared libraries with libc++ ABI compatible with zig-cc-built code
+  # ==========================================================================
+#  - package:
+#      name: zig-llvmdev
+#    build:
+#      skip: not needs_zig_llvmdev
+#      script:
+#        file: build_llvmdev.sh
+#        env:
+#          ZIG_TARGET: ${{ zig_target }}
+#    requirements:
+#      build:
+#        - ${{ m2 }}bash >=5.2
+#        - cmake >=3.19
+#        - ninja
+#        - if: match(version, ">=0.15.2") and (build_number > 8)
+#          then:
+#            - zig_impl_${{ build_platform }} >=0.15.2
+#      host:
+#        - libxml2-devel
+#        - zlib
+#        - zstd
+#    tests:
+#      - package_contents:
+#          files:
+#            # Installed to lib/zig-llvm/ to avoid conflicts with conda-forge llvmdev
+#            - lib/zig-llvm/lib/libLLVM*
+#            - lib/zig-llvm/lib/libclang*
+#            - lib/zig-llvm/lib/liblld*
+#            - lib/zig-llvm/include/llvm/**
+#            - lib/zig-llvm/include/clang/**
+#            - lib/zig-llvm/include/lld/**
+#            - lib/zig-llvm/bin/llvm-config
+#            - lib/zig-llvm-path.txt
+
   # ==========================================================================
   # IMPLEMENTATION: zig_impl_$TG_ (binaries + stdlib ONLY)
   # Contains actual zig compiler binary (triplet-prefixed) and standard library
@@ -108,7 +166,7 @@ outputs:
   - package:
       name: zig_impl_${{ TG_ }}
     build:
-      skip: not (is_native or is_cross_compiler or is_cross_target)
+      skip: needs_zig_llvmdev or not (is_native or is_cross_compiler or is_cross_target) and TG_ != target_platform
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx
@@ -117,10 +175,11 @@ outputs:
             then: "*/VERSION.dll"
       script:
         env:
-          ZIG_TARGET: ${{ zig_target }}
           BUILD_NUMBER: ${{ build_number }}
           PKG_VARIANT: impl
           TARGET_TRIPLET: ${{ target_triplet }}
+          ZIG_BUILD_MODE: ${{ zig_build_mode }}
+          ZIG_TARGET: ${{ zig_target }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -141,7 +200,8 @@ outputs:
         # Use zig_impl_$build_platform to break cycle (not zig metapackage)
         # For build_number <= 8: mamba workaround in build.sh
         # For build_number > 8: standard dependency on zig_impl_*
-        - if: (is_native or is_cross_compiler) and (TG_ != build_platform)
+        # For needs_zig_llvmdev: mamba workaround in build.sh (zig-llvmdev handles its own bootstrap)
+        - if: (is_native or is_cross_compiler) and (TG_ != build_platform) and not needs_zig_llvmdev
           then:
             - if: match(version, ">=0.15.2") and (build_number > 8)
               then:
@@ -153,15 +213,20 @@ outputs:
             # Needed to cross-compile ppc64le LLD with mcmodel=medium to prevent unsupported relocation
             - llvmdev ${{ llvm_version }}.*
       host:
-        - clangdev ${{ llvm_version }}.*
-        - libclang-cpp ${{ llvm_version }}.*
+        # LLVM dependencies: use zig-llvmdev for targets without conda-forge LLVM
+        - if: needs_zig_llvmdev
+          then:
+            - zig-llvmdev
+          else:
+            - clangdev ${{ llvm_version }}.*
+            - libclang-cpp ${{ llvm_version }}.*
+            - llvm ${{ llvm_version }}.*
+            - llvmdev ${{ llvm_version }}.*
+            - lld ${{ llvm_version }}.*
         - libxml2-devel
-        - llvm ${{ llvm_version }}.*
-        - llvmdev ${{ llvm_version }}.*
-        - lld ${{ llvm_version }}.*
         - zlib
         - zstd
-        - if: aarch64 or ppc64le
+        - if: (aarch64 or ppc64le) and not needs_zig_llvmdev
           then:
             - ${{ compiler('cxx') }}
         - if: osx

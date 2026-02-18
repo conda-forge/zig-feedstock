@@ -68,10 +68,19 @@ export cmake_build_dir="${SRC_DIR}/build-release"
 export cmake_install_dir="${SRC_DIR}/cmake-built-install"
 export zig_build_dir="${SRC_DIR}/conda-zig-source"
 
+# Install bootstrap zig via mamba for:
+# - build_number 8 (initial bootstrap)
+# - needs_zig_llvmdev targets (no zig_impl dependency to avoid cycle)
+NEEDS_MAMBA_BOOTSTRAP=0
 if [[ "${PKG_VERSION}" == "0.15.2" ]] && [[ "${BUILD_NUMBER}" == "8" ]]; then
-  # Install bootstrap zig via mamba (avoids rattler-build cycle detection)
-  # This installs the previous zig version needed to build the new one
-  # REMOVE after 0.15.2 build_number 8
+  NEEDS_MAMBA_BOOTSTRAP=1
+fi
+# Check if using zig-llvmdev (ZIG_BUILD_MODE=zig-native + no zig in BUILD_PREFIX)
+if [[ "${ZIG_BUILD_MODE:-zig-native}" == "zig-native" ]] && [[ ! -x "${BUILD_PREFIX}/bin/zig" ]]; then
+  NEEDS_MAMBA_BOOTSTRAP=1
+fi
+
+if [[ "${NEEDS_MAMBA_BOOTSTRAP}" == "1" ]]; then
   install_bootstrap_zig "0.15.2" "*_7"
   export zig="${BOOTSTRAP_ZIG:-${BUILD_PREFIX}/bin/zig}"
 fi
@@ -101,30 +110,93 @@ EXTRA_ZIG_ARGS=(
 
 CMAKE_PATCHES=()
 
-# Now that build scripts are much simpler, scripts could remove native/cross
-case "${target_platform}" in
-  linux-64|osx-64|win-64)
-    source "${RECIPE_DIR}"/build_scripts/native-"${builder}-${target_platform}".sh
-    ;;
-  osx-arm64|linux-ppc64le|linux-aarch64|win-arm64)
-    source "${RECIPE_DIR}"/build_scripts/cross-"${builder}-${target_platform}".sh
-    ;;
-  *)
-    echo "Unsupported target_platform: ${target_platform}"
-    exit 1
-    ;;
+# === Build Mode Detection ===
+# Determines which type of build script to use based on platform configuration
+#
+# Three build modes:
+#   native:         TG_ == target_platform == build_platform
+#                   Binary runs on same platform it's built on
+#
+#   cross-target:   TG_ == target_platform, but build_platform differs
+#                   Binary RUNS on TG_ (cross-compiled, needs sysroot/QEMU)
+#
+#   cross-compiler: TG_ != target_platform, build_platform == target_platform
+#                   Binary RUNS on target_platform, TARGETS TG_ (no sysroot needed!)
+
+if [[ "${TG_}" != "${target_platform}" && "${build_platform}" == "${target_platform}" ]]; then
+    build_mode="cross-compiler"
+elif [[ "${TG_}" == "${target_platform}" && "${build_platform}" != "${target_platform}" ]]; then
+    build_mode="cross-target"
+else
+    build_mode="native"
+fi
+
+# === Build Compiler Selection ===
+# ZIG_BUILD_MODE controls whether to use zig cc or GCC as the C/C++ compiler
+#
+#   zig-native (default): Use zig as C/C++ compiler (eliminates GCC workarounds)
+#   bootstrap:            Use GCC as C/C++ compiler (fallback, archived scripts)
+#
+ZIG_BUILD_MODE="${ZIG_BUILD_MODE:-zig-native}"
+
+echo "=== Build Configuration ==="
+echo "  build_mode:      ${build_mode}"
+echo "  ZIG_BUILD_MODE:  ${ZIG_BUILD_MODE}"
+echo "  build_platform:  ${build_platform}"
+echo "  target_platform: ${target_platform}"
+echo "  TG_:             ${TG_}"
+
+# Dispatch to appropriate build script based on mode, TG_, and ZIG_BUILD_MODE
+case "${build_mode}" in
+    native)
+        if [[ "${ZIG_BUILD_MODE}" == "bootstrap" ]]; then
+            script_path="${RECIPE_DIR}/build_scripts/archived/gcc-based/native/${TG_}.sh"
+        else
+            script_path="${RECIPE_DIR}/build_scripts/native/${TG_}.sh"
+        fi
+        ;;
+    cross-target)
+        if [[ "${ZIG_BUILD_MODE}" == "bootstrap" ]]; then
+            script_path="${RECIPE_DIR}/build_scripts/archived/gcc-based/cross-target/${TG_}.sh"
+        else
+            script_path="${RECIPE_DIR}/build_scripts/cross-target/${TG_}.sh"
+        fi
+        ;;
+    cross-compiler)
+        if [[ "${ZIG_BUILD_MODE}" == "bootstrap" ]]; then
+            script_path="${RECIPE_DIR}/build_scripts/archived/gcc-based/cross-compiler/${TG_}.sh"
+        else
+            script_path="${RECIPE_DIR}/build_scripts/cross-compiler/${TG_}.sh"
+        fi
+        ;;
+    *)
+        echo "ERROR: Unknown build_mode: ${build_mode}"
+        exit 1
+        ;;
 esac
+
+if [[ -f "${script_path}" ]]; then
+    echo "  Loading: ${script_path}"
+    source "${script_path}"
+else
+    echo "ERROR: Build script not found: ${script_path}"
+    echo "  Available scripts:"
+    ls -la "${RECIPE_DIR}/build_scripts/${build_mode}/" 2>/dev/null || echo "    (directory not found)"
+    exit 1
+fi
 
 if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
-elif [[ "${target_platform}" == "osx-arm64" ]]; then
+elif [[ "${build_mode}" == "cross-target" && "${TG_}" == "osx-arm64" ]]; then
   echo "***"
-  echo "* ERROR: We cannot build with CMake without an emulator - Temporarily skip ARM64 and rebuild with the new ZIG x86_64"
+  echo "* ERROR: We cannot build cross-target osx-arm64 with CMake without an emulator"
+  echo "* Temporarily skip and rebuild with the new ZIG from osx-64"
   echo "***"
   exit 1
-elif [[ "${target_platform}" == "linux-ppc64le" ]]; then
+elif [[ "${build_mode}" == "cross-target" && "${TG_}" == "linux-ppc64le" ]]; then
   echo "***"
-  echo "* ERROR: zig build fails to complete with CMake (>6hrs) - Temporarily skip PPC64LE and rebuild with the new ZIG x86_64"
+  echo "* ERROR: zig build fails to complete cross-target linux-ppc64le with CMake (>6hrs)"
+  echo "* Temporarily skip and rebuild with the new ZIG from linux-64"
   echo "***"
   exit 1
 else
