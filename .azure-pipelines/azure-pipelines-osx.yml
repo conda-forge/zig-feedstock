@@ -12,6 +12,10 @@ jobs:
         CONFIG: osx_64_TG_osx-64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15
+      osx_arm64_TG_osx-arm64:
+        CONFIG: osx_arm64_TG_osx-arm64
+        UPLOAD_PACKAGES: 'True'
+        VMIMAGE: macOS-15
   timeoutInMinutes: 360
   variables: {}
 

@@ -40,10 +40,6 @@ jobs:
         CONFIG: linux_riscv64_TG_linux-riscv64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      osx_arm64_TG_osx-arm64:
-        CONFIG: osx_arm64_TG_osx-arm64
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
   timeoutInMinutes: 360
   variables: {}
 
