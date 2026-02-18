@@ -14,7 +14,7 @@ modify_libc_libm_for_zig "${BUILD_PREFIX}"
 create_gcc14_glibc28_compat_lib
 
 # When using installed c++ libs, zig needs libzigcpp.a
-configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}" "" "linux-64"
+configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}" "" "${target_platform}"
 
 # Create pthread_atfork stub for CMake fallback
-create_pthread_atfork_stub "x86_64" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"

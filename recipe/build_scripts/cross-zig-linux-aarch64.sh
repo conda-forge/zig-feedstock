@@ -34,7 +34,7 @@ cat "${cmake_build_dir}/config.h"
 create_zig_libc_file "${zig_build_dir}/libc_file"
 
 # Create pthread_atfork stub for glibc 2.28 (missing on aarch64)
-create_pthread_atfork_stub "aarch64" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 
 # Remove documentation tests that fail during cross-compilation
 remove_failing_langref "${zig_build_dir}"

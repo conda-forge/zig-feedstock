@@ -26,7 +26,7 @@ modify_libc_libm_for_zig "${BUILD_PREFIX}"
 
 # Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
 create_gcc14_glibc28_compat_lib
-configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}" "" "linux-ppc64le"
+configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}" "" "${target_platform}"
 cat "${cmake_build_dir}"/config.h
 
 # Build LLD libraries locally with -mcmodel=medium for PowerPC64LE
@@ -46,6 +46,6 @@ perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pt
 create_zig_libc_file "${zig_build_dir}/libc_file"
 
 # Create pthread_atfork stub for glibc 2.28 (missing on PowerPC64LE)
-create_pthread_atfork_stub "PowerPC64LE" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 
 remove_failing_langref "${zig_build_dir}"
