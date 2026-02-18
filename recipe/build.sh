@@ -80,7 +80,6 @@ esac
 # Declare global arrays with common flags
 EXTRA_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
-  -DZIG_SHARED_LLVM=ON
   -DZIG_TARGET_MCPU=baseline
   -DZIG_USE_LLVM_CONFIG=ON
   -DZIG_TARGET_TRIPLE=${ZIG_TARGET_TRIPLE}
@@ -100,12 +99,25 @@ if [[ "${target_platform}" == "osx-"* ]]; then
   EXTRA_ZIG_ARGS+=(
     -DZIG_SYSTEM_LIBCXX=c++
   )
+  EXTRA_CMAKE_ARGS+=(
+    -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
+  )
 else
   EXTRA_ZIG_ARGS+=(
     -DZIG_SYSTEM_LIBCXX=stdc++
   )
 fi
 
+if [[ "${target_platform}" == "win-"* ]]; then
+  # windows LLVM is static only
+  EXTRA_ZIG_ARGS+=(
+    -DZIG_SHARED_LLVM=OFF
+  )
+else
+  EXTRA_ZIG_ARGS+=(
+    -DZIG_SHARED_LLVM=ON
+  )
+fi
 if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" && "${target_platform}" == "linux-*" ]]; then
   if [[ "$CROSSCOMPILING_EMULATOR" == "" ]]; then
     echo "We require a crosscompiling_emulator for linux;"
@@ -131,7 +143,15 @@ if [[ "$CONDA_BUILD_CROSS_COMPILATION" == "1" ]]; then
   export ZIG_CROSS_TARGET_MCPU="baseline"
 fi
 
+source "${RECIPE_DIR}/build_scripts/_functions.sh"
 
+if [[ "$target_platform" == "linux-"* ]]; then
+  # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
+  modify_libc_libm_for_zig "${BUILD_PREFIX}"
+  # Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
+  create_gcc14_glibc28_compat_lib
+
+fi
 # Now that build scripts are much simpler, scripts could remove native/cross
 case "${target_platform}" in
   linux-64|osx-64|win-64)

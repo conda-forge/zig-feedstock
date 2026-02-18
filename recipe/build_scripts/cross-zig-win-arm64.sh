@@ -3,8 +3,6 @@ set -euo pipefail
 
 # --- Functions ---
 
-source "${RECIPE_DIR}/build_scripts/_functions.sh"
-
 get_msvc_version() {
   # Find the latest MSVC version directory under VSINSTALLDIR/VC/Tools/MSVC
   latest_version=$(ls -1v "${VSINSTALLDIR}/VC/Tools/MSVC" | tail -n 1)
@@ -13,14 +11,10 @@ get_msvc_version() {
 
 # --- Main ---
 
-filter_array_args EXTRA_CMAKE_ARGS "-DZIG_USE_LLVM_CONFIG=*"
-
 _UCRT_LIB_PATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
 _MSVC_LIB_PATH="${VSINSTALLDIR//\\/\/}/VC/Tools/MSVC/$(get_msvc_version)/lib/x64"
 
 EXTRA_CMAKE_ARGS+=(
-  -DZIG_SYSTEM_LIBCXX=c++
-  -DZIG_USE_LLVM_CONFIG=OFF
   -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
 )
 

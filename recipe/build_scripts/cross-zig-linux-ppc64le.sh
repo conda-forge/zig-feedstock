@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- Functions ---
-
-source "${RECIPE_DIR}/build_scripts/_functions.sh"
-
 # --- Main ---
 
 # Add ld.bfd for relocation issue
@@ -21,11 +17,6 @@ export LDFLAGS="${LDFLAGS} -fuse-ld=bfd"
 # Ensure LD_LIBRARY_PATH includes BUILD_PREFIX/lib for libclang-cpp.so
 export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 
-# Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
-modify_libc_libm_for_zig "${BUILD_PREFIX}"
-
-# Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
-create_gcc14_glibc28_compat_lib
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}" "" "${target_platform}"
 cat "${cmake_build_dir}"/config.h
 

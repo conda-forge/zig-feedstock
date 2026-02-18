@@ -3,8 +3,6 @@ set -euo pipefail
 
 # --- Functions ---
 
-source "${RECIPE_DIR}/build_scripts/_functions.sh"
-
 get_msvc_version() {
   # Find the latest MSVC version directory under VSINSTALLDIR/VC/Tools/MSVC
   latest_version=$(ls -1v "${VSINSTALLDIR}/VC/Tools/MSVC" | tail -n 1)
