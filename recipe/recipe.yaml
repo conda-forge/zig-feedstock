@@ -85,7 +85,7 @@ requirements:
     - if: (build_platform != target_platform)
       then:
         # for llvm-config
-        - llvmdev
+        - llvmdev ${{ llvm_version }}.*
     - if: (build_platform != target_platform) and osx
       then:
         - libxml2-devel
