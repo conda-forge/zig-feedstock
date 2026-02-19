@@ -2,7 +2,7 @@ c_stdlib_version:  # [linux or osx]
   - 2.28  # [linux]
   - 11.3  # [osx]
 # Keep this in sync with llvm version used
-c_compiler_version:   # [osx and arm64]
-  - 20
+c_compiler_version:    # [osx and arm64]
+  - 20                 # [osx and arm64]
 cxx_compiler_version:  # [osx and arm64]
-  - 20
+  - 20                 # [osx and arm64]
