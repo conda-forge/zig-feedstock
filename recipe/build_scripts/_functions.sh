@@ -43,7 +43,6 @@ function cmake_build_install() {
 
 function modify_libc_libm_for_zig() {
   local prefix=${1:-$PREFIX}
-  local sysroot_arch=${2:-${SYSROOT_ARCH:-x86_64}}
 
   # Helper: Check if file is a text/script file (linker script)
   is_text_file() {
@@ -54,14 +53,14 @@ function modify_libc_libm_for_zig() {
   # Replace libc.so and libm.so linker scripts with symlinks (Zig doesn't support relative paths in linker scripts)
   # The linker scripts contain relative paths like "libc.so.6" which Zig can't handle (hits TODO panic at line 1074)
   # Just replace them with symlinks directly to the actual .so files
-  local libc_path="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64/libc.so"
+  local libc_path="${CONDA_BUILD_SYSROOT}/usr/lib64/libc.so"
   if is_text_file "$libc_path"; then
     echo "  - Replacing libc.so linker script with symlink"
     rm -f "$libc_path"
     ln -sf ../../lib64/libc.so.6 "$libc_path"
   fi
 
-  local libm_path="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot/usr/lib64/libm.so"
+  local libm_path="${CONDA_BUILD_SYSROOT}/usr/lib64/libm.so"
   if is_text_file "$libm_path"; then
     echo "  - Replacing libm.so linker script with symlink"
     rm -f "$libm_path"
@@ -98,24 +97,23 @@ function modify_libc_libm_for_zig() {
 
   # Zig doesn't yet support custom lib search paths, so symlink needed libs to where Zig looks
   # Create symlinks from lib64 to usr/lib (Zig searches usr/lib by default)
-  local sysroot="${prefix}/${sysroot_arch}-conda-linux-gnu/sysroot"
   echo "  - Creating symlinks in usr/lib for lib64 libraries"
 
   # Suppress error if symlink already exists
-  ln -sf ../../../lib64/libm.so.6 "${sysroot}/usr/lib/libm.so.6" 2>/dev/null || true
-  ln -sf ../../../lib64/libmvec.so.1 "${sysroot}/usr/lib/libmvec.so.1" 2>/dev/null || true
-  ln -sf ../../../lib64/libc.so.6 "${sysroot}/usr/lib/libc.so.6" 2>/dev/null || true
+  ln -sf ../../../lib64/libm.so.6 "${CONDA_BUILD_SYSROOT}/usr/lib/libm.so.6" 2>/dev/null || true
+  ln -sf ../../../lib64/libmvec.so.1 "${CONDA_BUILD_SYSROOT}/usr/lib/libmvec.so.1" 2>/dev/null || true
+  ln -sf ../../../lib64/libc.so.6 "${CONDA_BUILD_SYSROOT}/usr/lib/libc.so.6" 2>/dev/null || true
 
   # Architecture-specific dynamic linker symlinks
-  case "${sysroot_arch}" in
-    aarch64)
-      ln -sf ../../../lib64/ld-linux-aarch64.so.1 "${sysroot}/usr/lib/ld-linux-aarch64.so.1" 2>/dev/null || true
+  case "${target_platform}" in
+    linux-aarch64)
+      ln -sf ../../../lib64/ld-linux-aarch64.so.1 "${CONDA_BUILD_SYSROOT}/usr/lib/ld-linux-aarch64.so.1" 2>/dev/null || true
       ;;
-    powerpc64le)
-      ln -sf ../../../lib64/ld64.so.2 "${sysroot}/usr/lib/ld64.so.2" 2>/dev/null || true
+    linux-powerpc64le)
+      ln -sf ../../../lib64/ld64.so.2 "${CONDA_BUILD_SYSROOT}/usr/lib/ld64.so.2" 2>/dev/null || true
       ;;
-    x86_64)
-      ln -sf ../../../lib64/ld-linux-x86-64.so.2 "${sysroot}/usr/lib/ld-linux-x86-64.so.2" 2>/dev/null || true
+    linux-x86_64)
+      ln -sf ../../../lib64/ld-linux-x86-64.so.2 "${CONDA_BUILD_SYSROOT}/usr/lib/ld-linux-x86-64.so.2" 2>/dev/null || true
       ;;
   esac
 }
@@ -258,8 +256,8 @@ function configure_cmake() {
 
   # Add zig compiler configuration if provided
   if [[ -n "${zig}" ]]; then
-    local _c="${zig};cc;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
-    local _cxx="${zig};c++;-target;${SYSROOT_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+    local _c="${zig};cc;-target;${ZIG_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
+    local _cxx="${zig};c++;-target;${ZIG_ARCH}-linux-gnu;-mcpu=${MCPU:-baseline}"
 
     # Add QEMU flag for native (non-cross) compilation
     if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "0" ]]; then
@@ -308,74 +306,11 @@ function configure_cmake_zigcpp() {
   popd
 }
 
-function setup_crosscompiling_emulator() {
-  local qemu_prg=$1
-
-  if [[ -z "${qemu_prg}" ]]; then
-    echo "ERROR: qemu_prg parameter required for setup_crosscompiling_emulator" >&2
-    return 1
-  fi
-
-  # Set CROSSCOMPILING_EMULATOR if not already set
-  if [[ -z "${CROSSCOMPILING_EMULATOR:-}" ]]; then
-    if [[ -f /usr/bin/"${qemu_prg}" ]]; then
-      export CROSSCOMPILING_EMULATOR=/usr/bin/"${qemu_prg}"
-      echo "Set CROSSCOMPILING_EMULATOR=${CROSSCOMPILING_EMULATOR}"
-    else
-      echo "ERROR: CROSSCOMPILING_EMULATOR not set and ${qemu_prg} not found in /usr/bin/" >&2
-      return 1
-    fi
-  else
-    echo "Using existing CROSSCOMPILING_EMULATOR=${CROSSCOMPILING_EMULATOR}"
-  fi
-
-  return 0
-}
-
-function create_qemu_llvm_config_wrapper() {
-  local sysroot_path=$1
-
-  if [[ -z "${sysroot_path}" ]]; then
-    echo "ERROR: sysroot_path parameter required for create_qemu_llvm_config_wrapper" >&2
-    return 1
-  fi
-
-  if [[ -z "${CROSSCOMPILING_EMULATOR:-}" ]]; then
-    echo "ERROR: CROSSCOMPILING_EMULATOR must be set before calling create_qemu_llvm_config_wrapper" >&2
-    return 1
-  fi
-
-  echo "Creating QEMU wrapper for llvm-config"
-
-  # Backup original llvm-config
-  mv "${PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config.zig_conda_real || return 1
-
-  # Create wrapper script that runs llvm-config under QEMU
-  cat > "${PREFIX}"/bin/llvm-config << EOF
-#!/usr/bin/env bash
-export QEMU_LD_PREFIX="${sysroot_path}"
-"${CROSSCOMPILING_EMULATOR}" "${PREFIX}"/bin/llvm-config.zig_conda_real "\$@"
-EOF
-
-  chmod +x "${PREFIX}"/bin/llvm-config || return 1
-  echo "✓ llvm-config wrapper created"
-  return 0
-}
-
-function remove_qemu_llvm_config_wrapper() {
-  if [[ -f "${PREFIX}"/bin/llvm-config.zig_conda_real ]]; then
-    rm -f "${PREFIX}"/bin/llvm-config && mv "${PREFIX}"/bin/llvm-config.zig_conda_real "${PREFIX}"/bin/llvm-config || return 1
-  fi
-  return 0
-}
-
 function create_zig_libc_file() {
   local output_file=$1
-  local sysroot_path=$2
-  local sysroot_arch=$3
-
-  if [[ -z "${output_file}" ]] || [[ -z "${sysroot_path}" ]] || [[ -z "${sysroot_arch}" ]]; then
-    echo "ERROR: create_zig_libc_file requires: output_file, sysroot_path, sysroot_arch" >&2
+  
+  if [[ -z "${output_file}" ]]; then
+    echo "ERROR: create_zig_libc_file requires: output_file" >&2
     return 1
   fi
 
@@ -383,10 +318,10 @@ function create_zig_libc_file() {
 
   # Find GCC library directory (contains crtbegin.o, crtend.o)
   local gcc_lib_dir
-  gcc_lib_dir=$(dirname "$(find "${BUILD_PREFIX}"/lib/gcc/${sysroot_arch}-conda-linux-gnu -name "crtbeginS.o" | head -1)")
+  gcc_lib_dir=$(dirname "$(find "${BUILD_PREFIX}"/lib/gcc/${CONDA_TOOLCHAIN_HOST} -name "crtbeginS.o" | head -1)")
 
   if [[ -z "${gcc_lib_dir}" ]] || [[ ! -d "${gcc_lib_dir}" ]]; then
-    echo "WARNING: Could not find GCC library directory for ${sysroot_arch}" >&2
+    echo "WARNING: Could not find GCC library directory for ${CONDA_TOOLCHAIN_HOST}" >&2
     gcc_lib_dir=""
   else
     echo "  Found GCC library directory: ${gcc_lib_dir}"
@@ -394,56 +329,15 @@ function create_zig_libc_file() {
 
   # Create libc configuration file
   cat > "${output_file}" << EOF
-include_dir=${sysroot_path}/usr/include
-sys_include_dir=${sysroot_path}/usr/include
-crt_dir=${sysroot_path}/usr/lib
+include_dir=${CONDA_BUILD_SYSROOT}/usr/include
+sys_include_dir=${CONDA_BUILD_SYSROOT}/usr/include
+crt_dir=${CONDA_BUILD_SYSROOT}/usr/lib
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=${gcc_lib_dir}
 EOF
 
   echo "✓ Zig libc file created: ${output_file}"
-  return 0
-}
-
-function apply_cmake_patches() {
-  local build_dir=$1
-
-  # Check if CMAKE_PATCHES array exists and has elements
-  if [[ -z "${CMAKE_PATCHES+x}" ]] || [[ ${#CMAKE_PATCHES[@]} -eq 0 ]]; then
-    echo "No CMAKE_PATCHES defined, skipping patch application"
-    return 0
-  fi
-
-  echo "Applying ${#CMAKE_PATCHES[@]} cmake patches to ${build_dir}"
-
-  local patch_dir="${RECIPE_DIR}/patches/cmake"
-  if [[ ! -d "${patch_dir}" ]]; then
-    echo "ERROR: Patch directory ${patch_dir} does not exist" >&2
-    return 1
-  fi
-
-  pushd "${build_dir}" > /dev/null || return 1
-    for patch_file in "${CMAKE_PATCHES[@]}"; do
-      local patch_path="${patch_dir}/${patch_file}"
-      if [[ ! -f "${patch_path}" ]]; then
-        echo "ERROR: Patch file ${patch_path} not found" >&2
-        popd > /dev/null
-        return 1
-      fi
-
-      echo "  Applying patch: ${patch_file}"
-      if patch -p1 < "${patch_path}"; then
-        echo "    ✓ ${patch_file} applied successfully"
-      else
-        echo "ERROR: Failed to apply patch ${patch_file}" >&2
-        popd > /dev/null
-        return 1
-      fi
-    done
-  popd > /dev/null
-
-  echo "All cmake patches applied successfully"
   return 0
 }
 
