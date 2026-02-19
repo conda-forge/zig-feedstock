@@ -157,8 +157,6 @@ if [[ "$target_platform" == "linux-"* ]]; then
   modify_libc_libm_for_zig "${BUILD_PREFIX}"
   # Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
   create_gcc14_glibc28_compat_lib
-  # Create pthread_atfork stub for CMake fallback
-  create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 # Now that build scripts are much simpler, scripts could remove native/cross
 case "${target_platform}" in
@@ -184,6 +182,10 @@ case "${target_platform}" in
     ;;
   osx-64)
     perl -pi -e "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
+    ;;
+  linux-*)
+    # Create pthread_atfork stub for CMake fallback
+    create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
     ;;
 esac
 
