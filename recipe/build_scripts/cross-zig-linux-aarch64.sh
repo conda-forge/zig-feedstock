@@ -14,12 +14,3 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 # perl -pi -e 's/#define ZIG_LLVM_LINK_MODE "static"/#define ZIG_LLVM_LINK_MODE "shared"/g' "${cmake_build_dir}/config.h"
 perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
 cat "${cmake_build_dir}/config.h"
-
-# Create Zig libc configuration file
-create_zig_libc_file "${zig_build_dir}/libc_file"
-
-# Create pthread_atfork stub for glibc 2.28 (missing on aarch64)
-create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
-
-# Remove documentation tests that fail during cross-compilation
-remove_failing_langref "${zig_build_dir}"

@@ -110,12 +110,19 @@ if [[ "${target_platform}" == "win-"* ]]; then
   # windows LLVM is static only
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=OFF
+    -DZIG_CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH};${LIB}"
+  )
+  EXTRA_ZIG_ARGS+=(
+    --maxrss 7500000000
   )
 else
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=ON
   )
 fi
+
+source "${RECIPE_DIR}/build_scripts/_functions.sh"
+
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" && "${target_platform}" == "linux-*" ]]; then
   if [[ "${CROSSCOMPILING_EMULATOR:-}" == "" ]]; then
     echo "We require a crosscompiling_emulator for linux;"
@@ -126,6 +133,10 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" && "${target_platform}" == "li
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes ${CONDA_BUILD_SYSROOT}/lib
   )
+  # Remove documentation tests that fail during cross-compilation
+  remove_failing_langref "${zig_build_dir}"
+  # Create Zig libc configuration file
+  create_zig_libc_file "${zig_build_dir}/libc_file"
 fi
 
 if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" && "${CMAKE_CROSSCOMPILING_EMULATOR:-}" == "" ]]; then
@@ -141,26 +152,38 @@ if [[ "${CONDA_BUILD_CROSS_COMPILATION:-}" == "1" ]]; then
   export ZIG_CROSS_TARGET_MCPU="baseline"
 fi
 
-source "${RECIPE_DIR}/build_scripts/_functions.sh"
-
 if [[ "$target_platform" == "linux-"* ]]; then
   # Zig searches for libm.so/libc.so in incorrect paths (libm.so with hard-coded /usr/lib64/libmvec_nonshared.a)
   modify_libc_libm_for_zig "${BUILD_PREFIX}"
   # Create GCC 14 + glibc 2.28 compatibility library with stub implementations of __libc_csu_init/fini
   create_gcc14_glibc28_compat_lib
-
+  # Create pthread_atfork stub for CMake fallback
+  create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 # Now that build scripts are much simpler, scripts could remove native/cross
 case "${target_platform}" in
-  linux-64|osx-64|win-64)
+  linux-64|osx-64|osx-arm64)
+    # When using installed c++ libs, zig needs libzigcpp.a
+    configure_cmake_zigcpp "${cmake_build_dir}" "${PREFIX}" "" "${target_platform}"
+    ;;
+  win-64)
     source "${RECIPE_DIR}"/build_scripts/native-"${builder}-${target_platform}".sh
     ;;
-  osx-arm64|linux-ppc64le|linux-aarch64|win-arm64)
+  linux-ppc64le|linux-aarch64)
     source "${RECIPE_DIR}"/build_scripts/cross-"${builder}-${target_platform}".sh
     ;;
   *)
     echo "Unsupported target_platform: ${target_platform}"
     exit 1
+    ;;
+esac
+
+case "${target_platform}" in
+  osx-arm64)
+    perl -pi -e "s@libLLVMXRay.a@libLLVMXRay.a;$PREFIX/lib/libxml2.dylib;$PREFIX/lib/libzstd.dylib;$PREFIX/lib/libz.dylib@" "${cmake_build_dir}/config.h"
+    ;;
+  osx-64)
+    perl -pi -e "s@;-lm@;$PREFIX/lib/libc++.dylib;-lm@" "${cmake_build_dir}"/config.h
     ;;
 esac
 

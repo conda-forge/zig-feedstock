@@ -32,11 +32,3 @@ perl -pi -e 's|#define ZIG_LLD_LIBRARIES ".*"|#define ZIG_LLD_LIBRARIES "'"${LLD
 perl -pi -e 's/#define ZIG_LLVM_LINK_MODE "static"/#define ZIG_LLVM_LINK_MODE "shared"/g' "${cmake_build_dir}/config.h"
 perl -pi -e 's|#define ZIG_LLVM_LIBRARIES ".*"|#define ZIG_LLVM_LIBRARIES "'${PREFIX}'/lib/libLLVM-20.so;-lz;-lzstd"|g' "${cmake_build_dir}/config.h"
 perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
-
-# Create Zig libc configuration file
-create_zig_libc_file "${zig_build_dir}/libc_file"
-
-# Create pthread_atfork stub for glibc 2.28 (missing on PowerPC64LE)
-create_pthread_atfork_stub "${ZIG_ARCH}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
-
-remove_failing_langref "${zig_build_dir}"
