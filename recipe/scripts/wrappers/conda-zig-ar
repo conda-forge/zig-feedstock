@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Zig archiver wrapper
+exec ${CONDA_ZIG_AR:-zig ar} "$@"

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Zig linker wrapper
+exec ${CONDA_ZIG_LD:-zig cc} "$@"
