@@ -2,7 +2,7 @@
 """
 Build script for zig metapackage.
 Creates unprefixed symlinks/wrappers: zig -> $TRIPLET-zig
-Only built when TG_ == target_platform (native builds).
+Only built when cross_target_platform_ == target_platform (native builds).
 Works on both Unix and Windows.
 """
 

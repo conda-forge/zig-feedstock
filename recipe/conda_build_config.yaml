@@ -11,7 +11,7 @@ llvm_version:
 llvm_src_version:
   - "20.1.8"
 
-TG_:
+cross_target_platform_:
   - linux-64
   - linux-aarch64
   - linux-ppc64le

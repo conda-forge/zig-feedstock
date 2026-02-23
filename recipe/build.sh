@@ -164,13 +164,13 @@ fi
 echo "=== Building with ZIG ==="
 if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
-elif [[ "${TG_}" == "osx-arm64" ]]; then
+elif [[ "${cross_target_platform_}" == "osx-arm64" ]]; then
   echo "***"
   echo "* ERROR: We cannot build cross-target osx-arm64 with CMake without an emulator"
   echo "* Temporarily skip and rebuild with the new ZIG from osx-64"
   echo "***"
   exit 1
-elif [[ "${TG_}" == "linux-ppc64le" ]]; then
+elif [[ "${cross_target_platform_}" == "linux-ppc64le" ]]; then
   echo "***"
   echo "* ERROR: zig build fails to complete cross-target linux-ppc64le with CMake (>6hrs)"
   echo "* Temporarily skip and rebuild with the new ZIG from linux-64"

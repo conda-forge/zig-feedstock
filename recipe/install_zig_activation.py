@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Build script for zig_$TG_ activation package.
+Build script for zig_$cross_target_platform_ activation package.
 
 For CROSS-COMPILER builds: Installs activation scripts and wrappers.
 For NATIVE/CROSS-TARGET builds: No activation needed (just dependency on zig_impl).
