@@ -12,30 +12,30 @@ context:
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
     ${{
-      "x86_64-linux-gnu"            if cross_target_platform_ == "linux-64"       else
-      "aarch64-linux-gnu"           if cross_target_platform_ == "linux-aarch64"  else
-      "powerpc64le-linux-gnu"       if cross_target_platform_ == "linux-ppc64le"  else
-      "riscv64-linux-gnu"           if cross_target_platform_ == "linux-riscv64"  else
-      "s390x-linux-gnu"             if cross_target_platform_ == "linux-s390x"    else
-      "x86_64-macos-none"           if cross_target_platform_ == "osx-64"         else
-      "aarch64-macos-none"          if cross_target_platform_ == "osx-arm64"      else
-      "x86_64-windows-msvc"         if cross_target_platform_ == "win-64"         else
-      "aarch64-windows-msvc"        if cross_target_platform_ == "win-arm64"      else
+      "x86_64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-64"       else
+      "aarch64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-aarch64"  else
+      "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"  else
+      "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"  else
+      "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"    else
+      "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"         else
+      "aarch64-macos-none"                         if cross_target_platform_ == "osx-arm64"      else
+      "x86_64-windows-msvc"                        if cross_target_platform_ == "win-64"         else
+      "aarch64-windows-msvc"                       if cross_target_platform_ == "win-arm64"      else
       "native"
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
   conda_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"      if cross_target_platform_ == "linux-64"       else
-      "aarch64-conda-linux-gnu"     if cross_target_platform_ == "linux-aarch64"  else
-      "powerpc64le-conda-linux-gnu" if cross_target_platform_ == "linux-ppc64le"  else
-      "riscv64-conda-linux-gnu"     if cross_target_platform_ == "linux-riscv64"  else
-      "s390x-conda-linux-gnu"       if cross_target_platform_ == "linux-s390x"    else
-      "x86_64-apple-darwin13.4.0"   if cross_target_platform_ == "osx-64"         else
-      "arm64-apple-darwin20.0.0"    if cross_target_platform_ == "osx-arm64"      else
-      "x86_64-w64-mingw32"          if cross_target_platform_ == "win-64"         else
-      "aarch64-w64-mingw32"         if cross_target_platform_ == "win-arm64"      else
+      "x86_64-conda-linux-gnu"                     if cross_target_platform_ == "linux-64"       else
+      "aarch64-conda-linux-gnu"                    if cross_target_platform_ == "linux-aarch64"  else
+      "powerpc64le-conda-linux-gnu"                if cross_target_platform_ == "linux-ppc64le"  else
+      "riscv64-conda-linux-gnu"                    if cross_target_platform_ == "linux-riscv64"  else
+      "s390x-conda-linux-gnu"                      if cross_target_platform_ == "linux-s390x"    else
+      "x86_64-apple-darwin13.4.0"                  if cross_target_platform_ == "osx-64"         else
+      "arm64-apple-darwin20.0.0"                   if cross_target_platform_ == "osx-arm64"      else
+      "x86_64-w64-mingw32"                         if cross_target_platform_ == "win-64"         else
+      "aarch64-w64-mingw32"                        if cross_target_platform_ == "win-arm64"      else
       "unknown"
     }}
 
@@ -69,6 +69,7 @@ source:
       - if: linux
         then:
           - patches/0001-linux-maxrss-build.zig.patch
+          - patches/0005-glibc-2.17-use-fstat-not-fstat64.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -128,7 +129,7 @@ outputs:
           ZIG_TRIPLET: ${{ zig_triplet }}
           # --- DEBUGGING ---
           DEBUG_ZIG_BUILD: "1"
-          # ZIG_USE_CACHE: "1"
+          # ZIG_USE_CACHE: "0"
     requirements:
       build:
         # --- Common build deps (all cases) ---

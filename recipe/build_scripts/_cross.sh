@@ -33,26 +33,3 @@ EOF
   echo "✓ Zig libc file created: ${output_file}"
   return 0
 }
-
-function remove_failing_langref() {
-  local build_dir=$1
-  local testslistfile=${2:-"${SRC_DIR}"/build-level-patches/xxxx-remove-langref-std.txt}
-
-  local current_dir
-  current_dir=$(pwd)
-
-  if [[ -d "${build_dir}"/doc/langref ]]; then
-    # These langref code snippets fails with lld.ld failing to find /usr/lib64/libmvec_nonshared.a
-    # No idea why this comes up, there is no -lmvec_nonshared.a on the link command
-    # there seems to be no way to redirect to sysroot/usr/lib64/libmvec_nonshared.a
-    grep -v -f "${testslistfile}" "${build_dir}"/doc/langref.html.in > "${build_dir}"/doc/_langref.html.in
-    mv "${build_dir}"/doc/_langref.html.in "${build_dir}"/doc/langref.html.in
-    while IFS= read -r file
-    do
-      rm -f "${build_dir}"/doc/langref/"$file"
-    done < "${SRC_DIR}"/build-level-patches/xxxx-remove-langref-std.txt
-  else
-    echo "No langref directory found"
-    exit 1
-  fi
-}

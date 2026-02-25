@@ -1,0 +1,16 @@
+--- a/lib/std/posix.zig
++++ b/lib/std/posix.zig
+@@ -4466,7 +4466,11 @@ pub fn fstat(fd: fd_t) FStatError!Stat {
+         @compileError("fstat is not yet implemented on Windows");
+     }
+
+-    const fstat_sym = if (lfs64_abi) system.fstat64 else system.fstat;
++    // For glibc 2.17 compatibility, use fstat instead of fstat64
++    // fstat64 was added in glibc 2.33 and doesn't exist in older versions
++    const use_fstat64 = lfs64_abi and builtin.link_libc and
++        (!builtin.abi.isGnu() or builtin.os.version_range.linux.glibc.major > 2 or
++         (builtin.os.version_range.linux.glibc.major == 2 and builtin.os.version_range.linux.glibc.minor >= 33));
++    const fstat_sym = if (use_fstat64) system.fstat64 else system.fstat;
+     var stat = mem.zeroes(Stat);
+     switch (errno(fstat_sym(fd, &stat))) {
+         .SUCCESS => return stat,

@@ -143,8 +143,6 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
-
 # --- Post CMake Configuration ---
 
 # Add conda separated library dependencies to config.h - This seems to be doing the same thing ... odd
@@ -152,11 +150,19 @@ is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-l
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
 
+is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
+
+is_linux && remove_failing_langref "${zig_build_dir}"
+
 if is_linux && is_cross; then
   source "${RECIPE_DIR}/build_scripts/_cross.sh"
   source "${RECIPE_DIR}/build_scripts/_atfork.sh"
+  source "${RECIPE_DIR}/build_scripts/_sysroot_fix.sh"
+
+  # Fix sysroot libc.so linker scripts 2.17 to use relative paths
+  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
+
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
-  remove_failing_langref "${zig_build_dir}"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
