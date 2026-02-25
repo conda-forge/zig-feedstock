@@ -8,34 +8,35 @@ context:
   library: ${{ "Library/" if not unix }}
   m2: ${{ "m2-" if not unix }}
   sh: ${{ ".bat" if not unix else ".sh" }}
+  bat: ${{ ".bat" if not unix }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
     ${{
-      "x86_64-linux-gnu"            if cross_target_platform_ == "linux-64"       else
-      "aarch64-linux-gnu"           if cross_target_platform_ == "linux-aarch64"  else
-      "powerpc64le-linux-gnu"       if cross_target_platform_ == "linux-ppc64le"  else
-      "riscv64-linux-gnu"           if cross_target_platform_ == "linux-riscv64"  else
-      "s390x-linux-gnu"             if cross_target_platform_ == "linux-s390x"    else
-      "x86_64-macos-none"           if cross_target_platform_ == "osx-64"         else
-      "aarch64-macos-none"          if cross_target_platform_ == "osx-arm64"      else
-      "x86_64-windows-msvc"         if cross_target_platform_ == "win-64"         else
-      "aarch64-windows-msvc"        if cross_target_platform_ == "win-arm64"      else
+      "x86_64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-64"       else
+      "aarch64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-aarch64"  else
+      "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"  else
+      "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"  else
+      "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"    else
+      "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"         else
+      "aarch64-macos-none"                         if cross_target_platform_ == "osx-arm64"      else
+      "x86_64-windows-msvc"                        if cross_target_platform_ == "win-64"         else
+      "aarch64-windows-msvc"                       if cross_target_platform_ == "win-arm64"      else
       "native"
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
   conda_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"      if cross_target_platform_ == "linux-64"       else
-      "aarch64-conda-linux-gnu"     if cross_target_platform_ == "linux-aarch64"  else
-      "powerpc64le-conda-linux-gnu" if cross_target_platform_ == "linux-ppc64le"  else
-      "riscv64-conda-linux-gnu"     if cross_target_platform_ == "linux-riscv64"  else
-      "s390x-conda-linux-gnu"       if cross_target_platform_ == "linux-s390x"    else
-      "x86_64-apple-darwin13.4.0"   if cross_target_platform_ == "osx-64"         else
-      "arm64-apple-darwin20.0.0"    if cross_target_platform_ == "osx-arm64"      else
-      "x86_64-w64-mingw32"          if cross_target_platform_ == "win-64"         else
-      "aarch64-w64-mingw32"         if cross_target_platform_ == "win-arm64"      else
+      "x86_64-conda-linux-gnu"                     if cross_target_platform_ == "linux-64"       else
+      "aarch64-conda-linux-gnu"                    if cross_target_platform_ == "linux-aarch64"  else
+      "powerpc64le-conda-linux-gnu"                if cross_target_platform_ == "linux-ppc64le"  else
+      "riscv64-conda-linux-gnu"                    if cross_target_platform_ == "linux-riscv64"  else
+      "s390x-conda-linux-gnu"                      if cross_target_platform_ == "linux-s390x"    else
+      "x86_64-apple-darwin13.4.0"                  if cross_target_platform_ == "osx-64"         else
+      "arm64-apple-darwin20.0.0"                   if cross_target_platform_ == "osx-arm64"      else
+      "x86_64-w64-mingw32"                         if cross_target_platform_ == "win-64"         else
+      "aarch64-w64-mingw32"                        if cross_target_platform_ == "win-arm64"      else
       "unknown"
     }}
 
@@ -69,6 +70,8 @@ source:
       - if: linux
         then:
           - patches/0001-linux-maxrss-build.zig.patch
+          - patches/0002-linux-glibc-2.17-use-fstat-not-fstat64.patch
+          - patches/0003-linux-llvm-triple-no-glibc-version.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -127,8 +130,8 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
           # --- DEBUGGING ---
-          DEBUG_ZIG_BUILD: "1"
-          # ZIG_USE_CACHE: "1"
+          # DEBUG_ZIG_BUILD: "1"
+          # ZIG_USE_CACHE: "0"
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -140,6 +143,7 @@ outputs:
         - cmake >=3.5
         - ninja
         - perl 5.32.*
+        - python 3.12.*
         - if: not unix
           then:
             - ${{ m2 }}coreutils
@@ -172,9 +176,6 @@ outputs:
         - lld ${{ llvm_version }}.*
         - zlib
         - zstd
-        # - if: aarch64 or ppc64le
-        #   then:
-        #     - ${{ compiler('cxx') }}
         - if: osx
           then:
             - libcxx ${{ llvm_version }}.*
@@ -280,10 +281,17 @@ outputs:
               then:
                 - ${{ conda_triplet }}-zig
           files:
-            - if: is_cross_compiler
+            - etc/conda/activate.d/zig_activate${{ sh }}
+            - etc/conda/deactivate.d/zig_deactivate${{ sh }}
+            - ${{ library }}share/zig/wrappers/zig-cc${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-cxx${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-ar${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-ranlib${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-asm${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-rc${{ bat }}
+            - if: unix
               then:
-                - etc/conda/activate.d/zig_activate${{ sh }}
-                - etc/conda/deactivate.d/zig_deactivate${{ sh }}
+                - share/zig/wrappers/zig-cxx-shared
       - script:
           - if: not arm64
             then:

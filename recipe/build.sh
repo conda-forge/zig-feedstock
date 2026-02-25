@@ -73,6 +73,19 @@ if [[ "${PKG_VERSION}" == "0.15.2" ]] && [[ "${BUILD_NUMBER}" == "8" ]] || [[ ! 
   export zig="${BOOTSTRAP_ZIG:-${BUILD_PREFIX}/bin/zig}"
 fi
 
+# --- Patch bootstrap zig's stdlib ---
+# The bootstrap zig uses $BUILD_PREFIX/lib/zig/ as its --zig-lib-dir.
+# When cross-compiling with --libc (sysroot), glibc's fstat/fstat64 symbols may
+# not be resolvable: the libc.so stub doesn't have them for glibc < 2.33, and
+# libc_nonshared.a (which bridges via __fxstat) may not be linked.
+# Inject direct syscall paths for fstat/fstatat to bypass the broken libc chain.
+# This matches 0002-linux-glibc-2.17-use-fstat-not-fstat64.patch.
+_bootstrap_posix="${BUILD_PREFIX}/lib/zig/std/posix.zig"
+if [[ -f "${_bootstrap_posix}" ]]; then
+  python "${RECIPE_DIR}/build_scripts/_patch_bootstrap_fstat.py" "${_bootstrap_posix}"
+  echo "Patched bootstrap zig stdlib: fstat/fstatat use direct syscalls on Linux"
+fi
+
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
 mkdir -p "${SRC_DIR}"/build-level-patches
@@ -143,8 +156,6 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
-
 # --- Post CMake Configuration ---
 
 # Add conda separated library dependencies to config.h - This seems to be doing the same thing ... odd
@@ -152,11 +163,19 @@ is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-l
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
 
+is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
+
+is_linux && remove_failing_langref "${zig_build_dir}"
+
 if is_linux && is_cross; then
   source "${RECIPE_DIR}/build_scripts/_cross.sh"
   source "${RECIPE_DIR}/build_scripts/_atfork.sh"
+  source "${RECIPE_DIR}/build_scripts/_sysroot_fix.sh"
+
+  # Fix sysroot libc.so linker scripts 2.17 to use relative paths
+  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
+
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
-  remove_failing_langref "${zig_build_dir}"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
