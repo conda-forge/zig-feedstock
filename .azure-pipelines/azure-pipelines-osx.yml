@@ -8,12 +8,16 @@ jobs:
     vmImage: $(VMIMAGE)
   strategy:
     matrix:
-      osx_64_:
-        CONFIG: osx_64_
+      osx_64_cross_target_platform_osx-64:
+        CONFIG: osx_64_cross_target_platform_osx-64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15
-      osx_arm64_:
-        CONFIG: osx_arm64_
+      osx_64_cross_target_platform_osx-arm64:
+        CONFIG: osx_64_cross_target_platform_osx-arm64
+        UPLOAD_PACKAGES: 'True'
+        VMIMAGE: macOS-15
+      osx_arm64_cross_target_platform_osx-arm64:
+        CONFIG: osx_arm64_cross_target_platform_osx-arm64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15
   timeoutInMinutes: 360

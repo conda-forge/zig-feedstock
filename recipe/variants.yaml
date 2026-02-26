@@ -1,9 +1,0 @@
-# C standard library version requirements
-# For Linux
-c_stdlib_version:
-  - if: linux
-    then: 2.28
-
-  # Note: osx-arm64: 11.0 failed, using 11.3
-  - if: osx
-    then: 11.3
