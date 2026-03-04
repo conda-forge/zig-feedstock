@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 8
+  build_number: 9
   name: zig
   version: 0.15.2
 
@@ -99,11 +99,6 @@ source:
           - patches/0001-win-remove-ucrt-Lld.zig.patch
           - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
     target_directory: zig-source
-  - if: ppc64le
-    then:
-      - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
-        sha256: a6cbad9b2243b17e87795817cfff2107d113543a12486586f8a055a2bb044963
-        target_directory: lld-source
 
 build:
   number: ${{ build_number }}
@@ -131,7 +126,7 @@ outputs:
           ZIG_TRIPLET: ${{ zig_triplet }}
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
-          # ZIG_USE_CACHE: "0"
+          ZIG_USE_CACHE: "0"
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -160,14 +155,7 @@ outputs:
                 - libxml2-devel
 
         # --- BOOTSTRAP ZIG ---
-        # Use zig_impl_$build_platform to break cycle (not zig metapackage)
-        # For build_number <= 8: mamba workaround in build.sh
-        # For build_number > 8: standard dependency on zig_impl_*
-        - if: (is_native) and (cross_target_platform_ != build_platform)
-          then:
-            - if: match(version, ">=0.15.2") and (build_number > 8)
-              then:
-                - zig_impl_${{ build_platform }} >=0.15.2
+        - zig_impl_${{ build_platform }} >=0.15.2
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -266,11 +254,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - if: match(version, ">=0.15.2") and (build_number > 8) and is_cross_compiler
-              then:
-                - zig_impl_${{ build_platform }} >=${{ version }}
-              else:
-                - zig
+            - zig_impl_${{ build_platform }} >=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
     tests:
@@ -295,21 +279,9 @@ outputs:
       - script:
           - if: not arm64
             then:
-              - if: match(version, ">=0.15.2") and (build_number <= 8) and is_cross_compiler
-                then:
-                  - if: linux
-                    then:
-                      - ln -s ${CONDA_PREFIX}/bin/zig x86_64-conda-linux-gnu-zig
-                    else:
-                      - ln -s ${CONDA_PREFIX}/bin/zig x86_64-apple-darwin13.4.0-zig
               - ${{ conda_triplet }}-zig version
             else:
               - echo "Skip functional tests on arm64"
-        requirements:
-          run:
-            - if: match(version, ">=0.15.2") and (build_number <= 8)
-              then:
-                - zig
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)

@@ -22,8 +22,6 @@ cxx_compiler_version:
 - '20'
 libxml2_devel:
 - '2.14'
-llvm_src_version:
-- 20.1.8
 llvm_version:
 - '20'
 macos_machine:
