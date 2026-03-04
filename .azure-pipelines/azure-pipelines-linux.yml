@@ -24,10 +24,6 @@ jobs:
         CONFIG: linux_64_cross_target_platform_linux-riscv64
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
-      linux_64_cross_target_platform_linux-s390x:
-        CONFIG: linux_64_cross_target_platform_linux-s390x
-        UPLOAD_PACKAGES: 'True'
-        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma9
       linux_aarch64_cross_target_platform_linux-aarch64:
         CONFIG: linux_aarch64_cross_target_platform_linux-aarch64
         UPLOAD_PACKAGES: 'True'
