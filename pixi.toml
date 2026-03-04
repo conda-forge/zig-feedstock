@@ -47,6 +47,12 @@ description = "Build zig-feedstock-2 with variant linux_64_cross_target_platform
 [tasks."inspect-linux_64_cross_target_platform_linux-riscv64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_cross_target_platform_linux-riscv64.yaml"
 description = "List contents of zig-feedstock-2 packages built for variant linux_64_cross_target_platform_linux-riscv64"
+[tasks."build-linux_64_cross_target_platform_linux-s390x"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_64_cross_target_platform_linux-s390x.yaml"
+description = "Build zig-feedstock-2 with variant linux_64_cross_target_platform_linux-s390x directly (without setup scripts)"
+[tasks."inspect-linux_64_cross_target_platform_linux-s390x"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_cross_target_platform_linux-s390x.yaml"
+description = "List contents of zig-feedstock-2 packages built for variant linux_64_cross_target_platform_linux-s390x"
 [tasks."build-linux_aarch64_cross_target_platform_linux-aarch64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-aarch64.yaml"
 description = "Build zig-feedstock-2 with variant linux_aarch64_cross_target_platform_linux-aarch64 directly (without setup scripts)"
@@ -71,6 +77,12 @@ description = "Build zig-feedstock-2 with variant osx_64_cross_target_platform_o
 [tasks."inspect-osx_64_cross_target_platform_osx-arm64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_64_cross_target_platform_osx-arm64.yaml"
 description = "List contents of zig-feedstock-2 packages built for variant osx_64_cross_target_platform_osx-arm64"
+[tasks."build-osx_arm64_cross_target_platform_osx-64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/osx_arm64_cross_target_platform_osx-64.yaml"
+description = "Build zig-feedstock-2 with variant osx_arm64_cross_target_platform_osx-64 directly (without setup scripts)"
+[tasks."inspect-osx_arm64_cross_target_platform_osx-64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_arm64_cross_target_platform_osx-64.yaml"
+description = "List contents of zig-feedstock-2 packages built for variant osx_arm64_cross_target_platform_osx-64"
 [tasks."build-osx_arm64_cross_target_platform_osx-arm64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/osx_arm64_cross_target_platform_osx-arm64.yaml"
 description = "Build zig-feedstock-2 with variant osx_arm64_cross_target_platform_osx-arm64 directly (without setup scripts)"
@@ -83,6 +95,12 @@ description = "Build zig-feedstock-2 with variant win_64_cross_target_platform_w
 [tasks."inspect-win_64_cross_target_platform_win-64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/win_64_cross_target_platform_win-64.yaml"
 description = "List contents of zig-feedstock-2 packages built for variant win_64_cross_target_platform_win-64"
+[tasks."build-win_64_cross_target_platform_win-arm64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/win_64_cross_target_platform_win-arm64.yaml"
+description = "Build zig-feedstock-2 with variant win_64_cross_target_platform_win-arm64 directly (without setup scripts)"
+[tasks."inspect-win_64_cross_target_platform_win-arm64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/win_64_cross_target_platform_win-arm64.yaml"
+description = "List contents of zig-feedstock-2 packages built for variant win_64_cross_target_platform_win-arm64"
 
 [feature.smithy.dependencies]
 conda-smithy = "*"
