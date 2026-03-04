@@ -44,6 +44,11 @@ while [[ $i -lt $argc ]]; do
         -Wl,-O*) ;;
         -Wl,--gc-sections|-Wl,--no-gc-sections) ;;
         -Wl,--build-id|-Wl,--build-id=*) ;;
+        -Wl,-exported_symbols_list|-Wl,-exported_symbols_list,*) ;;
+        -Wl,-force_symbols_not_weak_list|-Wl,-force_symbols_not_weak_list,*) ;;
+        -Wl,-force_symbols_weak_list|-Wl,-force_symbols_weak_list,*) ;;
+        -Wl,-reexported_symbols_list|-Wl,-reexported_symbols_list,*) ;;
+        -Wl,-unexported_symbols_list|-Wl,-unexported_symbols_list,*) ;;
         -Wl,-all_load|-Wl,-force_load,*) ;;
         -all_load|-force_load) ;;
         -Bsymbolic-functions|-Bsymbolic) ;;

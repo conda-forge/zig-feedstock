@@ -28,8 +28,9 @@ is_debug() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; }
 
 # --- Early exits ---
 
-[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
 [[ -z "${CONDA_TRIPLET:-}" ]] && { echo "CONDA_TRIPLET must be specified in recipe.yaml env"; exit 1; }
+[[ -z "${CONDA_ZIG_BUILD:-}" ]] && { echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"; exit 1; }
+[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
 
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
   echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
@@ -55,7 +56,8 @@ fi
 # This allows to skip a known failing zig build with zig
 force_cmake=0
 
-BUILD_ZIG="${CONDA_TOOLCHAIN_BUILD}"-zig
+# Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
+BUILD_ZIG="${CONDA_ZIG_BUILD}"
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja

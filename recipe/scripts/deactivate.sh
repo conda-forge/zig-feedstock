@@ -11,5 +11,9 @@ unset ZIG_ASM
 unset ZIG_RC
 unset ZIG_CXX_SHARED
 
+# === Unset toolchain identification ===
+unset CONDA_ZIG_BUILD
+unset CONDA_ZIG_HOST
+
 # === Unset cross-compiler variables ===
 unset ZIG_TARGET_TRIPLET

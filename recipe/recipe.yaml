@@ -13,30 +13,30 @@ context:
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
     ${{
-      "x86_64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-64"       else
-      "aarch64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-aarch64"  else
-      "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"  else
-      "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"  else
-      "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"    else
-      "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"         else
-      "aarch64-macos-none"                         if cross_target_platform_ == "osx-arm64"      else
-      "x86_64-windows-msvc"                        if cross_target_platform_ == "win-64"         else
-      "aarch64-windows-msvc"                       if cross_target_platform_ == "win-arm64"      else
+      "x86_64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-64"              else
+      "aarch64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-aarch64"         else
+      "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"         else
+      "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"         else
+      "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"           else
+      "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"                else
+      "aarch64-macos-none"                         if cross_target_platform_ == "osx-arm64"             else
+      "x86_64-windows-msvc"                        if cross_target_platform_ == "win-64"                else
+      "aarch64-windows-msvc"                       if cross_target_platform_ == "win-arm64"             else
       "native"
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
   conda_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"                     if cross_target_platform_ == "linux-64"       else
-      "aarch64-conda-linux-gnu"                    if cross_target_platform_ == "linux-aarch64"  else
-      "powerpc64le-conda-linux-gnu"                if cross_target_platform_ == "linux-ppc64le"  else
-      "riscv64-conda-linux-gnu"                    if cross_target_platform_ == "linux-riscv64"  else
-      "s390x-conda-linux-gnu"                      if cross_target_platform_ == "linux-s390x"    else
-      "x86_64-apple-darwin13.4.0"                  if cross_target_platform_ == "osx-64"         else
-      "arm64-apple-darwin20.0.0"                   if cross_target_platform_ == "osx-arm64"      else
-      "x86_64-w64-mingw32"                         if cross_target_platform_ == "win-64"         else
-      "aarch64-w64-mingw32"                        if cross_target_platform_ == "win-arm64"      else
+      "x86_64-conda-linux-gnu"                     if cross_target_platform_ == "linux-64"              else
+      "aarch64-conda-linux-gnu"                    if cross_target_platform_ == "linux-aarch64"         else
+      "powerpc64le-conda-linux-gnu"                if cross_target_platform_ == "linux-ppc64le"         else
+      "riscv64-conda-linux-gnu"                    if cross_target_platform_ == "linux-riscv64"         else
+      "s390x-conda-linux-gnu"                      if cross_target_platform_ == "linux-s390x"           else
+      "x86_64-apple-darwin13.4.0"                  if cross_target_platform_ == "osx-64"                else
+      "arm64-apple-darwin20.0.0"                   if cross_target_platform_ == "osx-arm64"             else
+      "x86_64-w64-mingw32"                         if cross_target_platform_ == "win-64"                else
+      "aarch64-w64-mingw32"                        if cross_target_platform_ == "win-arm64"             else
       "unknown"
     }}
 
@@ -44,15 +44,28 @@ context:
   # Which platform builds cross-compilers for each target
   cross_build_platform: >-
     ${{
-      "linux-64" if cross_target_platform_ in [
+      "linux-64"                                   if cross_target_platform_ in [
           "linux-64",
           "linux-aarch64",
           "linux-ppc64le",
           "linux-riscv64",
           "linux-s390x"
-       ]                                                      else
-      "osx-64"   if cross_target_platform_ in ["osx-64", "osx-arm64"]            else
-      "win-64"   if cross_target_platform_ in ["win-64", "win-arm64"]            else
+       ]                                                                                                else
+      "osx-64"                                     if cross_target_platform_ in ["osx-64", "osx-arm64"] else
+      "win-64"                                     if cross_target_platform_ in ["win-64", "win-arm64"] else
+      target_platform
+    }}
+  cross_build_triplet: >-
+    ${{
+      "x86_64-conda-linux-gnu"                     if cross_target_platform_ in [
+          "linux-64",
+          "linux-aarch64",
+          "linux-ppc64le",
+          "linux-riscv64",
+          "linux-s390x"
+       ]                                                                                                else
+      "x86_64-apple-darwin13.4.0"                  if cross_target_platform_ in ["osx-64", "osx-arm64"] else
+      "x86_64-w64-mingw32"                         if cross_target_platform_ in ["win-64", "win-arm64"] else
       target_platform
     }}
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
@@ -124,9 +137,15 @@ outputs:
           BUILD_NUMBER: ${{ build_number }}
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
+
+          # --- BOOTSTRAPPING (until *_10) ---
+          CONDA_ZIG_BUILD: ${{ cross_build_triplet ~ "-zig" }}
+          CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
+          # --- BOOTSTRAPPING (until *_10) ---
+
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
-          ZIG_USE_CACHE: "0"
+          # ZIG_USE_CACHE: "0"
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -154,7 +173,7 @@ outputs:
               then:
                 - libxml2-devel
 
-        # --- BOOTSTRAP ZIG ---
+        # --- BOOTSTRAPING ZIG ---
         - zig_impl_${{ build_platform }} >=0.15.2
       host:
         - clangdev ${{ llvm_version }}.*
@@ -246,6 +265,10 @@ outputs:
              "x86_64-apple-darwin13.4.0"   if build_platform == "osx-64"   else
              "x86_64-w64-mingw32"
             }}
+          # Zig toolchain identification (independent of gcc TOOLCHAIN)
+          # Includes -zig suffix so value is directly usable as binary name
+          CONDA_ZIG_BUILD: ${{ cross_build_triplet ~ "-zig" }}
+          CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
     requirements:
       build:
         - python 3.12.*
@@ -282,6 +305,19 @@ outputs:
               - ${{ conda_triplet }}-zig version
             else:
               - echo "Skip functional tests on arm64"
+          # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
+          - if: unix
+            then:
+              - test -n "$CONDA_ZIG_BUILD"
+              - test -n "$CONDA_ZIG_HOST"
+              - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
+              - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
+              - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
+            else:
+              - if not defined CONDA_ZIG_BUILD exit /b 1
+              - if not defined CONDA_ZIG_HOST exit /b 1
+              - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
+              - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
