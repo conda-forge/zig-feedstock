@@ -182,6 +182,10 @@ def install_zig_cc_wrappers(
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
+        # Install shared flag-filtering helper (sourced by zig-cc and zig-cxx)
+        common_src = scripts_dir / "_zig-cc-common.sh"
+        if common_src.exists():
+            _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
         wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
