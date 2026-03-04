@@ -1,3 +1,25 @@
-c_stdlib_version:  # [linux or osx]
-  - 2.28  # [linux]
-  - 11.3  # [osx]
+c_compiler_version:    # [osx]
+  - 20                 # [osx]
+c_stdlib_version:      # [linux or osx]
+  - 2.28               # [ppc64le]
+  - 2.17               # [linux and not ppc64le]
+  - 11.3               # [osx]
+cxx_compiler_version:  # [osx]
+  - 20                 # [osx]
+
+llvm_version:
+  - "20"
+llvm_src_version:
+  - "20.1.8"
+
+cross_target_platform_:
+  - linux-64
+  - linux-aarch64
+  - linux-ppc64le
+  - linux-riscv64
+  - osx-64
+  - osx-arm64
+  - win-64
+
+  # - linux-s390x
+  # - win-arm64
