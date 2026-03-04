@@ -223,6 +223,16 @@ rm -f ${PREFIX}/bin/zig.pdb
 
 echo "Post-install implementation package: ${PKG_NAME}"
 mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
+
+# Windows conda convention: artifacts go under Library/
+if is_not_unix; then
+  echo "Relocating to Library/ for Windows conda convention"
+  mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
+  mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
+  mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
+  mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
+fi
+
 echo "=== Build installed for package: ${PKG_NAME} ==="
 
 # Cache successful build (saves before rattler-build cleanup)

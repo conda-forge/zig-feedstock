@@ -212,23 +212,23 @@ outputs:
           bin:
             - ${{ conda_triplet }}-zig
           files:
-            - doc/langref.html
-            - lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
-            - lib/zig/zig.h
-            - lib/zig/build-web/*
-            - lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
-            - lib/zig/compiler/**
-            - lib/zig/compiler_rt/**
-            - lib/zig/docs/**
-            - lib/zig/include/**
-            - lib/zig/init/**
-            - lib/zig/libc/**
-            - lib/zig/libcxx/**
-            - lib/zig/libcxxabi/**
-            - lib/zig/libunwind/**
-            - lib/zig/libtsan/**
-            - lib/zig/std/**
-            # Post-install tests
+            - ${{ library }}doc/langref.html
+            - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
+            - ${{ library }}lib/zig/zig.h
+            - ${{ library }}lib/zig/build-web/*
+            - ${{ library }}lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
+            - ${{ library }}lib/zig/compiler/**
+            - ${{ library }}lib/zig/compiler_rt/**
+            - ${{ library }}lib/zig/docs/**
+            - ${{ library }}lib/zig/include/**
+            - ${{ library }}lib/zig/init/**
+            - ${{ library }}lib/zig/libc/**
+            - ${{ library }}lib/zig/libcxx/**
+            - ${{ library }}lib/zig/libcxxabi/**
+            - ${{ library }}lib/zig/libunwind/**
+            - ${{ library }}lib/zig/libtsan/**
+            - ${{ library }}lib/zig/std/**
+            # Post-install tests (etc/ is not Library-prefixed on Windows)
             - etc/conda/test-files/zig*
       # Functional test using triplet-prefixed binary
       - script:
