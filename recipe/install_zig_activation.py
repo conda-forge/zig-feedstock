@@ -34,10 +34,16 @@ def main():
     # Cross-target triplet: only set for cross-compiler builds
     cross_target_triplet = target_triplet if cross_compiler == "true" else ""
 
+    # Zig toolchain identification env vars
+    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
+    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+
     print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
     print(f"zig_triplet: {zig_triplet}")
     print(f"conda_triplet: {conda_triplet}")
     print(f"CROSS_COMPILER: {cross_compiler}")
+    print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
+    print(f"CONDA_ZIG_HOST: {conda_zig_host}")
     print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
 
     # 1. Install activation/deactivation scripts
@@ -122,11 +128,18 @@ def install_activation_scripts(
     activate_dir = prefix / "etc" / "conda" / "activate.d"
     deactivate_dir = prefix / "etc" / "conda" / "deactivate.d"
 
+    # CONDA_ZIG_BUILD: the build platform's conda triplet (who runs the compiler)
+    # CONDA_ZIG_HOST: the target platform's conda triplet (what the compiler targets)
+    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
+    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+
     scripts_dir = recipe_dir / "scripts"
     replacements = {
         "@ZIG_TRIPLET@": zig_triplet,
         "@CONDA_TRIPLET@": conda_triplet,
         "@CROSS_TARGET_TRIPLET@": cross_target_triplet,
+        "@CONDA_ZIG_BUILD@": conda_zig_build,
+        "@CONDA_ZIG_HOST@": conda_zig_host,
     }
 
     if is_nonunix:
@@ -169,6 +182,10 @@ def install_zig_cc_wrappers(
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
+        # Install shared flag-filtering helper (sourced by zig-cc and zig-cxx)
+        common_src = scripts_dir / "_zig-cc-common.sh"
+        if common_src.exists():
+            _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
         wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
@@ -183,11 +200,8 @@ def install_unix_cross_wrappers(
     """Install Unix cross-compiler wrapper from template."""
     bin_dir = prefix / "bin"
 
-    # Check if native triplet zig exists, fallback to plain zig
-    build_prefix = Path(os.environ.get("BUILD_PREFIX", os.environ.get("CONDA_PREFIX", "")))
+    # Always use triplet-prefixed native zig (zig_impl provides it)
     native_zig = f"{native_triplet}-zig"
-    if not (build_prefix / "bin" / native_zig).exists():
-        native_zig = "zig"
 
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
     cc_triplet = _strip_glibc_version(zig_triplet)
@@ -211,11 +225,8 @@ def install_nonunix_cross_wrappers(
     """Install non-Unix cross-compiler wrappers from template."""
     bin_dir = prefix / "Library" / "bin"
 
-    # Check if native triplet zig exists, fallback to plain zig
-    build_prefix = Path(os.environ.get("BUILD_PREFIX", os.environ.get("CONDA_PREFIX", "")))
+    # Always use triplet-prefixed native zig (zig_impl provides it)
     native_zig_ext = f"{native_triplet}-zig.exe"
-    if not (build_prefix / "Library" / "bin" / native_zig_ext).exists():
-        native_zig_ext = "zig.exe"
 
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
     cc_triplet = _strip_glibc_version(zig_triplet)

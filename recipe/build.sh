@@ -28,8 +28,9 @@ is_debug() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; }
 
 # --- Early exits ---
 
-[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
 [[ -z "${CONDA_TRIPLET:-}" ]] && { echo "CONDA_TRIPLET must be specified in recipe.yaml env"; exit 1; }
+[[ -z "${CONDA_ZIG_BUILD:-}" ]] && { echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"; exit 1; }
+[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
 
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
   echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
@@ -55,36 +56,18 @@ fi
 # This allows to skip a known failing zig build with zig
 force_cmake=0
 
+# Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
+BUILD_ZIG="${CONDA_ZIG_BUILD}"
+
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
 export ZIG_GLOBAL_CACHE_DIR="${SRC_DIR}/zig-global-cache"
 export ZIG_LOCAL_CACHE_DIR="${SRC_DIR}/zig-local-cache"
 
-export cmake_source_dir="${SRC_DIR}/zig-source"
-export cmake_build_dir="${SRC_DIR}/build-release"
-export cmake_install_dir="${SRC_DIR}/cmake-built-install"
-export zig_build_dir="${SRC_DIR}/conda-zig-source"
-
-# Install bootstrap zig via mamba for:
-# - This should only be needed for 0.15.2 *_8 (it avoid output cycles due to zig -> metapackage)
-if [[ "${PKG_VERSION}" == "0.15.2" ]] && [[ "${BUILD_NUMBER}" == "8" ]] || [[ ! -x "${BUILD_PREFIX}/bin/zig" ]]; then
-  source "${RECIPE_DIR}/build_scripts/_bootstrap.sh"
-  install_bootstrap_zig "0.15.2" "*_7"
-  export zig="${BOOTSTRAP_ZIG:-${BUILD_PREFIX}/bin/zig}"
-fi
-
-# --- Patch bootstrap zig's stdlib ---
-# The bootstrap zig uses $BUILD_PREFIX/lib/zig/ as its --zig-lib-dir.
-# When cross-compiling with --libc (sysroot), glibc's fstat/fstat64 symbols may
-# not be resolvable: the libc.so stub doesn't have them for glibc < 2.33, and
-# libc_nonshared.a (which bridges via __fxstat) may not be linked.
-# Inject direct syscall paths for fstat/fstatat to bypass the broken libc chain.
-# This matches 0002-linux-glibc-2.17-use-fstat-not-fstat64.patch.
-_bootstrap_posix="${BUILD_PREFIX}/lib/zig/std/posix.zig"
-if [[ -f "${_bootstrap_posix}" ]]; then
-  python "${RECIPE_DIR}/build_scripts/_patch_bootstrap_fstat.py" "${_bootstrap_posix}"
-  echo "Patched bootstrap zig stdlib: fstat/fstatat use direct syscalls on Linux"
-fi
+cmake_source_dir="${SRC_DIR}/zig-source"
+cmake_build_dir="${SRC_DIR}/build-release"
+cmake_install_dir="${SRC_DIR}/cmake-built-install"
+zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
@@ -181,7 +164,7 @@ if is_linux && is_cross; then
 fi
 
 echo "=== Building with ZIG ==="
-if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${zig}" "${PREFIX}"; then
+if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   echo "SUCCESS: zig build completed successfully"
 elif [[ "${cross_target_platform_}" == "osx-arm64" ]]; then
   echo "***"
@@ -240,6 +223,16 @@ rm -f ${PREFIX}/bin/zig.pdb
 
 echo "Post-install implementation package: ${PKG_NAME}"
 mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
+
+# Windows conda convention: artifacts go under Library/
+if is_not_unix; then
+  echo "Relocating to Library/ for Windows conda convention"
+  mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
+  mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
+  mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
+  mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
+fi
+
 echo "=== Build installed for package: ${PKG_NAME} ==="
 
 # Cache successful build (saves before rattler-build cleanup)

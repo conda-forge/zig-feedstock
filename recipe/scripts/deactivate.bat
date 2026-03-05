@@ -11,5 +11,9 @@ set "ZIG_ASM="
 set "ZIG_RC="
 set "ZIG_CXX_SHARED="
 
+REM === Unset toolchain identification ===
+set "CONDA_ZIG_BUILD="
+set "CONDA_ZIG_HOST="
+
 REM === Unset cross-compiler variables ===
 set "ZIG_TARGET_TRIPLET="

@@ -94,6 +94,13 @@ Current build status
                 </a>
               </td>
             </tr><tr>
+              <td>osx_arm64_cross_target_platform_osx-64</td>
+              <td>
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-64" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
               <td>osx_arm64_cross_target_platform_osx-arm64</td>
               <td>
                 <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
@@ -105,6 +112,13 @@ Current build status
               <td>
                 <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
                   <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=win&configuration=win%20win_64_cross_target_platform_win-64" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cross_target_platform_win-arm64</td>
+              <td>
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=win&configuration=win%20win_64_cross_target_platform_win-arm64" alt="variant">
                 </a>
               </td>
             </tr>
@@ -135,6 +149,7 @@ Current release info
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__osx--64-green.svg)](https://anaconda.org/conda-forge/zig_osx-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_osx-64.svg)](https://anaconda.org/conda-forge/zig_osx-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_osx-64.svg)](https://anaconda.org/conda-forge/zig_osx-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_osx-64.svg)](https://anaconda.org/conda-forge/zig_osx-64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__osx--arm64-green.svg)](https://anaconda.org/conda-forge/zig_osx-arm64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_osx-arm64.svg)](https://anaconda.org/conda-forge/zig_osx-arm64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_osx-arm64.svg)](https://anaconda.org/conda-forge/zig_osx-arm64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_osx-arm64.svg)](https://anaconda.org/conda-forge/zig_osx-arm64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__win--64-green.svg)](https://anaconda.org/conda-forge/zig_win-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_win-64.svg)](https://anaconda.org/conda-forge/zig_win-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_win-64.svg)](https://anaconda.org/conda-forge/zig_win-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_win-64.svg)](https://anaconda.org/conda-forge/zig_win-64) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__win--arm64-green.svg)](https://anaconda.org/conda-forge/zig_win-arm64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_win-arm64.svg)](https://anaconda.org/conda-forge/zig_win-arm64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_win-arm64.svg)](https://anaconda.org/conda-forge/zig_win-arm64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_win-arm64.svg)](https://anaconda.org/conda-forge/zig_win-arm64) |
 
 Installing zig
 ==============
@@ -146,16 +161,16 @@ conda config --add channels conda-forge
 conda config --set channel_priority strict
 ```
 
-Once the `conda-forge` channel has been enabled, `zig, zig-compiler, zig_impl_linux-64, zig_impl_linux-aarch64, zig_impl_linux-ppc64le, zig_impl_osx-64, zig_impl_osx-arm64, zig_impl_win-64, zig_linux-64, zig_linux-aarch64, zig_linux-ppc64le, zig_linux-riscv64, zig_osx-64, zig_osx-arm64, zig_win-64` can be installed with `conda`:
+Once the `conda-forge` channel has been enabled, `zig, zig-compiler, zig_impl_linux-64, zig_impl_linux-aarch64, zig_impl_linux-ppc64le, zig_impl_osx-64, zig_impl_osx-arm64, zig_impl_win-64, zig_linux-64, zig_linux-aarch64, zig_linux-ppc64le, zig_linux-riscv64, zig_osx-64, zig_osx-arm64, zig_win-64, zig_win-arm64` can be installed with `conda`:
 
 ```
-conda install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_osx-64 zig_osx-arm64 zig_win-64
+conda install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_osx-64 zig_osx-arm64 zig_win-64 zig_win-arm64
 ```
 
 or with `mamba`:
 
 ```
-mamba install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_osx-64 zig_osx-arm64 zig_win-64
+mamba install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_osx-64 zig_osx-arm64 zig_win-64 zig_win-arm64
 ```
 
 It is possible to list all of the versions of `zig` available on your platform with `conda`:

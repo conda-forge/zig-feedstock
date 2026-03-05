@@ -9,6 +9,13 @@
 _CONDA_TRIPLET="@CONDA_TRIPLET@"
 _CROSS_TARGET_TRIPLET="@CROSS_TARGET_TRIPLET@"
 
+# === Zig toolchain identification ===
+# These variables identify the zig binary name without depending on gcc's TOOLCHAIN.
+# CONDA_ZIG_BUILD = build machine zig binary name (e.g. x86_64-conda-linux-gnu-zig)
+# CONDA_ZIG_HOST  = target machine zig binary name (e.g. aarch64-conda-linux-gnu-zig)
+export CONDA_ZIG_BUILD="@CONDA_ZIG_BUILD@"
+export CONDA_ZIG_HOST="@CONDA_ZIG_HOST@"
+
 # === Cross-compiler variable (set only for cross builds) ===
 if [[ -n "${_CROSS_TARGET_TRIPLET}" ]]; then
     export ZIG_TARGET_TRIPLET="${_CROSS_TARGET_TRIPLET}"
