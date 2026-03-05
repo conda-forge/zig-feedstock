@@ -55,6 +55,7 @@ context:
       build_platform                               if cross_target_platform_ in ["win-64", "win-arm64"] and build_platform in ["win-64", "win-arm64"] else
       "unknown"
     }}
+
   build_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"                     if build_platform == "linux-64"                      else
@@ -68,7 +69,7 @@ context:
     }}
 
   is_hosted_xcompiler: ${{ build_platform == target_platform and cross_target_platform_ != target_platform and cross_build_platform == build_platform }}
-  is_unhosted_xcompiler: ${{ cross_target_platform_ == "osx-64" and target_platform == "osx-arm64" }}
+  is_unhosted_xcompiler: ${{ cross_target_platform_ == "osx-64" and target_platform == "osx-arm64" or cross_target_platform_ == "win-64" and target_platform == "win-arm64" }}
   xc_build_platform: >-
     ${{
       build_platform                               if is_hosted_xcompiler                               else
