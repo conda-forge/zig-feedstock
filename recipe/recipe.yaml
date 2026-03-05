@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 9
+  build_number: 10
   name: zig
   version: 0.15.2
 
@@ -272,7 +272,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ build_platform }} >=${{ version }}
+            - zig_impl_${{ build_platform }} >=${{ version }} *_9
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
     tests:
