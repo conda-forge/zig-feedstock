@@ -210,7 +210,7 @@ else
   echo "Applying CMake patches..."
   apply_cmake_patches "${cmake_source_dir}"
 
-  if cmake_build_install "${cmake_build_dir}"; then
+  if cmake_build_install "${cmake_build_dir}" "${PREFIX}"; then
     echo "SUCCESS: cmake fallback build completed successfully"
   else
     echo "ERROR: Both zig build and cmake build failed"
@@ -230,7 +230,7 @@ if is_not_unix; then
   mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
-  mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
+  [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
 fi
 
 echo "=== Build installed for package: ${PKG_NAME} ==="
