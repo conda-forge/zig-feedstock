@@ -1,13 +1,17 @@
 # CMake Configuration and Build Helpers for Zig Compilation
 function cmake_build_install() {
   local build_dir=$1
+  local install_prefix=${2:-}
 
   local current_dir
   current_dir=$(pwd)
 
+  local install_args=()
+  [[ -n "${install_prefix}" ]] && install_args+=(--prefix "${install_prefix}")
+
   cd "${build_dir}" || return 1
     cmake --build . -- -j"${CPU_COUNT}" || return 1
-    cmake --install . || return 1
+    cmake --install . "${install_args[@]}" || return 1
   cd "${current_dir}" || return 1
 }
 

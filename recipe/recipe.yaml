@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 9
+  build_number: 10
   name: zig
   version: 0.15.2
 
@@ -44,32 +44,50 @@ context:
   # Which platform builds cross-compilers for each target
   cross_build_platform: >-
     ${{
-      "linux-64"                     if cross_target_platform_ in [
+      "linux-64"                                   if cross_target_platform_ in [
           "linux-64",
           "linux-aarch64",
           "linux-ppc64le",
           "linux-riscv64",
           "linux-s390x"
-       ]                                                                                  else
-      build_platform                 if cross_target_platform_ in ["osx-64", "osx-arm64"] and build_platform in ["osx-64", "osx-arm64"] else
-      build_platform                 if cross_target_platform_ in ["win-64", "win-arm64"] and build_platform in ["win-64", "win-arm64"] else
+       ]                                                                                                else
+      build_platform                               if cross_target_platform_ in ["osx-64", "osx-arm64"] and build_platform in ["osx-64", "osx-arm64"] else
+      build_platform                               if cross_target_platform_ in ["win-64", "win-arm64"] and build_platform in ["win-64", "win-arm64"] else
       "unknown"
     }}
 
   build_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"       if build_platform == "linux-64"                      else
-      "aarch64-conda-linux-gnu"      if build_platform == "linux-aarch64"                 else
-      "powerpc64le-conda-linux-gnu"  if build_platform == "linux-ppc64le"                 else
-      "x86_64-apple-darwin13.4.0"    if build_platform == "osx-64"                        else
-      "arm64-apple-darwin20.0.0"     if build_platform == "osx-arm64"                     else
-      "x86_64-w64-mingw32"           if build_platform == "win-64"                        else
-      "aarch64-w64-mingw32"          if build_platform == "win-arm64"                     else
+      "x86_64-conda-linux-gnu"                     if build_platform == "linux-64"                      else
+      "aarch64-conda-linux-gnu"                    if build_platform == "linux-aarch64"                 else
+      "powerpc64le-conda-linux-gnu"                if build_platform == "linux-ppc64le"                 else
+      "x86_64-apple-darwin13.4.0"                  if build_platform == "osx-64"                        else
+      "arm64-apple-darwin20.0.0"                   if build_platform == "osx-arm64"                     else
+      "x86_64-w64-mingw32"                         if build_platform == "win-64"                        else
+      "aarch64-w64-mingw32"                        if build_platform == "win-arm64"                     else
       "unknown"
     }}
-  
+
+  is_hosted_xcompiler: ${{ build_platform == target_platform and cross_target_platform_ != target_platform and cross_build_platform == build_platform }}
+  is_unhosted_xcompiler: ${{ cross_target_platform_ == "osx-64" and target_platform == "osx-arm64" or cross_target_platform_ == "win-64" and target_platform == "win-arm64" }}
+  xc_build_platform: >-
+    ${{
+      build_platform                               if is_hosted_xcompiler                               else
+      "osx-arm64"                                  if cross_target_platform_ == "osx-64"                else
+      "win-arm64"                                  if cross_target_platform_ == "win-64"                else
+      "unknown"
+    }}
+
+  xc_build_triplet: >-
+    ${{
+      build_triplet                                if is_hosted_xcompiler                               else
+      "arm64-apple-darwin20.0.0"                   if cross_target_platform_ == "osx-64"                else
+      "aarch64-w64-mingw32"                        if cross_target_platform_ == "win-64"                else
+      "unknown"
+    }}
+
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
-  is_cross_compiler: ${{ build_platform == target_platform and cross_target_platform_ != target_platform and cross_build_platform == build_platform }}
+  is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
   is_cross_target: ${{ build_platform != target_platform and cross_target_platform_ == target_platform }}
   
 recipe:
@@ -252,6 +270,7 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
+      # We will have to set 'or build_number == 0' in the skip so that the first build of a new version does not fail
       skip: not (is_native or is_cross_compiler or is_cross_target)
       script:
         file: install_zig_activation.py
@@ -259,10 +278,10 @@ outputs:
           ZIG_TRIPLET: ${{ zig_triplet }}
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
-          NATIVE_TRIPLET: ${{ build_triplet }}
+          NATIVE_TRIPLET: ${{ xc_build_triplet }}
           # Zig toolchain identification (independent of gcc TOOLCHAIN)
           # Includes -zig suffix so value is directly usable as binary name
-          CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
+          CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
     requirements:
       build:
@@ -272,7 +291,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
     tests:
@@ -296,24 +315,28 @@ outputs:
                 - share/zig/wrappers/_zig-cc-common.sh
                 - share/zig/wrappers/zig-cxx-shared
       - script:
-          - if: not arm64
+          - if: not arm64 and not build_number ==0
             then:
-              - ${{ conda_triplet }}-zig version
+              - echo "Skip functional tests first build (will fail the dependencies as it depends on same version native compiler"
             else:
-              - echo "Skip functional tests on arm64"
-          # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
-          - if: unix
-            then:
-              - test -n "$CONDA_ZIG_BUILD"
-              - test -n "$CONDA_ZIG_HOST"
-              - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
-              - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
-              - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
-            else:
-              - if not defined CONDA_ZIG_BUILD exit /b 1
-              - if not defined CONDA_ZIG_HOST exit /b 1
-              - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
-              - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
+              - if: not arm64
+                then:
+                  - ${{ conda_triplet }}-zig version
+                else:
+                  - echo "Skip functional tests on arm64 or first build"
+              # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
+              - if: unix
+                then:
+                  - test -n "$CONDA_ZIG_BUILD"
+                  - test -n "$CONDA_ZIG_HOST"
+                  - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
+                  - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
+                  - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
+                else:
+                  - if not defined CONDA_ZIG_BUILD exit /b 1
+                  - if not defined CONDA_ZIG_HOST exit /b 1
+                  - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
+                  - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
