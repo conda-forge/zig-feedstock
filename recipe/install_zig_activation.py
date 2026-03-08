@@ -13,8 +13,11 @@ substitution — no script content is generated inline.
 
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -186,7 +189,7 @@ def install_zig_cc_wrappers(
         common_src = scripts_dir / "_zig-cc-common.sh"
         if common_src.exists():
             _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared"]
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared", "zig-force-load-cc"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():
@@ -222,23 +225,68 @@ def install_nonunix_cross_wrappers(
     prefix: Path, recipe_dir: Path,
     native_triplet: str, target_triplet: str, zig_triplet: str,
 ):
-    """Install non-Unix cross-compiler wrappers from template."""
+    """Install non-Unix cross-compiler .exe shim (replaces .bat/.cmd).
+
+    Compiles a small C shim that forwards to the native zig binary with
+    -target injection. This avoids .bat/.cmd issues with CMake's compiler
+    detection (backslash escaping, command-line quoting).
+    """
     bin_dir = prefix / "Library" / "bin"
 
     # Always use triplet-prefixed native zig (zig_impl provides it)
-    native_zig_ext = f"{native_triplet}-zig.exe"
+    native_zig_exe = f"{native_triplet}-zig.exe"
 
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
     cc_triplet = _strip_glibc_version(zig_triplet)
 
-    replacements = {
-        "@NATIVE_ZIG_EXT@": native_zig_ext,
-        "@CC_TRIPLET@": cc_triplet,
-        "@ZIG_TRIPLET@": zig_triplet,
-    }
-    template = recipe_dir / "scripts" / "cross-zig.bat"
-    for ext in [".bat", ".cmd"]:
-        _install_template(template, bin_dir / f"{target_triplet}-zig{ext}", replacements)
+    _compile_cross_zig_shim(
+        recipe_dir / "scripts" / "cross-zig-shim.c",
+        bin_dir / f"{target_triplet}-zig.exe",
+        native_zig_exe=native_zig_exe,
+        cc_triplet=cc_triplet,
+        zig_triplet=zig_triplet,
+    )
+
+
+def _compile_cross_zig_shim(
+    src: Path, dst: Path,
+    native_zig_exe: str, cc_triplet: str, zig_triplet: str,
+):
+    """Compile the cross-zig C shim with placeholder substitution.
+
+    Preprocesses the C source to replace @PLACEHOLDER@ strings, then
+    compiles with cl.exe (MSVC) or gcc/cc as available.
+    """
+    # Read and substitute placeholders in C source
+    content = src.read_text()
+    content = content.replace("@NATIVE_ZIG_EXE@", native_zig_exe)
+    content = content.replace("@CC_TRIPLET@", cc_triplet)
+    content = content.replace("@ZIG_TRIPLET@", zig_triplet)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_src = Path(tmpdir) / "cross-zig-shim.c"
+        tmp_src.write_text(content)
+
+        # Try cl.exe (MSVC) first, then gcc
+        cc = shutil.which("cl")
+        if cc:
+            tmp_obj = Path(tmpdir) / "cross-zig-shim.obj"
+            subprocess.check_call([
+                cc, "/nologo", "/O2",
+                f"/Fe:{dst}",
+                f"/Fo:{tmp_obj}",
+                str(tmp_src),
+                "/link", "kernel32.lib",
+            ])
+        else:
+            cc = shutil.which("gcc") or shutil.which("cc")
+            if not cc:
+                raise RuntimeError("No C compiler found to build cross-zig shim")
+            subprocess.check_call([cc, "-O2", "-o", str(dst), str(tmp_src)])
+
+    print(f"  Compiled: {dst}")
 
 
 if __name__ == "__main__":

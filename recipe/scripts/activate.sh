@@ -37,7 +37,8 @@ fi
 [[ -x "${_wrapper_dir}/zig-ranlib" ]]     && export ZIG_RANLIB="${_wrapper_dir}/zig-ranlib"
 [[ -x "${_wrapper_dir}/zig-asm" ]]        && export ZIG_ASM="${_wrapper_dir}/zig-asm"
 [[ -x "${_wrapper_dir}/zig-rc" ]]         && export ZIG_RC="${_wrapper_dir}/zig-rc"
-[[ -x "${_wrapper_dir}/zig-cxx-shared" ]] && export ZIG_CXX_SHARED="${_wrapper_dir}/zig-cxx-shared"
+[[ -x "${_wrapper_dir}/zig-cxx-shared" ]]    && export ZIG_CXX_SHARED="${_wrapper_dir}/zig-cxx-shared"
+[[ -x "${_wrapper_dir}/zig-force-load-cc" ]] && export ZIG_FORCE_LOAD_CC="${_wrapper_dir}/zig-force-load-cc"
 
 # === Cleanup temporaries ===
 unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir

@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 10
+  build_number: 11
   name: zig
   version: 0.15.2
 
@@ -156,10 +156,8 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
 
-          # --- BOOTSTRAPPING (until *_10) ---
-          CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
+          CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-          # --- BOOTSTRAPPING (until *_10) ---
 
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
@@ -191,7 +189,7 @@ outputs:
               then:
                 - libxml2-devel
 
-        # --- BOOTSTRAPING ZIG ---
+        # Self-hosting: build zig with zig
         - zig_impl_${{ build_platform }} >=0.15.2
       host:
         - clangdev ${{ llvm_version }}.*
@@ -270,7 +268,6 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
-      # We will have to set 'or build_number == 0' in the skip so that the first build of a new version does not fail
       skip: not (is_native or is_cross_compiler or is_cross_target)
       script:
         file: install_zig_activation.py
@@ -286,6 +283,9 @@ outputs:
     requirements:
       build:
         - python 3.12.*
+        - if: is_cross_compiler and not unix
+          then:
+            - ${{ compiler('c') }}
       run:
         # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
@@ -314,29 +314,26 @@ outputs:
               then:
                 - share/zig/wrappers/_zig-cc-common.sh
                 - share/zig/wrappers/zig-cxx-shared
+                - share/zig/wrappers/zig-force-load-cc
       - script:
-          - if: not arm64 and not build_number ==0
+          - if: not arm64
             then:
-              - echo "Skip functional tests first build (will fail the dependencies as it depends on same version native compiler"
+              - ${{ conda_triplet }}-zig version
             else:
-              - if: not arm64
-                then:
-                  - ${{ conda_triplet }}-zig version
-                else:
-                  - echo "Skip functional tests on arm64 or first build"
-              # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
-              - if: unix
-                then:
-                  - test -n "$CONDA_ZIG_BUILD"
-                  - test -n "$CONDA_ZIG_HOST"
-                  - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
-                  - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
-                  - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
-                else:
-                  - if not defined CONDA_ZIG_BUILD exit /b 1
-                  - if not defined CONDA_ZIG_HOST exit /b 1
-                  - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
-                  - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
+              - echo "Skip functional tests on arm64"
+          # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
+          - if: unix
+            then:
+              - test -n "$CONDA_ZIG_BUILD"
+              - test -n "$CONDA_ZIG_HOST"
+              - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
+              - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
+              - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
+            else:
+              - if not defined CONDA_ZIG_BUILD exit /b 1
+              - if not defined CONDA_ZIG_HOST exit /b 1
+              - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
+              - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
