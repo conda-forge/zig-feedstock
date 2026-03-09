@@ -334,15 +334,15 @@ outputs:
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper validation tests
-          - test-wrappers${{ sh }}
+          - testing/test-wrappers${{ sh }}
           # Cross-compiler .exe shim test (non-Unix only)
           - if: is_cross_compiler and not unix
             then:
               - set "CONDA_TRIPLET=${{ conda_triplet }}" && test-cross-shim.bat
         files:
           recipe:
-            - scripts/test-wrappers${{ sh }}
-            - scripts/test-cross-shim.bat
+            - testing/test-wrappers${{ sh }}
+            - testing/test-cross-shim.bat
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)

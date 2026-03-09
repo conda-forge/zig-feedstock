@@ -215,7 +215,7 @@ def install_unix_cross_wrappers(
         "@ZIG_TRIPLET@": zig_triplet,
     }
     _install_template(
-        recipe_dir / "scripts" / "cross-zig.sh",
+        recipe_dir / "building" / "cross-zig.sh",
         bin_dir / f"{target_triplet}-zig",
         replacements, executable=True,
     )
@@ -240,7 +240,7 @@ def install_nonunix_cross_wrappers(
     cc_triplet = _strip_glibc_version(zig_triplet)
 
     _compile_cross_zig_shim(
-        recipe_dir / "scripts" / "cross-zig-shim.c",
+        recipe_dir / "building" / "cross-zig-shim.c",
         bin_dir / f"{target_triplet}-zig.exe",
         native_zig_exe=native_zig_exe,
         cc_triplet=cc_triplet,
