@@ -156,7 +156,7 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
 
-          CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
+          CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
           # --- DEBUGGING ---
@@ -244,7 +244,7 @@ outputs:
             - ${{ library }}lib/zig/libunwind/**
             - ${{ library }}lib/zig/libtsan/**
             - ${{ library }}lib/zig/std/**
-            # Post-install tests (etc/ is not Library-prefixed on Windows)
+            # Post-install tests (etc/ is not Library-prefixed on non-Unix)
             - etc/conda/test-files/zig*
       # Functional test using triplet-prefixed binary
       - script:
@@ -283,9 +283,6 @@ outputs:
     requirements:
       build:
         - python 3.12.*
-        - if: is_cross_compiler and not unix
-          then:
-            - ${{ compiler('c') }}
       run:
         # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
@@ -334,6 +331,17 @@ outputs:
               - if not defined CONDA_ZIG_HOST exit /b 1
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
+          # Wrapper validation tests
+          - test-wrappers${{ bat }}
+          # Cross-compiler .exe shim test (non-Unix only)
+          - if: is_cross_compiler and not unix
+            then:
+              - set "CONDA_TRIPLET=${{ conda_triplet }}" && test-cross-shim.bat
+        files:
+          recipe:
+            - scripts/test-wrappers.sh
+            - scripts/test-wrappers.bat
+            - scripts/test-cross-shim.bat
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)

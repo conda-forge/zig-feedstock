@@ -255,7 +255,7 @@ def _compile_cross_zig_shim(
     """Compile the cross-zig C shim with placeholder substitution.
 
     Preprocesses the C source to replace @PLACEHOLDER@ strings, then
-    compiles with cl.exe (MSVC) or gcc/cc as available.
+    compiles with the native zig cc (already available as a build dep).
     """
     # Read and substitute placeholders in C source
     content = src.read_text()
@@ -265,26 +265,39 @@ def _compile_cross_zig_shim(
 
     dst.parent.mkdir(parents=True, exist_ok=True)
 
+    # Find the native zig binary (CONDA_ZIG_BUILD is set by recipe env)
+    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
+    zig_bin = shutil.which(conda_zig_build) if conda_zig_build else None
+    if not zig_bin:
+        # Fallback: look in BUILD_PREFIX or CONDA_PREFIX
+        for prefix_var in ("BUILD_PREFIX", "CONDA_PREFIX"):
+            prefix = os.environ.get(prefix_var, "")
+            if prefix:
+                for subdir in ("Library/bin", "bin"):
+                    candidate = Path(prefix) / subdir / native_zig_exe
+                    if candidate.exists():
+                        zig_bin = str(candidate)
+                        break
+            if zig_bin:
+                break
+    if not zig_bin:
+        raise RuntimeError(
+            f"No zig binary found to compile cross-zig shim. "
+            f"CONDA_ZIG_BUILD={conda_zig_build!r}"
+        )
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_src = Path(tmpdir) / "cross-zig-shim.c"
         tmp_src.write_text(content)
 
-        # Try cl.exe (MSVC) first, then gcc
-        cc = shutil.which("cl")
-        if cc:
-            tmp_obj = Path(tmpdir) / "cross-zig-shim.obj"
-            subprocess.check_call([
-                cc, "/nologo", "/O2",
-                f"/Fe:{dst}",
-                f"/Fo:{tmp_obj}",
-                str(tmp_src),
-                "/link", "kernel32.lib",
-            ])
-        else:
-            cc = shutil.which("gcc") or shutil.which("cc")
-            if not cc:
-                raise RuntimeError("No C compiler found to build cross-zig shim")
-            subprocess.check_call([cc, "-O2", "-o", str(dst), str(tmp_src)])
+        # Use zig cc to compile the shim targeting native Windows
+        subprocess.check_call([
+            zig_bin, "cc",
+            "-O2",
+            "-o", str(dst),
+            str(tmp_src),
+            "-lkernel32",
+        ])
 
     print(f"  Compiled: {dst}")
 
