@@ -233,17 +233,17 @@ outputs:
             - ${{ library }}lib/zig/zig.h
             - ${{ library }}lib/zig/build-web/*
             - ${{ library }}lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
-            - ${{ library }}lib/zig/compiler/**
-            - ${{ library }}lib/zig/compiler_rt/**
-            - ${{ library }}lib/zig/docs/**
-            - ${{ library }}lib/zig/include/**
-            - ${{ library }}lib/zig/init/**
-            - ${{ library }}lib/zig/libc/**
-            - ${{ library }}lib/zig/libcxx/**
-            - ${{ library }}lib/zig/libcxxabi/**
-            - ${{ library }}lib/zig/libunwind/**
-            - ${{ library }}lib/zig/libtsan/**
-            - ${{ library }}lib/zig/std/**
+            - ${{ library }}lib/zig/compiler/*
+            - ${{ library }}lib/zig/compiler_rt/*
+            - ${{ library }}lib/zig/docs/*
+            - ${{ library }}lib/zig/include/*
+            - ${{ library }}lib/zig/init/*
+            - ${{ library }}lib/zig/libc/*
+            - ${{ library }}lib/zig/libcxx/*
+            - ${{ library }}lib/zig/libcxxabi/*
+            - ${{ library }}lib/zig/libunwind/*
+            - ${{ library }}lib/zig/libtsan/*
+            - ${{ library }}lib/zig/std/*
             # Post-install tests (etc/ is not Library-prefixed on non-Unix)
             - etc/conda/test-files/zig*
       # Functional test using triplet-prefixed binary
@@ -312,6 +312,8 @@ outputs:
                 - share/zig/wrappers/_zig-cc-common.sh
                 - share/zig/wrappers/zig-cxx-shared
                 - share/zig/wrappers/zig-force-load-cc
+            # Post-install tests (etc/ is not Library-prefixed on non-Unix)
+            - etc/conda/test-files/zig*
       - script:
           - if: not arm64
             then:
@@ -332,15 +334,14 @@ outputs:
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper validation tests
-          - test-wrappers${{ bat }}
+          - test-wrappers${{ sh }}
           # Cross-compiler .exe shim test (non-Unix only)
           - if: is_cross_compiler and not unix
             then:
               - set "CONDA_TRIPLET=${{ conda_triplet }}" && test-cross-shim.bat
         files:
           recipe:
-            - scripts/test-wrappers.sh
-            - scripts/test-wrappers.bat
+            - scripts/test-wrappers${{ sh }}
             - scripts/test-cross-shim.bat
 
   # ==========================================================================
