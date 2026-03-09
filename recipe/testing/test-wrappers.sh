@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Test script for zig wrapper validation (Unix)
 # Runs during zig_$cross_target_platform_ package tests
-set -euo pipefail
 
 _wrapper_dir="${CONDA_PREFIX}/share/zig/wrappers"
 _pass=0
 _fail=0
 
-_ok()   { echo "  PASS: $1"; ((_pass++)); }
-_err()  { echo "  FAIL: $1"; ((_fail++)); }
-_test() { if eval "$2"; then _ok "$1"; else _err "$1"; fi; }
+_ok()   { echo "  PASS: $1"; _pass=$((_pass + 1)); }
+_err()  { echo "  FAIL: $1"; _fail=$((_fail + 1)); }
+_test() { if eval "$2" 2>/dev/null; then _ok "$1"; else _err "$1"; fi; }
 
 echo "=== Wrapper Script Validation ==="
 

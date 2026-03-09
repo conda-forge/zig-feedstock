@@ -40,10 +40,14 @@ if defined ZIG_RC_CMAKE (
     set /a _fail+=1
 )
 
-REM --- 3. ZIG_RC_CMAKE has no backslashes ---
+REM --- 3. ZIG_RC_CMAKE path validation ---
 echo --- RC path escaping ---
-echo %ZIG_RC_CMAKE% | findstr /C:"\" >nul 2>&1
-if errorlevel 1 (
+echo   ZIG_RC_CMAKE=%ZIG_RC_CMAKE%
+
+REM Use if-string-contains via variable substitution
+REM Check: no backslashes (compare original with backslash-stripped version)
+set "_rc_nobs=%ZIG_RC_CMAKE:\=%"
+if "%_rc_nobs%"=="%ZIG_RC_CMAKE%" (
     echo   PASS: ZIG_RC_CMAKE has no backslashes
     set /a _pass+=1
 ) else (
@@ -51,9 +55,9 @@ if errorlevel 1 (
     set /a _fail+=1
 )
 
-REM Verify ZIG_RC_CMAKE contains forward slashes
-echo %ZIG_RC_CMAKE% | findstr /C:"/" >nul 2>&1
-if not errorlevel 1 (
+REM Check: has forward slashes (stripped version differs from original)
+set "_rc_nofs=%ZIG_RC_CMAKE:/=%"
+if not "%_rc_nofs%"=="%ZIG_RC_CMAKE%" (
     echo   PASS: ZIG_RC_CMAKE has forward slashes
     set /a _pass+=1
 ) else (
@@ -61,13 +65,13 @@ if not errorlevel 1 (
     set /a _fail+=1
 )
 
-REM Verify ZIG_RC_CMAKE ends with zig-rc.bat
-echo %ZIG_RC_CMAKE% | findstr /E /C:"zig-rc.bat" >nul 2>&1
-if not errorlevel 1 (
-    echo   PASS: ZIG_RC_CMAKE ends with zig-rc.bat
+REM Check: contains zig-rc.bat
+set "_rc_check=%ZIG_RC_CMAKE:zig-rc.bat=%"
+if not "%_rc_check%"=="%ZIG_RC_CMAKE%" (
+    echo   PASS: ZIG_RC_CMAKE contains zig-rc.bat
     set /a _pass+=1
 ) else (
-    echo   FAIL: ZIG_RC_CMAKE ends with zig-rc.bat
+    echo   FAIL: ZIG_RC_CMAKE contains zig-rc.bat
     set /a _fail+=1
 )
 

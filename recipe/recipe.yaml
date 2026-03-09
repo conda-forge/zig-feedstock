@@ -80,10 +80,9 @@ context:
 
   xc_build_triplet: >-
     ${{
-      build_triplet                                if is_hosted_xcompiler                               else
       "arm64-apple-darwin20.0.0"                   if cross_target_platform_ == "osx-64"                else
       "aarch64-w64-mingw32"                        if cross_target_platform_ == "win-64"                else
-      "unknown"
+      build_triplet
     }}
 
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
@@ -283,6 +282,10 @@ outputs:
     requirements:
       build:
         - python 3.12.*
+        # Need zig to compile .exe shim for non-Unix cross-compilers
+        - if: is_cross_compiler and not unix
+          then:
+            - zig_impl_${{ xc_build_platform }} >=${{ version }}
       run:
         # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
