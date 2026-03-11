@@ -60,6 +60,8 @@ _test "common has -mcpu=baseline in exec args" "grep -q 'mcpu=baseline' '${_comm
 echo "--- Activation variables ---"
 _test "ZIG_FORCE_LOAD_CC is set" "[[ -n '${ZIG_FORCE_LOAD_CC:-}' ]]"
 _test "ZIG_FORCE_LOAD_CC points to existing file" "[[ -x '${ZIG_FORCE_LOAD_CC:-/nonexistent}' ]]"
+_test "ZIG_CXX_SHARED is set" "[[ -n '${ZIG_CXX_SHARED:-}' ]]"
+_test "ZIG_CXX_SHARED points to existing file" "[[ -x '${ZIG_CXX_SHARED:-/nonexistent}' ]]"
 
 # --- Summary ---
 echo ""

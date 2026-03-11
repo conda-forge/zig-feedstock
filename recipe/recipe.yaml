@@ -282,10 +282,18 @@ outputs:
     requirements:
       build:
         - python 3.12.*
-        # Need zig to compile .exe shim for non-Unix cross-compilers
+        # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
             - zig_impl_${{ xc_build_platform }} >=${{ version }}
+      host:
+        # Need zig to compile zig-cxx-shared.exe on non-Unix (native + cross-target)
+        # Host dep because cross-target builds run on different platform (e.g. win-arm64)
+        # where zig_impl may not exist; host dep installs target-platform zig in PREFIX
+        # which runs via non-Unix x86_64-on-ARM64 emulation
+        - if: not is_cross_compiler and not unix
+          then:
+            - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
         # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
@@ -315,6 +323,9 @@ outputs:
                 - share/zig/wrappers/_zig-cc-common.sh
                 - share/zig/wrappers/zig-cxx-shared
                 - share/zig/wrappers/zig-force-load-cc
+            - if: not unix
+              then:
+                - Library/share/zig/wrappers/zig-cxx-shared.exe
             # Post-install tests (etc/ is not Library-prefixed on non-Unix)
             - etc/conda/test-files/zig*
       - script:

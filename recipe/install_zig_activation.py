@@ -93,6 +93,71 @@ def _install_template(src: Path, dst: Path, replacements: dict, executable: bool
     print(f"  Installed: {dst}")
 
 
+def _find_zig_compiler() -> str:
+    """Find a zig binary suitable for compiling C shims at install time.
+
+    Search order:
+    1. CONDA_ZIG_BUILD (build machine's zig binary name)
+    2. CONDA_ZIG_HOST (target machine's zig — usable on win-arm64 via x86_64 emulation)
+    3. Any *-zig.exe or zig.exe in known prefix directories
+    """
+    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
+    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+
+    # Try CONDA_ZIG_BUILD first, then CONDA_ZIG_HOST as fallback
+    # (cross-target builds on win-arm64 may only have the win-64 zig binary,
+    # which runs fine via Windows x86_64-on-ARM64 emulation)
+    for zig_name in (conda_zig_build, conda_zig_host):
+        if not zig_name:
+            continue
+        found = shutil.which(zig_name)
+        if found:
+            return found
+        # Search known prefix directories
+        for name in (zig_name, f"{zig_name}.exe"):
+            for prefix_var in ("BUILD_PREFIX", "PREFIX", "CONDA_PREFIX"):
+                prefix_path = os.environ.get(prefix_var, "")
+                if not prefix_path:
+                    continue
+                for subdir in ("Library/bin", "bin"):
+                    candidate = Path(prefix_path) / subdir / name
+                    if candidate.exists():
+                        return str(candidate)
+
+    raise RuntimeError(
+        f"No zig binary found to compile C shim. "
+        f"CONDA_ZIG_BUILD={conda_zig_build!r}, CONDA_ZIG_HOST={conda_zig_host!r}"
+    )
+
+
+def _compile_c_shim(src: Path, dst: Path, replacements: dict):
+    """Compile a C shim with @PLACEHOLDER@ substitution using zig cc."""
+    content = src.read_text()
+    for placeholder, value in replacements.items():
+        content = content.replace(placeholder, value)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    zig_bin = _find_zig_compiler()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_src = Path(tmpdir) / src.name
+        tmp_src.write_text(content)
+        subprocess.check_call([
+            zig_bin, "cc",
+            "-O2",
+            "-o", str(dst),
+            str(tmp_src),
+            "-lkernel32",
+        ])
+
+    pdb = dst.with_suffix(".pdb")
+    if pdb.exists():
+        pdb.unlink()
+        print(f"  Removed: {pdb}")
+
+    print(f"  Compiled: {dst}")
+
+
 def _strip_glibc_version(triplet: str) -> str:
     """Strip glibc version suffix from triplet for clang compatibility.
 
@@ -183,6 +248,14 @@ def install_zig_cc_wrappers(
             src = scripts_dir / f"{name}.bat"
             if src.exists():
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
+        # Windows DLL linker wrapper (.exe shim compiled with zig cc)
+        win_shared_src = recipe_dir / "building" / "zig-cxx-shared-win.c"
+        if win_shared_src.exists():
+            _compile_c_shim(
+                win_shared_src,
+                wrapper_dir / "zig-cxx-shared.exe",
+                replacements,
+            )
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
         # Install shared flag-filtering helper (sourced by zig-cc and zig-cxx)
@@ -239,81 +312,16 @@ def install_nonunix_cross_wrappers(
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
     cc_triplet = _strip_glibc_version(zig_triplet)
 
-    _compile_cross_zig_shim(
+    replacements = {
+        "@NATIVE_ZIG_EXE@": native_zig_exe,
+        "@CC_TRIPLET@": cc_triplet,
+        "@ZIG_TRIPLET@": zig_triplet,
+    }
+    _compile_c_shim(
         recipe_dir / "building" / "cross-zig-shim.c",
         bin_dir / f"{target_triplet}-zig.exe",
-        native_zig_exe=native_zig_exe,
-        cc_triplet=cc_triplet,
-        zig_triplet=zig_triplet,
+        replacements,
     )
-
-
-def _compile_cross_zig_shim(
-    src: Path, dst: Path,
-    native_zig_exe: str, cc_triplet: str, zig_triplet: str,
-):
-    """Compile the cross-zig C shim with placeholder substitution.
-
-    Preprocesses the C source to replace @PLACEHOLDER@ strings, then
-    compiles with the native zig cc (already available as a build dep).
-    """
-    # Read and substitute placeholders in C source
-    content = src.read_text()
-    content = content.replace("@NATIVE_ZIG_EXE@", native_zig_exe)
-    content = content.replace("@CC_TRIPLET@", cc_triplet)
-    content = content.replace("@ZIG_TRIPLET@", zig_triplet)
-
-    dst.parent.mkdir(parents=True, exist_ok=True)
-
-    # Find the native zig binary (CONDA_ZIG_BUILD is set by recipe env)
-    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
-    zig_bin = shutil.which(conda_zig_build) if conda_zig_build else None
-    if not zig_bin:
-        # Search BUILD_PREFIX, PREFIX, and CONDA_PREFIX for the zig binary
-        # Try both CONDA_ZIG_BUILD name (with/without .exe) and native_zig_exe
-        names = [conda_zig_build, f"{conda_zig_build}.exe", native_zig_exe]
-        for prefix_var in ("BUILD_PREFIX", "PREFIX", "CONDA_PREFIX"):
-            prefix = os.environ.get(prefix_var, "")
-            if not prefix:
-                continue
-            for subdir in ("Library/bin", "bin"):
-                for name in names:
-                    if not name:
-                        continue
-                    candidate = Path(prefix) / subdir / name
-                    if candidate.exists():
-                        zig_bin = str(candidate)
-                        break
-                if zig_bin:
-                    break
-            if zig_bin:
-                break
-    if not zig_bin:
-        raise RuntimeError(
-            f"No zig binary found to compile cross-zig shim. "
-            f"CONDA_ZIG_BUILD={conda_zig_build!r}"
-        )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_src = Path(tmpdir) / "cross-zig-shim.c"
-        tmp_src.write_text(content)
-
-        # Use zig cc to compile the shim targeting native Windows
-        subprocess.check_call([
-            zig_bin, "cc",
-            "-O2",
-            "-o", str(dst),
-            str(tmp_src),
-            "-lkernel32",
-        ])
-
-    # Clean up .pdb debug symbols file (generated by MSVC linker)
-    pdb = dst.with_suffix(".pdb")
-    if pdb.exists():
-        pdb.unlink()
-        print(f"  Removed: {pdb}")
-
-    print(f"  Compiled: {dst}")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,15 @@ for %%w in (zig-cc.bat zig-cxx.bat zig-ar.bat zig-ranlib.bat zig-asm.bat zig-rc.
     )
 )
 
+REM --- Windows DLL linker wrapper ---
+if exist "%_wrapper_dir%\zig-cxx-shared.exe" (
+    echo   PASS: zig-cxx-shared.exe exists
+    set /a _pass+=1
+) else (
+    echo   FAIL: zig-cxx-shared.exe exists
+    set /a _fail+=1
+)
+
 REM --- 2. Activation variables ---
 echo --- Activation variables ---
 
@@ -37,6 +46,14 @@ if defined ZIG_RC_CMAKE (
     set /a _pass+=1
 ) else (
     echo   FAIL: ZIG_RC_CMAKE is set
+    set /a _fail+=1
+)
+
+if defined ZIG_CXX_SHARED (
+    echo   PASS: ZIG_CXX_SHARED is set
+    set /a _pass+=1
+) else (
+    echo   FAIL: ZIG_CXX_SHARED is set
     set /a _fail+=1
 )
 
