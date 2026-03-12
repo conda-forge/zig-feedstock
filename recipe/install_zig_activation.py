@@ -13,8 +13,11 @@ substitution — no script content is generated inline.
 
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -88,6 +91,71 @@ def _install_template(src: Path, dst: Path, replacements: dict, executable: bool
     if executable:
         dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     print(f"  Installed: {dst}")
+
+
+def _find_zig_compiler() -> str:
+    """Find a zig binary suitable for compiling C shims at install time.
+
+    Search order:
+    1. CONDA_ZIG_BUILD (build machine's zig binary name)
+    2. CONDA_ZIG_HOST (target machine's zig — usable on win-arm64 via x86_64 emulation)
+    3. Any *-zig.exe or zig.exe in known prefix directories
+    """
+    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
+    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+
+    # Try CONDA_ZIG_BUILD first, then CONDA_ZIG_HOST as fallback
+    # (cross-target builds on win-arm64 may only have the win-64 zig binary,
+    # which runs fine via Windows x86_64-on-ARM64 emulation)
+    for zig_name in (conda_zig_build, conda_zig_host):
+        if not zig_name:
+            continue
+        found = shutil.which(zig_name)
+        if found:
+            return found
+        # Search known prefix directories
+        for name in (zig_name, f"{zig_name}.exe"):
+            for prefix_var in ("BUILD_PREFIX", "PREFIX", "CONDA_PREFIX"):
+                prefix_path = os.environ.get(prefix_var, "")
+                if not prefix_path:
+                    continue
+                for subdir in ("Library/bin", "bin"):
+                    candidate = Path(prefix_path) / subdir / name
+                    if candidate.exists():
+                        return str(candidate)
+
+    raise RuntimeError(
+        f"No zig binary found to compile C shim. "
+        f"CONDA_ZIG_BUILD={conda_zig_build!r}, CONDA_ZIG_HOST={conda_zig_host!r}"
+    )
+
+
+def _compile_c_shim(src: Path, dst: Path, replacements: dict):
+    """Compile a C shim with @PLACEHOLDER@ substitution using zig cc."""
+    content = src.read_text()
+    for placeholder, value in replacements.items():
+        content = content.replace(placeholder, value)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    zig_bin = _find_zig_compiler()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_src = Path(tmpdir) / src.name
+        tmp_src.write_text(content)
+        subprocess.check_call([
+            zig_bin, "cc",
+            "-O2",
+            "-o", str(dst),
+            str(tmp_src),
+            "-lkernel32",
+        ])
+
+    pdb = dst.with_suffix(".pdb")
+    if pdb.exists():
+        pdb.unlink()
+        print(f"  Removed: {pdb}")
+
+    print(f"  Compiled: {dst}")
 
 
 def _strip_glibc_version(triplet: str) -> str:
@@ -180,13 +248,21 @@ def install_zig_cc_wrappers(
             src = scripts_dir / f"{name}.bat"
             if src.exists():
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
+        # Windows DLL linker wrapper (.exe shim compiled with zig cc)
+        win_shared_src = recipe_dir / "building" / "zig-cxx-shared-win.c"
+        if win_shared_src.exists():
+            _compile_c_shim(
+                win_shared_src,
+                wrapper_dir / "zig-cxx-shared.exe",
+                replacements,
+            )
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
         # Install shared flag-filtering helper (sourced by zig-cc and zig-cxx)
         common_src = scripts_dir / "_zig-cc-common.sh"
         if common_src.exists():
             _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared"]
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared", "zig-force-load-cc"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():
@@ -212,7 +288,7 @@ def install_unix_cross_wrappers(
         "@ZIG_TRIPLET@": zig_triplet,
     }
     _install_template(
-        recipe_dir / "scripts" / "cross-zig.sh",
+        recipe_dir / "building" / "cross-zig.sh",
         bin_dir / f"{target_triplet}-zig",
         replacements, executable=True,
     )
@@ -222,23 +298,30 @@ def install_nonunix_cross_wrappers(
     prefix: Path, recipe_dir: Path,
     native_triplet: str, target_triplet: str, zig_triplet: str,
 ):
-    """Install non-Unix cross-compiler wrappers from template."""
+    """Install non-Unix cross-compiler .exe shim (replaces .bat/.cmd).
+
+    Compiles a small C shim that forwards to the native zig binary with
+    -target injection. This avoids .bat/.cmd issues with CMake's compiler
+    detection (backslash escaping, command-line quoting).
+    """
     bin_dir = prefix / "Library" / "bin"
 
     # Always use triplet-prefixed native zig (zig_impl provides it)
-    native_zig_ext = f"{native_triplet}-zig.exe"
+    native_zig_exe = f"{native_triplet}-zig.exe"
 
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
     cc_triplet = _strip_glibc_version(zig_triplet)
 
     replacements = {
-        "@NATIVE_ZIG_EXT@": native_zig_ext,
+        "@NATIVE_ZIG_EXE@": native_zig_exe,
         "@CC_TRIPLET@": cc_triplet,
         "@ZIG_TRIPLET@": zig_triplet,
     }
-    template = recipe_dir / "scripts" / "cross-zig.bat"
-    for ext in [".bat", ".cmd"]:
-        _install_template(template, bin_dir / f"{target_triplet}-zig{ext}", replacements)
+    _compile_c_shim(
+        recipe_dir / "building" / "cross-zig-shim.c",
+        bin_dir / f"{target_triplet}-zig.exe",
+        replacements,
+    )
 
 
 if __name__ == "__main__":

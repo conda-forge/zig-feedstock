@@ -54,7 +54,7 @@ while [[ $i -lt $argc ]]; do
         -Wl,-all_load|-Wl,-force_load,*) ;;
         -all_load|-force_load) ;;
         -Bsymbolic-functions|-Bsymbolic) ;;
-        -march=*|-mtune=*|-ftree-vectorize) ;;
+        -march=*|-mtune=*|-mcpu=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
