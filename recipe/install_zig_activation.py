@@ -273,7 +273,7 @@ def install_zig_cc_wrappers(
         common_src = scripts_dir / "_zig-cc-common.sh"
         if common_src.exists():
             _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared", "zig-force-load-cc"]
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():

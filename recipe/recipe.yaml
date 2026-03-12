@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 11
+  build_number: 12
   name: zig
   version: 0.15.2
 
@@ -322,6 +322,7 @@ outputs:
                 - share/zig/wrappers/_zig-cc-common.sh
                 - share/zig/wrappers/zig-cxx-shared
                 - share/zig/wrappers/zig-force-load-cc
+                - share/zig/wrappers/zig-force-load-cxx
             - if: not unix
               then:
                 - Library/share/zig/wrappers/zig-cxx-shared.exe

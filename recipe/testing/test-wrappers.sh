@@ -14,10 +14,10 @@ echo "=== Wrapper Script Validation ==="
 
 # --- 1. Wrapper existence and executability ---
 echo "--- Wrapper existence ---"
-for w in zig-cc zig-cxx zig-ar zig-ranlib zig-asm zig-rc zig-cxx-shared zig-force-load-cc _zig-cc-common.sh; do
+for w in zig-cc zig-cxx zig-ar zig-ranlib zig-asm zig-rc zig-cxx-shared zig-force-load-cc zig-force-load-cxx _zig-cc-common.sh; do
     _test "${w} exists" "[[ -f '${_wrapper_dir}/${w}' ]]"
 done
-for w in zig-cc zig-cxx zig-ar zig-ranlib zig-asm zig-rc zig-cxx-shared zig-force-load-cc; do
+for w in zig-cc zig-cxx zig-ar zig-ranlib zig-asm zig-rc zig-cxx-shared zig-force-load-cc zig-force-load-cxx; do
     _test "${w} is executable" "[[ -x '${_wrapper_dir}/${w}' ]]"
 done
 
@@ -43,7 +43,7 @@ _test "-Wl,-all_load filtered in common" "grep -q 'all_load' '${_common}'"
 _test "-Wl,-force_load filtered in common" "grep -q 'force_load' '${_common}'"
 
 # --- 5. Force-load wrapper content ---
-echo "--- Force-load wrapper ---"
+echo "--- Force-load wrappers ---"
 _fl="${_wrapper_dir}/zig-force-load-cc"
 _test "force-load-cc sources _zig-cc-common.sh" "grep -q '_zig-cc-common.sh' '${_fl}'"
 _test "force-load-cc uses ar x" "grep -q 'ar x' '${_fl}'"
@@ -51,6 +51,12 @@ _test "force-load-cc creates tmpdir" "grep -q 'mktemp -d' '${_fl}'"
 _test "force-load-cc has cleanup trap" "grep -q 'trap.*EXIT' '${_fl}'"
 _test "force-load-cc handles -Wl,-force_load,*" "grep -q 'Wl,-force_load' '${_fl}'"
 _test "force-load-cc handles -Wl,-all_load" "grep -q 'Wl,-all_load' '${_fl}'"
+_test "force-load-cc uses cc mode" "grep -q '_ZIG_MODE=\"cc\"' '${_fl}'"
+
+_flcxx="${_wrapper_dir}/zig-force-load-cxx"
+_test "force-load-cxx sources _zig-cc-common.sh" "grep -q '_zig-cc-common.sh' '${_flcxx}'"
+_test "force-load-cxx uses ar x" "grep -q 'ar x' '${_flcxx}'"
+_test "force-load-cxx uses c++ mode" "grep -q '_ZIG_MODE=\"c++\"' '${_flcxx}'"
 
 # --- 6. Exec line has -mcpu=baseline ---
 echo "--- Exec line validation ---"

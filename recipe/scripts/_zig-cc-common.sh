@@ -4,6 +4,8 @@
 # Expects caller to set: _ZIG_MODE ("cc" or "c++")
 # Sets: _exec_args (array) ready for: exec "@ZIG_BIN@" "${_exec_args[@]}"
 
+_ZIG_MODE="${_ZIG_MODE:-cc}"
+
 # --- Sysroot detection (Linux only) ---
 _sysroot_flags=()
 if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then
