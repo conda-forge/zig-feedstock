@@ -243,11 +243,22 @@ def install_zig_cc_wrappers(
 
     if is_nonunix:
         wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc"]
-        for name in wrappers:
+
+        # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
+        cc_src = recipe_dir / "building" / "zig-cc-win.c"
+        if cc_src.exists():
+            # Extract zig binary filename from full %CONDA_PREFIX%\... path
+            zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
+            for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
+                mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name}
+                _compile_c_shim(cc_src, wrapper_dir / f"{exe_name}.exe", mode_replacements)
+
+        # Keep .bat for simple pass-through tools (no flag filtering needed)
+        for name in ["zig-ar", "zig-ranlib", "zig-asm", "zig-rc"]:
             src = scripts_dir / f"{name}.bat"
             if src.exists():
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
+
         # Windows DLL linker wrapper (.exe shim compiled with zig cc)
         win_shared_src = recipe_dir / "building" / "zig-cxx-shared-win.c"
         if win_shared_src.exists():

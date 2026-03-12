@@ -11,7 +11,7 @@ echo === Wrapper Script Validation ===
 
 REM --- 1. Wrapper existence ---
 echo --- Wrapper existence ---
-for %%w in (zig-cc.bat zig-cxx.bat zig-ar.bat zig-ranlib.bat zig-asm.bat zig-rc.bat) do (
+for %%w in (zig-cc.exe zig-cxx.exe zig-ar.bat zig-ranlib.bat zig-asm.bat zig-rc.bat) do (
     if exist "%_wrapper_dir%\%%w" (
         echo   PASS: %%w exists
         set /a _pass+=1

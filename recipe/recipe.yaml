@@ -9,6 +9,7 @@ context:
   m2: ${{ "m2-" if not unix }}
   sh: ${{ ".bat" if not unix else ".sh" }}
   bat: ${{ ".bat" if not unix }}
+  exe: ${{ ".exe" if not unix }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
@@ -243,7 +244,7 @@ outputs:
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
-            # Post-install tests (etc/ is not Library-prefixed on non-Unix)
+            # Post-install tests
             - etc/conda/test-files/zig*
       # Functional test using triplet-prefixed binary
       - script:
@@ -287,10 +288,6 @@ outputs:
           then:
             - zig_impl_${{ xc_build_platform }} >=${{ version }}
       host:
-        # Need zig to compile zig-cxx-shared.exe on non-Unix (native + cross-target)
-        # Host dep because cross-target builds run on different platform (e.g. win-arm64)
-        # where zig_impl may not exist; host dep installs target-platform zig in PREFIX
-        # which runs via non-Unix x86_64-on-ARM64 emulation
         - if: not is_cross_compiler and not unix
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
@@ -312,8 +309,10 @@ outputs:
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-            - ${{ library }}share/zig/wrappers/zig-cc${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-cxx${{ bat }}
+            
+            - ${{ library }}share/zig/wrappers/zig-cc${{ exe }}
+            - ${{ library }}share/zig/wrappers/zig-cxx${{ exe }}
+            
             - ${{ library }}share/zig/wrappers/zig-ar${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-ranlib${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-asm${{ bat }}
@@ -326,7 +325,7 @@ outputs:
             - if: not unix
               then:
                 - Library/share/zig/wrappers/zig-cxx-shared.exe
-            # Post-install tests (etc/ is not Library-prefixed on non-Unix)
+            # Post-install tests
             - etc/conda/test-files/zig*
       - script:
           - if: not arm64
