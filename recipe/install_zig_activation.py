@@ -48,6 +48,7 @@ def main():
     print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
     print(f"CONDA_ZIG_HOST: {conda_zig_host}")
     print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
+    print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
 
     # 1. Install activation/deactivation scripts
     install_activation_scripts(
@@ -77,6 +78,16 @@ def main():
             install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
         else:
             install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
+
+    # Build patched native zig for test validation
+    build_native = os.environ.get("BUILD_NATIVE_ZIG", "false").strip().lower() == "true"
+    print(f"  BUILD_NATIVE_ZIG: {build_native}")
+    if build_native:
+        test_dir = prefix / "etc" / "conda" / "test-files"
+        test_dir.mkdir(parents=True, exist_ok=True)
+        script = recipe_dir / "testing" / "build_native_for_test.sh"
+        print(f"  Building patched native zig for ppc64le test: {script}")
+        subprocess.run(["bash", str(script), str(test_dir)], check=True)
 
     print("=== Zig Activation Package Installation Complete ===")
 

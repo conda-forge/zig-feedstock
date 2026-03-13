@@ -280,6 +280,8 @@ outputs:
           # Includes -zig suffix so value is directly usable as binary name
           CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
+          BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" }}
+          LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:
         - python 3.12.*
@@ -358,7 +360,7 @@ outputs:
           # Cross-compiler .exe shim test (non-Unix only)
           - if: is_cross_compiler and not unix
             then:
-              - set "CONDA_TRIPLET=${{ conda_triplet }}" && test-cross-shim.bat
+              - set "CONDA_TRIPLET=${{ conda_triplet }}" && testing\test-cross-shim.bat
         requirements:
           run:
             - python >=3.10
