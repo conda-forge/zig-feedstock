@@ -299,6 +299,12 @@ outputs:
             - zig_impl_${{ xc_build_platform }} >=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
+        - if: cross_target_platform_ == "linux-ppc64le"
+          then:
+            # ppc64le patches redirect zig linking to gcc/ld.bfd
+            # (LLD lacks PowerPC64 relocation support)
+            - binutils_impl_${{ cross_target_platform_ }} >=2.45
+            - gcc_impl_${{ cross_target_platform_ }} >=14.3
     tests:
       - package_contents:
           strict: true
@@ -347,15 +353,18 @@ outputs:
               - if not defined CONDA_ZIG_HOST exit /b 1
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
-          # Wrapper validation tests
-          - testing/test-wrappers${{ sh }}
+          # Wrapper + functional validation tests (Python, cross-platform)
+          - python testing/test_zig_toolchain.py
           # Cross-compiler .exe shim test (non-Unix only)
           - if: is_cross_compiler and not unix
             then:
               - set "CONDA_TRIPLET=${{ conda_triplet }}" && test-cross-shim.bat
+        requirements:
+          run:
+            - python >=3.10
         files:
           recipe:
-            - testing/test-wrappers${{ sh }}
+            - testing/test_zig_toolchain.py
             - testing/test-cross-shim.bat
 
   # ==========================================================================
