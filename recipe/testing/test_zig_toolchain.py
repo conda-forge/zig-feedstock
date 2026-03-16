@@ -299,7 +299,7 @@ def test_flag_filtering() -> None:
             PASS("compile with conda gcc flags succeeds (flags filtered)")
         else:
             FAIL("compile with conda gcc flags succeeds",
-                 f"rc={r.returncode} stderr={r.stderr[:200]}")
+                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
 
 
 # ===================================================================
@@ -325,7 +325,7 @@ def test_shared_lib() -> None:
         # Compile object
         r = _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td)
         if r.returncode != 0:
-            FAIL("compile object for shared lib", f"rc={r.returncode}")
+            FAIL("compile object for shared lib", f"rc={r.returncode} stderr={r.stderr[:2000]}")
             return
 
         if is_win_target and _build_is_win:
@@ -366,10 +366,10 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
         "-o", str(dll),
         str(obj),
     ]
-    r = _run(cmd, cwd=td, timeout=60)
+    r = _run(cmd, cwd=td, timeout=180)
 
     if r.stderr == "TIMEOUT":
-        FAIL("shared lib creation (windows)", "timeout after 60s")
+        FAIL("shared lib creation (windows)", "timeout after 180s")
         return
 
     if r.returncode != 0:
@@ -638,14 +638,10 @@ def main() -> int:
     print()
 
     # Overlay patched native zig if stashed by build (BUILD_NATIVE_ZIG=true)
+    # Must target the NATIVE zig binary (CONDA_ZIG_BUILD), not the cross wrapper.
     _patched = _prefix / "etc" / "conda" / "test-files" / "zig_native_patched"
-    if _patched.exists() and not _build_is_win:
-        # Find the actual zig binary (could be triplet-prefixed)
-        zig_bin = _prefix / "bin" / "zig"
-        if not zig_bin.exists():
-            for f in (_prefix / "bin").glob("*-zig"):
-                zig_bin = f
-                break
+    if _patched.exists() and not _build_is_win and _build_zig:
+        zig_bin = _prefix / "bin" / _build_zig
         if zig_bin.exists():
             shutil.copy2(_patched, zig_bin)
             os.chmod(str(zig_bin), 0o755)

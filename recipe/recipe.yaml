@@ -158,7 +158,7 @@ outputs:
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-
+          
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
           # ZIG_USE_CACHE: "0"
@@ -280,17 +280,20 @@ outputs:
           # Includes -zig suffix so value is directly usable as binary name
           CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-          BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" }}
+
+          # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
+          BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
           LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:
+        - ${{ m2 }}bash
         - python 3.12.*
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
             - zig_impl_${{ xc_build_platform }} >=${{ version }}
       host:
-        - if: not is_cross_compiler and not unix
+        - if: not is_cross_compiler
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
@@ -364,6 +367,10 @@ outputs:
         requirements:
           run:
             - python >=3.10
+            - if: ppc64le
+              then:
+                - bash >=5.2
+                - libclang-cpp ${{ llvm_version }}.*
         files:
           recipe:
             - testing/test_zig_toolchain.py

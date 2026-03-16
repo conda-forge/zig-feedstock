@@ -1,9 +1,16 @@
-#!/bin/bash
-# Build a patched native zig binary for test validation.
-# Called during build when BUILD_NATIVE_ZIG=true.
-# Creates a temporary mamba env, uses zig build to compile from patched source.
+#!/usr/bin/env bash
 
 set -euo pipefail
+IFS=$'\n\t'
+
+if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
+  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
+    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
+  else
+    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
+    exit 1
+  fi
+fi
 
 TARGET_DIR="${1:?Usage: build_native_for_test.sh <output-dir>}"
 LLVM_VER="${LLVM_VERSION:?LLVM_VERSION must be set}"
@@ -26,7 +33,7 @@ echo "[build_native_for_test] Using: ${CONDA_CMD}"
 # 1. Create temporary env with build tools (pin LLVM to match zig source)
 ENV_DIR="${WORK_DIR}/build-env"
 ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
-    cmake ninja gcc gxx \
+    cmake ninja gcc gxx patchelf \
     "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
     libxml2-devel zlib zstd perl python \
     "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
@@ -46,6 +53,9 @@ if [[ -n "${SYSROOT}" ]]; then
         fi
     done
 fi
+# Fix sysroot libc.so linker scripts 2.17 to use relative paths
+source ${RECIPE_DIR}/building/_sysroot_fix.sh
+fix_sysroot_libc_scripts "${ENV_DIR}"
 
 # 3. Find the zig binary from zig_impl
 ZIG_BIN=$(ls "${ENV_DIR}"/bin/*-zig 2>/dev/null | head -1)
@@ -103,8 +113,13 @@ cd "${SRC_DIR}/zig-source"
     -Dversion-string="${PKG_VERSION}" \
     --maxrss 7500000000
 
-# 6. Stash the native zig binary
+# 6. Stash the native zig binary and fix RPATH
+#    The binary was built against the temp env (ENV_DIR) which gets deleted.
+#    Patch RPATH so it resolves libs relative to wherever it's installed.
 mkdir -p "${TARGET_DIR}"
 cp "${INSTALL_DIR}/bin/zig" "${TARGET_DIR}/zig_native_patched"
 chmod +x "${TARGET_DIR}/zig_native_patched"
-echo "[build_native_for_test] Stashed native zig to ${TARGET_DIR}/zig_native_patched"
+# At test time, zig_native_patched is overlaid onto $PREFIX/bin/<triplet>-zig
+# so RPATH must resolve from bin/ -> ../lib
+patchelf --set-rpath '$ORIGIN/../lib' "${TARGET_DIR}/zig_native_patched"
+echo "[build_native_for_test] Stashed native zig to ${TARGET_DIR}/zig_native_patched (RPATH fixed)"

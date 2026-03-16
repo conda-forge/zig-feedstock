@@ -14,7 +14,7 @@ fi
 
 # --- Functions ---
 
-source "${RECIPE_DIR}/build_scripts/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig, remove_failing_langref
+source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig, remove_failing_langref
 
 build_platform="${build_platform:-${target_platform}}"
 
@@ -129,7 +129,7 @@ fi
 # --- libzigcpp Configuration ---
 
 if is_linux; then
-  source "${RECIPE_DIR}/build_scripts/_libc_tuning.sh"
+  source "${RECIPE_DIR}/building/_libc_tuning.sh"
   modify_libc_libm_for_zig "${BUILD_PREFIX}"
   create_gcc14_glibc28_compat_lib
   
@@ -151,9 +151,9 @@ is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=
 is_linux && remove_failing_langref "${zig_build_dir}"
 
 if is_linux && is_cross; then
-  source "${RECIPE_DIR}/build_scripts/_cross.sh"
-  source "${RECIPE_DIR}/build_scripts/_atfork.sh"
-  source "${RECIPE_DIR}/build_scripts/_sysroot_fix.sh"
+  source "${RECIPE_DIR}/building/_cross.sh"
+  source "${RECIPE_DIR}/building/_atfork.sh"
+  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
 
   # Fix sysroot libc.so linker scripts 2.17 to use relative paths
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
@@ -179,7 +179,7 @@ elif [[ "${cross_target_platform_}" == "linux-ppc64le" ]]; then
   echo "***"
   exit 1
 else
-  source "${RECIPE_DIR}/build_scripts/_cmake.sh"  # apply_cmake_patches, cmake_build_install
+  source "${RECIPE_DIR}/building/_cmake.sh"  # apply_cmake_patches, cmake_build_install
   CMAKE_PATCHES=()
 
   if is_linux; then
