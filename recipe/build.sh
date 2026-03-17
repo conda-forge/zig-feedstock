@@ -93,10 +93,10 @@ EXTRA_ZIG_ARGS=(
   -Denable-llvm
   -Doptimize=ReleaseSafe
   -Dstatic-llvm=false
-  -Dstrip=true
   -Dtarget=${ZIG_TRIPLET}
   -Duse-zig-libcxx=false
 )
+#  -Dstrip=true
 
 # --- Platform Configuration ---
 
@@ -148,7 +148,39 @@ is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}
 
 is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
 
-is_linux && remove_failing_langref "${zig_build_dir}"
+# Stage 1 (Linux only): Build zig with -Dno-langref to bootstrap past ld script TODOs.
+# The conda zig_impl bootstrap can't handle GNU ld scripts with relative paths/-l flags
+# (fixed in patch 0006). Stage 1 produces a zig with the fix; Stage 2 uses it as bootstrap
+# so langref doctests (which link -lc) can process sysroot ld scripts correctly.
+# On non-Linux or if Stage 1 fails, fall back to stripping failing langref tests.
+if is_linux; then
+  stage1_install_dir="${SRC_DIR}/stage1-install"
+  mkdir -p "${stage1_install_dir}"
+  echo "=== Stage 1: Building zig with -Dno-langref (bootstrap lacks ld script support) ==="
+  EXTRA_ZIG_ARGS+=(-Dno-langref)
+  if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${stage1_install_dir}"; then
+    echo "=== Stage 1 SUCCESS — switching bootstrap to Stage 1 zig ==="
+    # Remove -Dno-langref for Stage 2
+    _new_args=()
+    for _a in "${EXTRA_ZIG_ARGS[@]}"; do
+      [[ "$_a" != "-Dno-langref" ]] && _new_args+=("$_a")
+    done
+    EXTRA_ZIG_ARGS=("${_new_args[@]}")
+    unset _new_args _a
+    # Stage 2 uses the freshly-built zig (has patches 0004+0006)
+    BUILD_ZIG="${stage1_install_dir}/bin/zig"
+  else
+    echo "=== Stage 1 FAILED — falling back to remove_failing_langref ==="
+    # Remove -Dno-langref since we won't use two-stage
+    _new_args=()
+    for _a in "${EXTRA_ZIG_ARGS[@]}"; do
+      [[ "$_a" != "-Dno-langref" ]] && _new_args+=("$_a")
+    done
+    EXTRA_ZIG_ARGS=("${_new_args[@]}")
+    unset _new_args _a
+    remove_failing_langref "${zig_build_dir}"
+  fi
+fi
 
 if is_linux && is_cross; then
   source "${RECIPE_DIR}/building/_cross.sh"

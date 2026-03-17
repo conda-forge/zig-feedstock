@@ -152,6 +152,15 @@ def _run(
 _HELLO_C = 'int hello(void) { return 42; }\n'
 _MAIN_C = 'int main(void) { return 0; }\n'
 _VIS_C = '__attribute__((visibility("default"))) int vis_test_func(void) { return 1; }\n'
+_LIBC_C = """\
+#include <stdio.h>
+#include <string.h>
+int main(void) {
+    const char *s = "hello";
+    printf("len=%zu\\n", strlen(s));
+    return 0;
+}
+"""
 
 
 # ===================================================================
@@ -452,6 +461,58 @@ def test_exe_linking() -> None:
 
 
 # ===================================================================
+# Section 4c — Libc linking (verifies zig can resolve and link libc)
+# ===================================================================
+def test_libc_linking() -> None:
+    """Compile and link a program that calls libc functions (printf, strlen).
+    This exercises zig's libc detection and linking — the same code path
+    that crashes with TODO panic in zig's doctest examples using -lc."""
+    print("--- Libc linking ---")
+
+    if _is_emulated:
+        SKIP("libc linking", "emulated CI — linker OOM risk")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("libc linking", "ZIG_CC not set")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "libc_test.c"
+        src.write_text(_LIBC_C)
+
+        if _build_is_win:
+            out = Path(td) / "libc_test.exe"
+        else:
+            out = Path(td) / "libc_test"
+
+        r = _run([zig_cc, "-lc", "-o", str(out), str(src)], cwd=td, timeout=60)
+        if r.stderr == "TIMEOUT":
+            WARN("libc linking", "timed out (60s)")
+            return
+        if r.returncode != 0:
+            FAIL("libc linking",
+                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+            return
+        if not out.exists() or out.stat().st_size == 0:
+            FAIL("libc linking", "output binary missing or empty")
+            return
+        PASS("libc linking")
+
+        # If native (not cross), try running it
+        if not _is_cross_compiler and not is_win_target:
+            r2 = _run([str(out)], cwd=td, timeout=10)
+            if r2.returncode == 0 and "len=5" in r2.stdout:
+                PASS("libc exe runs correctly")
+            elif r2.returncode == 0:
+                WARN("libc exe runs", f"unexpected output: {r2.stdout[:200]}")
+            else:
+                WARN("libc exe runs",
+                     f"rc={r2.returncode} stderr={r2.stderr[:200]}")
+
+
+# ===================================================================
 # Section 5 — Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
@@ -654,6 +715,7 @@ def main() -> int:
     test_flag_filtering()
     test_shared_lib()
     test_exe_linking()
+    test_libc_linking()
     test_visibility()
     test_lld_dispatch()
 

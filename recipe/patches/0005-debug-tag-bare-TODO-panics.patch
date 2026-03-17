@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: conda-forge <conda-forge@users.noreply.github.com>
+Date: Tue, 18 Mar 2026 00:00:00 +0000
+Subject: [PATCH] debug: tag bare @panic("TODO") in ELF linker with unique IDs
+
+Temporary diagnostic patch to identify which @panic("TODO") fires
+when doctest compilation uses -lc in CI environment.
+
+diff --git a/src/link.zig b/src/link.zig
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1060,7 +1060,7 @@
+         };
+         if (mem.startsWith(u8, arg.path, "-l")) {
+-            @panic("TODO");
++            @panic("TODO [link.zig:1063 loadGnuLdScript -l prefix]");
+         } else {
+             if (fs.path.isAbsolute(arg.path)) {
+@@ -1071,7 +1071,7 @@
+                     else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
+                 }
+             } else {
+-                @panic("TODO");
++                @panic("TODO [link.zig:1074 loadGnuLdScript relative path]");
+             }
+         }
+diff --git a/src/link/Elf.zig b/src/link/Elf.zig
+--- a/src/link/Elf.zig
++++ b/src/link/Elf.zig
+@@ -734,7 +734,7 @@
+     switch (input) {
+         .res => unreachable,
+-        .dso_exact => @panic("TODO"),
++        .dso_exact => @panic("TODO [Elf.zig:737 dso_exact]"),
+         .object => |obj| try parseObject(self, obj),
+diff --git a/src/link/Elf/eh_frame.zig b/src/link/Elf/eh_frame.zig
+--- a/src/link/Elf/eh_frame.zig
++++ b/src/link/Elf/eh_frame.zig
+@@ -172,7 +172,7 @@
+-        if (size == 0xFFFFFFFF) @panic("TODO");
++        if (size == 0xFFFFFFFF) @panic("TODO [eh_frame.zig:175 64-bit DWARF]");
