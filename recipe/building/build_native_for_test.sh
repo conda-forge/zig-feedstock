@@ -93,7 +93,11 @@ perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${STUB_DIR}/pthread_atfor
     "${CMAKE_BUILD}/config.h"
 echo "[build_native_for_test] Injected pthread_atfork stub into config.h"
 
-# 5. Build native zig using zig build (not CMake full build)
+# 5. Remove langref doctests that crash with -lc in conda env
+source "${RECIPE_DIR}/building/_build.sh"
+remove_failing_langref "${SRC_DIR}/zig-source" "${RECIPE_DIR}/patches/xxxx-remove-langref-std.txt"
+
+# 6. Build native zig using zig build (not CMake full build)
 INSTALL_DIR="${WORK_DIR}/install"
 mkdir -p "${INSTALL_DIR}"
 
@@ -113,7 +117,7 @@ cd "${SRC_DIR}/zig-source"
     -Dversion-string="${PKG_VERSION}" \
     --maxrss 7500000000
 
-# 6. Stash the native zig binary and fix RPATH
+# 7. Stash the native zig binary and fix RPATH
 #    The binary was built against the temp env (ENV_DIR) which gets deleted.
 #    Patch RPATH so it resolves libs relative to wherever it's installed.
 mkdir -p "${TARGET_DIR}"

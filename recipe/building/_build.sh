@@ -107,7 +107,7 @@ function remove_failing_langref() {
     while IFS= read -r file
     do
       rm -f "${build_dir}"/doc/langref/"$file"
-    done < "${SRC_DIR}"/build-level-patches/xxxx-remove-langref-std.txt
+    done < "${testslistfile}"
   else
     echo "No langref directory found"
     exit 1
