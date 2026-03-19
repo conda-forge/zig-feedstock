@@ -168,6 +168,8 @@ if is_linux; then
     EXTRA_ZIG_ARGS=("${_new_args[@]}")
     unset _new_args _a
     # Stage 2 uses the freshly-built zig (has patches 0004+0006)
+    # Fix RPATH so Stage 1 zig can find LLVM shared libs from $PREFIX
+    patchelf --set-rpath "${PREFIX}/lib" "${stage1_install_dir}/bin/zig"
     BUILD_ZIG="${stage1_install_dir}/bin/zig"
   else
     echo "=== Stage 1 FAILED — falling back to remove_failing_langref ==="

@@ -117,7 +117,10 @@ ZIG_BUILD_ARGS=(
     -Denable-llvm
     -Doptimize=ReleaseSafe
     -Dstatic-llvm=false
-    -Dtarget=native
+    # Explicit target ensures zig std lib uses raw syscalls for functions
+    # not in glibc 2.17 (e.g., copy_file_range). This script is only used
+    # for linux-64 (x86_64) native test builds.
+    -Dtarget=x86_64-linux-gnu.2.17
     -Duse-zig-libcxx=false
     -Dversion-string="${PKG_VERSION}"
     --maxrss 7500000000
