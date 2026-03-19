@@ -51,6 +51,7 @@ ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
     cmake ninja gcc gxx patchelf \
     "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
     libxml2-devel zlib zstd perl python \
+    "sysroot_linux-64=2.17" \
     "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
 
 eval "$(${CONDA_CMD} shell activate -p ${ENV_DIR} 2>/dev/null || conda shell.bash activate ${ENV_DIR})"
@@ -111,9 +112,9 @@ echo "[build_native_for_test] Injected pthread_atfork stub into config.h"
 # Common zig build args (shared between Stage 1 and Stage 2)
 ZIG_BUILD_ARGS=(
     --search-prefix "${ENV_DIR}"
-    -fallow-so-scripts
     -Dconfig_h="${CMAKE_BUILD}/config.h"
     -Dcpu=baseline
+    -Ddoctest-target=x86_64-linux-gnu.2.17
     -Denable-llvm
     -Doptimize=ReleaseSafe
     -Dstatic-llvm=false
@@ -151,6 +152,8 @@ if [[ ! -x "${STAGE1_ZIG}" ]]; then
     echo "ERROR: Stage 1 build failed - no zig binary at ${STAGE1_ZIG}"
     exit 1
 fi
+# Fix RPATH so Stage 1 zig can find LLVM shared libs from build-env
+patchelf --set-rpath "${ENV_DIR}/lib" "${STAGE1_ZIG}"
 echo "[Stage 1] SUCCESS: ${STAGE1_ZIG}"
 echo "[Stage 1] Verify ZSTD support:"
 "${STAGE1_ZIG}" version

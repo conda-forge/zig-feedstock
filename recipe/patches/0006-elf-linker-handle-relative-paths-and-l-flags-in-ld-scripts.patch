@@ -1,42 +1,10 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: conda-forge <conda-forge@users.noreply.github.com>
-Date: Tue, 18 Mar 2026 00:00:00 +0000
-Subject: [PATCH] link(ELF): handle relative paths, -l flags, and versioned
- .so.N fallback in GNU ld scripts
-
-Implement the two TODO panics in loadGnuLdScript that crash when
-processing GNU ld scripts containing:
-
-1. Relative paths (e.g. "../lib64/libc_nonshared.a") - resolved
-   relative to the directory containing the ld script.
-
-2. -l flags (e.g. "-lpthread") - resolved by searching for
-   lib<name>.so, then lib<name>.so.N (versioned), then lib<name>.a
-   in the ld script's directory.
-
-The versioned .so.N fallback handles glibc < 2.34 sysroots where
-libpthread.so is a GNU ld script (not an ELF shared library).
-When the .so ld script fails to resolve (e.g. recursive -lpthread
-reference), the fallback finds the real ELF shared object
-(libpthread.so.0) before falling back to the static archive (.a).
-
-These patterns are common in glibc sysroots where linker scripts like
-libc.so contain:
-  GROUP ( /lib64/libc.so.6 /usr/lib64/libc_nonshared.a )
-or libpthread.so contains:
-  INPUT ( /usr/lib64/libpthread_nonshared.a -lpthread )
-
-When paths are rewritten to relative (e.g. by conda-forge sysroot
-fixups), the linker must resolve them against the script's location.
-
-diff --git a/src/link.zig b/src/link.zig
 --- a/src/link.zig
 +++ b/src/link.zig
-@@ -1060,7 +1060,60 @@
+@@ -1060,7 +1060,62 @@
                  .allow_so_scripts = parent_query.allow_so_scripts,
              };
              if (mem.startsWith(u8, arg.path, "-l")) {
--                @panic("TODO [link.zig:1063 loadGnuLdScript -l prefix]");
+-                @panic("TODO");
 +                // GNU ld script contains -l<name> flag.
 +                // Search for lib<name>.so, then lib<name>.so.N (versioned),
 +                // then lib<name>.a in the script's directory.
@@ -96,11 +64,11 @@ diff --git a/src/link.zig b/src/link.zig
              } else {
                  if (fs.path.isAbsolute(arg.path)) {
                      const new_path = Path.initCwd(try gpa.dupe(u8, arg.path));
-@@ -1071,7 +1124,16 @@
+@@ -1071,7 +1126,16 @@
                          else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
                      }
                  } else {
--                    @panic("TODO [link.zig:1074 loadGnuLdScript relative path]");
+-                    @panic("TODO");
 +                    // Resolve relative path against the directory containing the ld script.
 +                    const script_dir = fs.path.dirname(path.sub_path) orelse "";
 +                    const resolved_sub = try fs.path.resolvePosix(gpa, &.{ script_dir, arg.path });

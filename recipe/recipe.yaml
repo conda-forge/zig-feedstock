@@ -106,6 +106,8 @@ source:
           - patches/0004-elf-linker-add-zstd-decompression-support.patch
           - patches/0005-debug-tag-bare-TODO-panics.patch
           - patches/0006-elf-linker-handle-relative-paths-and-l-flags-in-ld-scripts.patch
+          - patches/0006b-elf-linker-default-allow-so-scripts.patch
+          - patches/0007-doctest-forward-target-and-allow-so-scripts.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)

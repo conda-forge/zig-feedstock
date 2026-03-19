@@ -87,7 +87,6 @@ EXTRA_CMAKE_ARGS=(
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
   --search-prefix "${PREFIX}"
-  -fallow-so-scripts
   -Dconfig_h="${cmake_build_dir}"/config.h
   -Dcpu=baseline
   -Denable-llvm
@@ -96,6 +95,9 @@ EXTRA_ZIG_ARGS=(
   -Dtarget=${ZIG_TRIPLET}
   -Duse-zig-libcxx=false
 )
+
+# Patch 0007 adds -Ddoctest-target to build.zig (Linux only)
+is_linux && EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 #  -Dstrip=true
 
 # --- Platform Configuration ---
@@ -148,6 +150,20 @@ is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}
 
 is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
 
+# --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
+if is_linux && is_cross; then
+  source "${RECIPE_DIR}/building/_cross.sh"
+  source "${RECIPE_DIR}/building/_atfork.sh"
+  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
+
+  # Fix sysroot libc.so linker scripts 2.17 to use relative paths
+  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
+
+  create_zig_linux_libc_file "${zig_build_dir}/libc_file"
+  perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
+  create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+fi
+
 # Stage 1 (Linux only): Build zig with -Dno-langref to bootstrap past ld script TODOs.
 # The conda zig_impl bootstrap can't handle GNU ld scripts with relative paths/-l flags
 # (fixed in patch 0006). Stage 1 produces a zig with the fix; Stage 2 uses it as bootstrap
@@ -182,19 +198,6 @@ if is_linux; then
     unset _new_args _a
     remove_failing_langref "${zig_build_dir}"
   fi
-fi
-
-if is_linux && is_cross; then
-  source "${RECIPE_DIR}/building/_cross.sh"
-  source "${RECIPE_DIR}/building/_atfork.sh"
-  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
-
-  # Fix sysroot libc.so linker scripts 2.17 to use relative paths
-  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
-
-  create_zig_linux_libc_file "${zig_build_dir}/libc_file"
-  perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
-  create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 
 echo "=== Building with ZIG ==="

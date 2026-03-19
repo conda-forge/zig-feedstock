@@ -1,0 +1,11 @@
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1608,7 +1608,7 @@
+         reexport: bool = false,
+         must_link: bool = false,
+         hidden: bool = false,
+-        allow_so_scripts: bool = false,
++        allow_so_scripts: bool = true,
+         preferred_mode: std.builtin.LinkMode,
+         search_strategy: SearchStrategy,
+
