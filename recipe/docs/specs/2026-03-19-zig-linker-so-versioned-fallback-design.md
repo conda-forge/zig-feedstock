@@ -34,18 +34,34 @@ OUTPUT_FORMAT(elf64-x86-64)
 GROUP ( ../../lib64/libpthread.so.0 ../lib64/libpthread_nonshared.a )
 ```
 
-Zig's linker resolution chain:
+### Error propagation chain
+
+Zig's linker resolution for `-lpthread`:
 
 1. `load_host_libc` iterates `[-lm, -lpthread, -lc, -ldl, -lrt, -lutil]`
-2. For `-lpthread`: tries `crt_dir/libpthread.so`
-3. Opens it, gets `BadMagic` (it's text, not ELF), falls into `loadGnuLdScript()`
-4. Parses the ld script, resolves relative paths via patch 0006
-5. **Resolution fails** (path layout mismatch, symlink vs real directory, etc.)
-6. Error propagates back to `load_host_libc`
-7. Fallback: tries `crt_dir/libpthread.a` -> **static link** -> undefined symbols
+2. For `-lpthread`: calls `openLoadDso(crt_dir/libpthread.so, query)`
+3. `openLoadDso` opens the file successfully, `loadInput` returns `BadMagic`
+4. Falls into `try loadGnuLdScript(base, path, query, file)`
+5. `loadGnuLdScript` parses the ld script, resolves relative paths via
+   patch 0006. Two failure scenarios:
+   - **GROUP format**: `GROUP ( ../../lib64/libpthread.so.0 ... )` — relative
+     path resolution via `fs.path.resolvePosix` may fail if the sysroot
+     directory layout doesn't match (symlink vs real directory). The inner
+     `openLoadDso` for the resolved path returns `FileNotFound`, which
+     propagates through `try loadGnuLdScript(...)` back through the outer
+     `openLoadDso` to `load_host_libc`.
+   - **INPUT format**: `INPUT ( -lpthread )` — patch 0006's `-l` handler
+     searches for `libpthread.so` in the script's directory, finds the
+     **same ld script** → `openLoadDso` → `BadMagic` → `loadGnuLdScript`
+     → **infinite recursion**. If/when recursion fails, falls back to
+     `libpthread.a` in the same directory.
+6. Back in `load_host_libc`: `openLoadDso` catch block matches
+   `error.FileNotFound` → tries `crt_dir/libpthread.a` → static link →
+   undefined `_dl_*` symbols.
 
-In glibc >= 2.34 (used by cross-compiled ppc64le build host), pthread is
-merged into `libc.so.6` and there is no separate `libpthread`, so no issue.
+**Key insight**: The `.a` fallback in `load_host_libc` catches
+`error.FileNotFound`, which CAN be triggered by failures inside
+`loadGnuLdScript` (inner file-not-found errors propagate via `try`).
 
 ### Affected platforms
 
@@ -69,66 +85,113 @@ libpthread.so -> [ld script fails] -> libpthread.a (BOOM)
 libpthread.so -> [ld script fails] -> libpthread.so.0 (real ELF) -> libpthread.a
 ```
 
-#### Site 1: `load_host_libc` (src/link.zig ~line 1402)
+#### Primary fix site: `loadGnuLdScript` `-l` handler (patch 0006 extension)
 
-After `openLoadDso` fails for `lib<name>.so`, before trying `lib<name>.a`,
-iterate the directory for files matching `lib<name>.so.*` and try loading
-each as a DSO:
+The `-l<name>` handler in `loadGnuLdScript` (patch 0006) currently searches
+for `lib<name>.so` then `lib<name>.a` **only in the script's directory**.
+This is where the `.so.N` fallback has the most impact:
 
 ```zig
-// Current: .so fails -> try .a
-// Proposed: .so fails -> scan for .so.N -> try .a
+// CURRENT (patch 0006):
+//   -lpthread → libpthread.so (finds same ld script → recursion) → libpthread.a
+//
+// PROPOSED:
+//   -lpthread → libpthread.so (recursion/fail) → libpthread.so.N (real ELF) → libpthread.a
 
-openLoadDso(base, so_path, query) catch |so_err| {
-    // NEW: try versioned shared libraries
-    const found_versioned = blk: {
-        const dir_sub = fs.path.dirname(so_path.sub_path) orelse ".";
-        var dir = so_path.root_dir.handle.openDir(dir_sub, .{ .iterate = true }) catch break :blk false;
-        defer dir.close();
-        const prefix = std.fmt.allocPrint(gpa, "lib{s}.so.", .{lib_name}) catch break :blk false;
-        defer gpa.free(prefix);
-        var iter = dir.iterate();
-        while (iter.next() catch null) |entry| {
-            if (mem.startsWith(u8, entry.name, prefix)) {
-                const versioned_sub = std.fmt.allocPrint(gpa, "{s}{s}{s}", .{
-                    dir_sub, fs.path.sep_str, entry.name,
-                }) catch continue;
-                const versioned_path: Path = .{
-                    .root_dir = so_path.root_dir,
-                    .sub_path = versioned_sub,
+if (mem.startsWith(u8, arg.path, "-l")) {
+    const lib_name = arg.path[2..];
+    const script_dir = fs.path.dirname(path.sub_path) orelse "";
+    const sep: []const u8 = if (script_dir.len > 0) fs.path.sep_str else "";
+
+    // 1. Try lib<name>.so (current behavior)
+    const so_sub = try std.fmt.allocPrint(gpa, "{s}{s}lib{s}.so", .{ script_dir, sep, lib_name });
+    const so_path: Path = .{ .root_dir = path.root_dir, .sub_path = so_sub };
+    openLoadDso(base, so_path, query) catch |err| switch (err) {
+        error.FileNotFound => {
+            gpa.free(so_sub);
+
+            // 2. NEW: Try versioned lib<name>.so.N
+            const found_versioned = blk: {
+                const dir_sub = if (script_dir.len > 0) script_dir else ".";
+                var dir = path.root_dir.handle.openDir(dir_sub, .{ .iterate = true }) catch break :blk false;
+                defer dir.close();
+                // Prefix includes trailing dot to match "libpthread.so." not "libpthread.so"
+                const prefix = std.fmt.allocPrint(gpa, "lib{s}.so.", .{lib_name}) catch break :blk false;
+                defer gpa.free(prefix);
+                var iter = dir.iterate();
+                while (iter.next() catch null) |entry| {
+                    if (mem.startsWith(u8, entry.name, prefix)) {
+                        // allocPrint for the path string; ownership transfers to the
+                        // linker's Input.Dso.path on success — do NOT free on success.
+                        const versioned_sub = std.fmt.allocPrint(gpa, "{s}{s}{s}", .{
+                            script_dir, sep, entry.name,
+                        }) catch continue;
+                        const versioned_path: Path = .{
+                            .root_dir = path.root_dir,
+                            .sub_path = versioned_sub,
+                        };
+                        openLoadDso(base, versioned_path, query) catch {
+                            gpa.free(versioned_sub);
+                            continue;
+                        };
+                        break :blk true;  // versioned_sub ownership transferred to linker
+                    }
+                }
+                break :blk false;
+            };
+
+            if (!found_versioned) {
+                // 3. Last resort: static archive (current fallback)
+                const a_sub = try std.fmt.allocPrint(gpa, "{s}{s}lib{s}.a", .{ script_dir, sep, lib_name });
+                const a_path: Path = .{ .root_dir = path.root_dir, .sub_path = a_sub };
+                openLoadArchive(base, a_path, query) catch |archive_err| switch (archive_err) {
+                    error.FileNotFound => {
+                        gpa.free(a_sub);
+                        diags.addParseError(path, "GNU ld script references library not found: {s}", .{arg.path});
+                    },
+                    else => return archive_err,
                 };
-                openLoadDso(base, versioned_path, query) catch |ver_err| {
-                    gpa.free(versioned_sub);
-                    continue;
-                };
-                break :blk true;
             }
-        }
-        break :blk false;
+        },
+        else => return err,
     };
-    if (!found_versioned) {
-        // Last resort: static archive
-        openLoadArchive(base, a_path, query) catch |a_err| { ... };
-    }
-};
+}
 ```
 
-#### Site 2: `loadGnuLdScript` `-l` handler (extension to patch 0006)
+**Memory ownership**: When `openLoadDso` succeeds, the `versioned_sub`
+string is stored in `Input.Dso.path.sub_path` and lives for the duration
+of the link. It must NOT be freed on the success path. On failure,
+`gpa.free(versioned_sub)` is called before `continue`.
 
-In the `-l<name>` resolution inside `loadGnuLdScript`, after `lib<name>.so`
-fails in the script directory, scan for `lib<name>.so.*` before trying
-`lib<name>.a`. Same directory iteration pattern as Site 1.
+**Recursion prevention**: When `-lpthread` resolves to `libpthread.so`
+(the same ld script), `openLoadDso` → `BadMagic` → `loadGnuLdScript` →
+finds `-lpthread` again → recurses. With the `.so.N` fallback, after the
+`.so` attempt fails (recursion error or FileNotFound), the directory scan
+finds `libpthread.so.0` (a real ELF shared object), breaking the cycle.
 
-This also prevents infinite recursion: if `libpthread.so` is an ld script
-containing `-lpthread`, searching for `libpthread.so` in the same directory
-finds the script itself (BadMagic -> ld script -> recurse). The `.so.N`
-fallback breaks the cycle by finding the actual ELF shared object.
+#### Secondary fix site: `load_host_libc` (defense-in-depth)
+
+Same `.so.N` directory scan pattern between `.so` and `.a` in
+`load_host_libc`. This catches cases where the ld script GROUP entries
+fail to resolve (inner `FileNotFound` propagates back).
+
+**Variable note**: In `load_host_libc`, the path variable is `dso_path`
+(not `so_path`), and `root_dir` is `Cache.Directory.cwd()` with
+`sub_path` being an absolute path string. The directory iteration uses
+`fs.cwd().openDir(dirname, .{.iterate = true})` since the paths are
+absolute in this context (unlike `loadGnuLdScript` where paths are
+relative to `root_dir`).
+
+This site is lower priority — the primary fix at `loadGnuLdScript`
+should resolve most cases. Implement only if testing shows the primary
+fix is insufficient.
 
 ### Patch B: Explicit target for doctest builds (build script change)
 
 In the langref/doctest build step, pass `-target x86_64-linux-gnu.2.17` so
 zig's std lib uses raw syscall wrappers for functions added after glibc 2.17
-(like `copy_file_range`).
+(like `copy_file_range`). This is a zig-specific triple format (not
+gcc-style) where `.2.17` specifies the minimum glibc version.
 
 This is a change to `recipe/build.sh` or `recipe/building/build_native_for_test.sh`,
 NOT a zig source patch. When zig knows the target is glibc 2.17, its std lib
@@ -139,11 +202,12 @@ glibc's `copy_file_range()`.
 
 | Scenario | Behavior |
 |----------|----------|
-| Multiple `.so.N` files (e.g., `.so.0`, `.so.0.0.0`) | First match used; all are typically symlinks to same target |
+| Multiple `.so.N` files (e.g., `.so.0`, `.so.0.0.0`) | First directory iteration match used; all are typically symlinks to same target |
 | `.so.N` is symlink to missing target | `openLoadDso` returns error, loop continues to next match |
 | No `.so.N` files exist | Falls through to `.a` (current behavior preserved) |
 | Non-glibc targets | No `.so.N` files in search path, behavior unchanged |
-| glibc >= 2.34 (pthread merged into libc) | No `libpthread.so` at all, irrelevant |
+| glibc >= 2.34 (pthread merged into libc) | No separate `libpthread.so`, irrelevant |
+| `-lpthread` in ld script finds same `.so` script | `.so` attempt recurses/fails, `.so.N` scan breaks the cycle |
 
 ## Performance Impact
 
@@ -157,7 +221,8 @@ symlink replacement.
 
 | File | Change |
 |------|--------|
-| New patch: `0007-elf-linker-versioned-so-fallback.patch` | Sites 1 and 2 in `src/link.zig` |
+| Updated patch: `0006-elf-linker-handle-relative-paths-and-l-flags-in-ld-scripts.patch` | Add `.so.N` fallback to `-l` handler in `loadGnuLdScript` |
+| Optional new patch: `0007-elf-linker-versioned-so-fallback-load-host-libc.patch` | Defense-in-depth `.so.N` fallback in `load_host_libc` (if needed) |
 | `recipe/build.sh` or `recipe/building/build_native_for_test.sh` | Add `-target x86_64-linux-gnu.2.17` to doctest builds |
 
 ## Testing
@@ -170,7 +235,7 @@ symlink replacement.
 
 ## Relationship to Existing Patches
 
-- **Patch 0006** (ld script relative paths + `-l` flags): Extended at Site 2 with `.so.N` fallback
+- **Patch 0006** (ld script relative paths + `-l` flags): Extended with `.so.N` fallback in `-l` handler
 - **`_sysroot_fix.sh`**: Unchanged; still converts absolute paths in ld scripts to relative
 - **`_libc_tuning.sh`**: Unchanged; still replaces `libc.so`/`libm.so` scripts with symlinks
 - **Patch 0003** (ppc64le GCC redirect): Unaffected; ppc64le uses GCC linker, not zig's self-hosted
