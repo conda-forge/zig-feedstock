@@ -16,7 +16,7 @@ context:
     ${{
       "x86_64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-64"              else
       "aarch64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-aarch64"         else
-      "powerpc64le-linux-gnu." ~ "2.19"            if cross_target_platform_ == "linux-ppc64le"         else
+      "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"         else
       "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"         else
       "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"           else
       "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"                else
@@ -236,7 +236,9 @@ outputs:
           bin:
             - ${{ conda_triplet }}-zig
           files:
-            - ${{ library }}doc/langref.html
+            - if: not ppc64le
+              then:
+                - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
             - ${{ library }}lib/zig/zig.h
             - ${{ library }}lib/zig/build-web/*
@@ -291,7 +293,6 @@ outputs:
 
           # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
           # BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
-          SYSROOT_VERSION: ${{ c_stdlib_version if linux }}
           LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:

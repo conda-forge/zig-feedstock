@@ -92,15 +92,18 @@ EXTRA_ZIG_ARGS=(
   -Denable-llvm
   -Doptimize=ReleaseSafe
   -Dstatic-llvm=false
+  -Dstrip=true
   -Dtarget=${ZIG_TRIPLET}
   -Duse-zig-libcxx=false
 )
 
+# --- Platform Configuration ---
+
 # Patch 0007 adds -Ddoctest-target to build.zig (Linux only)
 is_linux && EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
-#  -Dstrip=true
-
-# --- Platform Configuration ---
+# ppc64le cross: skip docgen — qemu-ppc64le doesn't faithfully emulate traps,
+# and the ppc64le GCC linker has __tls_get_addr DSO ordering issues with doctests
+[[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && EXTRA_ZIG_ARGS+=(-Dno-langref)
 
 if is_osx; then
   EXTRA_CMAKE_ARGS+=(
@@ -151,6 +154,7 @@ is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}
 is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
 
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
+
 if is_linux && is_cross; then
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
