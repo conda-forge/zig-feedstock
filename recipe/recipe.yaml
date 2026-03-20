@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 11
+  build_number: 12
   name: zig
   version: 0.15.2
 
@@ -9,6 +9,7 @@ context:
   m2: ${{ "m2-" if not unix }}
   sh: ${{ ".bat" if not unix else ".sh" }}
   bat: ${{ ".bat" if not unix }}
+  exe: ${{ ".exe" if not unix }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
@@ -102,6 +103,11 @@ source:
           - patches/0001-linux-maxrss-build.zig.patch
           - patches/0002-linux-glibc-2.17-use-fstat-not-fstat64.patch
           - patches/0003-linux-llvm-triple-no-glibc-version.patch
+          - patches/0004-elf-linker-add-zstd-decompression-support.patch
+          - patches/0005-debug-tag-bare-TODO-panics.patch
+          - patches/0006-elf-linker-handle-relative-paths-and-l-flags-in-ld-scripts.patch
+          - patches/0006b-elf-linker-default-allow-so-scripts.patch
+          - patches/0007-doctest-forward-target-and-allow-so-scripts.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -157,7 +163,7 @@ outputs:
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-
+          
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
           # ZIG_USE_CACHE: "0"
@@ -243,7 +249,7 @@ outputs:
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
-            # Post-install tests (etc/ is not Library-prefixed on non-Unix)
+            # Post-install tests
             - etc/conda/test-files/zig*
       # Functional test using triplet-prefixed binary
       - script:
@@ -279,19 +285,21 @@ outputs:
           # Includes -zig suffix so value is directly usable as binary name
           CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
+
+          # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
+          BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
+          SYSROOT_VERSION: ${{ c_stdlib_version if linux }}
+          LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:
+        - ${{ m2 }}bash
         - python 3.12.*
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
             - zig_impl_${{ xc_build_platform }} >=${{ version }}
       host:
-        # Need zig to compile zig-cxx-shared.exe on non-Unix (native + cross-target)
-        # Host dep because cross-target builds run on different platform (e.g. win-arm64)
-        # where zig_impl may not exist; host dep installs target-platform zig in PREFIX
-        # which runs via non-Unix x86_64-on-ARM64 emulation
-        - if: not is_cross_compiler and not unix
+        - if: not is_cross_compiler
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
@@ -302,6 +310,12 @@ outputs:
             - zig_impl_${{ xc_build_platform }} >=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
+        - if: cross_target_platform_ == "linux-ppc64le"
+          then:
+            # ppc64le patches redirect zig linking to gcc/ld.bfd
+            # (LLD lacks PowerPC64 relocation support)
+            - binutils_impl_${{ cross_target_platform_ }} >=2.45
+            - gcc_impl_${{ cross_target_platform_ }} >=14.3
     tests:
       - package_contents:
           strict: true
@@ -312,8 +326,10 @@ outputs:
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-            - ${{ library }}share/zig/wrappers/zig-cc${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-cxx${{ bat }}
+            
+            - ${{ library }}share/zig/wrappers/zig-cc${{ exe }}
+            - ${{ library }}share/zig/wrappers/zig-cxx${{ exe }}
+            
             - ${{ library }}share/zig/wrappers/zig-ar${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-ranlib${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-asm${{ bat }}
@@ -323,10 +339,11 @@ outputs:
                 - share/zig/wrappers/_zig-cc-common.sh
                 - share/zig/wrappers/zig-cxx-shared
                 - share/zig/wrappers/zig-force-load-cc
+                - share/zig/wrappers/zig-force-load-cxx
             - if: not unix
               then:
                 - Library/share/zig/wrappers/zig-cxx-shared.exe
-            # Post-install tests (etc/ is not Library-prefixed on non-Unix)
+            # Post-install tests
             - etc/conda/test-files/zig*
       - script:
           - if: not arm64
@@ -347,15 +364,22 @@ outputs:
               - if not defined CONDA_ZIG_HOST exit /b 1
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
-          # Wrapper validation tests
-          - testing/test-wrappers${{ sh }}
+          # Wrapper + functional validation tests (Python, cross-platform)
+          - python testing/test_zig_toolchain.py
           # Cross-compiler .exe shim test (non-Unix only)
           - if: is_cross_compiler and not unix
             then:
-              - set "CONDA_TRIPLET=${{ conda_triplet }}" && test-cross-shim.bat
+              - set "CONDA_TRIPLET=${{ conda_triplet }}" && testing\test-cross-shim.bat
+        requirements:
+          run:
+            - python >=3.10
+            - if: ppc64le
+              then:
+                - bash >=5.2
+                - libclang-cpp ${{ llvm_version }}.*
         files:
           recipe:
-            - testing/test-wrappers${{ sh }}
+            - testing/test_zig_toolchain.py
             - testing/test-cross-shim.bat
 
   # ==========================================================================

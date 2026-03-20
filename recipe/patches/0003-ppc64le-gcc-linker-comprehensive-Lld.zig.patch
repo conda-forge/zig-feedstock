@@ -2,12 +2,22 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 index 18682705..1fe344a7 100644
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -862,6 +862,192 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -862,6 +862,233 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
              .{},
          );
      } else {
-+        // PowerPC64: Use GCC linker (LLD lacks PowerPC64 relocation support)
-+        const use_gcc_linker = target.cpu.arch == .powerpc64le or target.cpu.arch == .powerpc64;
++        // PowerPC64: Use GCC linker (LLD lacks full PowerPC64 relocation support)
++        // Only redirect the FINAL link, not sub-compilations (e.g., glibc stub
++        // generation).  Sub-compilations set skip_linker_dependencies=true and
++        // produce synthetic .so stubs that zig's own linker (with our 0001 arch
++        // patches) handles correctly.  ld.bfd cannot process these synthetic
++        // stubs because it does not understand zig's version-node encoding.
++        // Also skip for compile-only operations (output_mode == .Obj) such as
++        // `zig cc -c -o test.o test.c` — these produce object files without
++        // linking, so invoking the GCC linker would fail with "undefined
++        // reference to main" because no link step is needed at all.
++        const is_ppc64 = target.cpu.arch == .powerpc64le or target.cpu.arch == .powerpc64;
++        const use_gcc_linker = is_ppc64 and !comp.skip_linker_dependencies and output_mode != .Obj;
 +
 +        if (use_gcc_linker) {
 +            var argv = std.array_list.Managed([]const u8).init(gpa);
@@ -34,10 +44,34 @@ index 18682705..1fe344a7 100644
 +                try argv.append("-shared");
 +            }
 +
-+            // Prevent GCC from adding its own CRT files (we provide them explicitly below)
-+            // This avoids duplicate definition errors when both Zig's CRT files and GCC's
-+            // auto-added CRT files (via specs) are present
-+            try argv.append("-nostartfiles");
++            // CRT strategy: three modes depending on compilation type.
++            //
++            // 1. Build-time (libc_installation != null, has CRT files):
++            //    Zig provides CRT files.  Use -nostartfiles so GCC doesn't add
++            //    its own (would cause duplicate symbols).  Manually pass zig's
++            //    CRT, -L paths from libc_installation, and explicit -lc/-lpthread.
++            //
++            // 2. Zig code (ZCU present, no libc_installation):
++            //    ZCU contains _start from std/start.zig.  Use -nostartfiles to
++            //    avoid duplicate _start with GCC's crt1.o.  GCC still links libc
++            //    automatically (we only skip CRT startup files, not libc).
++            //
++            // 3. Pure C via zig cc (no ZCU, no libc_installation):
++            //    Let GCC handle everything — CRT, startup, libc.  No
++            //    -nostartfiles needed.
++            const csu = try comp.getCrtPaths(arena);
++            const has_zig_crt = csu.crt0 != null or csu.crti != null or csu.crtbegin != null;
++            const has_libc_install = comp.libc_installation != null;
++            const use_zig_crt = has_zig_crt and has_libc_install;
++            const has_zcu = zcu_obj_path != null;
++
++            if (use_zig_crt or has_zcu) {
++                // Zig provides startup code (either CRT files or ZCU with _start).
++                // Use -nostartfiles to prevent GCC from adding its own crt1.o
++                // (avoids duplicate _start definition errors).  GCC still links
++                // libc automatically — -nostartfiles only skips CRT objects.
++                try argv.append("-nostartfiles");
++            }
 +
 +            // PIE for executables
 +            if (comp.config.pie and output_mode == .Exe) {
@@ -127,19 +161,24 @@ index 18682705..1fe344a7 100644
 +                }
 +            }
 +
-+            // CRT files
-+            const csu = try comp.getCrtPaths(arena);
-+            if (csu.crt0) |p| try argv.append(try p.toString(arena));
-+            if (csu.crti) |p| try argv.append(try p.toString(arena));
++            // CRT files — only when zig provides them AND libc_installation is
++            // available (build-time).  At runtime, GCC handles CRT via its sysroot.
++            if (use_zig_crt) {
++                // For executables: crt0 + crti.  For shared libs: only crti.
++                if (!is_dyn_lib) {
++                    if (csu.crt0) |p| try argv.append(try p.toString(arena));
++                }
++                if (csu.crti) |p| try argv.append(try p.toString(arena));
 +
-+            // crtbegin: Provides __dso_handle for shared libraries
-+            if (csu.crtbegin) |p| {
-+                try argv.append(try p.toString(arena));
-+            } else if (comp.libc_installation) |libc_installation| {
-+                if (libc_installation.gcc_dir) |gcc_dir| {
-+                    // Fallback: crtbeginS.o for shared libraries
-+                    const crtbegin_path = try std.fs.path.join(arena, &[_][]const u8{ gcc_dir, "crtbeginS.o" });
-+                    try argv.append(crtbegin_path);
++                // crtbegin: Provides __dso_handle for shared libraries
++                if (csu.crtbegin) |p| {
++                    try argv.append(try p.toString(arena));
++                } else if (comp.libc_installation) |libc_installation| {
++                    if (libc_installation.gcc_dir) |gcc_dir| {
++                        // Fallback: crtbeginS.o for shared libraries
++                        const crtbegin_path = try std.fs.path.join(arena, &[_][]const u8{ gcc_dir, "crtbeginS.o" });
++                        try argv.append(crtbegin_path);
++                    }
 +                }
 +            }
 +
@@ -148,7 +187,8 @@ index 18682705..1fe344a7 100644
 +                try argv.append(try std.fmt.allocPrint(arena, "-Wl,-rpath,{s}", .{rpath}));
 +            }
 +
-+            // Library paths (use lib64 for PowerPC64)
++            // Library paths — only when libc_installation is available (build-time)
++            // At runtime, GCC finds libraries via its own sysroot configuration
 +            if (comp.config.link_libc) {
 +                if (comp.libc_installation) |libc_installation| {
 +                    const crt_dir = libc_installation.crt_dir.?;
@@ -215,13 +255,17 @@ index 18682705..1fe344a7 100644
 +                    try argv.append(try comp.libunwind_static_lib.?.full_object_path.toString(arena));
 +                }
 +
-+                // libc dependency - With -nostartfiles, GCC doesn't auto-link libc
-+                if (comp.config.link_libc) {
-+                    // glibc 2.28 for PowerPC64LE doesn't export pthread_atfork
-+                    // Link the stub object file created by build script
-+                    const stub_obj = std.process.getEnvVarOwned(arena, "SRC_DIR") catch ".";
-+                    const stub_path = try std.fs.path.join(arena, &[_][]const u8{ stub_obj, "zig-local-cache", "pthread_atfork_stub.o" });
-+                    try argv.append(stub_path);
++                // Explicit libc linking — only when using -nostartfiles (build-time)
++                // At runtime, GCC links libc automatically
++                if (use_zig_crt and comp.config.link_libc) {
++                    // pthread_atfork stub — only during conda-build when SRC_DIR is set
++                    // and the stub file was actually created by the build script
++                    add_stub: {
++                        const src_dir = std.process.getEnvVarOwned(arena, "SRC_DIR") catch break :add_stub;
++                        const stub_path = try std.fs.path.join(arena, &[_][]const u8{ src_dir, "zig-local-cache", "pthread_atfork_stub.o" });
++                        std.fs.cwd().access(stub_path, .{}) catch break :add_stub;
++                        try argv.append(stub_path);
++                    }
 +
 +                    // Link system libraries dynamically
 +                    try argv.append("-lpthread");
@@ -252,17 +296,19 @@ index 18682705..1fe344a7 100644
 +                try argv.append(try p.toString(arena));
 +            }
 +
-+            // CRT end files
-+            if (csu.crtend) |p| {
-+                try argv.append(try p.toString(arena));
-+            } else if (comp.libc_installation) |libc_installation| {
-+                if (libc_installation.gcc_dir) |gcc_dir| {
-+                    // Fallback: crtendS.o is the finalization counterpart to crtbeginS.o
-+                    const crtend_path = try std.fs.path.join(arena, &[_][]const u8{ gcc_dir, "crtendS.o" });
-+                    try argv.append(crtend_path);
++            // CRT end files — only when zig provides CRT (build-time)
++            if (use_zig_crt) {
++                if (csu.crtend) |p| {
++                    try argv.append(try p.toString(arena));
++                } else if (comp.libc_installation) |libc_installation| {
++                    if (libc_installation.gcc_dir) |gcc_dir| {
++                        // Fallback: crtendS.o is the finalization counterpart to crtbeginS.o
++                        const crtend_path = try std.fs.path.join(arena, &[_][]const u8{ gcc_dir, "crtendS.o" });
++                        try argv.append(crtend_path);
++                    }
 +                }
++                if (csu.crtn) |p| try argv.append(try p.toString(arena));
 +            }
-+            if (csu.crtn) |p| try argv.append(try p.toString(arena));
 +
 +            // Execute
 +            if (comp.verbose_link) {

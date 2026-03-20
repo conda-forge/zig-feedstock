@@ -1,0 +1,84 @@
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1060,7 +1060,62 @@
+                 .allow_so_scripts = parent_query.allow_so_scripts,
+             };
+             if (mem.startsWith(u8, arg.path, "-l")) {
+-                @panic("TODO");
++                // GNU ld script contains -l<name> flag.
++                // Search for lib<name>.so, then lib<name>.so.N (versioned),
++                // then lib<name>.a in the script's directory.
++                const lib_name = arg.path[2..];
++                const script_dir = fs.path.dirname(path.sub_path) orelse "";
++                const sep: []const u8 = if (script_dir.len > 0) fs.path.sep_str else "";
++                const so_sub = try std.fmt.allocPrint(gpa, "{s}{s}lib{s}.so", .{ script_dir, sep, lib_name });
++                const so_path: Path = .{ .root_dir = path.root_dir, .sub_path = so_sub };
++                openLoadDso(base, so_path, query) catch |err| switch (err) {
++                    error.FileNotFound => {
++                        gpa.free(so_sub);
++                        // Try versioned shared library (lib<name>.so.N) before static archive.
++                        // This handles glibc < 2.34 sysroots where libpthread.so is an ld script
++                        // that may recurse or fail, but libpthread.so.0 is a real ELF shared lib.
++                        const found_versioned = blk: {
++                            const dir_sub: []const u8 = if (script_dir.len > 0) script_dir else ".";
++                            var dir = path.root_dir.handle.openDir(dir_sub, .{ .iterate = true }) catch break :blk false;
++                            defer dir.close();
++                            const prefix = std.fmt.allocPrint(gpa, "lib{s}.so.", .{lib_name}) catch break :blk false;
++                            defer gpa.free(prefix);
++                            var iter = dir.iterate();
++                            while (iter.next() catch null) |entry| {
++                                if (mem.startsWith(u8, entry.name, prefix)) {
++                                    // Ownership of versioned_sub transfers to Input.Dso.path on
++                                    // success. Only free on failure (the continue path).
++                                    const versioned_sub = std.fmt.allocPrint(gpa, "{s}{s}{s}", .{
++                                        script_dir, sep, entry.name,
++                                    }) catch continue;
++                                    const versioned_path: Path = .{
++                                        .root_dir = path.root_dir,
++                                        .sub_path = versioned_sub,
++                                    };
++                                    openLoadDso(base, versioned_path, query) catch {
++                                        gpa.free(versioned_sub);
++                                        continue;
++                                    };
++                                    break :blk true;
++                                }
++                            }
++                            break :blk false;
++                        };
++                        if (!found_versioned) {
++                            // Last resort: static archive
++                            const a_sub = try std.fmt.allocPrint(gpa, "{s}{s}lib{s}.a", .{ script_dir, sep, lib_name });
++                            const a_path: Path = .{ .root_dir = path.root_dir, .sub_path = a_sub };
++                            openLoadArchive(base, a_path, query) catch |archive_err| switch (archive_err) {
++                                error.FileNotFound => {
++                                    gpa.free(a_sub);
++                                    diags.addParseError(path, "GNU ld script references library not found: {s}", .{arg.path});
++                                },
++                                else => return archive_err,
++                            };
++                        }
++                    },
++                    else => return err,
++                };
+             } else {
+                 if (fs.path.isAbsolute(arg.path)) {
+                     const new_path = Path.initCwd(try gpa.dupe(u8, arg.path));
+@@ -1071,7 +1126,16 @@
+                         else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
+                     }
+                 } else {
+-                    @panic("TODO");
++                    // Resolve relative path against the directory containing the ld script.
++                    const script_dir = fs.path.dirname(path.sub_path) orelse "";
++                    const resolved_sub = try fs.path.resolvePosix(gpa, &.{ script_dir, arg.path });
++                    const resolved_path: Path = .{ .root_dir = path.root_dir, .sub_path = resolved_sub };
++                    switch (Compilation.classifyFileExt(arg.path)) {
++                        .shared_library => try openLoadDso(base, resolved_path, query),
++                        .object => try openLoadObject(base, resolved_path),
++                        .static_library => try openLoadArchive(base, resolved_path, query),
++                        else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
++                    }
+                 }
+             }
+         }

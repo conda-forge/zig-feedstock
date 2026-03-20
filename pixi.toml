@@ -5,7 +5,7 @@
 
 [workspace]
 name = "zig-feedstock-2-feedstock"
-version = "3.56.2"  # conda-smithy version used to generate this file
+version = "3.57.0"  # conda-smithy version used to generate this file
 description = "Pixi configuration for conda-forge/zig-feedstock-2-feedstock"
 authors = ["@conda-forge/zig-feedstock-2"]
 channels = ["conda-forge"]
@@ -47,18 +47,6 @@ description = "Build zig-feedstock-2-feedstock with variant linux_64_cross_targe
 [tasks."inspect-linux_64_cross_target_platform_linux-riscv64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_cross_target_platform_linux-riscv64.yaml"
 description = "List contents of zig-feedstock-2-feedstock packages built for variant linux_64_cross_target_platform_linux-riscv64"
-[tasks."build-linux_aarch64_cross_target_platform_linux-aarch64"]
-cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-aarch64.yaml"
-description = "Build zig-feedstock-2-feedstock with variant linux_aarch64_cross_target_platform_linux-aarch64 directly (without setup scripts)"
-[tasks."inspect-linux_aarch64_cross_target_platform_linux-aarch64"]
-cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-aarch64.yaml"
-description = "List contents of zig-feedstock-2-feedstock packages built for variant linux_aarch64_cross_target_platform_linux-aarch64"
-[tasks."build-linux_ppc64le_cross_target_platform_linux-ppc64le"]
-cmd = "rattler-build build --recipe recipe -m .ci_support/linux_ppc64le_cross_target_platform_linux-ppc64le.yaml"
-description = "Build zig-feedstock-2-feedstock with variant linux_ppc64le_cross_target_platform_linux-ppc64le directly (without setup scripts)"
-[tasks."inspect-linux_ppc64le_cross_target_platform_linux-ppc64le"]
-cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_ppc64le_cross_target_platform_linux-ppc64le.yaml"
-description = "List contents of zig-feedstock-2-feedstock packages built for variant linux_ppc64le_cross_target_platform_linux-ppc64le"
 [tasks."build-osx_64_cross_target_platform_osx-64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/osx_64_cross_target_platform_osx-64.yaml"
 description = "Build zig-feedstock-2-feedstock with variant osx_64_cross_target_platform_osx-64 directly (without setup scripts)"

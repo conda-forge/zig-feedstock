@@ -1,4 +1,5 @@
 test_comptime_unwrap_null.zig
+sentinel-terminated_pointer.zig
 test_variadic_function.zig
 cImport_builtin.zig
 verbose_cimport_flag.zig

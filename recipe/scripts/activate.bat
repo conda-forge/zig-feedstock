@@ -28,8 +28,8 @@ if not exist "%_wrapper_dir%" (
 )
 
 REM === Export variables ===
-if exist "%_wrapper_dir%\zig-cc.bat"     set "ZIG_CC=%_wrapper_dir%\zig-cc.bat"
-if exist "%_wrapper_dir%\zig-cxx.bat"    set "ZIG_CXX=%_wrapper_dir%\zig-cxx.bat"
+if exist "%_wrapper_dir%\zig-cc.exe"     set "ZIG_CC=%_wrapper_dir%\zig-cc.exe"
+if exist "%_wrapper_dir%\zig-cxx.exe"    set "ZIG_CXX=%_wrapper_dir%\zig-cxx.exe"
 if exist "%_wrapper_dir%\zig-ar.bat"     set "ZIG_AR=%_wrapper_dir%\zig-ar.bat"
 if exist "%_wrapper_dir%\zig-ranlib.bat" set "ZIG_RANLIB=%_wrapper_dir%\zig-ranlib.bat"
 if exist "%_wrapper_dir%\zig-asm.bat"    set "ZIG_ASM=%_wrapper_dir%\zig-asm.bat"

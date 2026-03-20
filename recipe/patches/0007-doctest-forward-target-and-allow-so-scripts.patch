@@ -1,0 +1,96 @@
+--- a/tools/doctest.zig	2026-03-19 17:32:52.420028686 -0500
++++ b/tools/doctest.zig	2026-03-19 17:34:22.379993628 -0500
+@@ -23,6 +23,7 @@
+     \\   --zig zig              Path to the zig compiler
+     \\   --zig-lib-dir dir      Override the zig compiler library path
+     \\   --cache-root dir       Path to local .zig-cache/
++    \\   --default-target t     Default target for doctests without // target=
+     \\
+ ;
+ 
+@@ -40,6 +41,7 @@
+     var opt_zig: ?[]const u8 = null;
+     var opt_zig_lib_dir: ?[]const u8 = null;
+     var opt_cache_root: ?[]const u8 = null;
++    var opt_default_target: ?[]const u8 = null;
+ 
+     while (args_it.next()) |arg| {
+         if (mem.startsWith(u8, arg, "-")) {
+@@ -56,6 +58,8 @@
+                 opt_zig_lib_dir = args_it.next() orelse fatal("expected parameter after --zig-lib-dir", .{});
+             } else if (mem.eql(u8, arg, "--cache-root")) {
+                 opt_cache_root = args_it.next() orelse fatal("expected parameter after --cache-root", .{});
++            } else if (mem.eql(u8, arg, "--default-target")) {
++                opt_default_target = args_it.next() orelse fatal("expected parameter after --default-target", .{});
+             } else {
+                 fatal("unrecognized option: '{s}'", .{arg});
+             }
+@@ -101,6 +105,7 @@
+             try std.fs.path.relative(arena, tmp_dir_path, zig_lib_dir)
+         else
+             null,
++        opt_default_target,
+     );
+ 
+     try out_file_writer.end();
+@@ -118,6 +123,8 @@
+     input_path: []const u8,
+     /// Relative to `tmp_dir_path`.
+     opt_zig_lib_dir: ?[]const u8,
++    /// Default target for doctests without explicit // target= directive.
++    opt_default_target: ?[]const u8,
+ ) !void {
+     var env_map = try process.getEnvMap(arena);
+     try env_map.put("CLICOLOR_FORCE", "1");
+@@ -168,6 +175,8 @@
+             if (code.target_str) |triple| {
+                 try build_args.appendSlice(&[_][]const u8{ "-target", triple });
+                 try shell_out.print("-target {s} ", .{triple});
++            } else if (opt_default_target) |dt| {
++                try build_args.appendSlice(&[_][]const u8{ "-target", dt });
+             }
+             if (code.use_llvm) |use_llvm| {
+                 if (use_llvm) {
+@@ -327,6 +336,21 @@
+                         try shell_out.writeAll("--test-no-exec");
+                     },
+                 }
++            } else if (opt_default_target) |dt| {
++                try test_args.appendSlice(&[_][]const u8{ "-target", dt });
++
++                const target_query = try std.Target.Query.parse(.{
++                    .arch_os_abi = dt,
++                });
++                const dt_target = try std.zig.system.resolveTargetQuery(target_query);
++                switch (getExternalExecutor(&host, &dt_target, .{
++                    .link_libc = code.link_libc,
++                })) {
++                    .native => {},
++                    else => {
++                        try test_args.appendSlice(&[_][]const u8{"--test-no-exec"});
++                    },
++                }
+             }
+             if (code.use_llvm) |use_llvm| {
+                 if (use_llvm) {
+--- a/build.zig	2026-03-19 17:32:52.420028686 -0500
++++ b/build.zig	2026-03-19 17:34:35.043988708 -0500
+@@ -1420,6 +1420,8 @@
+ };
+ 
+ fn generateLangRef(b: *std.Build) std.Build.LazyPath {
++    const doctest_target = b.option([]const u8, "doctest-target",
++        "Default target for langref doctest compilations (e.g., x86_64-linux-gnu.2.17)");
+     const doctest_exe = b.addExecutable(.{
+         .name = "doctest",
+         .root_module = b.createModule(.{
+@@ -1457,6 +1459,9 @@
+ 
+         cmd.addArgs(&.{"-o"});
+         _ = wf.addCopyFile(cmd.addOutputFileArg(out_basename), out_basename);
++        if (doctest_target) |dt| {
++            cmd.addArgs(&.{ "--default-target", dt });
++        }
+     }
+ 
+     const docgen_exe = b.addExecutable(.{

@@ -8,16 +8,24 @@ function build_zig_with_zig() {
   local current_dir
   current_dir=$(pwd)
 
+  echo "[build_zig_with_zig] zig=${zig} build_dir=${build_dir} install_dir=${install_dir}"
+  echo "[build_zig_with_zig] EXTRA_ZIG_ARGS: ${EXTRA_ZIG_ARGS[*]+"${EXTRA_ZIG_ARGS[*]}"}"
+
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1
+      local rc=0
       "${zig}" build \
         --prefix "${install_dir}" \
         ${EXTRA_ZIG_ARGS[@]+"${EXTRA_ZIG_ARGS[@]}"} \
-        -Dversion-string="${PKG_VERSION}" || return 1
+        -Dversion-string="${PKG_VERSION}" || rc=$?
         # --search-prefix "${install_dir}" \
     cd "${current_dir}" || return 1
+    if [[ ${rc} -ne 0 ]]; then
+      echo "[build_zig_with_zig] FAILED (exit code ${rc})" >&2
+      return ${rc}
+    fi
   else
-    echo "No build directory found" >&2
+    echo "[build_zig_with_zig] No build directory found: ${build_dir}" >&2
     return 1
   fi
 }
@@ -107,7 +115,7 @@ function remove_failing_langref() {
     while IFS= read -r file
     do
       rm -f "${build_dir}"/doc/langref/"$file"
-    done < "${SRC_DIR}"/build-level-patches/xxxx-remove-langref-std.txt
+    done < "${testslistfile}"
   else
     echo "No langref directory found"
     exit 1

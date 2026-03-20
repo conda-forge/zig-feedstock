@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: conda-forge <conda-forge@users.noreply.github.com>
+Date: Mon, 17 Mar 2026 00:00:00 +0000
+Subject: [PATCH] link(ELF): add ZSTD decompression support for compressed
+ sections
+
+Backport of ziglang/zig#25107 to 0.15.2. Fixes @panic("TODO unhandled
+compression scheme") when linking against libc archives that contain
+ZSTD-compressed ELF sections (common on modern distros using GCC 13+
+with -gz=zstd default).
+
+diff --git a/src/link/Elf/Object.zig b/src/link/Elf/Object.zig
+--- a/src/link/Elf/Object.zig
++++ b/src/link/Elf/Object.zig
+@@ -1207,6 +1207,16 @@
+                 _ = try zlib_stream.reader.streamRemaining(&aw.writer);
+                 return aw.toOwnedSlice();
+             },
++            .ZSTD => {
++                var input: std.Io.Reader = .fixed(data[@sizeOf(elf.Elf64_Chdr)..]);
++                var stream: std.compress.zstd.Decompress = .init(&input, &.{}, .{});
++                const size = std.math.cast(usize, chdr.ch_size) orelse return error.Overflow;
++                var aw: std.Io.Writer.Allocating = .init(gpa);
++                defer aw.deinit();
++                try aw.ensureUnusedCapacity(size);
++                _ = try stream.reader.streamRemaining(&aw.writer);
++                return aw.toOwnedSlice();
++            },
+             else => @panic("TODO unhandled compression scheme"),
+         }
+     }
