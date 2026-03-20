@@ -51,7 +51,7 @@ ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
     cmake ninja gcc gxx patchelf \
     "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
     libxml2-devel zlib zstd perl python \
-    "sysroot_linux-64=2.17" \
+    "sysroot_linux-64=${SYSROOT_VERSION}" \
     "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
 
 eval "$(${CONDA_CMD} shell activate -p ${ENV_DIR} 2>/dev/null || conda shell.bash activate ${ENV_DIR})"
@@ -69,7 +69,7 @@ if [[ -n "${SYSROOT}" ]]; then
         fi
     done
 fi
-# Fix sysroot libc.so linker scripts 2.17 to use relative paths
+# Fix sysroot libc.so linker scripts ${SYSROOT_VERSION} to use relative paths
 source ${RECIPE_DIR}/building/_sysroot_fix.sh
 fix_sysroot_libc_scripts "${ENV_DIR}"
 
@@ -114,14 +114,14 @@ ZIG_BUILD_ARGS=(
     --search-prefix "${ENV_DIR}"
     -Dconfig_h="${CMAKE_BUILD}/config.h"
     -Dcpu=baseline
-    -Ddoctest-target=x86_64-linux-gnu.2.17
+    -Ddoctest-target=x86_64-linux-gnu.${SYSROOT_VERSION}
     -Denable-llvm
     -Doptimize=ReleaseSafe
     -Dstatic-llvm=false
     # Explicit target ensures zig std lib uses raw syscalls for functions
-    # not in glibc 2.17 (e.g., copy_file_range). This script is only used
+    # not in glibc ${SYSROOT_VERSION} (e.g., copy_file_range). This script is only used
     # for linux-64 (x86_64) native test builds.
-    -Dtarget=x86_64-linux-gnu.2.17
+    -Dtarget=x86_64-linux-gnu.${SYSROOT_VERSION}
     -Duse-zig-libcxx=false
     -Dversion-string="${PKG_VERSION}"
     --maxrss 7500000000
