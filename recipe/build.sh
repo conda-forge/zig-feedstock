@@ -168,8 +168,9 @@ fi
 # The conda zig_impl bootstrap can't handle GNU ld scripts with relative paths/-l flags
 # (fixed in patch 0006). Stage 1 produces a zig with the fix; Stage 2 uses it as bootstrap
 # so langref doctests (which link -lc) can process sysroot ld scripts correctly.
-# On non-Linux or if Stage 1 fails, fall back to stripping failing langref tests.
-if is_linux; then
+# Since build 12, the conda zig_impl package includes the ld script patch, so Stage 1
+# is no longer needed by default. Set BUILD_NATIVE_ZIG=1 to re-enable.
+if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
   stage1_install_dir="${SRC_DIR}/stage1-install"
   mkdir -p "${stage1_install_dir}"
   echo "=== Stage 1: Building zig with -Dno-langref (bootstrap lacks ld script support) ==="

@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 12
+  build_number: 13
   name: zig
   version: 0.15.2
 
@@ -16,7 +16,7 @@ context:
     ${{
       "x86_64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-64"              else
       "aarch64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-aarch64"         else
-      "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"         else
+      "powerpc64le-linux-gnu." ~ "2.19"            if cross_target_platform_ == "linux-ppc64le"         else
       "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"         else
       "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"           else
       "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"                else
@@ -164,6 +164,9 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
           
+          # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
+          # BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
+
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
           # ZIG_USE_CACHE: "0"
@@ -195,7 +198,7 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2
+        - zig_impl_${{ build_platform }} >=0.15.2 *_12
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -287,7 +290,7 @@ outputs:
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
           # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
-          BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
+          # BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
           SYSROOT_VERSION: ${{ c_stdlib_version if linux }}
           LLVM_VERSION: ${{ llvm_version }}
     requirements:
@@ -297,7 +300,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=${{ version }} *_12
       host:
         - if: not is_cross_compiler
           then:
@@ -307,7 +310,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=${{ version }} *_12
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: cross_target_platform_ == "linux-ppc64le"
