@@ -135,7 +135,6 @@ fi
 
 if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
-  modify_libc_libm_for_zig "${BUILD_PREFIX}"
   create_gcc14_glibc28_compat_lib
   
   is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
@@ -168,41 +167,15 @@ if is_linux && is_cross; then
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 
-# Stage 1 (Linux only): Build zig with -Dno-langref to bootstrap past ld script TODOs.
-# The conda zig_impl bootstrap can't handle GNU ld scripts with relative paths/-l flags
-# (fixed in patch 0006). Stage 1 produces a zig with the fix; Stage 2 uses it as bootstrap
-# so langref doctests (which link -lc) can process sysroot ld scripts correctly.
-# Since build 12, the conda zig_impl package includes the ld script patch, so Stage 1
+# Optional: build a native zig from source (creates its own env, applies patches).
+# Since build 12, the conda zig_impl package includes the ld script patch, so this
 # is no longer needed by default. Set BUILD_NATIVE_ZIG=1 to re-enable.
 if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
-  stage1_install_dir="${SRC_DIR}/stage1-install"
-  mkdir -p "${stage1_install_dir}"
-  echo "=== Stage 1: Building zig with -Dno-langref (bootstrap lacks ld script support) ==="
-  EXTRA_ZIG_ARGS+=(-Dno-langref)
-  if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${stage1_install_dir}"; then
-    echo "=== Stage 1 SUCCESS — switching bootstrap to Stage 1 zig ==="
-    # Remove -Dno-langref for Stage 2
-    _new_args=()
-    for _a in "${EXTRA_ZIG_ARGS[@]}"; do
-      [[ "$_a" != "-Dno-langref" ]] && _new_args+=("$_a")
-    done
-    EXTRA_ZIG_ARGS=("${_new_args[@]}")
-    unset _new_args _a
-    # Stage 2 uses the freshly-built zig (has patches 0004+0006)
-    # Fix RPATH so Stage 1 zig can find LLVM shared libs from $PREFIX
-    patchelf --set-rpath "${PREFIX}/lib" "${stage1_install_dir}/bin/zig"
-    BUILD_ZIG="${stage1_install_dir}/bin/zig"
-  else
-    echo "=== Stage 1 FAILED — falling back to remove_failing_langref ==="
-    # Remove -Dno-langref since we won't use two-stage
-    _new_args=()
-    for _a in "${EXTRA_ZIG_ARGS[@]}"; do
-      [[ "$_a" != "-Dno-langref" ]] && _new_args+=("$_a")
-    done
-    EXTRA_ZIG_ARGS=("${_new_args[@]}")
-    unset _new_args _a
-    remove_failing_langref "${zig_build_dir}"
-  fi
+  _native_zig_dir="${SRC_DIR}/native-zig-install"
+  echo "=== BUILD_NATIVE_ZIG: building native zig via build_native_for_test.sh ==="
+  "${RECIPE_DIR}/building/build_native.sh" "${_native_zig_dir}"
+  BUILD_ZIG="${_native_zig_dir}/zig_native_patched"
+  echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
 fi
 
 echo "=== Building with ZIG ==="

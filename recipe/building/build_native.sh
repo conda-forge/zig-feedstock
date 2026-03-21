@@ -27,7 +27,7 @@ fi
 #   → If doctests still crash, we get real stack traces
 # ===========================================================================
 
-TARGET_DIR="${1:?Usage: build_native_for_test.sh <output-dir>}"
+TARGET_DIR="${1:?Usage: build_native.sh <output-dir>}"
 LLVM_VER="${LLVM_VERSION:?LLVM_VERSION must be set}"
 WORK_DIR=${SRC_DIR}/_native_build_tmp && mkdir -p ${SRC_DIR}/_native_build_tmp
 # trap "rm -rf ${WORK_DIR}" EXIT
@@ -43,7 +43,7 @@ else
     echo "ERROR: No conda/mamba/micromamba found"
     exit 1
 fi
-echo "[build_native_for_test] Using: ${CONDA_CMD}"
+echo "[build_native] Using: ${CONDA_CMD}"
 
 # 1. Create temporary env with build tools (pin LLVM to match zig source)
 ENV_DIR="${WORK_DIR}/build-env"
@@ -51,7 +51,7 @@ ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
     cmake ninja gcc gxx patchelf \
     "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
     libxml2-devel zlib zstd perl python \
-    "sysroot_linux-64=${SYSROOT_VERSION}" \
+    "sysroot_linux-64=2.17" \
     "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
 
 eval "$(${CONDA_CMD} shell activate -p ${ENV_DIR} 2>/dev/null || conda shell.bash activate ${ENV_DIR})"
@@ -69,7 +69,7 @@ if [[ -n "${SYSROOT}" ]]; then
         fi
     done
 fi
-# Fix sysroot libc.so linker scripts ${SYSROOT_VERSION} to use relative paths
+# Fix sysroot libc.so linker scripts 2.17 to use relative paths
 source ${RECIPE_DIR}/building/_sysroot_fix.sh
 fix_sysroot_libc_scripts "${ENV_DIR}"
 
@@ -79,7 +79,7 @@ if [[ -z "${ZIG_BIN}" ]]; then
     echo "ERROR: No zig binary found in ${ENV_DIR}/bin/"
     exit 1
 fi
-echo "[build_native_for_test] Bootstrap zig (conda): ${ZIG_BIN}"
+echo "[build_native] Bootstrap zig (conda): ${ZIG_BIN}"
 
 # 4. CMake configure + build zigcpp only (generates config.h needed by zig build)
 CMAKE_BUILD="${WORK_DIR}/cmake-build"
@@ -107,21 +107,21 @@ NATIVE_CC=$(ls "${ENV_DIR}"/bin/x86_64-conda-linux-gnu-cc 2>/dev/null || echo gc
 "${NATIVE_CC}" -c "${STUB_DIR}/pthread_atfork_stub.c" -o "${STUB_DIR}/pthread_atfork_stub.o"
 perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${STUB_DIR}/pthread_atfork_stub.o\"|g" \
     "${CMAKE_BUILD}/config.h"
-echo "[build_native_for_test] Injected pthread_atfork stub into config.h"
+echo "[build_native] Injected pthread_atfork stub into config.h"
 
 # Common zig build args (shared between Stage 1 and Stage 2)
 ZIG_BUILD_ARGS=(
     --search-prefix "${ENV_DIR}"
     -Dconfig_h="${CMAKE_BUILD}/config.h"
     -Dcpu=baseline
-    -Ddoctest-target=x86_64-linux-gnu.${SYSROOT_VERSION}
+    -Ddoctest-target=x86_64-linux-gnu.2.17
     -Denable-llvm
     -Doptimize=ReleaseSafe
     -Dstatic-llvm=false
     # Explicit target ensures zig std lib uses raw syscalls for functions
-    # not in glibc ${SYSROOT_VERSION} (e.g., copy_file_range). This script is only used
+    # not in glibc 2.17 (e.g., copy_file_range). This script is only used
     # for linux-64 (x86_64) native test builds.
-    -Dtarget=x86_64-linux-gnu.${SYSROOT_VERSION}
+    -Dtarget=x86_64-linux-gnu.2.17
     -Duse-zig-libcxx=false
     -Dversion-string="${PKG_VERSION}"
     --maxrss 7500000000
@@ -198,7 +198,7 @@ cd "${SRC_DIR}/zig-source"
     cp "${STAGE1_ZIG}" "${TARGET_DIR}/zig_native_patched"
     chmod +x "${TARGET_DIR}/zig_native_patched"
     patchelf --set-rpath '$ORIGIN/../lib' "${TARGET_DIR}/zig_native_patched"
-    echo "[build_native_for_test] Stashed Stage 1 zig for debugging: ${TARGET_DIR}/zig_native_patched"
+    echo "[build_native] Stashed Stage 1 zig for debugging: ${TARGET_DIR}/zig_native_patched"
     exit 1
 }
 
@@ -216,4 +216,4 @@ chmod +x "${TARGET_DIR}/zig_native_patched"
 # At test time, zig_native_patched is overlaid onto $PREFIX/bin/<triplet>-zig
 # so RPATH must resolve from bin/ -> ../lib
 patchelf --set-rpath '$ORIGIN/../lib' "${TARGET_DIR}/zig_native_patched"
-echo "[build_native_for_test] Stashed native zig to ${TARGET_DIR}/zig_native_patched (RPATH fixed)"
+echo "[build_native] Stashed native zig to ${TARGET_DIR}/zig_native_patched (RPATH fixed)"
