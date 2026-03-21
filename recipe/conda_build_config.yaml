@@ -1,7 +1,5 @@
 c_compiler_version:    # [osx]
   - 20                 # [osx]
-# c_stdlib_version:      # [ppc64le]
-#   - "2.28"             # [ppc64le]
 cxx_compiler_version:  # [osx]
   - 20                 # [osx]
 
