@@ -85,7 +85,7 @@ def main():
     if build_native:
         test_dir = prefix / "etc" / "conda" / "test-files"
         test_dir.mkdir(parents=True, exist_ok=True)
-        script = recipe_dir / "building" / "build_native_for_test.sh"
+        script = recipe_dir / "building" / "build_native.sh"
         print(f"  Building patched native zig for ppc64le test: {script}")
         subprocess.run(["bash", str(script), str(test_dir)], check=True)
 
