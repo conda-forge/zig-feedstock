@@ -186,6 +186,24 @@ int main(int argc, char *argv[]) {
 
     new_argv[ni] = NULL;
 
+    /* Diagnostic: print summary when ZIG_CXX_SHARED_VERBOSE is set */
+    const char *verbose = getenv("ZIG_CXX_SHARED_VERBOSE");
+    if (verbose && verbose[0]) {
+        fprintf(stderr, "[zig-cxx-shared] argc=%d -> ni=%d, lld=%s\n", argc, ni, lld_path);
+        /* Print first 20 and last 5 args to avoid flooding */
+        for (int j = 0; j < ni && j < 20; j++)
+            fprintf(stderr, "  [%d] %s\n", j, new_argv[j]);
+        if (ni > 25) {
+            fprintf(stderr, "  ... (%d args omitted)\n", ni - 25);
+            for (int j = ni - 5; j < ni; j++)
+                fprintf(stderr, "  [%d] %s\n", j, new_argv[j]);
+        } else if (ni > 20) {
+            for (int j = 20; j < ni; j++)
+                fprintf(stderr, "  [%d] %s\n", j, new_argv[j]);
+        }
+        fflush(stderr);
+    }
+
     /* Execute linker */
     int ret = (int)_spawnv(_P_WAIT, lld_path, new_argv);
     free(new_argv);
