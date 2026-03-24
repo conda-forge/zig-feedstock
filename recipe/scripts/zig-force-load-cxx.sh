@@ -69,7 +69,7 @@ if [[ ${_all_load} -eq 1 ]]; then
     # -all_load: extract ALL .a files from the arguments
     for _a in "${_other_args[@]}"; do
         if [[ "$_a" == *.a ]] && [[ -f "$_a" ]]; then
-            # Resolve to absolute path — ar x runs in a different directory
+            # Resolve to absolute — ar x runs after cd to a different directory
             _archives_to_extract+=("$(cd "$(dirname "$_a")" && pwd)/$(basename "$_a")")
         fi
     done
@@ -78,7 +78,7 @@ fi
 # Add explicitly force-loaded archives
 for _a in "${_force_load_archives[@]}"; do
     if [[ -f "$_a" ]]; then
-        # Resolve to absolute path — ar x runs in a different directory
+        # Resolve to absolute — ar x runs after cd to a different directory
         _archives_to_extract+=("$(cd "$(dirname "$_a")" && pwd)/$(basename "$_a")")
     else
         echo "WARNING: zig-force-load-cxx: archive not found: $_a" >&2
