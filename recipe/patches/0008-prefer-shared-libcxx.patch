@@ -13,13 +13,15 @@
          }
 
          // libunwind dep
-@@ -1193,7 +1197,11 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -1193,7 +1197,13 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
              // libc++ dep
              if (comp.config.link_libcpp) {
                  try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
 -                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +                if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                    try argv.append("--no-as-needed");
 +                    try argv.append(shared_path);
++                    try argv.append("--as-needed");
 +                } else {
 +                    try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +                }

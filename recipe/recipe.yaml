@@ -1,15 +1,15 @@
 schema_version: 1
 
 context:
-  build_number: 13
+  build_number: 14
   name: zig
-  version: 0.15.2
+  version: "0.15.2"
 
-  library: ${{ "Library/" if not unix }}
-  m2: ${{ "m2-" if not unix }}
-  sh: ${{ ".bat" if not unix else ".sh" }}
-  bat: ${{ ".bat" if not unix }}
-  exe: ${{ ".exe" if not unix }}
+  library: ${{ 'Library/' if not unix else '' }}
+  m2: ${{ 'm2-' if not unix else '' }}
+  sh: ${{ '.bat' if not unix else '.sh' }}
+  bat: ${{ '.bat' if not unix else '' }}
+  exe: ${{ '.exe' if not unix else '' }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
@@ -98,6 +98,7 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
+      - patches/0008-prefer-shared-libcxx.patch
       - if: linux
         then:
           - patches/0001-linux-maxrss-build.zig.patch
@@ -256,6 +257,16 @@ outputs:
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*
+      # Shared libc++ discovery tests (patch 0008)
+      - script:
+          - python testing/test_libcxx_shared.py ${{ conda_triplet }}
+        requirements:
+          run:
+            - python >=3.10
+            - libcxx
+        files:
+          recipe:
+            - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
           - if: not arm64
