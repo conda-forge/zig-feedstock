@@ -1,0 +1,155 @@
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -720,7 +720,11 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
+         // libc++ dep
+         if (comp.config.link_libcpp) {
+             try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
+-            try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++            if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                try argv.append(shared_path);
++            } else {
++                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++            }
+         }
+
+         // libunwind dep
+@@ -1193,7 +1197,11 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+             // libc++ dep
+             if (comp.config.link_libcpp) {
+                 try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
+-                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++                if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                    try argv.append(shared_path);
++                } else {
++                    try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++                }
+             }
+
+             // libunwind dep
+@@ -1544,10 +1552,15 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
+             if (comp.zigc_static_lib) |zigc| {
+                 try argv.append(try zigc.full_object_path.toString(arena));
+             }
+
+-            if (comp.config.link_libcpp) {
+-                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
+-                try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
++            if (comp.config.link_libcpp) {
++                // WASM: no shared library concept; probe always returns null
++                if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                    try argv.append(shared_path);
++                } else {
++                    try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++                }
++                try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
+             }
+         }
+
+@@ -1742,4 +1755,5 @@ const wasi_libc = @import("../libs/wasi_libc.zig");
+ const link = @import("../link.zig");
++const libcxx_shared = @import("libcxx_shared.zig");
+ const lldMain = @import("../main.zig").lldMain;
+ const target_util = @import("../target.zig");
+ const trace = @import("../tracy.zig").trace;
+--- a/src/link/MachO.zig
++++ b/src/link/MachO.zig
+@@ -421,7 +421,11 @@ pub fn flush(self: *MachO, arena: Allocator, tid: Zcu.PerThread.Id) !void {
+     if (comp.config.link_libcpp) {
+         try system_libs.ensureUnusedCapacity(2);
+         system_libs.appendAssumeCapacity(.{ .path = comp.libcxxabi_static_lib.?.full_object_path });
+-        system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
++        if (try libcxx_shared.findSharedLibCxxPath(comp, arena)) |shared_path| {
++            system_libs.appendAssumeCapacity(.{ .path = shared_path });
++        } else {
++            system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
++        }
+     }
+
+     const is_exe_or_dyn_lib = comp.config.output_mode == .Exe or
+@@ -799,11 +803,13 @@ pub fn flush(self: *MachO, arena: Allocator, tid: Zcu.PerThread.Id) !void {
+             try argv.append(arg);
+         }
+
+         if (comp.config.link_libcpp) {
+-            try argv.appendSlice(&.{
+-                try comp.libcxxabi_static_lib.?.full_object_path.toString(arena),
+-                try comp.libcxx_static_lib.?.full_object_path.toString(arena),
+-            });
++            try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
++            if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                try argv.append(shared_path);
++            } else {
++                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++            }
+         }
+
+         try argv.append("-lSystem");
+@@ -5385,6 +5391,7 @@ const link = @import("../link.zig");
+ const load_commands = @import("MachO/load_commands.zig");
+ const relocatable = @import("MachO/relocatable.zig");
+ const tapi = @import("tapi.zig");
+ const target_util = @import("../target.zig");
+ const trace = @import("../tracy.zig").trace;
+ const synthetic = @import("MachO/synthetic.zig");
++const libcxx_shared = @import("libcxx_shared.zig");
+--- /dev/null
++++ b/src/link/libcxx_shared.zig
+@@ -0,0 +1,58 @@
++//! Shared libc++ discovery for conda-forge zig packaging.
++//! Probes for a shared libc++ library relative to zig_lib_dir,
++//! falling back to null (caller uses static libc++.a).
++
++const std = @import("std");
++const Allocator = std.mem.Allocator;
++const Cache = std.Build.Cache;
++const Compilation = @import("../Compilation.zig");
++
++/// Platform-specific shared library names for libc++.
++/// Keyed by target OS tag.
++fn sharedLibCxxNames(os_tag: std.Target.Os.Tag) []const []const u8 {
++    if (os_tag.isDarwin()) {
++        return &.{ "libc++.1.dylib", "libc++.dylib" };
++    }
++    return switch (os_tag) {
++        .linux, .freebsd, .netbsd, .openbsd, .dragonfly => &.{ "libc++.so.1", "libc++.so" },
++        .windows => &.{"libc++.dll.a"},
++        else => &.{},
++    };
++}
++
++/// Probe directories relative to zig_lib (which is <prefix>/lib/zig/).
++/// Two levels up reaches <prefix>/, then:
++///   - <prefix>/lib/zig-llvm/lib/  (preferred: dedicated zig-llvm package)
++///   - <prefix>/lib/                (fallback: standard lib dir)
++const probe_subdirs = [_][]const u8{
++    "../../lib/zig-llvm/lib",
++    "../../lib",
++};
++
++/// Find shared libc++ and return its path as a string (for argv-based linkers).
++/// Returns null if no shared libc++ found. Errors only on allocation failure.
++pub fn findSharedLibCxxString(comp: *const Compilation, arena: Allocator) !?[]const u8 {
++    const target = &comp.root_mod.resolved_target.result;
++    const names = sharedLibCxxNames(target.os.tag);
++    if (names.len == 0) return null;
++
++    const zig_lib_path = comp.dirs.zig_lib.path orelse return null;
++
++    for (&probe_subdirs) |subdir| {
++        for (names) |name| {
++            const probe = try std.fs.path.join(arena, &.{ zig_lib_path, subdir, name });
++            // Check if file exists via access()
++            std.fs.cwd().access(probe, .{}) catch continue;
++            return probe;
++        }
++    }
++    return null;
++}
++
++/// Find shared libc++ and return its Cache.Path (for MachO system_libs).
++/// Uses Cache.Path.initCwd() — probe string is absolute since zig_lib_path is absolute.
++/// Returns null if no shared libc++ found.
++pub fn findSharedLibCxxPath(comp: *const Compilation, arena: Allocator) !?Cache.Path {
++    const str = try findSharedLibCxxString(comp, arena) orelse return null;
++    return Cache.Path.initCwd(str);
++}
