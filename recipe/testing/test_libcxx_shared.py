@@ -518,11 +518,20 @@ def test_libcxx_probe_paths() -> None:
 # ===================================================================
 # Test 3: Shared libc++ simulation (place real .so, verify linkage)
 # ===================================================================
-def _check_needed_libcxx(zig: str, readelf: str, label: str) -> None:
-    """Compile C++ with real std:: usage and check for NEEDED libc++."""
+def _check_needed_libcxx(zig: str, label: str) -> None:
+    """Compile C++ with real std:: usage and check for dynamic libc++ dependency."""
     with tempfile.TemporaryDirectory() as td:
         cxx_src = Path(td) / "test.cpp"
-        cxx_out = Path(td) / "libtest.so"
+        if is_linux_target:
+            cxx_out = Path(td) / "libtest.so"
+        elif is_macos_target:
+            cxx_out = Path(td) / "libtest.dylib"
+        elif is_win_target:
+            cxx_out = Path(td) / "test.dll"
+        else:
+            SKIP(f"{label}", "unknown output format")
+            return
+
         cxx_src.write_text(
             '#include <string>\n'
             '#include <typeinfo>\n'
@@ -543,29 +552,137 @@ def _check_needed_libcxx(zig: str, readelf: str, label: str) -> None:
             return
 
         if not cxx_out.exists():
-            FAIL(f"{label}: output .so missing")
+            FAIL(f"{label}: output missing")
             return
 
         PASS(f"{label}: C++ shared lib compiled")
 
-        # Check NEEDED entries
-        r2 = _run([readelf, "-d", str(cxx_out)], cwd=td)
-        if r2.returncode != 0:
-            WARN(f"{label}: readelf failed", f"rc={r2.returncode}")
-            return
+        # Platform-specific dynamic dependency check
+        if is_linux_target:
+            readelf = shutil.which("readelf")
+            if not readelf:
+                SKIP(f"{label}: readelf check", "readelf not found")
+                return
+            r2 = _run([readelf, "-d", str(cxx_out)], cwd=td)
+            if r2.returncode != 0:
+                WARN(f"{label}: readelf failed", f"rc={r2.returncode}")
+                return
+            needed = [l for l in r2.stdout.splitlines() if "NEEDED" in l]
+            libcxx_needed = [l for l in needed if "libc++" in l]
+            if libcxx_needed:
+                PASS(f"{label}: NEEDED libc++ in output (shared linkage!)")
+                for dep in libcxx_needed:
+                    print(f"    {dep.strip()}")
+            else:
+                FAIL(f"{label}: no NEEDED libc++ (still static)")
+                print("    All NEEDED entries:")
+                for dep in needed:
+                    print(f"      {dep.strip()}")
 
-        needed = [l for l in r2.stdout.splitlines() if "NEEDED" in l]
-        libcxx_needed = [l for l in needed if "libc++" in l]
+        elif is_macos_target:
+            otool = shutil.which("otool")
+            if not otool:
+                SKIP(f"{label}: otool check", "otool not found")
+                return
+            r2 = _run([otool, "-L", str(cxx_out)], cwd=td)
+            if r2.returncode != 0:
+                WARN(f"{label}: otool failed", f"rc={r2.returncode}")
+                return
+            libcxx_deps = [l for l in r2.stdout.splitlines() if "libc++" in l]
+            if libcxx_deps:
+                PASS(f"{label}: libc++ dylib dependency in output (shared linkage!)")
+                for dep in libcxx_deps:
+                    print(f"    {dep.strip()}")
+            else:
+                all_deps = [l.strip() for l in r2.stdout.splitlines()
+                            if l.strip() and not l.strip().startswith(str(cxx_out))]
+                FAIL(f"{label}: no libc++ dylib dependency (still static)")
+                print("    All load commands:")
+                for dep in all_deps:
+                    print(f"      {dep}")
 
-        if libcxx_needed:
-            PASS(f"{label}: NEEDED libc++ in output (shared linkage!)")
-            for dep in libcxx_needed:
-                print(f"    {dep.strip()}")
-        else:
-            FAIL(f"{label}: no NEEDED libc++ (still static)")
-            print("    All NEEDED entries:")
-            for dep in needed:
-                print(f"      {dep.strip()}")
+        elif is_win_target:
+            # On Windows cross-compile, use objdump (from binutils) to check DLL imports
+            objdump = shutil.which("objdump")
+            if not objdump:
+                SKIP(f"{label}: objdump check", "objdump not found")
+                return
+            r2 = _run([objdump, "-p", str(cxx_out)], cwd=td)
+            if r2.returncode != 0:
+                WARN(f"{label}: objdump failed", f"rc={r2.returncode}")
+                return
+            dll_imports = [l for l in r2.stdout.splitlines()
+                           if "DLL Name" in l or "libc++" in l.lower()]
+            libcxx_imports = [l for l in dll_imports if "libc++" in l.lower()]
+            if libcxx_imports:
+                PASS(f"{label}: libc++ DLL import in output (shared linkage!)")
+                for dep in libcxx_imports:
+                    print(f"    {dep.strip()}")
+            else:
+                FAIL(f"{label}: no libc++ DLL import (still static)")
+                print("    All DLL imports:")
+                for dep in dll_imports:
+                    print(f"      {dep.strip()}")
+
+
+def _platform_shared_lib_info() -> tuple[str, str, str | None]:
+    """Return (primary_name, soname_or_id, symlink_name) for the platform.
+
+    symlink_name is None when no symlink is needed.
+    """
+    if is_linux_target:
+        return "libc++.so.1", "libc++.so.1", "libc++.so"
+    if is_macos_target:
+        return "libc++.1.dylib", "libc++.1.dylib", "libc++.dylib"
+    if is_win_target:
+        return "libc++.dll.a", "", None
+    return "", "", None
+
+
+def _build_shared_libcxx(
+    zig: str, libcxx_a: Path, td_path: Path
+) -> Path | None:
+    """Build a shared libc++ from static libc++.a. Returns output path or None."""
+    primary, soname, _ = _platform_shared_lib_info()
+    if not primary:
+        return None
+
+    shared_build = td_path / primary
+
+    if is_linux_target:
+        cmd = [
+            zig, "cc", "-shared",
+            "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
+            "-Wl,-soname," + soname,
+            "-o", str(shared_build),
+        ]
+    elif is_macos_target:
+        cmd = [
+            zig, "cc", "-shared",
+            "-Wl,-force_load," + str(libcxx_a),
+            "-Wl,-install_name,@rpath/" + soname,
+            "-o", str(shared_build),
+        ]
+    elif is_win_target:
+        # Build import lib + DLL from static archive
+        dll_build = td_path / "libc++.dll"
+        cmd = [
+            zig, "cc", "-shared",
+            "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
+            "-Wl,--out-implib," + str(shared_build),
+            "-o", str(dll_build),
+        ]
+    else:
+        return None
+
+    r = _run(cmd, cwd=str(td_path), timeout=120)
+    if r.returncode != 0 or not shared_build.exists():
+        FAIL("libcxx-simulation: build shared libc++ from static .a",
+             f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return None
+
+    PASS(f"built {primary} from static libc++.a")
+    return shared_build
 
 
 def test_libcxx_shared_simulation() -> None:
@@ -573,17 +690,16 @@ def test_libcxx_shared_simulation() -> None:
     Verify zig uses shared libc++ when it's available at probe paths.
 
     Strategy:
-      - If libcxx package is installed (libc++.so.1 already at probe path):
-        compile C++ and check NEEDED directly. No fake lib needed.
+      - If libcxx package is installed (libc++.so/dylib already at probe path):
+        compile C++ and check dependency directly. No fake lib needed.
       - If no shared libc++ exists: build one from zig's cached libc++.a,
         place at preferred probe path, then test.
-
-    Linux-only (needs readelf).
     """
     print("--- [patch-0008] Shared libc++ simulation ---")
 
-    if not is_linux_target or _build_is_win:
-        SKIP("libcxx-simulation", "Linux-only")
+    plat = _get_platform_key()
+    if not plat:
+        SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
         return
 
     if is_arm64 or _is_emulated:
@@ -600,13 +716,7 @@ def test_libcxx_shared_simulation() -> None:
         SKIP("libcxx-simulation", "zig lib dir not found")
         return
 
-    readelf = shutil.which("readelf")
-    if not readelf:
-        SKIP("libcxx-simulation", "readelf not found")
-        return
-
     # --- Case A: shared libc++ already exists at a probe path (libcxx installed) ---
-    plat = _get_platform_key()
     names = LIBCXX_NAMES.get(plat, [])
     for subdir in PROBE_SUBDIRS:
         for name in names:
@@ -614,16 +724,21 @@ def test_libcxx_shared_simulation() -> None:
             if probe.exists():
                 resolved = probe.resolve()
                 PASS(f"shared libc++ found at probe path: {name} -> {resolved}")
-                _check_needed_libcxx(zig, readelf, "libcxx-installed")
+                _check_needed_libcxx(zig, "libcxx-installed")
                 return
 
     # --- Case B: no shared libc++ -- build from zig's cached libc++.a ---
     print("    (no shared libc++ at probe paths, building from cache)")
 
+    primary, _, symlink_name = _platform_shared_lib_info()
+    if not primary:
+        SKIP("libcxx-simulation", f"no shared lib name for {plat}")
+        return
+
     # Preferred probe path for placement
     probe_dir = (zig_lib / PROBE_SUBDIRS[0]).resolve()  # .../lib/zig-llvm/lib/
-    shared_lib = probe_dir / "libc++.so.1"
-    shared_symlink = probe_dir / "libc++.so"
+    shared_lib = probe_dir / primary
+    shared_symlink = (probe_dir / symlink_name) if symlink_name else None
 
     created_dirs: list[Path] = []
 
@@ -645,21 +760,10 @@ def test_libcxx_shared_simulation() -> None:
 
             PASS(f"found libc++.a: {libcxx_a}")
 
-            # Phase 2: Build libc++.so.1 from static libc++.a
-            shared_build = td_path / "libc++.so.1"
-            r = _run([
-                zig, "cc", "-shared",
-                "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
-                "-Wl,-soname,libc++.so.1",
-                "-o", str(shared_build),
-            ], cwd=td, timeout=120)
-
-            if r.returncode != 0 or not shared_build.exists():
-                FAIL("libcxx-simulation: build shared libc++ from static .a",
-                     f"rc={r.returncode}\n{r.stderr[:2000]}")
+            # Phase 2: Build shared libc++ from static archive
+            shared_build = _build_shared_libcxx(zig, libcxx_a, td_path)
+            if not shared_build:
                 return
-
-            PASS("built libc++.so.1 from static libc++.a")
 
             # Phase 3: Install at probe path
             if not probe_dir.exists():
@@ -673,18 +777,29 @@ def test_libcxx_shared_simulation() -> None:
                 probe_dir.mkdir(parents=True, exist_ok=True)
 
             shutil.copy2(str(shared_build), str(shared_lib))
-            shared_symlink.symlink_to("libc++.so.1")
-            PASS("placed libc++.so.1 at probe path")
+            if shared_symlink:
+                shared_symlink.symlink_to(primary)
+            PASS(f"placed {primary} at probe path")
 
-            # Phase 4: Compile and check NEEDED
-            _check_needed_libcxx(zig, readelf, "libcxx-from-cache")
+            # On Windows, also copy the DLL next to the import lib
+            if is_win_target:
+                dll_build = td_path / "libc++.dll"
+                if dll_build.exists():
+                    shutil.copy2(str(dll_build), str(probe_dir / "libc++.dll"))
+
+            # Phase 4: Compile and check dynamic dependency
+            _check_needed_libcxx(zig, "libcxx-from-cache")
 
     finally:
         # Cleanup: remove shared lib from conda prefix
-        if shared_symlink.is_symlink():
+        if shared_symlink and shared_symlink.is_symlink():
             shared_symlink.unlink()
         if shared_lib.exists():
             shared_lib.unlink()
+        # Windows: also clean up DLL
+        dll_placed = probe_dir / "libc++.dll"
+        if dll_placed.exists():
+            dll_placed.unlink()
         for d in [probe_dir] + list(reversed(created_dirs)):
             try:
                 d.rmdir()
