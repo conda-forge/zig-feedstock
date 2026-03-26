@@ -34,4 +34,5 @@ EOF
   fi
 
   is_debug && echo "pthread_atfork stub created: ${output_dir}/pthread_atfork_stub.o"
+  return 0
 }

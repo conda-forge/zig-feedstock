@@ -31,5 +31,5 @@ gcc_dir=${gcc_lib_dir}
 EOF
 
   is_debug && echo "Zig libc file created: ${output_file}"
-  return 0
+  :
 }

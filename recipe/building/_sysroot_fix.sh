@@ -48,4 +48,5 @@ function fix_sysroot_libc_scripts() {
   done
 
   is_debug && echo "Sysroot linker scripts fixed successfully"
+  return 0
 }
