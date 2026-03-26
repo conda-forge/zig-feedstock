@@ -1,10 +1,10 @@
-# Windows: Replace deprecated POSIX functions with MSVC equivalents
+# non-unix: Replace deprecated POSIX functions with MSVC equivalents
 #
 # MSVC marks strdup() and close() as deprecated, preferring _strdup()
 # and _close() respectively. This patch updates:
 # - src/zig_llvm.cpp: 5 instances of strdup -> _strdup
 #
-# Eliminates deprecation warnings during Windows builds.
+# Eliminates deprecation warnings during non-unix builds.
 
 --- a/src/zig_llvm.cpp
 +++ b/src/zig_llvm.cpp

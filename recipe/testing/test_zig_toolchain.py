@@ -120,7 +120,7 @@ def _run(
                                            stdout=stdout, stderr=stderr)
     except subprocess.TimeoutExpired:
         # Kill the process tree to prevent zombie processes producing
-        # non-UTF-8 output that can crash the caller (e.g. rattler-build on Windows).
+        # non-UTF-8 output that can crash the caller (e.g. rattler-build on non-unix).
         try:
             if _build_is_win:
                 # taskkill /T kills the entire process tree (zig-cc.exe + child zig)
@@ -250,7 +250,7 @@ def test_activation_variables() -> None:
             else:
                 FAIL(f"{var} is set")
 
-    # Windows-specific
+    # non-unix specific
     if _build_is_win:
         for var in ("ZIG_RC", "ZIG_CXX_SHARED"):
             val = _env_var(var)
@@ -566,7 +566,7 @@ def test_visibility() -> None:
 
 
 # ===================================================================
-# Section 6 — ld.lld dispatch (Windows targets only)
+# Section 6 — ld.lld dispatch (non-unix targets only)
 # ===================================================================
 def test_lld_dispatch() -> None:
     print("--- ld.lld dispatch ---")

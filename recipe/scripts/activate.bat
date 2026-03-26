@@ -1,5 +1,5 @@
 @echo off
-REM Zig compiler activation script for Windows
+REM Zig compiler activation script (non-unix)
 REM Installed to: %PREFIX%\etc\conda\activate.d\zig_activate.bat
 REM
 REM Exports ZIG_CC, ZIG_CXX, etc. pointing to pre-installed wrapper scripts

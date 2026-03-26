@@ -68,7 +68,7 @@ patch_crt_object() {
 
   # Replace original with combined version
   mv "${crt_path}.tmp" "${crt_path}"
-  echo "    ✓ Patched $(basename "${crt_path}") [${obj_arch}]" >&2
+  is_debug && echo "    Patched $(basename "${crt_path}") [${obj_arch}]" >&2
   return 0
 }
 
@@ -104,10 +104,9 @@ void __libc_csu_fini(void) {
 }
 EOF
 
-  echo "Compiling CSU stubs for available architectures..."
+  is_debug && echo "Compiling CSU stubs for available architectures..."
 
   # Compile stub objects for all available architectures
-  # We need architecture-specific object files to patch architecture-specific CRT files
   local arch_compilers=(
     "x86_64:${prefix}/bin/x86_64-conda-linux-gnu-cc:libc_csu_stubs_x86_64.o"
     "powerpc64le:${prefix}/bin/powerpc64le-conda-linux-gnu-cc:libc_csu_stubs_ppc64le.o"
@@ -117,7 +116,7 @@ EOF
   for entry in "${arch_compilers[@]}"; do
     IFS=: read -r arch compiler output <<< "${entry}"
     if [[ -x "${compiler}" ]]; then
-      echo "  - Compiling for ${arch}"
+      is_debug && echo "  - Compiling for ${arch}"
       "${compiler}" -c "${stub_dir}/libc_csu_stubs.c" -o "${stub_dir}/${output}" || {
         echo "    Warning: Failed to compile for ${arch}" >&2
       }
@@ -125,7 +124,7 @@ EOF
   done
 
   # Create static library using the current target architecture
-  echo "Creating static library..."
+  is_debug && echo "Creating static library..."
   "${CC}" -c "${stub_dir}/libc_csu_stubs.c" -o "${stub_dir}/libc_csu_stubs.o" || return 1
   "${AR}" rcs "${stub_dir}/libcsu_compat.a" "${stub_dir}/libc_csu_stubs.o" || return 1
 
@@ -134,7 +133,7 @@ EOF
 
   # Patch glibc crt1.o files which reference __libc_csu_init/fini
   # NOTE: We do NOT patch GCC's crtbegin*.o files to avoid duplicate symbol definitions
-  echo "Patching glibc crt1.o files..."
+  is_debug && echo "Patching glibc crt1.o files..."
   local crt_files=(crt1.o Scrt1.o gcrt1.o grcrt1.o)
 
   for sysroot_dir in "${prefix}"/*-conda-linux-gnu/sysroot/usr/lib; do
@@ -145,7 +144,9 @@ EOF
     done
   done
 
-  echo "Created GCC 14 + glibc 2.28 compatibility:"
-  echo "  - ${prefix}/lib/libcsu_compat.a"
-  echo "  - Patched all glibc crt1*.o files with stub symbols"
+  if is_debug; then
+    echo "Created GCC 14 + glibc 2.28 compatibility:"
+    echo "  - ${prefix}/lib/libcsu_compat.a"
+    echo "  - Patched all glibc crt1*.o files with stub symbols"
+  fi
 }

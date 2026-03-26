@@ -1,5 +1,5 @@
 /*
- * Windows DLL linker wrapper: invokes ld.lld directly in MinGW mode.
+ * non-unix DLL linker wrapper: invokes ld.lld directly in MinGW mode.
  *
  * Bypasses zig's c++ driver which force-merges libc++ statically into DLLs.
  * Translates compiler-driver flags into raw linker flags for PE/COFF.

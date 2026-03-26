@@ -117,7 +117,7 @@ def _find_zig_compiler() -> str:
 
     # Try CONDA_ZIG_BUILD first, then CONDA_ZIG_HOST as fallback
     # (cross-target builds on win-arm64 may only have the win-64 zig binary,
-    # which runs fine via Windows x86_64-on-ARM64 emulation)
+    # which runs fine via non-unix x86_64-on-ARM64 emulation)
     for zig_name in (conda_zig_build, conda_zig_host):
         if not zig_name:
             continue
@@ -270,7 +270,7 @@ def install_zig_cc_wrappers(
             if src.exists():
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
 
-        # Windows DLL linker wrapper (.exe shim compiled with zig cc)
+        # non-unix DLL linker wrapper (.exe shim compiled with zig cc)
         win_shared_src = recipe_dir / "building" / "zig-cxx-shared-win.c"
         if win_shared_src.exists():
             _compile_c_shim(

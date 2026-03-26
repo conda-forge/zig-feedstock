@@ -7,7 +7,7 @@ function create_pthread_atfork_stub() {
   local cc_compiler="${2}"
   local output_dir="${3:-${SRC_DIR}}"
 
-  echo "=== Creating pthread_atfork stub for glibc 2.28 ${arch_name} ==="
+  is_debug && echo "Creating pthread_atfork stub for glibc 2.28 ${arch_name}"
 
   cat > "${output_dir}/pthread_atfork_stub.c" << 'EOF'
 // Weak stub for pthread_atfork when glibc 2.28 doesn't provide it
@@ -33,5 +33,5 @@ EOF
     return 1
   fi
 
-  echo "=== pthread_atfork stub created: ${output_dir}/pthread_atfork_stub.o ==="
+  is_debug && echo "pthread_atfork stub created: ${output_dir}/pthread_atfork_stub.o"
 }
