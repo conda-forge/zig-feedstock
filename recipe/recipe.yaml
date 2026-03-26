@@ -1,15 +1,15 @@
 schema_version: 1
 
 context:
-  build_number: 13
+  build_number: 14
   name: zig
-  version: 0.15.2
+  version: "0.15.2"
 
-  library: ${{ "Library/" if not unix }}
-  m2: ${{ "m2-" if not unix }}
+  library: ${{ "Library/" if not unix else "" }}
+  m2: ${{ "m2-" if not unix else "" }}
   sh: ${{ ".bat" if not unix else ".sh" }}
-  bat: ${{ ".bat" if not unix }}
-  exe: ${{ ".exe" if not unix }}
+  bat: ${{ ".bat" if not unix else "" }}
+  exe: ${{ ".exe" if not unix else "" }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
@@ -98,42 +98,43 @@ source:
   - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
+      - patches/Lld.zig-prefer-shared-libcxx.patch
       - if: linux
         then:
-          - patches/0001-linux-maxrss-build.zig.patch
-          - patches/0002-linux-glibc-2.17-use-fstat-not-fstat64.patch
-          - patches/0003-linux-llvm-triple-no-glibc-version.patch
-          - patches/0004-elf-linker-add-zstd-decompression-support.patch
-          - patches/0005-debug-tag-bare-TODO-panics.patch
-          - patches/0006-elf-linker-handle-relative-paths-and-l-flags-in-ld-scripts.patch
-          - patches/0006b-elf-linker-default-allow-so-scripts.patch
-          - patches/0007-doctest-forward-target-and-allow-so-scripts.patch
+          - patches/linux/build.zig-01-maxrss.patch
+          - patches/linux/build.zig-02-doctest-forward-target.patch
+          - patches/linux/posix.zig-glibc-2.17-fstat.patch
+          - patches/linux/llvm.zig-triple-no-glibc-version.patch
+          - patches/linux/Object.zig-elf-zstd-decompression.patch
+          - patches/linux/Elf.zig-debug-tag-bare-TODO-panics.patch
+          - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
+          - patches/linux/link.zig-02-default-allow-so-scripts.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
-          - patches/0001-ppc64le-arch-support-relocation.zig.patch
-          - patches/0001-ppc64le-arch-support-LdScript.zig.patch
-          - patches/0001-ppc64le-arch-support-Elf.zig.patch
-          - patches/0001-ppc64le-arch-support-Atom.zig.patch
-          - patches/0001-ppc64le-arch-support-LinkerDefined.zig.patch
-          - patches/0001-ppc64le-arch-support-ZigObject.zig.patch
-          - patches/0001-ppc64le-arch-support-synthetic_sections.zig.patch
-          - patches/0001-ppc64le-arch-support-eh_frame.zig.patch
-          - patches/0001-ppc64le-arch-support-Thunk.zig.patch
-          - patches/0001-ppc64le-arch-support-st-other-Object.zig.patch
-          - patches/0001-ppc64le-arch-support-st-other-SharedObject.zig.patch
+          - patches/ppc64le/0001-arch-support-relocation.zig.patch
+          - patches/ppc64le/0001-arch-support-LdScript.zig.patch
+          - patches/ppc64le/0001-arch-support-Elf.zig.patch
+          - patches/ppc64le/0001-arch-support-Atom.zig.patch
+          - patches/ppc64le/0001-arch-support-LinkerDefined.zig.patch
+          - patches/ppc64le/0001-arch-support-ZigObject.zig.patch
+          - patches/ppc64le/0001-arch-support-synthetic_sections.zig.patch
+          - patches/ppc64le/0001-arch-support-eh_frame.zig.patch
+          - patches/ppc64le/0001-arch-support-Thunk.zig.patch
+          - patches/ppc64le/0001-arch-support-st-other-Object.zig.patch
+          - patches/ppc64le/0001-arch-support-st-other-SharedObject.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
-          - patches/0002-ppc64le-build-config-build.zig.patch
+          - patches/ppc64le/0002-build-config-build.zig.patch
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
-          - patches/0003-ppc64le-linker-redirect-link.zig.patch
-          - patches/0003-ppc64le-ldscript-output-format.patch
-          - patches/0003-ppc64le-gcc-linker-comprehensive-Lld.zig.patch
+          - patches/ppc64le/0003-linker-redirect-link.zig.patch
+          - patches/ppc64le/0003-ldscript-output-format.patch
+          - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
       - if: not unix
         then:
-          - patches/0001-win-maxrss-search-prefix-build.zig.patch
-          - patches/0001-win-correct-LLVM_LIBRARIES-CMakeLists.txt.patch
-          - patches/0001-win-remove-ucrt-Lld.zig.patch
-          - patches/0002-win-MD-libzigcpp-CMakeLists.txt.patch
+          - patches/non_unix/build.zig-maxrss-search-prefix.patch
+          - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
+          - patches/non_unix/Lld.zig-remove-ucrt.patch
+          - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
     target_directory: zig-source
 
 build:
@@ -256,6 +257,16 @@ outputs:
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*
+      # Shared libc++ discovery tests (patch 0008)
+      - script:
+          - python testing/test_libcxx_shared.py ${{ conda_triplet }}
+        requirements:
+          run:
+            - python >=3.10
+            - libcxx
+        files:
+          recipe:
+            - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
           - if: not arm64
