@@ -199,7 +199,7 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2 *_12
+        - zig_impl_${{ build_platform }} >=0.15.2 *_14
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
