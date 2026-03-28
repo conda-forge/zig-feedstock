@@ -60,14 +60,15 @@ context:
   build_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"                     if build_platform == "linux-64"                      else
-      "aarch64-conda-linux-gnu"                    if build_platform == "linux-aarch64"                 else
-      "powerpc64le-conda-linux-gnu"                if build_platform == "linux-ppc64le"                 else
       "x86_64-apple-darwin13.4.0"                  if build_platform == "osx-64"                        else
       "arm64-apple-darwin20.0.0"                   if build_platform == "osx-arm64"                     else
       "x86_64-w64-mingw32"                         if build_platform == "win-64"                        else
-      "aarch64-w64-mingw32"                        if build_platform == "win-arm64"                     else
       "unknown"
     }}
+
+  #    "aarch64-conda-linux-gnu"                    if build_platform == "linux-aarch64"                 else
+  #    "powerpc64le-conda-linux-gnu"                if build_platform == "linux-ppc64le"                 else
+  #    "aarch64-w64-mingw32"                        if build_platform == "win-arm64"                     else
 
   is_hosted_xcompiler: ${{ build_platform == target_platform and cross_target_platform_ != target_platform and cross_build_platform == build_platform }}
   is_unhosted_xcompiler: ${{ cross_target_platform_ == "osx-64" and target_platform == "osx-arm64" or cross_target_platform_ == "win-64" and target_platform == "win-arm64" }}
@@ -172,7 +173,7 @@ outputs:
 
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
-          # ZIG_USE_CACHE: "0"
+          # ZIG_USE_CACHE: "1"
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -201,7 +202,7 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2 *_15
+        - zig_impl_${{ build_platform }} >=0.15.2
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -314,7 +315,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }} *_15
+            - zig_impl_${{ xc_build_platform }} >=${{ version }}
       host:
         - if: not is_cross_compiler
           then:
@@ -324,7 +325,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }} *_15
+            - zig_impl_${{ xc_build_platform }} >=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: cross_target_platform_ == "linux-ppc64le"
