@@ -171,19 +171,6 @@ if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
   echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
 fi
 
-# --- Workaround: bootstrap zig (build 14) has shared libcxx probe that finds
-# host-arch libc++ via zig_lib_dir on macOS cross-builds. Move it out of the
-# probe path and use DYLD_LIBRARY_PATH so the zig binary can still load it.
-# Safe to remove once bootstrap >= build 15.
-if is_osx && is_cross; then
-  _hide_dir="${SRC_DIR}/.host-libcxx"
-  mkdir -p "${_hide_dir}"
-  for _lc in libc++.1.dylib libc++.dylib; do
-    [[ -e "${BUILD_PREFIX}/lib/${_lc}" ]] && cp -L "${BUILD_PREFIX}/lib/${_lc}" "${_hide_dir}/" && rm "${BUILD_PREFIX}/lib/${_lc}"
-  done
-  export DYLD_LIBRARY_PATH="${_hide_dir}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}"
-  is_debug && echo "Moved host libc++ to ${_hide_dir}, DYLD_LIBRARY_PATH set"
-fi
 
 is_debug && echo "=== Building with ZIG ==="
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
@@ -196,13 +183,6 @@ else
   exit 1
 fi
 
-# Restore host libc++ if moved
-if [[ -d "${SRC_DIR}/.host-libcxx" ]]; then
-  for _lc in "${SRC_DIR}/.host-libcxx"/libc++*; do
-    [[ -e "${_lc}" ]] && mv "${_lc}" "${BUILD_PREFIX}/lib/"
-  done
-  is_debug && echo "Restored host libc++ from ${SRC_DIR}/.host-libcxx"
-fi
 
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb

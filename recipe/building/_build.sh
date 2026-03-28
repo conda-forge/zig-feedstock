@@ -33,16 +33,9 @@ function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array
+  # Build local cmake args array — always use conda's CC/CXX (clang/gcc),
+  # never zig-cc (which has a baked-in target that conflicts with cross-builds).
   local cmake_args=()
-
-  # Add zig compiler configuration if provided
-  if [[ -n "${ZIG_CC:-}" ]] && [[ -n "${ZIG_CXX:-}" ]]; then
-    cmake_args+=("-DCMAKE_C_COMPILER=${ZIG_CC}")
-    cmake_args+=("-DCMAKE_CXX_COMPILER=${ZIG_CXX}")
-    cmake_args+=("-DCMAKE_AR=${ZIG_AR:-ar}")
-    cmake_args+=("-DCMAKE_RANLIB=${ZIG_RANLIB:-ranlib}")
-  fi
 
   # Merge with global EXTRA_CMAKE_ARGS if it exists
   if [[ -n "${EXTRA_CMAKE_ARGS+x}" ]]; then
