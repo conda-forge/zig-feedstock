@@ -6,6 +6,24 @@
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
+# --- Handle -print-file-name=<name> (GCC/Clang compat) ---
+# zig doesn't support this flag. Intercept it, probe for the file in the
+# same locations as libcxx_shared.zig (zig-llvm/lib then lib), print the
+# path if found (or echo back the name if not), and exit.
+for _arg in "$@"; do
+    if [[ "$_arg" == -print-file-name=* ]]; then
+        _name="${_arg#-print-file-name=}"
+        for _dir in "${CONDA_PREFIX}/lib/zig-llvm/lib" "${CONDA_PREFIX}/lib"; do
+            if [[ -e "${_dir}/${_name}" ]]; then
+                echo "${_dir}/${_name}"
+                exit 0
+            fi
+        done
+        echo "${_name}"
+        exit 0
+    fi
+done
+
 # --- Sysroot detection (Linux only) ---
 _sysroot_flags=()
 if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then
