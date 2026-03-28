@@ -602,7 +602,7 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
                     print(f"      {dep}")
 
         elif is_win_target:
-            # On Windows cross-compile, use objdump (from binutils) to check DLL imports
+            # On non-unix cross-compile, use objdump (from binutils) to check DLL imports
             objdump = shutil.which("objdump")
             if not objdump:
                 SKIP(f"{label}: objdump check", "objdump not found")
@@ -781,7 +781,7 @@ def test_libcxx_shared_simulation() -> None:
                 shared_symlink.symlink_to(primary)
             PASS(f"placed {primary} at probe path")
 
-            # On Windows, also copy the DLL next to the import lib
+            # On non-unix, also copy the DLL next to the import lib
             if is_win_target:
                 dll_build = td_path / "libc++.dll"
                 if dll_build.exists():
@@ -796,7 +796,7 @@ def test_libcxx_shared_simulation() -> None:
             shared_symlink.unlink()
         if shared_lib.exists():
             shared_lib.unlink()
-        # Windows: also clean up DLL
+        # non-unix: also clean up DLL
         dll_placed = probe_dir / "libc++.dll"
         if dll_placed.exists():
             dll_placed.unlink()

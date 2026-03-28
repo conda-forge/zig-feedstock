@@ -14,7 +14,7 @@ fi
 
 # --- Functions ---
 
-source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig, remove_failing_langref
+source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
 
 build_platform="${build_platform:-${target_platform}}"
 
@@ -53,9 +53,6 @@ fi
 
 # --- Main ---
 
-# This allows to skip a known failing zig build with zig
-force_cmake=0
-
 # Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
 BUILD_ZIG="${CONDA_ZIG_BUILD}"
 
@@ -71,14 +68,11 @@ zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
-mkdir -p "${SRC_DIR}"/build-level-patches
-cp -r "${RECIPE_DIR}"/patches/xxxx* "${SRC_DIR}"/build-level-patches
 
 # --- Common CMake/zig configuration ---
 
 EXTRA_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
-  -DZIG_SHARED_LLVM=ON
   -DZIG_TARGET_MCPU=baseline
   -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
   -DZIG_USE_LLVM_CONFIG=ON
@@ -138,7 +132,6 @@ if is_linux; then
   create_gcc14_glibc28_compat_lib
   
   is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
-  is_cross && is_osx && ${INSTALL_NAME_TOOL:-install_name_tool} -add_rpath "${BUILD_PREFIX}"/lib "${PREFIX}"/bin/llvm-config
 fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
@@ -178,82 +171,60 @@ if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
   echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
 fi
 
-echo "=== Building with ZIG ==="
-if [[ "${force_cmake:-0}" != "1" ]] && build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
-  echo "SUCCESS: zig build completed successfully"
-elif [[ "${cross_target_platform_}" == "osx-arm64" ]]; then
-  echo "***"
-  echo "* ERROR: We cannot build cross-target osx-arm64 with CMake without an emulator"
-  echo "* Temporarily skip and rebuild with the new ZIG from osx-64"
-  echo "***"
-  exit 1
-elif [[ "${cross_target_platform_}" == "linux-ppc64le" ]]; then
-  echo "***"
-  echo "* ERROR: zig build fails to complete cross-target linux-ppc64le with CMake (>6hrs)"
-  echo "* Temporarily skip and rebuild with the new ZIG from linux-64"
-  echo "***"
-  exit 1
+# --- Workaround: bootstrap zig (build 14) has shared libcxx probe that finds
+# host-arch libc++ via zig_lib_dir on macOS cross-builds. Move it out of the
+# probe path and use DYLD_LIBRARY_PATH so the zig binary can still load it.
+# Safe to remove once bootstrap >= build 15.
+if is_osx && is_cross; then
+  _hide_dir="${SRC_DIR}/.host-libcxx"
+  mkdir -p "${_hide_dir}"
+  for _lc in libc++.1.dylib libc++.dylib; do
+    [[ -e "${BUILD_PREFIX}/lib/${_lc}" ]] && cp -L "${BUILD_PREFIX}/lib/${_lc}" "${_hide_dir}/" && rm "${BUILD_PREFIX}/lib/${_lc}"
+  done
+  export DYLD_LIBRARY_PATH="${_hide_dir}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}"
+  is_debug && echo "Moved host libc++ to ${_hide_dir}, DYLD_LIBRARY_PATH set"
+fi
+
+is_debug && echo "=== Building with ZIG ==="
+if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+  is_debug && echo "SUCCESS: zig build completed successfully"
+elif [[ "${CMAKE_FALLBACK:-1}" == "1" ]]; then
+  source "${RECIPE_DIR}/building/_cmake.sh"  # cmake_fallback_build
+  cmake_fallback_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
 else
-  source "${RECIPE_DIR}/building/_cmake.sh"  # apply_cmake_patches, cmake_build_install
-  CMAKE_PATCHES=()
+  echo "Build zig with zig failed and CMake fallback disabled"
+  exit 1
+fi
 
-  if is_linux; then
-    CMAKE_PATCHES+=(
-      0001-linux-maxrss-CMakeLists.txt.patch
-      0002-linux-pthread-atfork-stub-zig2-CMakeLists.txt.patch
-    )
-    if is_cross; then
-      CMAKE_PATCHES+=(0003-cross-CMakeLists.txt.patch)
-      perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${cmake_source_dir}"/cmake/install.cmake
-      export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TRIPLET}"
-      export ZIG_CROSS_TARGET_MCPU="baseline"
-    fi
-  fi
-  if is_not_unix; then
-    _version=$(ls -1v "${VSINSTALLDIR}/VC/Tools/MSVC" | tail -n 1)
-    _UCRT_LIB_PATH="C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\um\x64;C:\Program Files (x86)\Windows Kits\10\lib\10.0.22621.0\ucrt\x64;C:\Windows\System32"
-    _MSVC_LIB_PATH="${VSINSTALLDIR//\\/\/}/VC/Tools/MSVC/${_version}/lib/x64"
-    EXTRA_CMAKE_ARGS+=(
-      -DZIG_CMAKE_PREFIX_PATH="${_MSVC_LIB_PATH};${_UCRT_LIB_PATH};${LIBPATH}"
-    )
-    CMAKE_PATCHES+=(
-      0001-win-deprecations-zig_llvm.cpp.patch
-      0001-win-deprecations-zig_llvm-ar.cpp.patch
-    )
-  fi
-
-  echo "Applying CMake patches..."
-  apply_cmake_patches "${cmake_source_dir}"
-
-  if cmake_build_install "${cmake_build_dir}" "${PREFIX}"; then
-    echo "SUCCESS: cmake fallback build completed successfully"
-  else
-    echo "ERROR: Both zig build and cmake build failed"
-    exit 1
-  fi
+# Restore host libc++ if moved
+if [[ -d "${SRC_DIR}/.host-libcxx" ]]; then
+  for _lc in "${SRC_DIR}/.host-libcxx"/libc++*; do
+    [[ -e "${_lc}" ]] && mv "${_lc}" "${BUILD_PREFIX}/lib/"
+  done
+  is_debug && echo "Restored host libc++ from ${SRC_DIR}/.host-libcxx"
 fi
 
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb
 
-echo "Post-install implementation package: ${PKG_NAME}"
+is_debug && echo "Post-install implementation package: ${PKG_NAME}"
 mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
 
-# Windows conda convention: artifacts go under Library/
+# Non-unix conda convention: artifacts go under Library/
 if is_not_unix; then
-  echo "Relocating to Library/ for Windows conda convention"
+  is_debug && echo "Relocating to Library/ for non-unix conda convention"
   mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
   [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
 fi
 
-echo "=== Build installed for package: ${PKG_NAME} ==="
+is_debug && echo "=== Build installed for package: ${PKG_NAME} ==="
 
 # Cache successful build (saves before rattler-build cleanup)
 if [[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]; then
   # stub_cache.sh already sourced at the top if ZIG_USE_CACHE=1
   [[ "$(type -t stub_cache_save)" != "function" ]] && source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
   stub_cache_save
-  echo "=== Build cached for future restoration ==="
+  is_debug && echo "=== Build cached for future restoration ==="
 fi

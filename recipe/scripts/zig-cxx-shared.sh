@@ -16,11 +16,26 @@ if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then
     fi
 fi
 
+# --- Expand @response files ---
+_raw_args=()
+for _arg in "$@"; do
+    if [[ "$_arg" == @* ]]; then
+        _rspfile="${_arg#@}"
+        if [[ -f "$_rspfile" ]]; then
+            while IFS= read -r -d '' _tok; do
+                _raw_args+=("$_tok")
+            done < <(xargs printf '%s\0' < "$_rspfile")
+            continue
+        fi
+    fi
+    _raw_args+=("$_arg")
+done
+
 # --- Flag translation ---
 args=()
 _skip_next=0
 _grab_next=0
-for arg in "$@"; do
+for arg in "${_raw_args[@]}"; do
     if [[ ${_skip_next} -eq 1 ]]; then
         _skip_next=0
         continue

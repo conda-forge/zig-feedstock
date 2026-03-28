@@ -2,7 +2,7 @@
 #
 # Changes:
 # - Strip .dll extensions from library names to prevent double-extension (zstd.dll.lib)
-# - Add required Windows libraries (msvcrt.lib)
+# - Add required non-unix libraries (msvcrt.lib)
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt

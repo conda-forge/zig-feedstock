@@ -1,5 +1,5 @@
 @echo off
-REM Test script for cross-compiler .exe shim validation (Windows)
+REM Test script for cross-compiler .exe shim validation (non-unix)
 REM Runs during zig_$cross_target_platform_ package tests (cross-compiler only)
 setlocal enabledelayedexpansion
 

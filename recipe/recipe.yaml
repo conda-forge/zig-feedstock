@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 14
+  build_number: 15
   name: zig
   version: "0.15.2"
 
@@ -165,6 +165,8 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
           
+          CMAKE_FALLBACK: "0"
+          
           # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
           # BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
 
@@ -199,7 +201,7 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2 *_12
+        - zig_impl_${{ build_platform }} >=0.15.2 *_14
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*

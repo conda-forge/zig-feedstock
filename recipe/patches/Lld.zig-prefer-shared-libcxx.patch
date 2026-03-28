@@ -96,12 +96,18 @@
 +const libcxx_shared = @import("libcxx_shared.zig");
 --- /dev/null
 +++ b/src/link/libcxx_shared.zig
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,69 @@
 +//! Shared libc++ discovery for conda-forge zig packaging.
 +//! Probes for a shared libc++ library relative to zig_lib_dir,
 +//! falling back to null (caller uses static libc++.a).
++//!
++//! Cross-compilation guard: zig_lib_dir points to the BUILD host's
++//! zig installation. When target arch != host arch, the shared libs
++//! there are for the wrong architecture. Skip probing in that case
++//! and let the caller fall back to static libc++.a.
 +
 +const std = @import("std");
++const builtin = @import("builtin");
 +const Allocator = std.mem.Allocator;
 +const Cache = std.Build.Cache;
 +const Compilation = @import("../Compilation.zig");
@@ -132,6 +138,11 @@
 +/// Returns null if no shared libc++ found. Errors only on allocation failure.
 +pub fn findSharedLibCxxString(comp: *const Compilation, arena: Allocator) !?[]const u8 {
 +    const target = &comp.root_mod.resolved_target.result;
++
++    // Cross-compilation: zig_lib_dir is on the build host, so probed
++    // shared libs have the host architecture, not the target's.
++    if (target.cpu.arch != builtin.cpu.arch) return null;
++
 +    const names = sharedLibCxxNames(target.os.tag);
 +    if (names.len == 0) return null;
 +
@@ -148,9 +159,9 @@
 +    return null;
 +}
 +
-+/// Find shared libc++ and return its Cache.Path (for MachO system_libs).
-+/// Uses Cache.Path.initCwd() — probe string is absolute since zig_lib_path is absolute.
-+/// Returns null if no shared libc++ found.
++// Find shared libc++ and return its Cache.Path (for MachO system_libs).
++// Uses Cache.Path.initCwd() -- probe string is absolute since zig_lib_path is absolute.
++// Returns null if no shared libc++ found.
 +pub fn findSharedLibCxxPath(comp: *const Compilation, arena: Allocator) !?Cache.Path {
 +    const str = try findSharedLibCxxString(comp, arena) orelse return null;
 +    return Cache.Path.initCwd(str);

@@ -1,4 +1,4 @@
-# Windows: Remove automatic ucrt library linking (LLD linker)
+# non-unix: Remove automatic ucrt library linking (LLD linker)
 #
 # The Universal C Runtime (ucrt) is provided by conda's MSVC toolchain
 # and should not be automatically added by Zig's LLD linker.

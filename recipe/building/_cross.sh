@@ -6,7 +6,7 @@ function create_zig_linux_libc_file() {
     return 1
   fi
 
-  echo "Creating Zig libc configuration file: ${output_file}"
+  is_debug && echo "Creating Zig libc configuration file: ${output_file}"
 
   # Find GCC library directory (contains crtbegin.o, crtend.o)
   local gcc_lib_dir="${CONDA_BUILD_SYSROOT//${BUILD_PREFIX}/${BUILD_PREFIX}\/lib\/gcc}"
@@ -17,7 +17,7 @@ function create_zig_linux_libc_file() {
     echo "WARNING: Could not find GCC library directory for ${CONDA_BUILD_SYSROOT}" >&2
     gcc_lib_dir=""
   else
-    echo "  Found GCC library directory: ${gcc_lib_dir}"
+    is_debug && echo "  Found GCC library directory: ${gcc_lib_dir}"
   fi
 
   # Create libc configuration file
@@ -30,6 +30,6 @@ kernel32_lib_dir=
 gcc_dir=${gcc_lib_dir}
 EOF
 
-  echo "✓ Zig libc file created: ${output_file}"
-  return 0
+  is_debug && echo "Zig libc file created: ${output_file}"
+  :
 }

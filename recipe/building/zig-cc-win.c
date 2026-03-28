@@ -1,5 +1,5 @@
 /*
- * Windows compiler wrapper: invokes zig cc/c++ with flag filtering.
+ * non-unix compiler wrapper: invokes zig cc/c++ with flag filtering.
  *
  * Compiled twice at install time with different @ZIG_CC_MODE@:
  *   zig-cc.exe  (mode = "cc")
