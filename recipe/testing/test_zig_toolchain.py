@@ -173,7 +173,6 @@ def test_wrapper_existence() -> None:
         expected = [
             "zig-cc.exe",
             "zig-cxx.exe",
-            "zig-cxx-shared.exe",
             "zig-ar.bat",
             "zig-ranlib.bat",
             "zig-asm.bat",
@@ -183,7 +182,6 @@ def test_wrapper_existence() -> None:
         expected = [
             "zig-cc",
             "zig-cxx",
-            "zig-cxx-shared",
             "zig-force-load-cc",
             "zig-force-load-cxx",
             "zig-ar",
@@ -239,7 +237,7 @@ def test_activation_variables() -> None:
 
     # Unix-specific
     if not _build_is_win:
-        for var in ("ZIG_FORCE_LOAD_CC", "ZIG_CXX_SHARED"):
+        for var in ("ZIG_FORCE_LOAD_CC",):
             val = _env_var(var)
             if val:
                 PASS(f"{var} is set")
@@ -252,7 +250,7 @@ def test_activation_variables() -> None:
 
     # non-unix specific
     if _build_is_win:
-        for var in ("ZIG_RC", "ZIG_CXX_SHARED"):
+        for var in ("ZIG_RC",):
             val = _env_var(var)
             if val:
                 PASS(f"{var} is set")

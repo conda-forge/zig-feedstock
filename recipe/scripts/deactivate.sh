@@ -9,7 +9,6 @@ unset ZIG_AR
 unset ZIG_RANLIB
 unset ZIG_ASM
 unset ZIG_RC
-unset ZIG_CXX_SHARED
 unset ZIG_FORCE_LOAD_CC
 
 # === Unset toolchain identification ===

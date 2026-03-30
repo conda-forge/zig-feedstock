@@ -37,7 +37,6 @@ if exist "%_wrapper_dir%\zig-rc.bat" (
     set "ZIG_RC=%_wrapper_dir%\zig-rc.bat"
     set "ZIG_RC_CMAKE=%_wrapper_dir:\=/%/zig-rc.bat"
 )
-if exist "%_wrapper_dir%\zig-cxx-shared.exe" set "ZIG_CXX_SHARED=%_wrapper_dir%\zig-cxx-shared.exe"
 
 :cleanup
 set "_CROSS_TARGET_TRIPLET="

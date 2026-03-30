@@ -270,21 +270,13 @@ def install_zig_cc_wrappers(
             if src.exists():
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
 
-        # non-unix DLL linker wrapper (.exe shim compiled with zig cc)
-        win_shared_src = recipe_dir / "building" / "zig-cxx-shared-win.c"
-        if win_shared_src.exists():
-            _compile_c_shim(
-                win_shared_src,
-                wrapper_dir / "zig-cxx-shared.exe",
-                replacements,
-            )
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
         # Install shared flag-filtering helper (sourced by zig-cc and zig-cxx)
         common_src = scripts_dir / "_zig-cc-common.sh"
         if common_src.exists():
             _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-cxx-shared", "zig-force-load-cc", "zig-force-load-cxx"]
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():

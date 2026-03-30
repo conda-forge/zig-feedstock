@@ -355,12 +355,8 @@ outputs:
             - if: unix
               then:
                 - share/zig/wrappers/_zig-cc-common.sh
-                - share/zig/wrappers/zig-cxx-shared
                 - share/zig/wrappers/zig-force-load-cc
                 - share/zig/wrappers/zig-force-load-cxx
-            - if: not unix
-              then:
-                - Library/share/zig/wrappers/zig-cxx-shared.exe
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
