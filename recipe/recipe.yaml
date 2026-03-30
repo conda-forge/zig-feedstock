@@ -19,8 +19,8 @@ context:
       "powerpc64le-linux-gnu." ~ c_stdlib_version  if cross_target_platform_ == "linux-ppc64le"         else
       "riscv64-linux-gnu." ~ c_stdlib_version      if cross_target_platform_ == "linux-riscv64"         else
       "s390x-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-s390x"           else
-      "x86_64-macos-none"                          if cross_target_platform_ == "osx-64"                else
-      "aarch64-macos-none"                         if cross_target_platform_ == "osx-arm64"             else
+      "x86_64-macos." ~ c_stdlib_version ~ "-none"  if cross_target_platform_ == "osx-64"                else
+      "aarch64-macos." ~ c_stdlib_version ~ "-none" if cross_target_platform_ == "osx-arm64"            else
       "x86_64-windows-msvc"                        if cross_target_platform_ == "win-64"                else
       "aarch64-windows-msvc"                       if cross_target_platform_ == "win-arm64"             else
       "native"

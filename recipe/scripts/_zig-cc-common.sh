@@ -97,4 +97,12 @@ done
 _mode="${_ZIG_MODE}"
 [[ ${_saw_nostdlibxx} -eq 1 ]] && _mode="cc"
 
-_exec_args=("${_mode}" -target @ZIG_TARGET@ -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")
+# --- macOS: honor MACOSX_DEPLOYMENT_TARGET at runtime ---
+# Override the version in the target triple if MACOSX_DEPLOYMENT_TARGET is set.
+# e.g. aarch64-macos.11.0-none -> aarch64-macos.14.0-none
+_zig_target="@ZIG_TARGET@"
+if [[ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]] && [[ "${_zig_target}" == *-macos* ]]; then
+    _zig_target="${_zig_target%%-macos*}-macos.${MACOSX_DEPLOYMENT_TARGET}-${_zig_target##*macos*-}"
+fi
+
+_exec_args=("${_mode}" -target "${_zig_target}" -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")

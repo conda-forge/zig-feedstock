@@ -2,7 +2,8 @@
 REM Zig compiler deactivation script (non-unix)
 REM Installed to: %PREFIX%\etc\conda\deactivate.d\zig_deactivate.bat
 
-REM === Unset all zig-cc variables ===
+REM === Unset all zig variables ===
+set "ZIG="
 set "ZIG_CC="
 set "ZIG_CXX="
 set "ZIG_AR="

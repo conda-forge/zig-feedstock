@@ -31,6 +31,9 @@ if [[ ! -d "${_wrapper_dir}" ]]; then
 fi
 
 # === Export variables ===
+_zig_bin="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig"
+[[ -x "${_zig_bin}" ]] && export ZIG="${_zig_bin}"
+
 [[ -x "${_wrapper_dir}/zig-cc" ]]         && export ZIG_CC="${_wrapper_dir}/zig-cc"
 [[ -x "${_wrapper_dir}/zig-cxx" ]]        && export ZIG_CXX="${_wrapper_dir}/zig-cxx"
 [[ -x "${_wrapper_dir}/zig-ar" ]]         && export ZIG_AR="${_wrapper_dir}/zig-ar"
@@ -41,4 +44,4 @@ fi
 [[ -x "${_wrapper_dir}/zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${_wrapper_dir}/zig-force-load-cxx"
 
 # === Cleanup temporaries ===
-unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir
+unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir _zig_bin

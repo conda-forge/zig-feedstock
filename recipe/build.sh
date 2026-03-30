@@ -160,15 +160,10 @@ if is_linux && is_cross; then
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 
-# Optional: build a native zig from source (creates its own env, applies patches).
-# Since build 12, the conda zig_impl package includes the ld script patch, so this
-# is no longer needed by default. Set BUILD_NATIVE_ZIG=1 to re-enable.
+# Optional: build native zig from source when conda bootstrap can't compile new version.
+# Set BUILD_NATIVE_ZIG=1 to enable. Not needed since build 12 (ld script patch in package).
 if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
-  _native_zig_dir="${SRC_DIR}/native-zig-install"
-  echo "=== BUILD_NATIVE_ZIG: building native zig via build_native_for_test.sh ==="
-  "${RECIPE_DIR}/building/build_native.sh" "${_native_zig_dir}"
-  BUILD_ZIG="${_native_zig_dir}/zig_native_patched"
-  echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
+  build_native_zig "${SRC_DIR}/native-zig-install"
 fi
 
 

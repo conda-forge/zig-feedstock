@@ -63,3 +63,15 @@ function configure_cmake_zigcpp() {
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   popd
 }
+
+# Build a native zig from source when the conda bootstrap can't compile a new version.
+# Useful when upstream zig changes break self-compilation with the previous release.
+# Usage: build_native_zig <install_dir>
+# Sets BUILD_ZIG to the native-built binary path on success.
+function build_native_zig() {
+  local install_dir=$1
+  echo "=== BUILD_NATIVE_ZIG: building native zig via build_native.sh ==="
+  "${RECIPE_DIR}/building/build_native.sh" "${install_dir}"
+  BUILD_ZIG="${install_dir}/zig_native_patched"
+  echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
+}

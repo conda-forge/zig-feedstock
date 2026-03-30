@@ -28,6 +28,9 @@ if not exist "%_wrapper_dir%" (
 )
 
 REM === Export variables ===
+set "_zig_bin=%CONDA_PREFIX%\Library\bin\@CONDA_TRIPLET@-zig.exe"
+if exist "%_zig_bin%" set "ZIG=%_zig_bin%"
+
 if exist "%_wrapper_dir%\zig-cc.exe"     set "ZIG_CC=%_wrapper_dir%\zig-cc.exe"
 if exist "%_wrapper_dir%\zig-cxx.exe"    set "ZIG_CXX=%_wrapper_dir%\zig-cxx.exe"
 if exist "%_wrapper_dir%\zig-ar.bat"     set "ZIG_AR=%_wrapper_dir%\zig-ar.bat"
@@ -41,3 +44,4 @@ if exist "%_wrapper_dir%\zig-rc.bat" (
 :cleanup
 set "_CROSS_TARGET_TRIPLET="
 set "_wrapper_dir="
+set "_zig_bin="
