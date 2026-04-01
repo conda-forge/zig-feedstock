@@ -355,6 +355,7 @@ outputs:
             - if: unix
               then:
                 - share/zig/wrappers/_zig-cc-common.sh
+                - share/zig/wrappers/_zig-force-load-common.sh
                 - share/zig/wrappers/zig-force-load-cc
                 - share/zig/wrappers/zig-force-load-cxx
             # Post-install tests

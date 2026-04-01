@@ -79,16 +79,6 @@ def main():
         else:
             install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
 
-    # Build patched native zig for test validation
-    build_native = os.environ.get("BUILD_NATIVE_ZIG", "false").strip().lower() == "true"
-    print(f"  BUILD_NATIVE_ZIG: {build_native}")
-    if build_native:
-        test_dir = prefix / "etc" / "conda" / "test-files"
-        test_dir.mkdir(parents=True, exist_ok=True)
-        script = recipe_dir / "building" / "build_native.sh"
-        print(f"  Building patched native zig for ppc64le test: {script}")
-        subprocess.run(["bash", str(script), str(test_dir)], check=True)
-
     print("=== Zig Activation Package Installation Complete ===")
 
 
@@ -272,10 +262,11 @@ def install_zig_cc_wrappers(
 
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
-        # Install shared flag-filtering helper (sourced by zig-cc and zig-cxx)
-        common_src = scripts_dir / "_zig-cc-common.sh"
-        if common_src.exists():
-            _install_template(common_src, wrapper_dir / "_zig-cc-common.sh", replacements)
+        # Install shared helpers (sourced by wrapper scripts, not executed directly)
+        for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
+            src = scripts_dir / helper
+            if src.exists():
+                _install_template(src, wrapper_dir / helper, replacements)
         wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"

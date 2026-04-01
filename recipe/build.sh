@@ -138,7 +138,7 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
 # --- Post CMake Configuration ---
 
-# Add conda separated library dependencies to config.h - This seems to be doing the same thing ... odd
+# Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
 is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
