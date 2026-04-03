@@ -119,10 +119,15 @@ fi
 
 if is_linux && is_cross; then
   EXTRA_ZIG_ARGS+=(
-    -fqemu
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
+  # Enable qemu only if zig-qemu package is installed (provides qemu-<arch>
+  # binaries that zig expects). conda's qemu-user-<arch> uses different names.
+  if [[ -d "${PREFIX}/lib/zig-qemu" ]]; then
+    export PATH="${PREFIX}/lib/zig-qemu:${PATH}"
+    EXTRA_ZIG_ARGS+=(-fqemu)
+  fi
 fi
 
 # --- libzigcpp Configuration ---

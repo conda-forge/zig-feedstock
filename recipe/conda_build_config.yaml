@@ -3,6 +3,11 @@ c_compiler_version:    # [osx]
 cxx_compiler_version:  # [osx]
   - 20                 # [osx]
 
+zig_compiler:
+  - zig
+zig_compiler_version:
+  - "0.15.2"
+
 llvm_version:
   - "20"
 llvm_src_version:
