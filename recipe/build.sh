@@ -119,10 +119,15 @@ fi
 
 if is_linux && is_cross; then
   EXTRA_ZIG_ARGS+=(
-    -fqemu
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
+  # Enable qemu only if zig-qemu package is installed (provides qemu-<arch>
+  # binaries that zig expects). conda's qemu-user-<arch> uses different names.
+  if [[ -d "${PREFIX}/lib/zig-qemu" ]]; then
+    export PATH="${PREFIX}/lib/zig-qemu:${PATH}"
+    EXTRA_ZIG_ARGS+=(-fqemu)
+  fi
 fi
 
 # --- libzigcpp Configuration ---
@@ -138,7 +143,7 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
 # --- Post CMake Configuration ---
 
-# Add conda separated library dependencies to config.h - This seems to be doing the same thing ... odd
+# Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
 is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
@@ -160,30 +165,12 @@ if is_linux && is_cross; then
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 
-# Optional: build a native zig from source (creates its own env, applies patches).
-# Since build 12, the conda zig_impl package includes the ld script patch, so this
-# is no longer needed by default. Set BUILD_NATIVE_ZIG=1 to re-enable.
+# Optional: build native zig from source when conda bootstrap can't compile new version.
+# Set BUILD_NATIVE_ZIG=1 to enable. Not needed since build 12 (ld script patch in package).
 if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
-  _native_zig_dir="${SRC_DIR}/native-zig-install"
-  echo "=== BUILD_NATIVE_ZIG: building native zig via build_native_for_test.sh ==="
-  "${RECIPE_DIR}/building/build_native.sh" "${_native_zig_dir}"
-  BUILD_ZIG="${_native_zig_dir}/zig_native_patched"
-  echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
+  build_native_zig "${SRC_DIR}/native-zig-install"
 fi
 
-# --- Workaround: bootstrap zig (build 14) has shared libcxx probe that finds
-# host-arch libc++ via zig_lib_dir on macOS cross-builds. Move it out of the
-# probe path and use DYLD_LIBRARY_PATH so the zig binary can still load it.
-# Safe to remove once bootstrap >= build 15.
-if is_osx && is_cross; then
-  _hide_dir="${SRC_DIR}/.host-libcxx"
-  mkdir -p "${_hide_dir}"
-  for _lc in libc++.1.dylib libc++.dylib; do
-    [[ -e "${BUILD_PREFIX}/lib/${_lc}" ]] && cp -L "${BUILD_PREFIX}/lib/${_lc}" "${_hide_dir}/" && rm "${BUILD_PREFIX}/lib/${_lc}"
-  done
-  export DYLD_LIBRARY_PATH="${_hide_dir}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}"
-  is_debug && echo "Moved host libc++ to ${_hide_dir}, DYLD_LIBRARY_PATH set"
-fi
 
 is_debug && echo "=== Building with ZIG ==="
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
@@ -196,13 +183,6 @@ else
   exit 1
 fi
 
-# Restore host libc++ if moved
-if [[ -d "${SRC_DIR}/.host-libcxx" ]]; then
-  for _lc in "${SRC_DIR}/.host-libcxx"/libc++*; do
-    [[ -e "${_lc}" ]] && mv "${_lc}" "${BUILD_PREFIX}/lib/"
-  done
-  is_debug && echo "Restored host libc++ from ${SRC_DIR}/.host-libcxx"
-fi
 
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb

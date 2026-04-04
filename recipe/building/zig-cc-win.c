@@ -91,7 +91,41 @@ static int find_zig(char *out, size_t out_size) {
     return 0;
 }
 
+/* --- Handle -print-file-name=<name> (GCC/Clang compat) ---
+ * zig doesn't support this flag. Probe zig-llvm/lib then lib under
+ * CONDA_PREFIX, print the path if found (or echo back the name), and exit.
+ */
+static int handle_print_file_name(int argc, char *argv[]) {
+    const char *prefix = "-print-file-name=";
+    size_t plen = strlen(prefix);
+
+    for (int i = 1; i < argc; i++) {
+        if (strncmp(argv[i], prefix, plen) == 0) {
+            const char *name = argv[i] + plen;
+            const char *conda = getenv("CONDA_PREFIX");
+            if (conda && conda[0]) {
+                char probe[MAX_PATH];
+                const char *dirs[] = {"Library\\lib\\zig-llvm\\lib", "Library\\lib"};
+                for (int d = 0; d < 2; d++) {
+                    snprintf(probe, MAX_PATH, "%s\\%s\\%s", conda, dirs[d], name);
+                    if (GetFileAttributesA(probe) != INVALID_FILE_ATTRIBUTES) {
+                        printf("%s\n", probe);
+                        return 1;
+                    }
+                }
+            }
+            printf("%s\n", name);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
+    /* Handle -print-file-name before anything else */
+    if (handle_print_file_name(argc, argv))
+        return 0;
+
     /* Find zig binary */
     char zig_path[MAX_PATH];
     if (!find_zig(zig_path, MAX_PATH)) {

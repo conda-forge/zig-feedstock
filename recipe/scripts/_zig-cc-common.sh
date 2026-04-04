@@ -6,6 +6,24 @@
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
+# --- Handle -print-file-name=<name> (GCC/Clang compat) ---
+# zig doesn't support this flag. Intercept it, probe for the file in the
+# same locations as libcxx_shared.zig (zig-llvm/lib then lib), print the
+# path if found (or echo back the name if not), and exit.
+for _arg in "$@"; do
+    if [[ "$_arg" == -print-file-name=* ]]; then
+        _name="${_arg#-print-file-name=}"
+        for _dir in "${CONDA_PREFIX}/lib/zig-llvm/lib" "${CONDA_PREFIX}/lib"; do
+            if [[ -e "${_dir}/${_name}" ]]; then
+                echo "${_dir}/${_name}"
+                exit 0
+            fi
+        done
+        echo "${_name}"
+        exit 0
+    fi
+done
+
 # --- Sysroot detection (Linux only) ---
 _sysroot_flags=()
 if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then
@@ -79,4 +97,12 @@ done
 _mode="${_ZIG_MODE}"
 [[ ${_saw_nostdlibxx} -eq 1 ]] && _mode="cc"
 
-_exec_args=("${_mode}" -target @ZIG_TARGET@ -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")
+# --- macOS: honor MACOSX_DEPLOYMENT_TARGET at runtime ---
+# Override the version in the target triple if MACOSX_DEPLOYMENT_TARGET is set.
+# e.g. aarch64-macos.11.0-none -> aarch64-macos.14.0-none
+_zig_target="@ZIG_TARGET@"
+if [[ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]] && [[ "${_zig_target}" == *-macos* ]]; then
+    _zig_target="${_zig_target%%-macos*}-macos.${MACOSX_DEPLOYMENT_TARGET}-${_zig_target##*macos*-}"
+fi
+
+_exec_args=("${_mode}" -target "${_zig_target}" -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")
