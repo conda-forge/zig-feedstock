@@ -352,6 +352,7 @@ outputs:
             - ${{ library }}share/zig/wrappers/zig-ranlib${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-asm${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-rc${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-ld${{ bat }}
             - if: unix
               then:
                 - share/zig/wrappers/_zig-cc-common.sh

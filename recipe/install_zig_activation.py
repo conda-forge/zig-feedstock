@@ -255,7 +255,7 @@ def install_zig_cc_wrappers(
                 _compile_c_shim(cc_src, wrapper_dir / f"{exe_name}.exe", mode_replacements)
 
         # Keep .bat for simple pass-through tools (no flag filtering needed)
-        for name in ["zig-ar", "zig-ranlib", "zig-asm", "zig-rc"]:
+        for name in ["zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-ld"]:
             src = scripts_dir / f"{name}.bat"
             if src.exists():
                 _install_template(src, wrapper_dir / f"{name}.bat", replacements)
@@ -267,7 +267,7 @@ def install_zig_cc_wrappers(
             src = scripts_dir / helper
             if src.exists():
                 _install_template(src, wrapper_dir / helper, replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-force-load-cc", "zig-force-load-cxx"]
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-ld", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():

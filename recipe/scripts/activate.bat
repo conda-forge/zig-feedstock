@@ -40,6 +40,7 @@ if exist "%_wrapper_dir%\zig-rc.bat" (
     set "ZIG_RC=%_wrapper_dir%\zig-rc.bat"
     set "ZIG_RC_CMAKE=%_wrapper_dir:\=/%/zig-rc.bat"
 )
+if exist "%_wrapper_dir%\zig-ld.bat" set "ZIG_LD=%_wrapper_dir%\zig-ld.bat"
 
 :cleanup
 set "_CROSS_TARGET_TRIPLET="
