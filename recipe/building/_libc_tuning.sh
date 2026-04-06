@@ -123,14 +123,6 @@ EOF
     fi
   done
 
-  # Create static library using the current target architecture
-  is_debug && echo "Creating static library..."
-  "${CC}" -c "${stub_dir}/libc_csu_stubs.c" -o "${stub_dir}/libc_csu_stubs.o" || return 1
-  "${AR}" rcs "${stub_dir}/libcsu_compat.a" "${stub_dir}/libc_csu_stubs.o" || return 1
-
-  # Copy to standard library location
-  cp "${stub_dir}/libcsu_compat.a" "${prefix}/lib/" || return 1
-
   # Patch glibc crt1.o files which reference __libc_csu_init/fini
   # NOTE: We do NOT patch GCC's crtbegin*.o files to avoid duplicate symbol definitions
   is_debug && echo "Patching glibc crt1.o files..."
@@ -146,7 +138,6 @@ EOF
 
   if is_debug; then
     echo "Created GCC 14 + glibc 2.28 compatibility:"
-    echo "  - ${prefix}/lib/libcsu_compat.a"
     echo "  - Patched all glibc crt1*.o files with stub symbols"
   fi
 }

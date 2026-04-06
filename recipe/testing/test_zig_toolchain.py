@@ -173,23 +173,23 @@ def test_wrapper_existence() -> None:
         expected = [
             "zig-cc.exe",
             "zig-cxx.exe",
-            "zig-cxx-shared.exe",
             "zig-ar.bat",
             "zig-ranlib.bat",
             "zig-asm.bat",
             "zig-rc.bat",
+            "zig-lld.bat",
         ]
     else:
         expected = [
             "zig-cc",
             "zig-cxx",
-            "zig-cxx-shared",
             "zig-force-load-cc",
             "zig-force-load-cxx",
             "zig-ar",
             "zig-ranlib",
             "zig-asm",
             "zig-rc",
+            "zig-lld",
             "_zig-cc-common.sh",
         ]
 
@@ -228,8 +228,8 @@ def test_activation_variables() -> None:
             FAIL("CONDA_ZIG_HOST matches expected",
                  f"got {_env_var('CONDA_ZIG_HOST')!r}, want {_host!r}")
 
-    # ZIG_CC / ZIG_CXX
-    for var in ("ZIG_CC", "ZIG_CXX"):
+    # ZIG_CC / ZIG_CXX / ZIG_LLD
+    for var in ("ZIG_CC", "ZIG_CXX", "ZIG_LLD"):
         val = _env_var(var)
         if val:
             PASS(f"{var} is set", val)
@@ -239,7 +239,7 @@ def test_activation_variables() -> None:
 
     # Unix-specific
     if not _build_is_win:
-        for var in ("ZIG_FORCE_LOAD_CC", "ZIG_CXX_SHARED"):
+        for var in ("ZIG_FORCE_LOAD_CC",):
             val = _env_var(var)
             if val:
                 PASS(f"{var} is set")
@@ -252,7 +252,7 @@ def test_activation_variables() -> None:
 
     # non-unix specific
     if _build_is_win:
-        for var in ("ZIG_RC", "ZIG_CXX_SHARED"):
+        for var in ("ZIG_RC",):
             val = _env_var(var)
             if val:
                 PASS(f"{var} is set")
@@ -654,12 +654,7 @@ def test_force_load_wrappers() -> None:
 
     text_cc = fl_cc.read_text()
     for label, needle in [
-        ("force-load-cc sources _zig-cc-common.sh", "_zig-cc-common.sh"),
-        ("force-load-cc uses ar x", "ar x"),
-        ("force-load-cc creates tmpdir", "mktemp -d"),
-        ("force-load-cc has cleanup trap", "trap"),
-        ("force-load-cc handles -Wl,-force_load", "Wl,-force_load"),
-        ("force-load-cc handles -Wl,-all_load", "Wl,-all_load"),
+        ("force-load-cc sources common", "_zig-force-load-common.sh"),
         ('force-load-cc uses cc mode', '_ZIG_MODE="cc"'),
     ]:
         if needle in text_cc:
@@ -674,11 +669,30 @@ def test_force_load_wrappers() -> None:
 
     text_cxx = fl_cxx.read_text()
     for label, needle in [
-        ("force-load-cxx sources _zig-cc-common.sh", "_zig-cc-common.sh"),
-        ("force-load-cxx uses ar x", "ar x"),
+        ("force-load-cxx sources common", "_zig-force-load-common.sh"),
         ('force-load-cxx uses c++ mode', '_ZIG_MODE="c++"'),
     ]:
         if needle in text_cxx:
+            PASS(label)
+        else:
+            FAIL(label)
+
+    # Check the shared helper for implementation details
+    fl_common = _wrapper_dir / "_zig-force-load-common.sh"
+    if not fl_common.exists():
+        FAIL("_zig-force-load-common.sh exists")
+        return
+
+    text_common = fl_common.read_text()
+    for label, needle in [
+        ("force-load-common sources _zig-cc-common.sh", "_zig-cc-common.sh"),
+        ("force-load-common uses ar x", "ar x"),
+        ("force-load-common creates tmpdir", "mktemp -d"),
+        ("force-load-common has cleanup trap", "trap"),
+        ("force-load-common handles -Wl,-force_load", "Wl,-force_load"),
+        ("force-load-common handles -Wl,-all_load", "Wl,-all_load"),
+    ]:
+        if needle in text_common:
             PASS(label)
         else:
             FAIL(label)

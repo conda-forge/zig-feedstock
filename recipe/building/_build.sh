@@ -33,16 +33,9 @@ function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array
+  # Build local cmake args array — always use conda's CC/CXX (clang/gcc),
+  # never zig-cc (which has a baked-in target that conflicts with cross-builds).
   local cmake_args=()
-
-  # Add zig compiler configuration if provided
-  if [[ -n "${ZIG_CC:-}" ]] && [[ -n "${ZIG_CXX:-}" ]]; then
-    cmake_args+=("-DCMAKE_C_COMPILER=${ZIG_CC}")
-    cmake_args+=("-DCMAKE_CXX_COMPILER=${ZIG_CXX}")
-    cmake_args+=("-DCMAKE_AR=${ZIG_AR:-ar}")
-    cmake_args+=("-DCMAKE_RANLIB=${ZIG_RANLIB:-ranlib}")
-  fi
 
   # Merge with global EXTRA_CMAKE_ARGS if it exists
   if [[ -n "${EXTRA_CMAKE_ARGS+x}" ]]; then
@@ -69,4 +62,16 @@ function configure_cmake_zigcpp() {
   pushd "${build_dir}"
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
   popd
+}
+
+# Build a native zig from source when the conda bootstrap can't compile a new version.
+# Useful when upstream zig changes break self-compilation with the previous release.
+# Usage: build_native_zig <install_dir>
+# Sets BUILD_ZIG to the native-built binary path on success.
+function build_native_zig() {
+  local install_dir=$1
+  echo "=== BUILD_NATIVE_ZIG: building native zig via build_native.sh ==="
+  "${RECIPE_DIR}/building/build_native.sh" "${install_dir}"
+  BUILD_ZIG="${install_dir}/zig_native_patched"
+  echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
 }
