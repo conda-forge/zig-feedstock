@@ -10,7 +10,7 @@ unset ZIG_AR
 unset ZIG_RANLIB
 unset ZIG_ASM
 unset ZIG_RC
-unset ZIG_LD
+unset ZIG_LLD
 unset ZIG_FORCE_LOAD_CC
 unset ZIG_FORCE_LOAD_CXX
 

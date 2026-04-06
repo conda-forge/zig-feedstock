@@ -62,6 +62,7 @@ while [[ $i -lt $argc ]]; do
         -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic) ;;
         -Wl,--color-diagnostics) ;;
         -Wl,--version-script|-Wl,--version-script,*) ;;
+        -Wl,--dynamic-list|-Wl,--dynamic-list,*|-Wl,--dynamic-list=*) ;;
         -Wl,-z,defs|-Wl,-z,nodelete|-Wl,-z,*) ;;
         -Wl,-O*) ;;
         -Wl,--gc-sections|-Wl,--no-gc-sections) ;;

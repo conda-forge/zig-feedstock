@@ -11,7 +11,7 @@ set "ZIG_RANLIB="
 set "ZIG_ASM="
 set "ZIG_RC="
 set "ZIG_RC_CMAKE="
-set "ZIG_LD="
+set "ZIG_LLD="
 
 REM === Unset toolchain identification ===
 set "CONDA_ZIG_BUILD="

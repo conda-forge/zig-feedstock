@@ -1,0 +1,20 @@
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1120,7 +1120,16 @@
+             } else {
+                 if (fs.path.isAbsolute(arg.path)) {
+-                    const new_path = Path.initCwd(try gpa.dupe(u8, arg.path));
++                    // When a sysroot is set, remap absolute paths from ld scripts
++                    // through the sysroot prefix. This mirrors how GNU ld handles
++                    // --sysroot for paths inside linker scripts (e.g., libc.so
++                    // containing GROUP(/usr/lib64/libc_nonshared.a ...)).
++                    const effective_path = if (base.comp.sysroot) |sr| blk: {
++                        break :blk try fs.path.join(gpa, &.{ sr, arg.path });
++                    } else try gpa.dupe(u8, arg.path);
++                    const new_path: Path = if (base.comp.sysroot != null)
++                        .{ .root_dir = path.root_dir, .sub_path = effective_path }
++                    else
++                        Path.initCwd(effective_path);
+                     switch (Compilation.classifyFileExt(arg.path)) {
+                         .shared_library => try openLoadDso(base, new_path, query),
+                         .object => try openLoadObject(base, new_path),

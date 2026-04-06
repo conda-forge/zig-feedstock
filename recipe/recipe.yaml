@@ -110,6 +110,7 @@ source:
           - patches/linux/Elf.zig-debug-tag-bare-TODO-panics.patch
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
+          - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -352,7 +353,7 @@ outputs:
             - ${{ library }}share/zig/wrappers/zig-ranlib${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-asm${{ bat }}
             - ${{ library }}share/zig/wrappers/zig-rc${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-ld${{ bat }}
+            - ${{ library }}share/zig/wrappers/zig-lld${{ bat }}
             - if: unix
               then:
                 - share/zig/wrappers/_zig-cc-common.sh

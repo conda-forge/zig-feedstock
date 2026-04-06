@@ -177,7 +177,7 @@ def test_wrapper_existence() -> None:
             "zig-ranlib.bat",
             "zig-asm.bat",
             "zig-rc.bat",
-            "zig-ld.bat",
+            "zig-lld.bat",
         ]
     else:
         expected = [
@@ -189,7 +189,7 @@ def test_wrapper_existence() -> None:
             "zig-ranlib",
             "zig-asm",
             "zig-rc",
-            "zig-ld",
+            "zig-lld",
             "_zig-cc-common.sh",
         ]
 
@@ -228,8 +228,8 @@ def test_activation_variables() -> None:
             FAIL("CONDA_ZIG_HOST matches expected",
                  f"got {_env_var('CONDA_ZIG_HOST')!r}, want {_host!r}")
 
-    # ZIG_CC / ZIG_CXX / ZIG_LD
-    for var in ("ZIG_CC", "ZIG_CXX", "ZIG_LD"):
+    # ZIG_CC / ZIG_CXX / ZIG_LLD
+    for var in ("ZIG_CC", "ZIG_CXX", "ZIG_LLD"):
         val = _env_var(var)
         if val:
             PASS(f"{var} is set", val)
