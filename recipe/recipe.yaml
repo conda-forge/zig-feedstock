@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 16
+  build_number: 17
   name: zig
   version: "0.15.2"
 
@@ -100,6 +100,11 @@ source:
     sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
     patches:
       - patches/Lld.zig-prefer-shared-libcxx.patch
+      # Linux + NonUnix: allow -fuse-ld=lld to switch zig cc to bundled LLD
+      # (macOS excluded: zig doesn't support LLD for Mach-O)
+      - if: not osx
+        then:
+          - patches/linux/main.zig-fuse-ld-lld-cc-path.patch
       - if: linux
         then:
           - patches/linux/build.zig-01-maxrss.patch
@@ -284,6 +289,26 @@ outputs:
         files:
           source:
             - zig-source/test
+      # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
+      # unrecognized linker args to LLD instead of rejecting them.
+      # Verify -fuse-ld=lld patch (Linux/ELF + NonUnix/COFF, not macOS/Mach-O)
+      - script:
+          - if: linux and not arm64
+            then:
+              # Linux: test with ELF --dynamic-list
+              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
+              - echo '{ main; };' > /tmp/test_lld.dyn
+              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+              - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
+          - if: not unix
+            then:
+              # NonUnix: test with COFF -- just verify -fuse-ld=lld compiles+links
+              - echo int main(void){return 0;} > %TEMP%\test_lld.c
+              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
+              - echo PASS -fuse-ld=lld basic compile+link (NonUnix/COFF)
+          - if: osx or (arm64 and linux)
+            then:
+              - echo "Skip -fuse-ld=lld test (unsupported on macOS, emulated on linux-arm64)"
 
   # ==========================================================================
   # ACTIVATION: zig_$cross_target_platform_ (scripts)

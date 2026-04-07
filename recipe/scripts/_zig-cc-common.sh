@@ -3,6 +3,9 @@
 #
 # Expects caller to set: _ZIG_MODE ("cc" or "c++")
 # Sets: _exec_args (array) ready for: exec "@ZIG_BIN@" "${_exec_args[@]}"
+#
+# NOTE: zig cc may use the self-hosted linker (not LLD) depending on target.
+# The self-hosted linker doesn't support many standard ld flags, so we filter them.
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
@@ -35,7 +38,31 @@ if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then
     fi
 fi
 
+# --- Auto-promote to LLD when LLD-only linker flags are detected ---
+# zig cc uses the self-hosted linker by default, which doesn't support many
+# standard ld flags. When we detect such flags, inject -fuse-ld=lld to switch
+# to the bundled LLD (requires build 17+ main.zig patch). This preserves user
+# intent instead of silently filtering flags.
+_use_lld=0
+for _a in "$@"; do
+    case "$_a" in
+        -fuse-ld=lld) _use_lld=1; break ;;
+        # ELF (Linux) flags unsupported by self-hosted linker
+        -Wl,--version-script|-Wl,--version-script,*) _use_lld=1; break ;;
+        -Wl,--dynamic-list|-Wl,--dynamic-list,*|-Wl,--dynamic-list=*) _use_lld=1; break ;;
+        -Wl,-z,defs|-Wl,-z,nodelete) _use_lld=1; break ;;
+        -Wl,--gc-sections|-Wl,--no-gc-sections) _use_lld=1; break ;;
+        -Wl,--build-id|-Wl,--build-id=*) _use_lld=1; break ;;
+        -Wl,--allow-shlib-undefined|-Wl,--no-allow-shlib-undefined) _use_lld=1; break ;;
+        -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic) _use_lld=1; break ;;
+        -Bsymbolic-functions|-Bsymbolic) _use_lld=1; break ;;
+        -Wl,-O[0-9]*) _use_lld=1; break ;;
+    esac
+done
+
 # --- Flag filtering ---
+# Only filter flags genuinely unsupported by both linkers and Clang.
+# LLD-supported flags pass through (LLD auto-promoted above).
 args=()
 i=0
 argv=("$@")
@@ -49,7 +76,7 @@ while [[ $i -lt $argc ]]; do
             if [[ $next_i -lt $argc ]]; then
                 next_arg="${argv[$next_i]}"
                 case "$next_arg" in
-                    -Bsymbolic-functions|-Bsymbolic|--color-diagnostics|--dependency-file=*)
+                    --color-diagnostics|--dependency-file=*)
                         i=$next_i ;;
                     *)
                         args+=("$arg" "$next_arg")
@@ -57,16 +84,10 @@ while [[ $i -lt $argc ]]; do
                 esac
             fi
             ;;
+        # --- Always filtered: unsupported by all linkers or Clang ---
         -Wl,-rpath-link|-Wl,-rpath-link,*|-Wl,--disable-new-dtags) ;;
-        -Wl,--allow-shlib-undefined|-Wl,--no-allow-shlib-undefined) ;;
-        -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic) ;;
         -Wl,--color-diagnostics) ;;
-        -Wl,--version-script|-Wl,--version-script,*) ;;
-        -Wl,--dynamic-list|-Wl,--dynamic-list,*|-Wl,--dynamic-list=*) ;;
-        -Wl,-z,defs|-Wl,-z,nodelete|-Wl,-z,*) ;;
-        -Wl,-O*) ;;
-        -Wl,--gc-sections|-Wl,--no-gc-sections) ;;
-        -Wl,--build-id|-Wl,--build-id=*) ;;
+        # macOS Mach-O flags (LLD macho not supported by zig, self-hosted filters these)
         -Wl,-exported_symbols_list|-Wl,-exported_symbols_list,*) ;;
         -Wl,-force_symbols_not_weak_list|-Wl,-force_symbols_not_weak_list,*) ;;
         -Wl,-force_symbols_weak_list|-Wl,-force_symbols_weak_list,*) ;;
@@ -74,7 +95,7 @@ while [[ $i -lt $argc ]]; do
         -Wl,-unexported_symbols_list|-Wl,-unexported_symbols_list,*) ;;
         -Wl,-all_load|-Wl,-force_load,*) ;;
         -all_load|-force_load) ;;
-        -Bsymbolic-functions|-Bsymbolic) ;;
+        # GCC-specific flags that zig's Clang doesn't accept
         -march=*|-mtune=*|-mcpu=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
         -fdebug-prefix-map=*) ;;
@@ -106,4 +127,14 @@ if [[ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]] && [[ "${_zig_target}" == *-macos* ]
     _zig_target="${_zig_target%%-macos*}-macos.${MACOSX_DEPLOYMENT_TARGET}-${_zig_target##*macos*-}"
 fi
 
-_exec_args=("${_mode}" -target "${_zig_target}" -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")
+# --- Inject -fuse-ld=lld if auto-promoted (skip if user already passed it) ---
+_lld_flag=()
+if (( _use_lld )); then
+    _has_explicit=0
+    for _a in "${_final_args[@]}"; do
+        [[ "$_a" == "-fuse-ld=lld" ]] && _has_explicit=1 && break
+    done
+    (( _has_explicit )) || _lld_flag=(-fuse-ld=lld)
+fi
+
+_exec_args=("${_mode}" "${_lld_flag[@]}" -target "${_zig_target}" -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")

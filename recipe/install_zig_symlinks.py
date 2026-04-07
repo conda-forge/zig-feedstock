@@ -3,7 +3,7 @@
 Build script for zig metapackage.
 Creates unprefixed symlinks/wrappers: zig -> $TRIPLET-zig
 Only built when cross_target_platform_ == target_platform (native builds).
-Works on both Unix and Windows.
+Works on both Unix and NonUnix.
 """
 
 import os
@@ -57,7 +57,7 @@ def create_unix_symlink(bin_dir: Path, link_name: str, target_name: str):
 
 
 def create_nonunix_wrapper(bin_dir: Path, link_name: str, target_name: str):
-    """Create a Windows batch wrapper."""
+    """Create a NonUnix batch wrapper."""
     prefix = bin_dir.parent.parent  # Library/bin -> Library -> PREFIX
 
     # Main zig binary is .exe from zig_impl

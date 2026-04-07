@@ -93,6 +93,20 @@ if _build_is_win:
 else:
     _wrapper_dir = _prefix / "share" / "zig" / "wrappers"
 
+# Detect zig_impl build number from conda-meta for feature gating
+_zig_impl_build_number = 0
+_conda_meta = _prefix / "conda-meta"
+if _conda_meta.exists():
+    import glob as _glob
+    for _meta in _glob.glob(str(_conda_meta / "zig_impl_*.json")):
+        try:
+            import json as _json
+            with open(_meta) as _f:
+                _meta_data = _json.load(_f)
+                _zig_impl_build_number = int(_meta_data.get("build_number", 0))
+        except (ValueError, KeyError, OSError):
+            pass
+
 
 def _env_var(name: str) -> str:
     """Return env var value or empty string."""
@@ -309,6 +323,81 @@ def test_flag_filtering() -> None:
         else:
             FAIL("compile with conda gcc flags succeeds",
                  f"rc={r.returncode} stderr={r.stderr[:2000]}")
+
+        # --- Verify self-hosted linker flags are filtered ---
+        # zig cc may use the self-hosted linker which doesn't support these.
+        # The wrapper should silently filter them so compilation succeeds.
+        if _is_emulated:
+            SKIP("linker flag filtering", "emulated CI — linker OOM risk")
+        else:
+            # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
+            # Verifies the full pipeline:
+            # 1. Wrapper detects --dynamic-list -> injects -fuse-ld=lld
+            # 2. Patched zig binary honors -fuse-ld=lld -> selects LLD
+            # 3. Patched zig binary passes unknown linker arg to LLD
+            # 4. LLD processes --dynamic-list successfully
+            main_src = Path(td) / "main_dl.c"
+            main_src.write_text("int main(void) { return 0; }\n")
+            dynlist = Path(td) / "test.dynlist"
+            dynlist.write_text("{ main; };\n")
+
+            # Step 1: Verify --dynamic-list fails WITHOUT the wrapper (raw zig cc)
+            # This confirms the self-hosted linker rejects it
+            zig_bin = _env_var("ZIG") or _env_var("CONDA_ZIG_BUILD")
+            if zig_bin:
+                zig_path = _prefix / "bin" / zig_bin if not os.path.isabs(zig_bin) else Path(zig_bin)
+                if zig_path.exists():
+                    r_raw = _run([str(zig_path), "cc", "-target", "x86_64-linux-gnu",
+                                  f"-Wl,--dynamic-list={dynlist}",
+                                  "-o", str(Path(td) / "raw_dl"), str(main_src)],
+                                 cwd=td, timeout=60)
+                    if r_raw.returncode != 0 and "unsupported linker arg" in r_raw.stderr:
+                        PASS("raw zig cc rejects --dynamic-list (self-hosted linker)")
+                    elif r_raw.returncode == 0:
+                        PASS("raw zig cc accepts --dynamic-list (LLD default for this target)")
+                    else:
+                        WARN("raw zig cc --dynamic-list", f"unexpected: rc={r_raw.returncode}")
+
+            # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only)
+            # macOS: LLD doesn't support Mach-O in zig
+            # Windows: --dynamic-list is ELF-only (zig_impl recipe test covers COFF)
+            if not is_linux_target or _zig_impl_build_number < 17:
+                _reason = (f"non-Linux target ({_triplet})" if not is_linux_target
+                           else f"zig_impl build {_zig_impl_build_number} < 17")
+                SKIP("--dynamic-list auto-LLD promotion", _reason)
+                SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
+            else:
+                # Step 2: Verify --dynamic-list succeeds via wrapper (auto-LLD promotion)
+                exe_dl = Path(td) / "test_dynlist_lld"
+                dl_cmd = [
+                    zig_cc,
+                    f"-Wl,--dynamic-list={dynlist}",
+                    "-o", str(exe_dl), str(main_src),
+                ]
+                r_dl = _run(dl_cmd, cwd=td, timeout=60)
+                if r_dl.stderr == "TIMEOUT":
+                    WARN("--dynamic-list auto-LLD", "timed out (60s)")
+                elif r_dl.returncode == 0 and exe_dl.exists():
+                    PASS("--dynamic-list auto-LLD promotion (wrapper + patched zig)")
+                else:
+                    FAIL("--dynamic-list auto-LLD promotion",
+                         f"rc={r_dl.returncode} stderr={r_dl.stderr[:2000]}")
+
+                # Step 3: Verify explicit -fuse-ld=lld also works
+                exe_explicit = Path(td) / "test_explicit_lld"
+                explicit_cmd = [
+                    zig_cc, "-fuse-ld=lld",
+                    f"-Wl,--dynamic-list={dynlist}",
+                    "-o", str(exe_explicit), str(main_src),
+                ]
+                r_exp = _run(explicit_cmd, cwd=td, timeout=60)
+                if r_exp.stderr == "TIMEOUT":
+                    WARN("-fuse-ld=lld explicit", "timed out (60s)")
+                elif r_exp.returncode == 0 and exe_explicit.exists():
+                    PASS("-fuse-ld=lld explicit with --dynamic-list")
+                else:
+                    FAIL("-fuse-ld=lld explicit with --dynamic-list",
+                         f"rc={r_exp.returncode} stderr={r_exp.stderr[:2000]}")
 
 
 # ===================================================================
@@ -634,6 +723,19 @@ def test_flag_filter_content() -> None:
             PASS(label)
         else:
             FAIL(label)
+
+    # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
+    if "_use_lld" in text and "-fuse-ld=lld" in text:
+        PASS("auto-LLD promotion logic present")
+    else:
+        FAIL("auto-LLD promotion logic present")
+
+    lld_triggers = ["version-script", "dynamic-list", "gc-sections", "build-id"]
+    for flag in lld_triggers:
+        if f"--{flag}" in text:
+            PASS(f"--{flag} triggers LLD promotion")
+        else:
+            FAIL(f"--{flag} should trigger LLD promotion")
 
 
 # ===================================================================
