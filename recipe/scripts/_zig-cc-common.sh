@@ -57,6 +57,14 @@ for _a in "$@"; do
         -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic) _use_lld=1; break ;;
         -Bsymbolic-functions|-Bsymbolic) _use_lld=1; break ;;
         -Wl,-O[0-9]*) _use_lld=1; break ;;
+        # Mach-O (macOS) flags -- now supported via LLD MachO pipeline
+        -Wl,-exported_symbols_list|-Wl,-exported_symbols_list,*) _use_lld=1; break ;;
+        -Wl,-unexported_symbols_list|-Wl,-unexported_symbols_list,*) _use_lld=1; break ;;
+        -Wl,-reexported_symbols_list|-Wl,-reexported_symbols_list,*) _use_lld=1; break ;;
+        -Wl,-force_symbols_not_weak_list|-Wl,-force_symbols_not_weak_list,*) _use_lld=1; break ;;
+        -Wl,-force_symbols_weak_list|-Wl,-force_symbols_weak_list,*) _use_lld=1; break ;;
+        -Wl,-all_load|-Wl,-force_load,*) _use_lld=1; break ;;
+        -all_load|-force_load) _use_lld=1; break ;;
     esac
 done
 
@@ -87,14 +95,7 @@ while [[ $i -lt $argc ]]; do
         # --- Always filtered: unsupported by all linkers or Clang ---
         -Wl,-rpath-link|-Wl,-rpath-link,*|-Wl,--disable-new-dtags) ;;
         -Wl,--color-diagnostics) ;;
-        # macOS Mach-O flags (LLD macho not supported by zig, self-hosted filters these)
-        -Wl,-exported_symbols_list|-Wl,-exported_symbols_list,*) ;;
-        -Wl,-force_symbols_not_weak_list|-Wl,-force_symbols_not_weak_list,*) ;;
-        -Wl,-force_symbols_weak_list|-Wl,-force_symbols_weak_list,*) ;;
-        -Wl,-reexported_symbols_list|-Wl,-reexported_symbols_list,*) ;;
-        -Wl,-unexported_symbols_list|-Wl,-unexported_symbols_list,*) ;;
-        -Wl,-all_load|-Wl,-force_load,*) ;;
-        -all_load|-force_load) ;;
+        # (macOS Mach-O flags now handled via auto-LLD promotion above)
         # GCC-specific flags that zig's Clang doesn't accept
         -march=*|-mtune=*|-mcpu=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
@@ -137,4 +138,14 @@ if (( _use_lld )); then
     (( _has_explicit )) || _lld_flag=(-fuse-ld=lld)
 fi
 
-_exec_args=("${_mode}" "${_lld_flag[@]}" -target "${_zig_target}" -mcpu=baseline "${_sysroot_flags[@]}" "${_final_args[@]}")
+# --- Allow user to override -target and -mcpu ---
+_target_flag=(-target "${_zig_target}")
+_mcpu_flag=(-mcpu=baseline)
+for _a in "${_final_args[@]}"; do
+    case "$_a" in
+        -target|--target=*) _target_flag=() ;;
+        -mcpu=*) _mcpu_flag=() ;;
+    esac
+done
+
+_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_final_args[@]}")

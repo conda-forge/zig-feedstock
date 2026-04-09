@@ -1,0 +1,13 @@
+--- a/src/Compilation/Config.zig
++++ b/src/Compilation/Config.zig
+@@ -438,8 +438,9 @@ pub fn resolve(options: Options) ResolveError!Config {
+         if (options.use_lld) |x| break :b x;
+
+         // If we have no zig code to compile, no need for the self-hosted linker.
+-        if (!options.have_zcu) break :b true;
++        // Don't auto-select LLD for Mach-O (self-hosted linker preferred by default)
++        if (!options.have_zcu and target.ofmt != .macho) break :b true;
+
+         // If we do have zig code, match the decision for whether to use the llvm backend,
+         // so that the llvm backend defaults to lld and the self-hosted backends do not.
+         break :b use_llvm;

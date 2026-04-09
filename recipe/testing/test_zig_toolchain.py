@@ -358,11 +358,10 @@ def test_flag_filtering() -> None:
                     else:
                         WARN("raw zig cc --dynamic-list", f"unexpected: rc={r_raw.returncode}")
 
-            # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only)
-            # macOS: LLD doesn't support Mach-O in zig
-            # Windows: --dynamic-list is ELF-only (zig_impl recipe test covers COFF)
+            # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
+            # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
             if not is_linux_target or _zig_impl_build_number < 17:
-                _reason = (f"non-Linux target ({_triplet})" if not is_linux_target
+                _reason = (f"non-Linux target ({_triplet}), see zig_impl tests" if not is_linux_target
                            else f"zig_impl build {_zig_impl_build_number} < 17")
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
@@ -398,6 +397,53 @@ def test_flag_filtering() -> None:
                 else:
                     FAIL("-fuse-ld=lld explicit with --dynamic-list",
                          f"rc={r_exp.returncode} stderr={r_exp.stderr[:2000]}")
+
+
+# ===================================================================
+# Section 3b — Target/mcpu override and Windows C shim tests
+# ===================================================================
+def test_target_override() -> None:
+    print("--- Target/mcpu override ---")
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("target override", "ZIG_CC not set")
+        return
+
+    if _zig_impl_build_number < 17:
+        SKIP("target override",
+             f"zig_impl build {_zig_impl_build_number} < 17 (wrappers lack override support)")
+        return
+
+    if _is_emulated:
+        SKIP("target override", "emulated CI")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "test_override.c"
+        src.write_text("int main(void) { return 0; }\n")
+
+        # Test: user-provided -target should override the baked-in default
+        # Use "native" -- verifies the wrapper skips baked-in -target
+        # without producing duplicate/conflicting -target flags
+        obj = Path(td) / "test_override.o"
+        r = _run([zig_cc, "-target", "native",
+                  "-c", "-o", str(obj), str(src)], cwd=td, timeout=60)
+        if r.returncode == 0 and obj.exists():
+            PASS("compile with user -target override")
+        else:
+            FAIL("compile with user -target override",
+                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+
+        # Test: user-provided -mcpu should override baked-in -mcpu=baseline
+        obj2 = Path(td) / "test_mcpu.o"
+        r2 = _run([zig_cc, "-mcpu=baseline", "-c", "-o", str(obj2), str(src)],
+                   cwd=td, timeout=60)
+        if r2.returncode == 0 and obj2.exists():
+            PASS("compile with user -mcpu override")
+        else:
+            FAIL("compile with user -mcpu override",
+                 f"rc={r2.returncode} stderr={r2.stderr[:2000]}")
 
 
 # ===================================================================
@@ -829,6 +875,7 @@ def main() -> int:
     test_flag_filter_content()
     test_force_load_wrappers()
     test_flag_filtering()
+    test_target_override()
     test_shared_lib()
     test_exe_linking()
     test_libc_linking()

@@ -1,0 +1,54 @@
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -293,6 +293,7 @@
+         dev.check(.clang_command);
+         return process.exit(try clangMain(arena, args));
+     } else if (mem.eql(u8, cmd, "ld.lld") or
++        mem.eql(u8, cmd, "ld64.lld") or
+         mem.eql(u8, cmd, "lld-link") or
+         mem.eql(u8, cmd, "wasm-ld"))
+     {
+@@ -1914,7 +1915,16 @@
+                         }
+                     },
+                     .other => {
+-                        try cc_argv.appendSlice(arena, it.other_args);
++                        // Intercept -fuse-ld=lld in zig cc path
++                        if (it.other_args.len > 0 and mem.eql(u8, it.other_args[0], "-fuse-ld=lld")) {
++                            create_module.opts.use_lld = true;
++                            std.debug.print("DEBUG: intercepted -fuse-ld=lld, set use_lld=true\n", .{});
++                        } else {
++                            try cc_argv.appendSlice(arena, it.other_args);
++                            if (it.other_args.len > 0) {
++                                std.debug.print("DEBUG: .other passthrough: {s}\n", .{it.other_args[0]});
++                            }
++                        }
+                     },
+                     .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
+                         .assembly, .assembly_with_cpp, .c, .cpp, .ll, .bc, .h, .hpp, .hm, .hmm, .m, .mm => {
+@@ -2786,7 +2796,15 @@
+                     try fs.File.stdout().writeAll("zig ld " ++ build_options.version ++ "\n");
+                     process.exit(0);
+                 } else {
+-                    fatal("unsupported linker arg: {s}", .{arg});
++                    // When LLD requested, pass unrecognized linker args through
++                    if (create_module.opts.use_lld == true) {
++                        std.debug.print("DEBUG: LLD passthrough linker arg: {s}\n", .{arg});
++                        const wl_arg = try std.fmt.allocPrint(arena, "-Wl,{s}", .{arg});
++                        try cc_argv.append(arena, wl_arg);
++                    } else {
++                        std.debug.print("DEBUG: rejecting linker arg (use_lld={any}): {s}\n", .{create_module.opts.use_lld, arg});
++                        fatal("unsupported linker arg: {s}", .{arg});
++                    }
+                 }
+             }
+ 
+@@ -5828,6 +5846,8 @@
+             break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
+         } else if (mem.eql(u8, args[1], "wasm-ld")) {
+             break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
++        } else if (mem.eql(u8, args[1], "ld64.lld")) {
++            break :rc llvm.LinkMachO(argc, argv.ptr, can_exit_early, false);
+         } else {
+             unreachable;
+         }
