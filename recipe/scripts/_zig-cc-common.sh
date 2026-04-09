@@ -138,14 +138,47 @@ if (( _use_lld )); then
     (( _has_explicit )) || _lld_flag=(-fuse-ld=lld)
 fi
 
-# --- Allow user to override -target and -mcpu ---
+# --- Translate conda triplets to zig triplets in -target args ---
+# Build systems (configure, cmake, meson) pass conda-format triplets that zig
+# doesn't understand. Translate them transparently.
+_conda_to_zig_target() {
+    case "$1" in
+        x86_64-w64-mingw32*)   echo "x86_64-windows-gnu" ;;
+        aarch64-w64-mingw32*)  echo "aarch64-windows-gnu" ;;
+        x86_64-apple-darwin*)  echo "x86_64-macos-none" ;;
+        arm64-apple-darwin*)   echo "aarch64-macos-none" ;;
+        *-conda-linux-gnu*)    echo "${1%%-conda-linux-gnu*}-linux-gnu" ;;
+        *)                     echo "$1" ;;  # pass through as-is
+    esac
+}
+
+# Scan for user-provided -target and -mcpu, translate if needed
 _target_flag=(-target "${_zig_target}")
 _mcpu_flag=(-mcpu=baseline)
-for _a in "${_final_args[@]}"; do
+_translated_args=()
+_skip_next=0
+for _i in "${!_final_args[@]}"; do
+    _a="${_final_args[$_i]}"
+    if (( _skip_next )); then
+        _skip_next=0
+        # This is the value after -target -- translate it
+        _translated_args+=("$(_conda_to_zig_target "$_a")")
+        _target_flag=()  # user provided -target, skip baked-in
+        continue
+    fi
     case "$_a" in
-        -target|--target=*) _target_flag=() ;;
-        -mcpu=*) _mcpu_flag=() ;;
+        -target)
+            _skip_next=1
+            _translated_args+=("$_a")
+            ;;
+        --target=*)
+            _val="${_a#--target=}"
+            _translated_args+=("--target=$(_conda_to_zig_target "$_val")")
+            _target_flag=()
+            ;;
+        -mcpu=*) _mcpu_flag=(); _translated_args+=("$_a") ;;
+        *) _translated_args+=("$_a") ;;
     esac
 done
 
-_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_final_args[@]}")
+_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_translated_args[@]}")

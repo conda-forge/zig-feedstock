@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 17
+  build_number: 18
   name: zig
   version: "0.15.2"
 
@@ -208,7 +208,14 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2
+        # Pin macOS to build 16: build 17 bootstrap has broken LLD auto-selection
+        # (hasLldSupport(.macho)=true + unguarded Gate 7 selects ld64.lld)
+        # Remove once build 18+ is the bootstrap
+        - if: osx
+          then:
+            - zig_impl_${{ build_platform }} ==0.15.2 *_16
+          else:
+            - zig_impl_${{ build_platform }} >=0.15.2
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -304,7 +311,7 @@ outputs:
             then:
               # NonUnix: test with COFF -- just verify -fuse-ld=lld compiles+links
               - echo int main(void){return 0;} > %TEMP%\test_lld.c
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
+              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - echo PASS -fuse-ld=lld basic compile+link (NonUnix/COFF)
           - if: osx
             then:
