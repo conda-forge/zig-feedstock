@@ -70,14 +70,26 @@ static int is_wl_drop(const char *arg) {
 static int is_drop_flag(const char *arg) {
     return starts_with(arg, "-march=") ||
            starts_with(arg, "-mtune=") ||
-           starts_with(arg, "-mcpu=") ||
            str_eq(arg, "-ftree-vectorize") ||
            starts_with(arg, "-fstack-protector") ||
            str_eq(arg, "-fno-plt") ||
            starts_with(arg, "-fdebug-prefix-map=") ||
-           starts_with(arg, "-stdlib=") ||
-           str_eq(arg, "-Bsymbolic-functions") ||
-           str_eq(arg, "-Bsymbolic");
+           starts_with(arg, "-stdlib=");
+}
+
+/* Flags that trigger auto-promotion to LLD (unsupported by self-hosted linker) */
+static int is_lld_trigger(const char *arg) {
+    if (str_eq(arg, "-fuse-ld=lld")) return 1;
+    /* ELF flags */
+    if (starts_with(arg, "-Wl,--version-script")) return 1;
+    if (starts_with(arg, "-Wl,--dynamic-list")) return 1;
+    if (starts_with(arg, "-Wl,-z,defs") || starts_with(arg, "-Wl,-z,nodelete")) return 1;
+    if (str_eq(arg, "-Wl,--gc-sections") || str_eq(arg, "-Wl,--no-gc-sections")) return 1;
+    if (starts_with(arg, "-Wl,--build-id")) return 1;
+    if (str_eq(arg, "-Wl,--allow-shlib-undefined") || str_eq(arg, "-Wl,--no-allow-shlib-undefined")) return 1;
+    if (str_eq(arg, "-Wl,-Bsymbolic-functions") || str_eq(arg, "-Wl,-Bsymbolic")) return 1;
+    if (str_eq(arg, "-Bsymbolic-functions") || str_eq(arg, "-Bsymbolic")) return 1;
+    return 0;
 }
 
 /* --- Find zig binary --- */
@@ -143,6 +155,16 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Pre-scan: detect LLD-triggering flags and user overrides */
+    int use_lld = 0;
+    int has_target = 0;
+    int has_mcpu = 0;
+    for (int i = 1; i < argc; i++) {
+        if (is_lld_trigger(argv[i])) use_lld = 1;
+        if (str_eq(argv[i], "-target") || starts_with(argv[i], "--target=")) has_target = 1;
+        if (starts_with(argv[i], "-mcpu=")) has_mcpu = 1;
+    }
+
     /* First pass: filter flags, detect -nostdlib++ */
     int fi = 0;
     int saw_nostdlibxx = 0;
@@ -166,8 +188,8 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        /* -Wl,* drops */
-        if (is_wl_drop(arg))
+        /* -Wl,* drops -- skip if LLD promoted (LLD handles these) */
+        if (!use_lld && is_wl_drop(arg))
             continue;
 
         /* Standalone drops */
@@ -180,6 +202,10 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        /* Skip -fuse-ld=lld from filtered (we inject it ourselves) */
+        if (str_eq(arg, "-fuse-ld=lld"))
+            continue;
+
         filtered[fi++] = arg;
     }
 
@@ -188,8 +214,8 @@ int main(int argc, char *argv[]) {
     if (saw_nostdlibxx && str_eq(mode, "c++"))
         mode = "cc";
 
-    /* Build final argv: zig mode -target TARGET -mcpu=baseline <filtered...> */
-    int max_args = fi + 8;
+    /* Build final argv: zig mode [-fuse-ld=lld] -target TARGET -mcpu=baseline <filtered...> */
+    int max_args = fi + 10;
     const char **new_argv = malloc(sizeof(char *) * max_args);
     if (!new_argv) {
         fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
@@ -200,9 +226,14 @@ int main(int argc, char *argv[]) {
     int ni = 0;
     new_argv[ni++] = zig_path;
     new_argv[ni++] = mode;
-    new_argv[ni++] = "-target";
-    new_argv[ni++] = ZIG_TARGET;
-    new_argv[ni++] = "-mcpu=baseline";
+    if (use_lld)
+        new_argv[ni++] = "-fuse-ld=lld";
+    if (!has_target) {
+        new_argv[ni++] = "-target";
+        new_argv[ni++] = ZIG_TARGET;
+    }
+    if (!has_mcpu)
+        new_argv[ni++] = "-mcpu=baseline";
 
     for (int i = 0; i < fi; i++)
         new_argv[ni++] = filtered[i];

@@ -37,9 +37,12 @@ def main():
     # Cross-target triplet: only set for cross-compiler builds
     cross_target_triplet = target_triplet if cross_compiler == "true" else ""
 
-    # Zig toolchain identification env vars
-    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
-    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+    # Zig toolchain identification — compute from collision-free recipe env vars
+    # (CONDA_ZIG_BUILD/HOST in os.environ may be polluted by activation of
+    # native zig package installed as a build dep)
+    native_triplet = os.environ.get("NATIVE_TRIPLET", conda_triplet)
+    conda_zig_build = f"{native_triplet}-zig"
+    conda_zig_host = f"{conda_triplet}-zig"
 
     print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
     print(f"zig_triplet: {zig_triplet}")
@@ -173,7 +176,7 @@ def _strip_glibc_version(triplet: str) -> str:
 def _find_zig_bin(conda_triplet: str, is_nonunix: bool = False) -> str:
     """Return the zig binary reference for wrappers.
 
-    Uses %CONDA_PREFIX% (Windows) or $CONDA_PREFIX (Unix) relative path
+    Uses %CONDA_PREFIX% (NonUnix) or $CONDA_PREFIX (Unix) relative path
     so wrappers work after installation.
     """
     if is_nonunix:
@@ -199,8 +202,11 @@ def install_activation_scripts(
 
     # CONDA_ZIG_BUILD: the build platform's conda triplet (who runs the compiler)
     # CONDA_ZIG_HOST: the target platform's conda triplet (what the compiler targets)
-    conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
-    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+    # Compute from collision-free args — don't read from os.environ which may be
+    # polluted by activation of native zig installed as build dep.
+    native_triplet = os.environ.get("NATIVE_TRIPLET", conda_triplet)
+    conda_zig_build = f"{native_triplet}-zig"
+    conda_zig_host = f"{conda_triplet}-zig"
 
     scripts_dir = recipe_dir / "scripts"
     replacements = {
@@ -246,7 +252,7 @@ def install_zig_cc_wrappers(
         wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
 
         # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
-        cc_src = recipe_dir / "building" / "zig-cc-win.c"
+        cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
         if cc_src.exists():
             # Extract zig binary filename from full %CONDA_PREFIX%\... path
             zig_bin_name = zig_bin.rsplit("\\", 1)[-1]

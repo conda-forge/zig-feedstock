@@ -19,7 +19,7 @@ set _BUILD_PREFIX=%BUILD_PREFIX:\=/%
 set _SRC_DIR=%SRC_DIR:\=/%
 set _RECIPE_DIR=%RECIPE_DIR:\=/%
 
-:: Store mixed C: with unix / (Windows-compatible format for GHC settings)
+:: Store mixed C: with unix / (NonUnix-compatible format for GHC settings)
 :: These are exported to bash for use in patching GHC settings files
 set _PREFIX_=%_PREFIX%
 set _BUILD_PREFIX_=%_BUILD_PREFIX%

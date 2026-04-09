@@ -1,0 +1,336 @@
+--- a/src/zig_llvm.h
++++ b/src/zig_llvm.h
+@@ -120,6 +120,7 @@
+ ZIG_EXTERN_C bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output);
+ ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
+ ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
++ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
+
+ ZIG_EXTERN_C bool ZigLLVMWriteArchive(const char *archive_name, const char **file_names, size_t file_name_count,
+     ZigLLVMArchiveKind archive_kind);
+--- a/src/zig_llvm.cpp
++++ b/src/zig_llvm.cpp
+@@ -556,6 +556,10 @@
+         bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
+                 llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
+     }
++    namespace macho {
++        bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
++                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
++    }
+ }
+
+ bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
+@@ -573,6 +577,11 @@
+     return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
+ }
+
++bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output) {
++    std::vector<const char *> args(argv, argv + argc);
++    return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
++}
++
+ static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Default == FloatABI::ABIType::Default, "");
+ static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Soft == FloatABI::ABIType::Soft, "");
+ static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Hard == FloatABI::ABIType::Hard, "");
+--- a/src/codegen/llvm/bindings.zig
++++ b/src/codegen/llvm/bindings.zig
+@@ -312,10 +312,12 @@
+ extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
++extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+
+ pub const LinkCOFF = ZigLLDLinkCOFF;
+ pub const LinkELF = ZigLLDLinkELF;
+ pub const LinkWasm = ZigLLDLinkWasm;
++pub const LinkMachO = ZigLLDLinkMachO;
+
+ pub const ArchiveKind = enum(c_int) {
+     GNU,
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -5828,6 +5828,8 @@
+             break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
+         } else if (mem.eql(u8, args[1], "wasm-ld")) {
+             break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
++        } else if (mem.eql(u8, args[1], "ld64.lld")) {
++            break :rc llvm.LinkMachO(argc, argv.ptr, can_exit_early, false);
+         } else {
+             unreachable;
+         }
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -3,6 +3,7 @@
+     elf: Elf,
+     coff: Coff,
+     wasm: Wasm,
++    macho: MachO,
+ },
+
+ const Coff = struct {
+@@ -195,6 +196,30 @@
+         };
+     }
+ };
++const MachO = struct {
++    pagezero_size: ?u64,
++    headerpad_size: ?u32,
++    headerpad_max_install_names: bool,
++    dead_strip_dylibs: bool,
++    force_load_objc: bool,
++    install_name: ?[]const u8,
++    lib_directories: []const Cache.Directory,
++    rpath_list: []const []const u8,
++
++    fn init(comp: *const Compilation, options: link.File.OpenOptions) !MachO {
++        _ = comp;
++        return .{
++            .pagezero_size = options.pagezero_size,
++            .headerpad_size = options.headerpad_size,
++            .headerpad_max_install_names = options.headerpad_max_install_names,
++            .dead_strip_dylibs = options.dead_strip_dylibs,
++            .force_load_objc = options.force_load_objc,
++            .install_name = options.install_name,
++            .lib_directories = options.lib_directories,
++            .rpath_list = options.rpath_list,
++        };
++    }
++};
+
+ pub fn createEmpty(
+     arena: Allocator,
+@@ -208,12 +233,13 @@
+
+     const obj_file_ext: []const u8 = switch (target.ofmt) {
+         .coff => "obj",
+-        .elf, .wasm => "o",
++        .elf, .macho, .wasm => "o",
+         else => unreachable,
+     };
+     const gc_sections: bool = options.gc_sections orelse switch (target.ofmt) {
+         .coff => optimize_mode != .Debug,
+         .elf => optimize_mode != .Debug and output_mode != .Obj,
++        .macho => optimize_mode != .Debug and output_mode != .Obj,
+         .wasm => output_mode != .Obj,
+         else => unreachable,
+     };
+@@ -241,6 +267,7 @@
+             .coff => .{ .coff = try .init(comp, options) },
+             .elf => .{ .elf = try .init(comp, options) },
+             .wasm => .{ .wasm = try .init(comp, options) },
++            .macho => .{ .macho = try .init(comp, options) },
+             else => unreachable,
+         },
+     };
+@@ -274,6 +301,7 @@
+         .coff => coffLink(lld, arena),
+         .elf => elfLink(lld, arena),
+         .wasm => wasmLink(lld, arena),
++        .macho => machoLink(lld, arena),
+     };
+     result catch |err| switch (err) {
+         error.OutOfMemory, error.LinkFailure => |e| return e,
+@@ -1612,6 +1640,191 @@
+     }
+ }
+
++fn machoLink(lld: *Lld, arena: Allocator) !void {
++    const comp = lld.base.comp;
++    const gpa = comp.gpa;
++    const base = &lld.base;
++    const macho = &lld.ofmt.macho;
++
++    const directory = base.emit.root_dir;
++    const full_out_path = try directory.join(arena, &[_][]const u8{base.emit.sub_path});
++
++    const zcu_obj_path: ?Cache.Path = if (comp.zcu != null) p: {
++        break :p try comp.resolveEmitPathFlush(arena, .temp, base.zcu_object_basename.?);
++    } else null;
++
++    const output_mode = comp.config.output_mode;
++    const is_obj = output_mode == .Obj;
++    const is_lib = output_mode == .Lib;
++    const is_dyn_lib = comp.config.link_mode == .dynamic and is_lib;
++    const target = &comp.root_mod.resolved_target.result;
++    const compiler_rt_path: ?Cache.Path = blk: {
++        if (comp.compiler_rt_lib) |x| break :blk x.full_object_path;
++        if (comp.compiler_rt_obj) |x| break :blk x.full_object_path;
++        break :blk null;
++    };
++    const ubsan_rt_path: ?Cache.Path = blk: {
++        if (comp.ubsan_rt_lib) |x| break :blk x.full_object_path;
++        if (comp.ubsan_rt_obj) |x| break :blk x.full_object_path;
++        break :blk null;
++    };
++
++    if (is_obj) {
++        // ld64.lld does not support -r, so do a simple file copy.
++        const the_object_path = blk: {
++            if (link.firstObjectInput(comp.link_inputs)) |obj| break :blk obj.path;
++            if (comp.c_object_table.count() != 0)
++                break :blk comp.c_object_table.keys()[0].status.success.object_path;
++            if (zcu_obj_path) |p| break :blk p;
++            return error.NoObjectsToLink;
++        };
++        try std.fs.Dir.copyFile(
++            the_object_path.root_dir.handle,
++            the_object_path.sub_path,
++            directory.handle,
++            base.emit.sub_path,
++            .{},
++        );
++    } else {
++        var argv = std.array_list.Managed([]const u8).init(gpa);
++        defer argv.deinit();
++
++        const linker_command = "ld64.lld";
++        try argv.appendSlice(&[_][]const u8{ comp.self_exe_path.?, linker_command });
++
++        // -arch
++        const arch_str: []const u8 = switch (target.cpu.arch) {
++            .x86_64 => "x86_64",
++            .aarch64 => "arm64",
++            else => return comp.link_diags.fail("unsupported MachO architecture for LLD: {s}", .{@tagName(target.cpu.arch)}),
++        };
++        try argv.appendSlice(&.{ "-arch", arch_str });
++
++        // -platform_version macos <min_version> <sdk_version>
++        const os_ver = target.os.version_range.semver.min;
++        const ver_str = try allocPrint(arena, "{d}.{d}.{d}", .{ os_ver.major, os_ver.minor, os_ver.patch });
++        try argv.appendSlice(&.{ "-platform_version", "macos", ver_str, ver_str });
++
++        // -syslibroot
++        if (comp.sysroot) |sysroot| {
++            try argv.appendSlice(&.{ "-syslibroot", sysroot });
++        }
++
++        // -dynamic
++        if (output_mode == .Exe or is_dyn_lib) {
++            try argv.append("-dynamic");
++        }
++
++        // -dylib + -install_name
++        if (is_dyn_lib) {
++            try argv.append("-dylib");
++            if (macho.install_name) |install_name| {
++                try argv.appendSlice(&.{ "-install_name", install_name });
++            }
++        }
++
++        // -dead_strip (gc_sections)
++        if (base.gc_sections) {
++            try argv.append("-dead_strip");
++        }
++
++        if (macho.dead_strip_dylibs) {
++            try argv.append("-dead_strip_dylibs");
++        }
++
++        if (macho.force_load_objc) {
++            try argv.append("-ObjC");
++        }
++
++        if (macho.pagezero_size) |size| {
++            try argv.appendSlice(&.{ "-pagezero_size", try allocPrint(arena, "0x{x}", .{size}) });
++        }
++
++        if (macho.headerpad_size) |size| {
++            try argv.appendSlice(&.{ "-headerpad_size", try allocPrint(arena, "0x{x}", .{size}) });
++        }
++
++        if (macho.headerpad_max_install_names) {
++            try argv.append("-headerpad_max_install_names");
++        }
++
++        // -rpath entries
++        for (macho.rpath_list) |rpath| {
++            try argv.appendSlice(&.{ "-rpath", rpath });
++        }
++
++        // -L lib directories
++        for (macho.lib_directories) |lib_directory| {
++            const arg = try allocPrint(arena, "-L{s}", .{lib_directory.path orelse "."});
++            try argv.append(arg);
++        }
++
++        // -o <output>
++        try argv.appendSlice(&.{ "-o", full_out_path });
++
++        if (is_dyn_lib and base.allow_shlib_undefined) {
++            try argv.appendSlice(&.{ "-undefined", "dynamic_lookup" });
++        }
++
++        // Positional arguments: object files and archives
++        for (comp.link_inputs) |link_input| switch (link_input) {
++            .object, .archive => |obj| {
++                if (obj.must_link) try argv.append("-force_load");
++                try argv.append(try obj.path.toString(arena));
++            },
++            .dso => continue, // handled below
++            .dso_exact => |dso_exact| try argv.appendSlice(&.{ "-l", dso_exact.name }),
++            .res => unreachable,
++        };
++
++        for (comp.c_object_table.keys()) |key| {
++            try argv.append(try key.status.success.object_path.toString(arena));
++        }
++        if (zcu_obj_path) |p| {
++            try argv.append(try p.toString(arena));
++        }
++
++        // DSOs (dylibs)
++        for (comp.link_inputs) |link_input| switch (link_input) {
++            .object, .archive, .dso_exact => continue,
++            .res => unreachable,
++            .dso => |dso| {
++                if (dso.needed) {
++                    try argv.appendSlice(&.{ "-needed-l", try dso.path.toString(arena) });
++                } else if (dso.weak) {
++                    try argv.appendSlice(&.{ "-weak-l", try dso.path.toString(arena) });
++                } else {
++                    try argv.appendSlice(&.{ "-l", try dso.path.toString(arena) });
++                }
++            },
++        };
++
++        // Link libcpp if needed
++        if (comp.config.link_libcpp) {
++            try argv.appendSlice(&.{
++                try comp.libcxxabi_static_lib.?.full_object_path.toString(arena),
++                try comp.libcxx_static_lib.?.full_object_path.toString(arena),
++            });
++        }
++
++        // -lSystem
++        try argv.append("-lSystem");
++
++        // zigc static lib
++        if (comp.zigc_static_lib) |lib| try argv.append(try lib.full_object_path.toString(arena));
++
++        // compiler_rt
++        if (compiler_rt_path) |p| {
++            try argv.append(try p.toString(arena));
++        }
++        if (ubsan_rt_path) |p| {
++            try argv.append(try p.toString(arena));
++        }
++
++        try spawnLld(comp, arena, argv.items);
++    }
++}
++
+ fn spawnLld(
+     comp: *Compilation,
+     arena: Allocator,
+--- a/src/target.zig
++++ b/src/target.zig
+@@ -224,7 +224,7 @@
+ /// The set of targets that Zig supports using LLD to link for.
+ pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
+     return switch (ofmt) {
+-        .elf, .coff, .wasm => true,
++        .elf, .coff, .macho, .wasm => true,
+         else => false,
+     };
+ }
