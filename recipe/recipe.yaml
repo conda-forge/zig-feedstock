@@ -213,7 +213,7 @@ outputs:
         # Remove once build 18+ is the bootstrap
         - if: osx
           then:
-            - zig_impl_${{ build_platform }} ==0.15.2 *_16
+            - zig_impl_${{ build_platform }} ==0.15.2 *_17
           else:
             - zig_impl_${{ build_platform }} >=0.15.2
       host:
