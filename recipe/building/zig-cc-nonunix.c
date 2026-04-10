@@ -36,6 +36,24 @@ static int str_eq(const char *a, const char *b) {
     return strcmp(a, b) == 0;
 }
 
+/* Translate conda triplets to zig target format.
+ * Returns a static string or the input unchanged. */
+static const char *conda_to_zig_target(const char *triplet) {
+    if (starts_with(triplet, "x86_64-w64-mingw32"))  return "x86_64-windows-gnu";
+    if (starts_with(triplet, "aarch64-w64-mingw32")) return "aarch64-windows-gnu";
+    if (starts_with(triplet, "x86_64-apple-darwin"))  return "x86_64-macos-none";
+    if (starts_with(triplet, "arm64-apple-darwin"))   return "aarch64-macos-none";
+    /* *-conda-linux-gnu* -> *-linux-gnu (strip -conda-) */
+    if (strstr(triplet, "-conda-linux-gnu")) {
+        static char buf[256];
+        const char *p = strstr(triplet, "-conda-linux-gnu");
+        size_t prefix_len = p - triplet;
+        snprintf(buf, sizeof(buf), "%.*s-linux-gnu", (int)prefix_len, triplet);
+        return buf;
+    }
+    return triplet;  /* pass through as-is */
+}
+
 /* -Xlinker passthrough flags to drop */
 static int is_xlinker_drop(const char *arg) {
     return str_eq(arg, "-Bsymbolic-functions") ||
@@ -155,13 +173,29 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Pre-scan: detect LLD-triggering flags and user overrides */
+    /* Pre-scan: detect LLD-triggering flags, user overrides, and translate targets */
     int use_lld = 0;
     int has_target = 0;
     int has_mcpu = 0;
     for (int i = 1; i < argc; i++) {
         if (is_lld_trigger(argv[i])) use_lld = 1;
-        if (str_eq(argv[i], "-target") || starts_with(argv[i], "--target=")) has_target = 1;
+        if (str_eq(argv[i], "-target")) {
+            has_target = 1;
+            /* Translate the next arg (the target value) */
+            if (i + 1 < argc)
+                argv[i + 1] = (char *)conda_to_zig_target(argv[i + 1]);
+        }
+        if (starts_with(argv[i], "--target=")) {
+            has_target = 1;
+            /* Translate inline target value */
+            const char *val = argv[i] + 9; /* strlen("--target=") */
+            const char *translated = conda_to_zig_target(val);
+            if (translated != val) {
+                static char target_buf[280];
+                snprintf(target_buf, sizeof(target_buf), "--target=%s", translated);
+                argv[i] = target_buf;
+            }
+        }
         if (starts_with(argv[i], "-mcpu=")) has_mcpu = 1;
     }
 
