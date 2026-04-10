@@ -211,9 +211,9 @@ outputs:
         # Pin macOS to build 16: build 17 bootstrap has broken LLD auto-selection
         # (hasLldSupport(.macho)=true + unguarded Gate 7 selects ld64.lld)
         # Remove once build 18+ is the bootstrap
-        - if: osx
+        - if: osx and version == "0.15.2" and build_number == 18
           then:
-            - zig_impl_${{ build_platform }} ==0.15.2 *_17
+            - zig_impl_${{ build_platform }} ==0.15.2 *_16
           else:
             - zig_impl_${{ build_platform }} >=0.15.2
       host:
