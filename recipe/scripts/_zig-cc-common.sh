@@ -44,8 +44,23 @@ fi
 # to the bundled LLD (requires build 17+ main.zig patch). This preserves user
 # intent instead of silently filtering flags.
 _use_lld=0
+_xlinker_next=0
 for _a in "$@"; do
+    # Handle -Xlinker <arg> pairs: check the arg after -Xlinker for LLD triggers
+    if (( _xlinker_next )); then
+        _xlinker_next=0
+        case "$_a" in
+            --dynamic-list|--dynamic-list=*|--version-script|--version-script=*) _use_lld=1; break ;;
+            --gc-sections|--no-gc-sections|--build-id|--build-id=*) _use_lld=1; break ;;
+            --allow-shlib-undefined|--no-allow-shlib-undefined) _use_lld=1; break ;;
+            -exported_symbols_list|-exported_symbols_list,*) _use_lld=1; break ;;
+            -unexported_symbols_list|-unexported_symbols_list,*) _use_lld=1; break ;;
+            -all_load|-force_load|-force_load,*) _use_lld=1; break ;;
+        esac
+        continue
+    fi
     case "$_a" in
+        -Xlinker) _xlinker_next=1 ;;
         -fuse-ld=lld) _use_lld=1; break ;;
         # ELF (Linux) flags unsupported by self-hosted linker
         -Wl,--version-script|-Wl,--version-script,*) _use_lld=1; break ;;

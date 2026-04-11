@@ -1,0 +1,31 @@
+# mingw-def-dll-suffix: normalise LIBRARY name in .def files for writeImportLibrary
+#
+# Root cause: MinGW .def files for api-ms-win-* (and similar) use a bare
+#   LIBRARY api-ms-win-core-synch-l1-2-0
+# line with no ".dll" suffix.  parseCOFFModuleDefinition faithfully copies
+# that string into def->OutputFile.  writeImportLibrary then embeds it as
+# the DLL name in the import library; when the downstream linker reads that
+# name it hits an unreachable because the name does not look like a valid PE
+# image file.
+#
+# Fix: after a successful parse, append ".dll" to OutputFile when the suffix
+# is absent.  This mirrors what LLVM's own DlltoolDriver.cpp does before
+# calling writeImportLibrary.
+#
+# This patch is platform-unconditional: any host can cross-compile to Windows
+# via zig cc and will exercise ZigLLVMWriteImportLibrary.
+
+--- a/src/zig_llvm.cpp
++++ b/src/zig_llvm.cpp
+@@ -485,6 +485,11 @@
+         return true;
+     }
+
++    // Some MinGW .def files (e.g. api-ms-win-*) omit the .dll suffix from the
++    // LIBRARY name; normalise it so writeImportLibrary embeds a valid DLL name.
++    if (!StringRef(def->OutputFile).ends_with(".dll"))
++        def->OutputFile += ".dll";
++
+     // The exports-juggling code below is ripped from LLVM's DlltoolDriver.cpp
+
+     // If ExtName is set (if the "ExtName = Name" syntax was used), overwrite
