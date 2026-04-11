@@ -63,6 +63,7 @@ is_macos_target = "apple" in _triplet or "darwin" in _triplet
 is_linux_target = "linux" in _triplet
 _arch = _triplet.split("-")[0] if _triplet else platform.machine()
 is_ppc64le_target = "powerpc64le" in _triplet or _arch == "powerpc64le"
+is_aarch64_win = is_win_target and _arch == "aarch64"
 
 # Normalise: arm64 == aarch64
 if _arch == "arm64":
@@ -648,6 +649,84 @@ def test_libc_linking() -> None:
 
 
 # ===================================================================
+# Section 4d — Windows import library resolution (ziglang/zig#14919)
+# ===================================================================
+def test_windows_import_libs() -> None:
+    """Verify -lsynchronization resolves when targeting Windows.
+
+    OCaml's configure.ac unconditionally adds -lsynchronization to BYTECCLIBS
+    for MinGW targets.  Zig doesn't ship synchronization.def in its MinGW sysroot;
+    the feedstock workaround adds it so zig can generate libsynchronization.a
+    on-the-fly (synchronization.dll == api-ms-win-core-synch-l1-2-0 API set).
+    """
+    print("--- Windows import lib resolution (-lsynchronization) ---")
+
+    if not is_win_target:
+        SKIP("windows import libs", "Windows target only")
+        return
+
+    if _is_emulated:
+        SKIP("windows import libs", "emulated CI — linker OOM risk")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("windows import libs", "ZIG_CC not set")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "sync_test.c"
+        src.write_text("int main(void) { return 0; }\n")
+
+        # Test 1: -lsynchronization (missing .def — ziglang/zig#14919)
+        out = Path(td) / "sync_test.exe"
+        r = _run(
+            [zig_cc, "-lsynchronization", "-o", str(out), str(src)],
+            cwd=td,
+            timeout=60,
+        )
+        if r.stderr == "TIMEOUT":
+            WARN("windows import libs (-lsynchronization)", "timed out (60s)")
+        elif r.returncode != 0:
+            if "DllImportLibraryNotFound" in r.stderr or "libsynchronization" in r.stderr:
+                FAIL(
+                    "windows import libs (-lsynchronization)",
+                    "libsynchronization.a not found — synchronization.def missing from sysroot",
+                )
+            else:
+                FAIL(
+                    "windows import libs (-lsynchronization)",
+                    f"rc={r.returncode} stderr={r.stderr[:2000]}",
+                )
+        else:
+            PASS("windows import libs (-lsynchronization)")
+
+        # Test 2: -lapi-ms-win-core-synch-l1-2-0 (LIBRARY line missing .dll suffix → unreachable)
+        out2 = Path(td) / "apisynch_test.exe"
+        r2 = _run(
+            [zig_cc, "-lapi-ms-win-core-synch-l1-2-0", "-o", str(out2), str(src)],
+            cwd=td,
+            timeout=60,
+        )
+        if r2.stderr == "TIMEOUT":
+            WARN("windows import libs (-lapi-ms-win-core-synch-l1-2-0)", "timed out (60s)")
+        elif r2.returncode != 0:
+            if "unreachable" in r2.stderr or "reached unreachable" in r2.stderr:
+                FAIL(
+                    "windows import libs (-lapi-ms-win-core-synch-l1-2-0)",
+                    "zig panic: LIBRARY line missing .dll suffix in api-ms-win-core-synch-l1-2-0.def "
+                    "(feedstock .dll suffix fix not applied)",
+                )
+            else:
+                FAIL(
+                    "windows import libs (-lapi-ms-win-core-synch-l1-2-0)",
+                    f"rc={r2.returncode} stderr={r2.stderr[:2000]}",
+                )
+        else:
+            PASS("windows import libs (-lapi-ms-win-core-synch-l1-2-0)")
+
+
+# ===================================================================
 # Section 5 — Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
@@ -879,6 +958,7 @@ def main() -> int:
     test_shared_lib()
     test_exe_linking()
     test_libc_linking()
+    test_windows_import_libs()
     test_visibility()
     test_lld_dispatch()
 
