@@ -201,6 +201,40 @@ if is_not_unix; then
   [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
 fi
 
+# Workaround for ziglang/zig#14919: add synchronization.def so zig can generate
+# libsynchronization.a when cross-compiling to Windows (e.g. OCaml BYTECCLIBS uses -lsynchronization).
+# synchronization.dll is an API set alias for api-ms-win-core-synch-l1-2-0.dll; same exports.
+if is_not_unix; then
+  _mingw_common="${PREFIX}/Library/lib/zig/libc/mingw/lib-common"
+else
+  _mingw_common="${PREFIX}/lib/zig/libc/mingw/lib-common"
+fi
+if [[ -d "${_mingw_common}" ]]; then
+  cat > "${_mingw_common}/synchronization.def" << 'SYNCHRONIZATION_DEF'
+LIBRARY synchronization.dll
+
+EXPORTS
+
+DeleteSynchronizationBarrier
+EnterSynchronizationBarrier
+InitializeConditionVariable
+InitializeSynchronizationBarrier
+InitOnceBeginInitialize
+InitOnceComplete
+InitOnceExecuteOnce
+InitOnceInitialize
+SignalObjectAndWait
+Sleep
+SleepConditionVariableCS
+SleepConditionVariableSRW
+WaitOnAddress
+WakeAllConditionVariable
+WakeByAddressAll
+WakeByAddressSingle
+WakeConditionVariable
+SYNCHRONIZATION_DEF
+fi
+
 is_debug && echo "=== Build installed for package: ${PKG_NAME} ==="
 
 # Cache successful build (saves before rattler-build cleanup)

@@ -105,6 +105,8 @@ source:
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
+      # All platforms: fix MinGW .def LIBRARY lines missing .dll suffix (api-ms-win-* family)
+      - patches/zig_llvm.cpp-mingw-def-dll-suffix.patch
       - if: linux
         then:
           - patches/linux/build.zig-01-maxrss.patch
@@ -289,6 +291,18 @@ outputs:
         files:
           source:
             - zig-source/test
+      # Verify zig cc compile+run works (MSYS2 UCRT DLL resolution on Windows)
+      # Also dump import table to diagnose which CRT DLLs zig-gnu binaries expect
+      - script:
+          - if: not unix
+            then:
+              - echo int main(void){return 0;} > %TEMP%\test_run.c
+              - ${{ conda_triplet }}-zig cc -mconsole -o %TEMP%\test_run.exe %TEMP%\test_run.c
+              - echo === Import table for zig-gnu binary (diagnostic) ===
+              - dumpbin /imports %TEMP%\test_run.exe || objdump -p %TEMP%\test_run.exe || echo "No import dump tool available"
+              - echo === End import table ===
+              - '%TEMP%\test_run.exe'
+              - echo PASS zig cc compile+run (UCRT DLL resolution)
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them.
       # Verify -fuse-ld=lld patch (Linux/ELF + NonUnix/COFF, not macOS/Mach-O)
@@ -302,10 +316,12 @@ outputs:
               - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
           - if: not unix
             then:
-              # NonUnix: test with COFF -- just verify -fuse-ld=lld compiles+links
+              # NonUnix: test with COFF -- verify -fuse-ld=lld compiles+links+runs
+              # Running the binary validates MSYS2 UCRT DLL resolution (api-ms-win-crt-*)
               - echo int main(void){return 0;} > %TEMP%\test_lld.c
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
-              - echo PASS -fuse-ld=lld basic compile+link (NonUnix/COFF)
+              - '%TEMP%\test_lld.exe'
+              - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
           - if: osx
             then:
               # macOS: test with Mach-O -exported_symbols_list via LLD
