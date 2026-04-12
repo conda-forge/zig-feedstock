@@ -203,7 +203,11 @@ fi
 
 # Workaround for ziglang/zig#14919: add synchronization.def so zig can generate
 # libsynchronization.a when cross-compiling to Windows (e.g. OCaml BYTECCLIBS uses -lsynchronization).
-# synchronization.dll is an API set alias for api-ms-win-core-synch-l1-2-0.dll; same exports.
+# IMPORTANT: LIBRARY must be api-ms-win-core-synch-l1-2-0.dll, NOT synchronization.dll.
+# "synchronization.dll" is neither a real DLL on disk nor a valid API Set Schema name — it doesn't
+# exist as a physical file in Windows or MSYS2. The real MinGW-w64 alias points to
+# libapi-ms-win-core-synch-l1-2-0.a, whose LIBRARY directive is api-ms-win-core-synch-l1-2-0.dll.
+# Windows API Set Schema resolves api-ms-win-* names to the actual host DLL at runtime.
 if is_not_unix; then
   _mingw_common="${PREFIX}/Library/lib/zig/libc/mingw/lib-common"
 else
@@ -211,7 +215,7 @@ else
 fi
 if [[ -d "${_mingw_common}" ]]; then
   cat > "${_mingw_common}/synchronization.def" << 'SYNCHRONIZATION_DEF'
-LIBRARY synchronization.dll
+LIBRARY api-ms-win-core-synch-l1-2-0.dll
 
 EXPORTS
 
@@ -233,6 +237,101 @@ WakeByAddressAll
 WakeByAddressSingle
 WakeConditionVariable
 SYNCHRONIZATION_DEF
+fi
+
+# Pre-generate Windows PE import libraries (.a) from zig's MinGW .def/.def.in files.
+# flexlink (OCaml's Windows linker) calls -print-search-dirs to find library
+# search paths, then looks for libXXX.a files at those paths.  zig generates
+# import libs internally at link time (cached in ~/.cache/zig/), but flexlink
+# needs them at a fixed, known location.
+#
+# Two types of source files exist in lib-common/:
+#   .def     — ready to use directly with dlltool (e.g. shlwapi.def)
+#   .def.in  — C preprocessor templates that conditionally include exports by
+#              architecture using macros from def-include/func.def.in
+#              (e.g. kernel32.def.in, ws2_32.def.in, ole32.def.in)
+#
+# uuid is special: compiled from libsrc/uuid.c (no DLL import lib needed).
+# Only generates files that are missing; safe to re-run.
+if [[ -d "${_mingw_common}" ]]; then
+  if is_not_unix; then
+    _zig_bin="${PREFIX}/Library/bin/zig.exe"
+  else
+    _zig_bin="${PREFIX}/bin/zig"
+  fi
+  _def_include="${_mingw_common}/../def-include"
+  _mingw_libsrc="${_mingw_common}/../libsrc"
+
+  _dlltool=""
+  for _cand in \
+      "${BUILD_PREFIX}/bin/llvm-dlltool" \
+      "${BUILD_PREFIX}/bin/llvm-dlltool.exe" \
+      "$(command -v llvm-dlltool 2>/dev/null || true)"; do
+    if [[ -x "${_cand}" ]]; then
+      _dlltool="${_cand}"
+      break
+    fi
+  done
+
+  if [[ -n "${_dlltool}" ]] && [[ -x "${_zig_bin}" ]]; then
+    is_debug && echo "=== Generating MinGW import libs (dlltool=${_dlltool}) ==="
+    _gen_count=0
+
+    # Helper: generate .a from a processed .def file
+    _gen_implib() {
+      local stem="$1" def="$2"
+      local lib="${_mingw_common}/lib${stem}.a"
+      [[ -f "${lib}" ]] && return 0
+      local dll
+      dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
+      [[ -z "${dll}" ]] && dll="${stem}.dll"
+      "${_dlltool}" -m i386:x86-64 -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null || true
+      _gen_count=$(( _gen_count + 1 ))
+    }
+
+    # Step 1: plain .def files (shlwapi.def, version.def, synchronization.def, etc.)
+    for _def in "${_mingw_common}"/*.def; do
+      [[ -f "${_def}" ]] || continue
+      _stem="$(basename "${_def%.def}")"
+      _gen_implib "${_stem}" "${_def}"
+    done
+
+    # Step 2: .def.in template files (ws2_32, kernel32, ole32, advapi32, user32, ...)
+    # Process through zig's C preprocessor with x86_64 defines so architecture
+    # macros (F_X64, F_I386, F64, F32, etc.) expand correctly.
+    for _def_in in "${_mingw_common}"/*.def.in; do
+      [[ -f "${_def_in}" ]] || continue
+      _stem="$(basename "${_def_in%.def.in}")"
+      _lib="${_mingw_common}/lib${_stem}.a"
+      [[ -f "${_lib}" ]] && continue
+      _def="${_mingw_common}/${_stem}.def"
+      if [[ ! -f "${_def}" ]]; then
+        "${_zig_bin}" cc -E -P \
+          -target x86_64-windows-gnu \
+          -x assembler-with-cpp \
+          -I"${_def_include}" \
+          "${_def_in}" 2>/dev/null > "${_def}" || { rm -f "${_def}"; continue; }
+      fi
+      _gen_implib "${_stem}" "${_def}"
+    done
+
+    # Step 3: uuid — compiled from C source (no DLL, no import lib needed).
+    # zig compiles libsrc/uuid.c into a static archive.
+    _uuid_lib="${_mingw_common}/libuuid.a"
+    _uuid_src="${_mingw_libsrc}/uuid.c"
+    if [[ ! -f "${_uuid_lib}" ]] && [[ -f "${_uuid_src}" ]]; then
+      _uuid_obj="${_mingw_common}/_uuid.o"
+      "${_zig_bin}" cc -target x86_64-windows-gnu -c "${_uuid_src}" \
+          -o "${_uuid_obj}" 2>/dev/null && \
+        "${_zig_bin}" ar rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null || true
+      rm -f "${_uuid_obj}"
+      _gen_count=$(( _gen_count + 1 ))
+    fi
+
+    is_debug && echo "=== Generated ${_gen_count} import libs in ${_mingw_common} ==="
+  else
+    is_debug && echo "=== llvm-dlltool or zig not found; skipping import lib pre-generation ==="
+  fi
 fi
 
 is_debug && echo "=== Build installed for package: ${PKG_NAME} ==="

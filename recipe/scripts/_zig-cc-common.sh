@@ -9,6 +9,22 @@
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
+# --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
+# zig doesn't implement this flag. flexlink calls it to discover library search
+# paths for resolving -lXXX arguments. Without a response, flexlink has no
+# paths and treats -lws2_32 as a literal filename, then crashes.
+for _arg in "$@"; do
+    if [[ "$_arg" == "-print-search-dirs" ]]; then
+        _zig_lib="${CONDA_PREFIX}/lib/zig"
+        _mingw_common="${_zig_lib}/libc/mingw/lib-common"
+        _mingw_arch="${_zig_lib}/libc/mingw/lib-x86_64"
+        echo "install: ${_zig_lib}/"
+        echo "programs: =${CONDA_PREFIX}/bin/"
+        echo "libraries: =${_mingw_common}:${_mingw_arch}:${_zig_lib}"
+        exit 0
+    fi
+done
+
 # --- Handle -print-file-name=<name> (GCC/Clang compat) ---
 # zig doesn't support this flag. Intercept it, probe for the file in the
 # same locations as libcxx_shared.zig (zig-llvm/lib then lib), print the
@@ -116,6 +132,16 @@ while [[ $i -lt $argc ]]; do
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
+        # GCC runtime libraries zig doesn't ship and can't link
+        # -lgcc_eh: GCC exception handling — zig uses its own EH mechanism
+        # -lgcc_s:  GCC shared runtime — zig uses its own runtime
+        -lgcc_eh|-lgcc_s) ;;
+        # GNU ld colon-prefix syntax (-l:filename) for known zig-provided libs
+        # The -l: prefix means "exact filename match" (GNU ld extension).
+        # Zig's linker hits unreachable code when it sees this syntax.
+        # For targets where zig provides pthreads natively (Windows, Linux via
+        # libc), the static-pthread request is unnecessary and panics the linker.
+        -l:libpthread.a|-l:libpthread.so*) ;;
         *) args+=("$arg") ;;
     esac
     ((i++))

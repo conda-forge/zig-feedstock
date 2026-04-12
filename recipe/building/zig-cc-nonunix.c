@@ -132,6 +132,33 @@ static int find_zig(char *out, size_t out_size) {
     return 0;
 }
 
+/* --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
+ * zig doesn't implement this flag. flexlink calls it to discover library
+ * search paths before resolving -lXXX arguments. Without a response,
+ * flexlink has no search paths and treats -lws2_32 as a literal filename.
+ * We return paths to zig's pre-generated MinGW import libraries.
+ */
+static int handle_print_search_dirs(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (str_eq(argv[i], "-print-search-dirs")) {
+            const char *conda = getenv("CONDA_PREFIX");
+            if (conda && conda[0]) {
+                /* lib-common: MinGW import libs (libws2_32.a, libole32.a, etc.)
+                 * lib-x86_64: arch-specific import libs
+                 * lib: zig compiler runtime libs */
+                printf("install: %s\\Library\\lib\\zig\\\n", conda);
+                printf("programs: =%s\\Library\\bin\\\n", conda);
+                printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;%s\\Library\\lib\\zig\\libc\\mingw\\lib-x86_64;%s\\Library\\lib\\zig\n",
+                       conda, conda, conda);
+            } else {
+                printf("install: \nprograms: =\nlibraries: =\n");
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* --- Handle -print-file-name=<name> (GCC/Clang compat) ---
  * zig doesn't support this flag. Probe zig-llvm/lib then lib under
  * CONDA_PREFIX, print the path if found (or echo back the name), and exit.
@@ -163,7 +190,9 @@ static int handle_print_file_name(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-    /* Handle -print-file-name before anything else */
+    /* Handle -print-search-dirs and -print-file-name before anything else */
+    if (handle_print_search_dirs(argc, argv))
+        return 0;
     if (handle_print_file_name(argc, argv))
         return 0;
 

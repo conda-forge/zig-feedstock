@@ -735,6 +735,114 @@ def test_windows_import_libs() -> None:
 
 
 # ===================================================================
+# Section 4e — -print-search-dirs and pre-generated MinGW import libs
+# ===================================================================
+def test_print_search_dirs() -> None:
+    """Verify -print-search-dirs returns GCC-compatible output with valid paths.
+
+    flexlink's mingw_libs calls CC -print-search-dirs to find library search
+    paths.  Without a response, flexlink has no paths and treats -lws2_32 as a
+    literal filename, causing the link to fail.
+    """
+    print("--- -print-search-dirs (flexlink compat) ---")
+
+    if not is_win_target:
+        SKIP("print-search-dirs", "Windows target only")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("print-search-dirs", "ZIG_CC not set")
+        return
+
+    r = _run([zig_cc, "-print-search-dirs"], cwd=tempfile.gettempdir(), timeout=15)
+    if r.returncode != 0:
+        FAIL("-print-search-dirs exits zero", f"rc={r.returncode} stderr={r.stderr[:500]}")
+        return
+
+    output = r.stdout
+    if not output.strip():
+        FAIL("-print-search-dirs produces output", "stdout was empty")
+        return
+    PASS("-print-search-dirs produces output")
+
+    # flexlink parses the 'libraries:' line specifically
+    if "libraries:" in output:
+        PASS("-print-search-dirs has 'libraries:' line")
+    else:
+        FAIL("-print-search-dirs has 'libraries:' line", f"output: {output[:500]}")
+        return
+
+    # Extract library paths and verify at least one is a real directory
+    lib_line = next((ln for ln in output.splitlines() if ln.startswith("libraries:")), "")
+    paths_str = lib_line.split("=", 1)[-1] if "=" in lib_line else ""
+    sep = ";" if _build_is_win else ":"
+    paths = [p for p in paths_str.split(sep) if p.strip()]
+
+    if not paths:
+        FAIL("-print-search-dirs libraries line contains paths")
+        return
+
+    valid_dirs = [p for p in paths if Path(p).is_dir()]
+    if valid_dirs:
+        PASS(f"-print-search-dirs library paths exist ({len(valid_dirs)}/{len(paths)} valid)")
+    else:
+        FAIL("-print-search-dirs library paths exist",
+             f"none of {paths!r} are valid directories")
+
+
+def test_mingw_prebuilt_import_libs() -> None:
+    """Verify pre-generated MinGW import .a files exist for core Windows libs.
+
+    The -print-search-dirs response points flexlink to lib-common/.  These .a
+    files must exist on disk at install time so flexlink can resolve -lws2_32,
+    -lkernel32, etc. as library links rather than literal filenames.
+
+    .def files  → llvm-dlltool generates the .a directly.
+    .def.in files (ws2_32, kernel32, ...) → preprocessed with zig cc -E -P
+                  to expand F_X64/F_I386 macros, then llvm-dlltool.
+    uuid        → compiled from libsrc/uuid.c (no DLL import lib needed).
+    """
+    print("--- Pre-generated MinGW import libs ---")
+
+    if not is_win_target:
+        SKIP("mingw prebuilt import libs", "Windows target only")
+        return
+
+    if _build_is_win:
+        lib_common = _prefix / "Library" / "lib" / "zig" / "libc" / "mingw" / "lib-common"
+    else:
+        lib_common = _prefix / "lib" / "zig" / "libc" / "mingw" / "lib-common"
+
+    if not lib_common.is_dir():
+        FAIL("lib-common directory exists", str(lib_common))
+        return
+    PASS("lib-common directory exists")
+
+    # Core Windows system libs — from .def.in templates (ws2_32, kernel32, ole32,
+    # advapi32, user32) or plain .def (shlwapi, version, synchronization) or
+    # C source (uuid).
+    required = [
+        "libws2_32.a",       # .def.in — Winsock
+        "libkernel32.a",     # .def.in — Windows kernel
+        "libole32.a",        # .def.in — COM/OLE
+        "libadvapi32.a",     # .def.in — registry, security
+        "libuser32.a",       # .def.in — UI, message loop
+        "libuuid.a",         # C source (libsrc/uuid.c) — UUID constants
+        "libsynchronization.a",  # plain .def (our feedstock workaround)
+        "libshlwapi.a",      # plain .def — Shell lightweight API
+        "libversion.a",      # plain .def — version info
+    ]
+    for fname in required:
+        lib = lib_common / fname
+        if lib.exists() and lib.stat().st_size > 0:
+            PASS(f"pre-generated {fname}")
+        else:
+            FAIL(f"pre-generated {fname}",
+                 f"{lib} {'missing' if not lib.exists() else 'is empty (0 bytes)'}")
+
+
+# ===================================================================
 # Section 5 — Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
@@ -850,6 +958,10 @@ def test_flag_filter_content() -> None:
         ("-Wl,-all_load filtered", "all_load"),
         ("-Wl,-force_load filtered", "force_load"),
         ("-mcpu=baseline in exec args", "mcpu=baseline"),
+        ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
+        ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
+        ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
+        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
     ]
     for label, needle in checks:
         if needle in text:
@@ -967,6 +1079,8 @@ def main() -> int:
     test_exe_linking()
     test_libc_linking()
     test_windows_import_libs()
+    test_print_search_dirs()
+    test_mingw_prebuilt_import_libs()
     test_visibility()
     test_lld_dispatch()
 
