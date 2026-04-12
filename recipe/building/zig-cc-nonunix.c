@@ -98,7 +98,7 @@ static int is_drop_flag(const char *arg) {
 /* Flags that trigger auto-promotion to LLD (unsupported by self-hosted linker) */
 static int is_lld_trigger(const char *arg) {
     if (str_eq(arg, "-fuse-ld=lld")) return 1;
-    /* ELF flags */
+    /* ELF flags (-Wl, prefixed) */
     if (starts_with(arg, "-Wl,--version-script")) return 1;
     if (starts_with(arg, "-Wl,--dynamic-list")) return 1;
     if (starts_with(arg, "-Wl,-z,defs") || starts_with(arg, "-Wl,-z,nodelete")) return 1;
@@ -107,6 +107,17 @@ static int is_lld_trigger(const char *arg) {
     if (str_eq(arg, "-Wl,--allow-shlib-undefined") || str_eq(arg, "-Wl,--no-allow-shlib-undefined")) return 1;
     if (str_eq(arg, "-Wl,-Bsymbolic-functions") || str_eq(arg, "-Wl,-Bsymbolic")) return 1;
     if (str_eq(arg, "-Bsymbolic-functions") || str_eq(arg, "-Bsymbolic")) return 1;
+    return 0;
+}
+
+/* Bare linker args that trigger LLD (passed via -Xlinker <arg>) */
+static int is_xlinker_lld_trigger(const char *arg) {
+    if (starts_with(arg, "--dynamic-list") || starts_with(arg, "--version-script")) return 1;
+    if (str_eq(arg, "--gc-sections") || str_eq(arg, "--no-gc-sections")) return 1;
+    if (starts_with(arg, "--build-id")) return 1;
+    if (str_eq(arg, "--allow-shlib-undefined") || str_eq(arg, "--no-allow-shlib-undefined")) return 1;
+    if (starts_with(arg, "-exported_symbols_list") || starts_with(arg, "-unexported_symbols_list")) return 1;
+    if (str_eq(arg, "-all_load") || starts_with(arg, "-force_load")) return 1;
     return 0;
 }
 
@@ -179,6 +190,10 @@ int main(int argc, char *argv[]) {
     int has_mcpu = 0;
     for (int i = 1; i < argc; i++) {
         if (is_lld_trigger(argv[i])) use_lld = 1;
+        /* -Xlinker <arg>: check the following arg for bare LLD triggers */
+        if (str_eq(argv[i], "-Xlinker") && i + 1 < argc) {
+            if (is_xlinker_lld_trigger(argv[i + 1])) use_lld = 1;
+        }
         if (str_eq(argv[i], "-target")) {
             has_target = 1;
             /* Translate the next arg (the target value) */
@@ -273,6 +288,22 @@ int main(int argc, char *argv[]) {
         new_argv[ni++] = filtered[i];
 
     new_argv[ni] = NULL;
+
+    /* MSYS2 strips C:\Windows\System32 from PATH, but zig-compiled binaries
+     * link against UCRT (api-ms-win-crt-*.dll) which lives there. Ensure
+     * System32 is in PATH so zig's linker and any child processes can find it. */
+    if (getenv("MSYSTEM") != NULL) {
+        const char *path = getenv("PATH");
+        const char *sys32 = "C:\\Windows\\System32";
+        if (path && !strstr(path, sys32)) {
+            char *new_path = malloc(strlen(path) + strlen(sys32) + 7);
+            if (new_path) {
+                sprintf(new_path, "PATH=%s;%s", sys32, path);
+                _putenv(new_path);
+                free(new_path);
+            }
+        }
+    }
 
     /* Execute zig */
     int ret = (int)_spawnv(_P_WAIT, zig_path, new_argv);
