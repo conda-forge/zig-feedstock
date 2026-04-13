@@ -28,6 +28,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+
+# Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
+# rattler-build's UTF-8 stream reader even when tests pass).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -66,6 +73,23 @@ def SKIP(name: str, detail: str = "") -> None:
 _prefix = Path(os.environ.get("CONDA_PREFIX", ""))
 _conda_triplet = sys.argv[1] if len(sys.argv) > 1 else ""
 _build_is_win = sys.platform == "win32"
+
+# Ensure zig can resolve its cache directory when called directly (no wrapper).
+# zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
+# if neither is set it panics with AppDataDirUnavailable.  ZIG_GLOBAL_CACHE_DIR
+# overrides the lookup entirely.
+if "ZIG_GLOBAL_CACHE_DIR" not in os.environ:
+    _xdg_data = os.environ.get("XDG_DATA_HOME", "")
+    _home = os.environ.get("HOME", "")
+    if _xdg_data:
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_xdg_data}/zig/zig-cache"
+    elif _home:
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_home}/.local/share/zig/zig-cache"
+    else:
+        _uid = str(os.getuid()) if hasattr(os, "getuid") else "0"
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.path.join(
+            tempfile.gettempdir(), f"zig-cache-{_uid}"
+        )
 _build_is_mac = sys.platform == "darwin"
 
 # The zig binary in zig_impl_ is triplet-prefixed
@@ -77,6 +101,7 @@ is_macos_target = "apple" in _conda_triplet or "darwin" in _conda_triplet
 is_win_target = "mingw32" in _conda_triplet
 _arch = _conda_triplet.split("-")[0] if _conda_triplet else platform.machine()
 is_arm64 = _arch in ("aarch64", "arm64")
+is_ppc64le = _arch == "powerpc64le"
 
 # Emulation detection
 _native_machine = platform.machine()
@@ -244,8 +269,8 @@ def test_libcxx_fallback_static() -> None:
     """
     print("--- [patch-0008] Fallback to static libc++ ---")
 
-    if is_arm64 or _is_emulated:
-        SKIP("libcxx-static-fallback", "arm64/emulated, skip linking tests")
+    if is_arm64 or is_ppc64le or _is_emulated:
+        SKIP("libcxx-static-fallback", "arm64/ppc64le/emulated, skip linking tests")
         return
 
     plat = _get_platform_key()
@@ -369,8 +394,8 @@ def test_libcxx_probe_paths() -> None:
     """
     print("--- [patch-0008] Shared libc++ probe paths ---")
 
-    if is_arm64 or _is_emulated:
-        SKIP("libcxx-probe", "arm64/emulated, skip linking tests")
+    if is_arm64 or is_ppc64le or _is_emulated:
+        SKIP("libcxx-probe", "arm64/ppc64le/emulated, skip linking tests")
         return
 
     plat = _get_platform_key()
@@ -702,8 +727,8 @@ def test_libcxx_shared_simulation() -> None:
         SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
         return
 
-    if is_arm64 or _is_emulated:
-        SKIP("libcxx-simulation", "arm64/emulated, skip linking tests")
+    if is_arm64 or is_ppc64le or _is_emulated:
+        SKIP("libcxx-simulation", "arm64/ppc64le/emulated, skip linking tests")
         return
 
     zig = _find_zig_binary()
@@ -818,6 +843,7 @@ def main() -> int:
     print(f"  platform key  = {_get_platform_key()}")
     print(f"  zig lib dir   = {_find_zig_lib_dir()}")
     print(f"  arm64         = {is_arm64}")
+    print(f"  ppc64le       = {is_ppc64le}")
     print(f"  emulated      = {_is_emulated}")
     print()
 

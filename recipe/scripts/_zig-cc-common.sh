@@ -10,11 +10,19 @@
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
 # --- Ensure zig can resolve its cache directory ---
-# zig resolves its global cache as: ZIG_GLOBAL_CACHE_DIR > XDG_CACHE_HOME/zig
-# > HOME/.cache/zig.  On some CI environments (conda-build test phase) HOME is
-# unset, causing AppDataDirUnavailable.  Set a fallback so compilation works.
-if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]] && [[ -z "${XDG_CACHE_HOME:-}" ]] && [[ -z "${HOME:-}" ]]; then
-    export ZIG_GLOBAL_CACHE_DIR="${TMPDIR:-/tmp}/zig-cache-$(id -u 2>/dev/null || echo 0)"
+# zig's global cache resolves as: ZIG_GLOBAL_CACHE_DIR (explicit) >
+# std.fs.getAppDataDir("zig")/zig-cache, where getAppDataDir on Linux checks
+# XDG_DATA_HOME then HOME/.local/share.  If neither is set, zig panics with
+# AppDataDirUnavailable.  Always set ZIG_GLOBAL_CACHE_DIR if unset, mirroring
+# zig's own resolution so the variable is always populated before exec.
+if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
+    if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+        export ZIG_GLOBAL_CACHE_DIR="${XDG_DATA_HOME}/zig/zig-cache"
+    elif [[ -n "${HOME:-}" ]]; then
+        export ZIG_GLOBAL_CACHE_DIR="${HOME}/.local/share/zig/zig-cache"
+    else
+        export ZIG_GLOBAL_CACHE_DIR="${TMPDIR:-/tmp}/zig-cache-$(id -u 2>/dev/null || echo 0)"
+    fi
 fi
 
 # --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
@@ -106,6 +114,13 @@ for _a in "$@"; do
         -all_load|-force_load) _use_lld=1; break ;;
     esac
 done
+
+# --- Block LLD on ppc64le: LLD lacks ppc64le relocation support ---
+if (( _use_lld )) && [[ "@ZIG_TARGET_ARCH@" == "powerpc64le" ]]; then
+    echo "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)" >&2
+    echo "  Remove -fuse-ld=lld or any LLD-only flags (--dynamic-list, --version-script, etc.)" >&2
+    exit 1
+fi
 
 # --- Flag filtering ---
 # Only filter flags genuinely unsupported by both linkers and Clang.

@@ -20,6 +20,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+
+# Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
+# rattler-build's UTF-8 stream reader even when tests pass).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -72,6 +79,23 @@ if _arch == "arm64":
 # Build-machine OS (where the test actually runs)
 _build_is_win = sys.platform == "win32"
 _build_is_mac = sys.platform == "darwin"
+
+# Ensure zig can resolve its cache directory when called directly (no wrapper).
+# zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
+# ZIG_GLOBAL_CACHE_DIR overrides the lookup entirely.  Set it here so direct
+# zig invocations (e.g. raw zig cc, zig lld) work in CI envs without HOME.
+if "ZIG_GLOBAL_CACHE_DIR" not in os.environ:
+    _xdg_data = os.environ.get("XDG_DATA_HOME", "")
+    _home = os.environ.get("HOME", "")
+    if _xdg_data:
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_xdg_data}/zig/zig-cache"
+    elif _home:
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_home}/.local/share/zig/zig-cache"
+    else:
+        _uid = str(os.getuid()) if hasattr(os, "getuid") else "0"
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.path.join(
+            tempfile.gettempdir(), f"zig-cache-{_uid}"
+        )
 
 # Emulation detection: on CI, non-x86_64 Linux typically runs under QEMU.
 # zig's linker is too memory-hungry for emulated environments (OOM → exit 137).
@@ -361,7 +385,18 @@ def test_flag_filtering() -> None:
 
             # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
-            if not is_linux_target or _zig_impl_build_number < 17:
+            if is_ppc64le_target:
+                # ppc64le: LLD lacks relocation support -- verify wrapper blocks it
+                r_block = _run([zig_cc, "-fuse-ld=lld", "-o", "/dev/null",
+                                str(main_src)], cwd=td, timeout=30)
+                if r_block.returncode != 0 and "not supported on ppc64le" in r_block.stderr:
+                    PASS("-fuse-ld=lld blocked on ppc64le (wrapper guard)")
+                else:
+                    FAIL("-fuse-ld=lld ppc64le guard",
+                         f"expected rejection, got rc={r_block.returncode} stderr={r_block.stderr[:500]}")
+                SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
+                SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
+            elif not is_linux_target or _zig_impl_build_number < 17:
                 _reason = (f"non-Linux target ({_triplet}), see zig_impl tests" if not is_linux_target
                            else f"zig_impl build {_zig_impl_build_number} < 17")
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
@@ -750,6 +785,11 @@ def test_print_search_dirs() -> None:
         SKIP("print-search-dirs", "Windows target only")
         return
 
+    if _zig_impl_build_number < 20:
+        SKIP("print-search-dirs",
+             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
+        return
+
     if _is_cross_compiler:
         SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
         return
@@ -811,6 +851,11 @@ def test_mingw_prebuilt_import_libs() -> None:
 
     if not is_win_target:
         SKIP("mingw prebuilt import libs", "Windows target only")
+        return
+
+    if _zig_impl_build_number < 20:
+        SKIP("mingw prebuilt import libs",
+             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
         return
 
     if _build_is_win:

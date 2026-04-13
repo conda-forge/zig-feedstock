@@ -209,9 +209,11 @@ fi
 # libapi-ms-win-core-synch-l1-2-0.a, whose LIBRARY directive is api-ms-win-core-synch-l1-2-0.dll.
 # Windows API Set Schema resolves api-ms-win-* names to the actual host DLL at runtime.
 if is_not_unix; then
-  _mingw_common="${PREFIX}/Library/lib/zig/libc/mingw/lib-common"
+  _zig_lib="${PREFIX}/Library/lib/zig"
+  _mingw_common="${_zig_lib}/libc/mingw/lib-common"
 else
-  _mingw_common="${PREFIX}/lib/zig/libc/mingw/lib-common"
+  _zig_lib="${PREFIX}/lib/zig"
+  _mingw_common="${_zig_lib}/libc/mingw/lib-common"
 fi
 if [[ -d "${_mingw_common}" ]]; then
   cat > "${_mingw_common}/synchronization.def" << 'SYNCHRONIZATION_DEF'
@@ -253,11 +255,29 @@ fi
 #
 # uuid is special: compiled from libsrc/uuid.c (no DLL import lib needed).
 # Only generates files that are missing; safe to re-run.
+#
+# Target arch detection for dlltool machine type and zig cc -target.
+# ZIG_TRIPLET is e.g. "x86_64-windows-gnu" or "aarch64-windows-gnu".
+_win_arch="${ZIG_TRIPLET%%-*}"
+case "${_win_arch}" in
+  x86_64)       _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu" ;;
+  aarch64)      _dlltool_machine="arm64";        _win_target="aarch64-windows-gnu" ;;
+  *)            _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu"
+                echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
+esac
 if [[ -d "${_mingw_common}" ]]; then
-  if is_not_unix; then
-    _zig_bin="${PREFIX}/Library/bin/zig.exe"
-  else
-    _zig_bin="${PREFIX}/bin/zig"
+  # Use the BUILD machine's zig binary (CONDA_ZIG_BUILD) so this works even
+  # for cross-compilation targets (e.g. win-arm64 built on win-64) where the
+  # installed zig binary is for the wrong architecture and can't execute.
+  # BUILD_ZIG is the binary name (not a full path), so resolve via PATH first,
+  # then fall back to explicit BUILD_PREFIX locations.
+  _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
+  if [[ -z "${_zig_bin}" ]]; then
+    if is_not_unix; then
+      _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
+    else
+      _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+    fi
   fi
   _def_include="${_mingw_common}/../def-include"
   _mingw_libsrc="${_mingw_common}/../libsrc"
@@ -266,6 +286,8 @@ if [[ -d "${_mingw_common}" ]]; then
   for _cand in \
       "${BUILD_PREFIX}/bin/llvm-dlltool" \
       "${BUILD_PREFIX}/bin/llvm-dlltool.exe" \
+      "${BUILD_PREFIX}/Library/bin/llvm-dlltool.exe" \
+      "${BUILD_PREFIX}/Library/bin/llvm-dlltool" \
       "$(command -v llvm-dlltool 2>/dev/null || true)"; do
     if [[ -x "${_cand}" ]]; then
       _dlltool="${_cand}"
@@ -273,6 +295,7 @@ if [[ -d "${_mingw_common}" ]]; then
     fi
   done
 
+  is_debug && echo "=== MinGW import lib generation: zig=${_zig_bin} dlltool=${_dlltool:-not found} ==="
   if [[ -n "${_dlltool}" ]] && [[ -x "${_zig_bin}" ]]; then
     is_debug && echo "=== Generating MinGW import libs (dlltool=${_dlltool}) ==="
     _gen_count=0
@@ -285,7 +308,7 @@ if [[ -d "${_mingw_common}" ]]; then
       local dll
       dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
       [[ -z "${dll}" ]] && dll="${stem}.dll"
-      "${_dlltool}" -m i386:x86-64 -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null || true
+      "${_dlltool}" -m "${_dlltool_machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null || true
       _gen_count=$(( _gen_count + 1 ))
     }
 
@@ -307,7 +330,7 @@ if [[ -d "${_mingw_common}" ]]; then
       _def="${_mingw_common}/${_stem}.def"
       if [[ ! -f "${_def}" ]]; then
         "${_zig_bin}" cc -E -P \
-          -target x86_64-windows-gnu \
+          -target "${_win_target}" \
           -x assembler-with-cpp \
           -I"${_def_include}" \
           "${_def_in}" 2>/dev/null > "${_def}" || { rm -f "${_def}"; continue; }
@@ -321,7 +344,7 @@ if [[ -d "${_mingw_common}" ]]; then
     _uuid_src="${_mingw_libsrc}/uuid.c"
     if [[ ! -f "${_uuid_lib}" ]] && [[ -f "${_uuid_src}" ]]; then
       _uuid_obj="${_mingw_common}/_uuid.o"
-      "${_zig_bin}" cc -target x86_64-windows-gnu -c "${_uuid_src}" \
+      "${_zig_bin}" cc -target "${_win_target}" -c "${_uuid_src}" \
           -o "${_uuid_obj}" 2>/dev/null && \
         "${_zig_bin}" ar rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null || true
       rm -f "${_uuid_obj}"
@@ -329,6 +352,36 @@ if [[ -d "${_mingw_common}" ]]; then
     fi
 
     is_debug && echo "=== Generated ${_gen_count} import libs in ${_mingw_common} ==="
+
+    # Step 4: Supplemental import libs from mingw-w64 .def.in templates.
+    # Zig doesn't ship msvcrt.def or ucrtbase.def -- we provide complete
+    # mingw-w64 versions that cover all exports (stdio, math, POSIX I/O, etc.).
+    # These use #include "func.def.in" for arch macros, so -I must point to
+    # our mingw-defs/ directory (NOT zig's def-include/).
+    _supp_defs="${RECIPE_DIR}/building/mingw-defs"
+    if [[ -d "${_supp_defs}" ]]; then
+      is_debug && echo "=== Processing supplemental mingw-w64 .def.in templates ==="
+      for _supp_in in "${_supp_defs}"/*.def.in; do
+        [[ -f "${_supp_in}" ]] || continue
+        _supp_stem="$(basename "${_supp_in%.def.in}")"
+        # Skip support files (included by other .def.in, not standalone libs)
+        case "${_supp_stem}" in
+          func|ucrtbase-common|crt-aliases) continue ;;
+        esac
+        _supp_lib="${_mingw_common}/lib${_supp_stem}.a"
+        [[ -f "${_supp_lib}" ]] && continue
+        _supp_def="${_mingw_common}/${_supp_stem}.def"
+        if [[ ! -f "${_supp_def}" ]]; then
+          "${_zig_bin}" cc -E -P \
+            -target "${_win_target}" \
+            -x assembler-with-cpp \
+            -I"${_supp_defs}" \
+            "${_supp_in}" 2>/dev/null > "${_supp_def}" || { rm -f "${_supp_def}"; continue; }
+        fi
+        _gen_implib "${_supp_stem}" "${_supp_def}"
+      done
+      is_debug && echo "=== Supplemental import libs done (total ${_gen_count}) ==="
+    fi
 
     # Pre-compile Windows CRT startup objects for flexlink.
     # flexlink explicitly links crt2.o (console exe), crt2win.o (GUI exe),
@@ -343,7 +396,7 @@ if [[ -d "${_mingw_common}" ]]; then
       is_debug && echo "=== Compiling MinGW CRT startup objects from ${_mingw_crt} ==="
       is_debug && echo "=== CRT sources: $(ls "${_mingw_crt}" | tr '\n' ' ') ==="
 
-      _crt_flags=(-target x86_64-windows-gnu -mcpu=baseline
+      _crt_flags=(-target "${_win_target}" -mcpu=baseline
                   -I"${_mingw_inc}" -I"${_win_inc}"
                   -D_CRTIMP= -D__USE_MINGW_ACCESS -c)
 

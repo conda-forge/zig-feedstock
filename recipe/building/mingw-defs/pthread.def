@@ -1,0 +1,10 @@
+; mingw-w64 pthread import library for Windows
+; Supplements zig's bundled winpthreads with missing exports
+; needed by OCaml and other consumers.
+LIBRARY "libwinpthread-1.dll"
+EXPORTS
+
+pthread_cancel
+pthread_detach
+pthread_equal
+pthread_exit
