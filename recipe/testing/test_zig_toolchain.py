@@ -328,8 +328,8 @@ def test_flag_filtering() -> None:
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.
         # The wrapper should silently filter them so compilation succeeds.
-        if _is_emulated:
-            SKIP("linker flag filtering", "emulated CI — linker OOM risk")
+        if _is_emulated or _is_cross_compiler:
+            SKIP("linker flag filtering", "emulated/cross CI — cannot execute target binary")
         else:
             # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
             # Verifies the full pipeline:
@@ -416,8 +416,8 @@ def test_target_override() -> None:
              f"zig_impl build {_zig_impl_build_number} < 17 (wrappers lack override support)")
         return
 
-    if _is_emulated:
-        SKIP("target override", "emulated CI")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("target override", "emulated/cross CI — cannot execute target binary")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -453,8 +453,8 @@ def test_target_override() -> None:
 def test_shared_lib() -> None:
     print("--- Shared library creation ---")
 
-    if _is_emulated:
-        SKIP("shared lib creation", "emulated CI — linker OOM risk")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("shared lib creation", "emulated/cross CI — cannot execute target binary")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -565,8 +565,8 @@ def test_exe_linking() -> None:
     pthread_atfork_stub.o) are required at runtime."""
     print("--- Executable linking ---")
 
-    if _is_emulated:
-        SKIP("exe linking", "emulated CI — linker OOM risk")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("exe linking", "emulated/cross CI — cannot execute target binary")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -605,8 +605,8 @@ def test_libc_linking() -> None:
     that crashes with TODO panic in zig's doctest examples using -lc."""
     print("--- Libc linking ---")
 
-    if _is_emulated:
-        SKIP("libc linking", "emulated CI — linker OOM risk")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("libc linking", "emulated/cross CI — cannot execute target binary")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -748,6 +748,10 @@ def test_print_search_dirs() -> None:
 
     if not is_win_target:
         SKIP("print-search-dirs", "Windows target only")
+        return
+
+    if _is_cross_compiler:
+        SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
         return
 
     zig_cc = _env_var("ZIG_CC")

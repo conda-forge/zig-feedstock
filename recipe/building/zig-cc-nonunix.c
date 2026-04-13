@@ -190,6 +190,23 @@ static int handle_print_file_name(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    /* Ensure zig can resolve its cache directory.
+     * Zig uses APPDATA or USERPROFILE on Windows; if neither is set (some CI
+     * environments), compilation fails with AppDataDirUnavailable.
+     * ZIG_GLOBAL_CACHE_DIR overrides the lookup entirely. */
+    if (!getenv("ZIG_GLOBAL_CACHE_DIR") &&
+        !getenv("APPDATA") && !getenv("USERPROFILE")) {
+        char tmp[MAX_PATH];
+        if (GetTempPathA(MAX_PATH, tmp) > 0) {
+            char *env_val = malloc(strlen("ZIG_GLOBAL_CACHE_DIR=") + strlen(tmp) + 16);
+            if (env_val) {
+                sprintf(env_val, "ZIG_GLOBAL_CACHE_DIR=%szig-cache", tmp);
+                _putenv(env_val);
+                free(env_val);
+            }
+        }
+    }
+
     /* Handle -print-search-dirs and -print-file-name before anything else */
     if (handle_print_search_dirs(argc, argv))
         return 0;

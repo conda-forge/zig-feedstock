@@ -9,6 +9,14 @@
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
+# --- Ensure zig can resolve its cache directory ---
+# zig resolves its global cache as: ZIG_GLOBAL_CACHE_DIR > XDG_CACHE_HOME/zig
+# > HOME/.cache/zig.  On some CI environments (conda-build test phase) HOME is
+# unset, causing AppDataDirUnavailable.  Set a fallback so compilation works.
+if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]] && [[ -z "${XDG_CACHE_HOME:-}" ]] && [[ -z "${HOME:-}" ]]; then
+    export ZIG_GLOBAL_CACHE_DIR="${TMPDIR:-/tmp}/zig-cache-$(id -u 2>/dev/null || echo 0)"
+fi
+
 # --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
 # zig doesn't implement this flag. flexlink calls it to discover library search
 # paths for resolving -lXXX arguments. Without a response, flexlink has no

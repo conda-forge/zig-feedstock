@@ -329,6 +329,54 @@ if [[ -d "${_mingw_common}" ]]; then
     fi
 
     is_debug && echo "=== Generated ${_gen_count} import libs in ${_mingw_common} ==="
+
+    # Pre-compile Windows CRT startup objects for flexlink.
+    # flexlink explicitly links crt2.o (console exe), crt2win.o (GUI exe),
+    # and dllcrt2.o (DLL) as the first object file.  Zig compiles these
+    # internally, but flexlink searches for them on disk via -print-search-dirs
+    # paths.  Compile from zig's bundled MinGW CRT sources.
+    _mingw_crt="${_mingw_common}/../crt"
+    _mingw_inc="${_mingw_common}/../include"
+    _win_inc="${_zig_lib}/libc/include/any-windows-any"
+
+    if [[ -d "${_mingw_crt}" ]]; then
+      is_debug && echo "=== Compiling MinGW CRT startup objects from ${_mingw_crt} ==="
+      is_debug && echo "=== CRT sources: $(ls "${_mingw_crt}" | tr '\n' ' ') ==="
+
+      _crt_flags=(-target x86_64-windows-gnu -mcpu=baseline
+                  -I"${_mingw_inc}" -I"${_win_inc}"
+                  -D_CRTIMP= -D__USE_MINGW_ACCESS -c)
+
+      # crt2.o — console application entry (main)
+      _crt2_obj="${_mingw_common}/crt2.o"
+      if [[ ! -f "${_crt2_obj}" ]] && [[ -f "${_mingw_crt}/crtexe.c" ]]; then
+        "${_zig_bin}" cc "${_crt_flags[@]}" \
+          "${_mingw_crt}/crtexe.c" -o "${_crt2_obj}" 2>&1 | \
+          { is_debug && cat || true; } && \
+          is_debug && echo "=== Compiled crt2.o ==" || true
+      fi
+
+      # crt2win.o — GUI application entry (WinMain)
+      _crt2win_obj="${_mingw_common}/crt2win.o"
+      if [[ ! -f "${_crt2win_obj}" ]] && [[ -f "${_mingw_crt}/crtexewin.c" ]]; then
+        "${_zig_bin}" cc "${_crt_flags[@]}" -D_WINDOWS \
+          "${_mingw_crt}/crtexewin.c" -o "${_crt2win_obj}" 2>&1 | \
+          { is_debug && cat || true; } && \
+          is_debug && echo "=== Compiled crt2win.o ===" || true
+      fi
+
+      # dllcrt2.o — DLL entry (DllMain)
+      _dllcrt2_obj="${_mingw_common}/dllcrt2.o"
+      if [[ ! -f "${_dllcrt2_obj}" ]] && [[ -f "${_mingw_crt}/crtdll.c" ]]; then
+        "${_zig_bin}" cc "${_crt_flags[@]}" \
+          "${_mingw_crt}/crtdll.c" -o "${_dllcrt2_obj}" 2>&1 | \
+          { is_debug && cat || true; } && \
+          is_debug && echo "=== Compiled dllcrt2.o ===" || true
+      fi
+    else
+      is_debug && echo "=== MinGW CRT sources not found at ${_mingw_crt} ==="
+    fi
+
   else
     is_debug && echo "=== llvm-dlltool or zig not found; skipping import lib pre-generation ==="
   fi
