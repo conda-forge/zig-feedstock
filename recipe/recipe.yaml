@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 19
+  build_number: 20
   name: zig
   version: "0.15.2"
 
@@ -196,6 +196,7 @@ outputs:
         - python 3.12.*
         - if: not unix
           then:
+            - ${{ m2 }}gawk
             - ${{ m2 }}coreutils
             - ${{ m2 }}findutils
             - ${{ m2 }}which
@@ -270,7 +271,7 @@ outputs:
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (patch 0008)
       - script:
-          - python testing/test_libcxx_shared.py ${{ conda_triplet }}
+          - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
         requirements:
           run:
             - python >=3.10
@@ -282,6 +283,11 @@ outputs:
       - script:
           - if: not arm64
             then:
+              - if: unix
+                then:
+                  - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+                else:
+                  - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
               - ${{ conda_triplet }}-zig version
               - ${{ conda_triplet }}-zig zen
               - ${{ conda_triplet }}-zig init
@@ -299,11 +305,26 @@ outputs:
               - ${{ conda_triplet }}-zig cc -mconsole -o %TEMP%\test_run.exe %TEMP%\test_run.c
               - '%TEMP%\test_run.exe'
               - echo PASS zig cc compile+run (UCRT DLL resolution)
+      # Verify MinGW import libs were pre-generated in lib-common/
+      - script:
+          - if: not unix
+            then:
+              - for %%L in (kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
+              - echo PASS MinGW import libs present (Windows)
+          - if: unix and (win-64 in cross_target_platform_ or win-arm64 in cross_target_platform_)
+            then:
+              - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
+              - echo "PASS MinGW import libs present (cross-compiled)"
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them.
       # Verify -fuse-ld=lld patch (Linux/ELF + NonUnix/COFF, not macOS/Mach-O)
       - script:
-          - if: linux and not arm64
+          - if: unix
+            then:
+              - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+            else:
+              - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
+          - if: linux and not ppc64le and not arm64
             then:
               # Linux: test with ELF --dynamic-list
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
@@ -325,9 +346,11 @@ outputs:
               - echo '_main' > /tmp/test_lld.exp
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
               - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
-          - if: arm64 and linux
+          - if: ppc64le and linux
             then:
-              - echo "Skip -fuse-ld=lld test (emulated on linux-arm64)"
+              # LLD lacks ppc64le relocation support; wrapper guard tested via
+              # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
+              - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
 
   # ==========================================================================
   # ACTIVATION: zig_$cross_target_platform_ (scripts)
@@ -407,7 +430,7 @@ outputs:
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
-          - if: not arm64
+          - if: arm64 not in cross_target_platform_
             then:
               - ${{ conda_triplet }}-zig version
             else:
@@ -426,7 +449,10 @@ outputs:
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper + functional validation tests (Python, cross-platform)
-          - python testing/test_zig_toolchain.py
+          - if: unix
+            then: PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
+          - if: not unix
+            then: set PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
           # Cross-compiler .exe shim test (non-Unix only)
           - if: is_cross_compiler and not unix
             then:
@@ -507,8 +533,10 @@ outputs:
 
 about:
   homepage: https://ziglang.org/
-  license: MIT
-  license_file: zig-source/LICENSE
+  license: MIT AND LicenseRef-Public-Domain
+  license_file:
+    - zig-source/LICENSE
+    - building/mingw-defs/DISCLAIMER.PD
   summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
   description: |
     Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.

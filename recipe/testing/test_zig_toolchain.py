@@ -20,6 +20,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+
+# Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
+# rattler-build's UTF-8 stream reader even when tests pass).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -72,6 +79,23 @@ if _arch == "arm64":
 # Build-machine OS (where the test actually runs)
 _build_is_win = sys.platform == "win32"
 _build_is_mac = sys.platform == "darwin"
+
+# Ensure zig can resolve its cache directory when called directly (no wrapper).
+# zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
+# ZIG_GLOBAL_CACHE_DIR overrides the lookup entirely.  Set it here so direct
+# zig invocations (e.g. raw zig cc, zig lld) work in CI envs without HOME.
+if "ZIG_GLOBAL_CACHE_DIR" not in os.environ:
+    _xdg_data = os.environ.get("XDG_DATA_HOME", "")
+    _home = os.environ.get("HOME", "")
+    if _xdg_data:
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_xdg_data}/zig/zig-cache"
+    elif _home:
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_home}/.local/share/zig/zig-cache"
+    else:
+        _uid = str(os.getuid()) if hasattr(os, "getuid") else "0"
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.path.join(
+            tempfile.gettempdir(), f"zig-cache-{_uid}"
+        )
 
 # Emulation detection: on CI, non-x86_64 Linux typically runs under QEMU.
 # zig's linker is too memory-hungry for emulated environments (OOM → exit 137).
@@ -328,8 +352,8 @@ def test_flag_filtering() -> None:
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.
         # The wrapper should silently filter them so compilation succeeds.
-        if _is_emulated:
-            SKIP("linker flag filtering", "emulated CI — linker OOM risk")
+        if _is_emulated or _is_cross_compiler:
+            SKIP("linker flag filtering", "emulated/cross CI — cannot execute target binary")
         else:
             # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
             # Verifies the full pipeline:
@@ -361,7 +385,18 @@ def test_flag_filtering() -> None:
 
             # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
-            if not is_linux_target or _zig_impl_build_number < 17:
+            if is_ppc64le_target:
+                # ppc64le: LLD lacks relocation support -- verify wrapper blocks it
+                r_block = _run([zig_cc, "-fuse-ld=lld", "-o", "/dev/null",
+                                str(main_src)], cwd=td, timeout=30)
+                if r_block.returncode != 0 and "not supported on ppc64le" in r_block.stderr:
+                    PASS("-fuse-ld=lld blocked on ppc64le (wrapper guard)")
+                else:
+                    FAIL("-fuse-ld=lld ppc64le guard",
+                         f"expected rejection, got rc={r_block.returncode} stderr={r_block.stderr[:500]}")
+                SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
+                SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
+            elif not is_linux_target or _zig_impl_build_number < 17:
                 _reason = (f"non-Linux target ({_triplet}), see zig_impl tests" if not is_linux_target
                            else f"zig_impl build {_zig_impl_build_number} < 17")
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
@@ -416,8 +451,8 @@ def test_target_override() -> None:
              f"zig_impl build {_zig_impl_build_number} < 17 (wrappers lack override support)")
         return
 
-    if _is_emulated:
-        SKIP("target override", "emulated CI")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("target override", "emulated/cross CI — cannot execute target binary")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -453,8 +488,8 @@ def test_target_override() -> None:
 def test_shared_lib() -> None:
     print("--- Shared library creation ---")
 
-    if _is_emulated:
-        SKIP("shared lib creation", "emulated CI — linker OOM risk")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("shared lib creation", "emulated/cross CI — cannot execute target binary")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -565,8 +600,8 @@ def test_exe_linking() -> None:
     pthread_atfork_stub.o) are required at runtime."""
     print("--- Executable linking ---")
 
-    if _is_emulated:
-        SKIP("exe linking", "emulated CI — linker OOM risk")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("exe linking", "emulated/cross CI — cannot execute target binary")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -605,8 +640,8 @@ def test_libc_linking() -> None:
     that crashes with TODO panic in zig's doctest examples using -lc."""
     print("--- Libc linking ---")
 
-    if _is_emulated:
-        SKIP("libc linking", "emulated CI — linker OOM risk")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("libc linking", "emulated/cross CI — cannot execute target binary")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -735,6 +770,128 @@ def test_windows_import_libs() -> None:
 
 
 # ===================================================================
+# Section 4e — -print-search-dirs and pre-generated MinGW import libs
+# ===================================================================
+def test_print_search_dirs() -> None:
+    """Verify -print-search-dirs returns GCC-compatible output with valid paths.
+
+    flexlink's mingw_libs calls CC -print-search-dirs to find library search
+    paths.  Without a response, flexlink has no paths and treats -lws2_32 as a
+    literal filename, causing the link to fail.
+    """
+    print("--- -print-search-dirs (flexlink compat) ---")
+
+    if not is_win_target:
+        SKIP("print-search-dirs", "Windows target only")
+        return
+
+    if _zig_impl_build_number < 20:
+        SKIP("print-search-dirs",
+             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
+        return
+
+    if _is_cross_compiler:
+        SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("print-search-dirs", "ZIG_CC not set")
+        return
+
+    r = _run([zig_cc, "-print-search-dirs"], cwd=tempfile.gettempdir(), timeout=15)
+    if r.returncode != 0:
+        FAIL("-print-search-dirs exits zero", f"rc={r.returncode} stderr={r.stderr[:500]}")
+        return
+
+    output = r.stdout
+    if not output.strip():
+        FAIL("-print-search-dirs produces output", "stdout was empty")
+        return
+    PASS("-print-search-dirs produces output")
+
+    # flexlink parses the 'libraries:' line specifically
+    if "libraries:" in output:
+        PASS("-print-search-dirs has 'libraries:' line")
+    else:
+        FAIL("-print-search-dirs has 'libraries:' line", f"output: {output[:500]}")
+        return
+
+    # Extract library paths and verify at least one is a real directory
+    lib_line = next((ln for ln in output.splitlines() if ln.startswith("libraries:")), "")
+    paths_str = lib_line.split("=", 1)[-1] if "=" in lib_line else ""
+    sep = ";" if _build_is_win else ":"
+    paths = [p for p in paths_str.split(sep) if p.strip()]
+
+    if not paths:
+        FAIL("-print-search-dirs libraries line contains paths")
+        return
+
+    valid_dirs = [p for p in paths if Path(p).is_dir()]
+    if valid_dirs:
+        PASS(f"-print-search-dirs library paths exist ({len(valid_dirs)}/{len(paths)} valid)")
+    else:
+        FAIL("-print-search-dirs library paths exist",
+             f"none of {paths!r} are valid directories")
+
+
+def test_mingw_prebuilt_import_libs() -> None:
+    """Verify pre-generated MinGW import .a files exist for core Windows libs.
+
+    The -print-search-dirs response points flexlink to lib-common/.  These .a
+    files must exist on disk at install time so flexlink can resolve -lws2_32,
+    -lkernel32, etc. as library links rather than literal filenames.
+
+    .def files  → llvm-dlltool generates the .a directly.
+    .def.in files (ws2_32, kernel32, ...) → preprocessed with zig cc -E -P
+                  to expand F_X64/F_I386 macros, then llvm-dlltool.
+    uuid        → compiled from libsrc/uuid.c (no DLL import lib needed).
+    """
+    print("--- Pre-generated MinGW import libs ---")
+
+    if not is_win_target:
+        SKIP("mingw prebuilt import libs", "Windows target only")
+        return
+
+    if _zig_impl_build_number < 20:
+        SKIP("mingw prebuilt import libs",
+             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
+        return
+
+    if _build_is_win:
+        lib_common = _prefix / "Library" / "lib" / "zig" / "libc" / "mingw" / "lib-common"
+    else:
+        lib_common = _prefix / "lib" / "zig" / "libc" / "mingw" / "lib-common"
+
+    if not lib_common.is_dir():
+        FAIL("lib-common directory exists", str(lib_common))
+        return
+    PASS("lib-common directory exists")
+
+    # Core Windows system libs — from .def.in templates (ws2_32, kernel32, ole32,
+    # advapi32, user32) or plain .def (shlwapi, version, synchronization) or
+    # C source (uuid).
+    required = [
+        "libws2_32.a",       # .def.in — Winsock
+        "libkernel32.a",     # .def.in — Windows kernel
+        "libole32.a",        # .def.in — COM/OLE
+        "libadvapi32.a",     # .def.in — registry, security
+        "libuser32.a",       # .def.in — UI, message loop
+        "libuuid.a",         # C source (libsrc/uuid.c) — UUID constants
+        "libsynchronization.a",  # plain .def (our feedstock workaround)
+        "libshlwapi.a",      # plain .def — Shell lightweight API
+        "libversion.a",      # plain .def — version info
+    ]
+    for fname in required:
+        lib = lib_common / fname
+        if lib.exists() and lib.stat().st_size > 0:
+            PASS(f"pre-generated {fname}")
+        else:
+            FAIL(f"pre-generated {fname}",
+                 f"{lib} {'missing' if not lib.exists() else 'is empty (0 bytes)'}")
+
+
+# ===================================================================
 # Section 5 — Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
@@ -850,6 +1007,10 @@ def test_flag_filter_content() -> None:
         ("-Wl,-all_load filtered", "all_load"),
         ("-Wl,-force_load filtered", "force_load"),
         ("-mcpu=baseline in exec args", "mcpu=baseline"),
+        ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
+        ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
+        ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
+        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
     ]
     for label, needle in checks:
         if needle in text:
@@ -967,6 +1128,8 @@ def main() -> int:
     test_exe_linking()
     test_libc_linking()
     test_windows_import_libs()
+    test_print_search_dirs()
+    test_mingw_prebuilt_import_libs()
     test_visibility()
     test_lld_dispatch()
 

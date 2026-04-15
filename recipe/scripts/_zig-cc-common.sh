@@ -9,6 +9,38 @@
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
+# --- Ensure zig can resolve its cache directory ---
+# zig's global cache resolves as: ZIG_GLOBAL_CACHE_DIR (explicit) >
+# std.fs.getAppDataDir("zig")/zig-cache, where getAppDataDir on Linux checks
+# XDG_DATA_HOME then HOME/.local/share.  If neither is set, zig panics with
+# AppDataDirUnavailable.  Always set ZIG_GLOBAL_CACHE_DIR if unset, mirroring
+# zig's own resolution so the variable is always populated before exec.
+if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
+    if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+        export ZIG_GLOBAL_CACHE_DIR="${XDG_DATA_HOME}/zig/zig-cache"
+    elif [[ -n "${HOME:-}" ]]; then
+        export ZIG_GLOBAL_CACHE_DIR="${HOME}/.local/share/zig/zig-cache"
+    else
+        export ZIG_GLOBAL_CACHE_DIR="${TMPDIR:-/tmp}/zig-cache-$(id -u 2>/dev/null || echo 0)"
+    fi
+fi
+
+# --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
+# zig doesn't implement this flag. flexlink calls it to discover library search
+# paths for resolving -lXXX arguments. Without a response, flexlink has no
+# paths and treats -lws2_32 as a literal filename, then crashes.
+for _arg in "$@"; do
+    if [[ "$_arg" == "-print-search-dirs" ]]; then
+        _zig_lib="${CONDA_PREFIX}/lib/zig"
+        _mingw_common="${_zig_lib}/libc/mingw/lib-common"
+        _mingw_arch="${_zig_lib}/libc/mingw/lib-x86_64"
+        echo "install: ${_zig_lib}/"
+        echo "programs: =${CONDA_PREFIX}/bin/"
+        echo "libraries: =${_mingw_common}:${_mingw_arch}:${_zig_lib}"
+        exit 0
+    fi
+done
+
 # --- Handle -print-file-name=<name> (GCC/Clang compat) ---
 # zig doesn't support this flag. Intercept it, probe for the file in the
 # same locations as libcxx_shared.zig (zig-llvm/lib then lib), print the
@@ -83,6 +115,13 @@ for _a in "$@"; do
     esac
 done
 
+# --- Block LLD on ppc64le: LLD lacks ppc64le relocation support ---
+if (( _use_lld )) && [[ "@ZIG_TARGET_ARCH@" == "powerpc64le" ]]; then
+    echo "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)" >&2
+    echo "  Remove -fuse-ld=lld or any LLD-only flags (--dynamic-list, --version-script, etc.)" >&2
+    exit 1
+fi
+
 # --- Flag filtering ---
 # Only filter flags genuinely unsupported by both linkers and Clang.
 # LLD-supported flags pass through (LLD auto-promoted above).
@@ -116,6 +155,16 @@ while [[ $i -lt $argc ]]; do
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
+        # GCC runtime libraries zig doesn't ship and can't link
+        # -lgcc_eh: GCC exception handling — zig uses its own EH mechanism
+        # -lgcc_s:  GCC shared runtime — zig uses its own runtime
+        -lgcc_eh|-lgcc_s) ;;
+        # GNU ld colon-prefix syntax (-l:filename) for known zig-provided libs
+        # The -l: prefix means "exact filename match" (GNU ld extension).
+        # Zig's linker hits unreachable code when it sees this syntax.
+        # For targets where zig provides pthreads natively (Windows, Linux via
+        # libc), the static-pthread request is unnecessary and panics the linker.
+        -l:libpthread.a|-l:libpthread.so*) ;;
         *) args+=("$arg") ;;
     esac
     ((i++))

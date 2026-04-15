@@ -44,5 +44,20 @@ _zig_bin="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig"
 [[ -x "${_wrapper_dir}/zig-force-load-cc" ]]  && export ZIG_FORCE_LOAD_CC="${_wrapper_dir}/zig-force-load-cc"
 [[ -x "${_wrapper_dir}/zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${_wrapper_dir}/zig-force-load-cxx"
 
+# === Ensure zig can resolve its cache directory ===
+# zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
+# if neither is set it fails with AppDataDirUnavailable.  ZIG_GLOBAL_CACHE_DIR
+# overrides the lookup.  Set it here so direct zig invocations (recipe tests,
+# zig test, zig build) always have a writable cache, not just wrapper calls.
+if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
+    if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+        export ZIG_GLOBAL_CACHE_DIR="${XDG_DATA_HOME}/zig/zig-cache"
+    elif [[ -n "${HOME:-}" ]]; then
+        export ZIG_GLOBAL_CACHE_DIR="${HOME}/.local/share/zig/zig-cache"
+    else
+        export ZIG_GLOBAL_CACHE_DIR="${TMPDIR:-/tmp}/zig-cache-$(id -u 2>/dev/null || echo 0)"
+    fi
+fi
+
 # === Cleanup temporaries ===
 unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir _zig_bin
