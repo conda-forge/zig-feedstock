@@ -320,6 +320,7 @@ outputs:
               # ARM64 intrinsic stubs (only for win-arm64)
               - test -f "$PREFIX/lib/zig/libc/mingw/lib-common/___chkstk_ms.o" || { echo "FAIL missing ___chkstk_ms.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/lib-common/__intrinsic_setjmpex.o" || { echo "FAIL missing __intrinsic_setjmpex.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib-common/_fpreset_arm64.o" || { echo "FAIL missing _fpreset_arm64.o"; exit 1; }
               - echo "PASS ARM64 intrinsic stubs present"
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them.

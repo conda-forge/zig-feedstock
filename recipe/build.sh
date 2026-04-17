@@ -418,6 +418,27 @@ CHKSTK_EOF
         is_debug && echo "=== Compiled ___chkstk_ms stub ==="
       fi
 
+      # _fpreset: zig's bundled CRT objects (crt2.obj, libmingw32.lib) contain
+      # BL _fpreset (ARM64 branch). _fpreset lives in msvcrt.dll, but lld can't
+      # auto-import via BRANCH26 relocations. On ARM64 there's no x87 FPU, so
+      # _fpreset is a no-op -- provide a static stub to satisfy the CRT reference.
+      _fpreset_obj="${_mingw_common}/_fpreset_arm64.o"
+      if [[ ! -f "${_fpreset_obj}" ]]; then
+        cat > "${_mingw_common}/_fpreset_arm64.c" << 'FPRESET_EOF'
+// Static _fpreset stub for ARM64 Windows.
+// ARM64 has no x87 FPU -- _fpreset is a no-op.
+// Zig's bundled CRT objects call _fpreset via BL (branch) which generates
+// IMAGE_REL_ARM64_BRANCH26 relocations that lld can't auto-import.
+// This stub resolves the symbol at link time, avoiding the auto-import.
+void _fpreset(void) {}
+FPRESET_EOF
+        "${_zig_bin}" cc -target "${_win_target}" -c \
+          "${_mingw_common}/_fpreset_arm64.c" \
+          -o "${_fpreset_obj}" 2>/dev/null || true
+        rm -f "${_mingw_common}/_fpreset_arm64.c"
+        is_debug && echo "=== Compiled _fpreset stub ==="
+      fi
+
       # __intrinsic_setjmpex: setjmp variant for structured exception handling
       _setjmpex_obj="${_mingw_common}/__intrinsic_setjmpex.o"
       if [[ ! -f "${_setjmpex_obj}" ]]; then
