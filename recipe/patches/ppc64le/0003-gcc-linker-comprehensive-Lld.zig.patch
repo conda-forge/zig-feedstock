@@ -23,14 +23,13 @@ index 18682705..1fe344a7 100644
 +            var argv = std.array_list.Managed([]const u8).init(gpa);
 +            defer argv.deinit();
 +
-+            // Determine GCC path
-+            const gcc_path = std.process.getEnvVarOwned(arena, "CC") catch |err| switch (err) {
-+                error.EnvironmentVariableNotFound => if (target.cpu.arch == .powerpc64le)
-+                    "powerpc64le-conda-linux-gnu-gcc"
-+                else
-+                    "powerpc64-conda-linux-gnu-gcc",
-+                else => return err,
-+            };
++            // Determine GCC path - use arch-specific name directly.
++            // Do NOT read CC env var: in conda builds, CC is set to the
++            // zig-cc wrapper by activation scripts, causing infinite recursion.
++            const gcc_path: []const u8 = if (target.cpu.arch == .powerpc64le)
++                "powerpc64le-conda-linux-gnu-gcc"
++            else
++                "powerpc64-conda-linux-gnu-gcc";
 +            try argv.append(gcc_path);
 +
 +            // Output
