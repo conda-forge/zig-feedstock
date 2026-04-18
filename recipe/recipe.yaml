@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 20
+  build_number: 21
   name: zig
   version: "0.15.2"
 
@@ -309,12 +309,19 @@ outputs:
       - script:
           - if: not unix
             then:
-              - for %%L in (kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
+              - for %%L in (kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase pthread) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
               - echo PASS MinGW import libs present (Windows)
           - if: unix and (win-64 in cross_target_platform_ or win-arm64 in cross_target_platform_)
             then:
-              - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
+              - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase pthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
               - echo "PASS MinGW import libs present (cross-compiled)"
+          - if: win-arm64 in cross_target_platform_
+            then:
+              # ARM64 intrinsic stubs (only for win-arm64)
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib-common/___chkstk_ms.o" || { echo "FAIL missing ___chkstk_ms.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib-common/__intrinsic_setjmpex.o" || { echo "FAIL missing __intrinsic_setjmpex.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib-common/_fpreset_arm64.o" || { echo "FAIL missing _fpreset_arm64.o"; exit 1; }
+              - echo "PASS ARM64 intrinsic stubs present"
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them.
       # Verify -fuse-ld=lld patch (Linux/ELF + NonUnix/COFF, not macOS/Mach-O)

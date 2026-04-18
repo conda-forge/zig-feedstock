@@ -380,7 +380,85 @@ if [[ -d "${_mingw_common}" ]]; then
         fi
         _gen_implib "${_supp_stem}" "${_supp_def}"
       done
+      # Also process plain .def files (no preprocessing needed)
+      for _supp_def in "${_supp_defs}"/*.def; do
+        [[ -f "${_supp_def}" ]] || continue
+        _supp_stem="$(basename "${_supp_def%.def}")"
+        _supp_lib="${_mingw_common}/lib${_supp_stem}.a"
+        [[ -f "${_supp_lib}" ]] && continue
+        _gen_implib "${_supp_stem}" "${_supp_def}"
+      done
       is_debug && echo "=== Supplemental import libs done (total ${_gen_count}) ==="
+    fi
+
+    # Step 5: ARM64 intrinsic stubs (only for aarch64-windows-gnu).
+    # ___chkstk_ms (3 underscores on ARM64) -- stack probe called by MSVC ABI.
+    # __intrinsic_setjmpex -- setjmp variant used by MSVC exception handling.
+    # These are tiny asm/C stubs compiled into .o files in lib-common/.
+    if [[ "${_win_arch}" == "aarch64" ]]; then
+      is_debug && echo "=== Compiling ARM64 intrinsic stubs ==="
+
+      # ___chkstk_ms: ARM64 uses 3 underscores (not 2 like x86_64)
+      _chkstk_obj="${_mingw_common}/___chkstk_ms.o"
+      if [[ ! -f "${_chkstk_obj}" ]]; then
+        cat > "${_mingw_common}/_chkstk_ms_arm64.S" << 'CHKSTK_EOF'
+// ARM64 ___chkstk_ms stub -- probes stack pages for guard page support.
+// On ARM64, the ABI uses 3 underscores. This minimal stub just returns
+// (no-op probe), which is safe when stack size < guard page distance.
+    .text
+    .globl ___chkstk_ms
+    .def ___chkstk_ms; .scl 2; .type 32; .endef
+___chkstk_ms:
+    ret
+CHKSTK_EOF
+        "${_zig_bin}" cc -target "${_win_target}" -c \
+          "${_mingw_common}/_chkstk_ms_arm64.S" \
+          -o "${_chkstk_obj}" 2>/dev/null || true
+        rm -f "${_mingw_common}/_chkstk_ms_arm64.S"
+        is_debug && echo "=== Compiled ___chkstk_ms stub ==="
+      fi
+
+      # _fpreset: zig's bundled CRT objects (crt2.obj, libmingw32.lib) contain
+      # BL _fpreset (ARM64 branch). _fpreset lives in msvcrt.dll, but lld can't
+      # auto-import via BRANCH26 relocations. On ARM64 there's no x87 FPU, so
+      # _fpreset is a no-op -- provide a static stub to satisfy the CRT reference.
+      _fpreset_obj="${_mingw_common}/_fpreset_arm64.o"
+      if [[ ! -f "${_fpreset_obj}" ]]; then
+        cat > "${_mingw_common}/_fpreset_arm64.c" << 'FPRESET_EOF'
+// Static _fpreset stub for ARM64 Windows.
+// ARM64 has no x87 FPU -- _fpreset is a no-op.
+// Zig's bundled CRT objects call _fpreset via BL (branch) which generates
+// IMAGE_REL_ARM64_BRANCH26 relocations that lld can't auto-import.
+// This stub resolves the symbol at link time, avoiding the auto-import.
+void _fpreset(void) {}
+FPRESET_EOF
+        "${_zig_bin}" cc -target "${_win_target}" -c \
+          "${_mingw_common}/_fpreset_arm64.c" \
+          -o "${_fpreset_obj}" 2>/dev/null || true
+        rm -f "${_mingw_common}/_fpreset_arm64.c"
+        is_debug && echo "=== Compiled _fpreset stub ==="
+      fi
+
+      # __intrinsic_setjmpex: setjmp variant for structured exception handling
+      _setjmpex_obj="${_mingw_common}/__intrinsic_setjmpex.o"
+      if [[ ! -f "${_setjmpex_obj}" ]]; then
+        cat > "${_mingw_common}/_setjmpex_arm64.c" << 'SETJMPEX_EOF'
+// Weak stub for __intrinsic_setjmpex on ARM64.
+// Real implementation is in the CRT; this provides a link-time fallback.
+typedef void *jmp_buf[32];
+__attribute__((weak))
+int __intrinsic_setjmpex(jmp_buf env, void *frame) {
+    (void)env;
+    (void)frame;
+    return 0;
+}
+SETJMPEX_EOF
+        "${_zig_bin}" cc -target "${_win_target}" -c \
+          "${_mingw_common}/_setjmpex_arm64.c" \
+          -o "${_setjmpex_obj}" 2>/dev/null || true
+        rm -f "${_mingw_common}/_setjmpex_arm64.c"
+        is_debug && echo "=== Compiled __intrinsic_setjmpex stub ==="
+      fi
     fi
 
     # Pre-compile Windows CRT startup objects for flexlink.

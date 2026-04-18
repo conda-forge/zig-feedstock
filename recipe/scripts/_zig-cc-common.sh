@@ -115,11 +115,17 @@ for _a in "$@"; do
     esac
 done
 
-# --- Block LLD on ppc64le: LLD lacks ppc64le relocation support ---
+# --- Block explicit LLD on ppc64le: LLD lacks ppc64le relocation support ---
+# Only error on explicit -fuse-ld=lld. Standard ELF flags (--version-script,
+# --gc-sections, --build-id, etc.) pass through to ld.bfd via the GCC linker
+# redirect in Lld.zig -- they are NOT LLD-only.
 if (( _use_lld )) && [[ "@ZIG_TARGET_ARCH@" == "powerpc64le" ]]; then
-    echo "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)" >&2
-    echo "  Remove -fuse-ld=lld or any LLD-only flags (--dynamic-list, --version-script, etc.)" >&2
-    exit 1
+    for _a in "$@"; do
+        if [[ "$_a" == "-fuse-ld=lld" ]]; then
+            echo "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)" >&2
+            exit 1
+        fi
+    done
 fi
 
 # --- Flag filtering ---
