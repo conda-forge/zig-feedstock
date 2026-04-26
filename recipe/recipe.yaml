@@ -127,17 +127,17 @@ source:
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
-      # NB: ppc64le patches are gated on cross_target_platform_ (not the
-      # build platform) so they only run when actually targeting
-      # linux-ppc64le. The previous `linux and (x86_64 or ppc64le)` gate
-      # applied them to every linux-64-cross build and a single broken
-      # hunk in the unrebased ppc64le stack killed linux-64, linux-aarch64
-      # and linux-riscv64 before their own patches ran.
+      # ppc64le patches are gated on `linux` (any linux variant) so the
+      # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
+      # can also `zig cc -target powerpc64le-linux-gnu`. The patch
+      # bodies are arch-dispatched (target.cpu.arch == .powerpc64le
+      # blocks, switch arms with new powerpc64 cases), so applying
+      # them on non-ppc64le linux is a no-op at runtime.
       # NOTE: 0001-arch-support-st-other-{Object,SharedObject}.zig.patch
       # were obsolete in 0.16 — upstream replaced the raw cast with
       # `@truncate(@as(u3, ...))` which already masks the arch-specific
       # high bits of st_other.
-      - if: cross_target_platform_ == "linux-ppc64le"
+      - if: linux
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
           - patches/ppc64le/0001-arch-support-relocation.zig.patch
@@ -168,60 +168,48 @@ source:
           # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
     target_directory: zig-source
-  # Bootstrap zig binary from upstream (ziglang.org) for osx.
-  # The conda-forge zig_impl 0.15.2 pins libcxx 20.*, which clashes with
-  # the LLVM-21 compiler stack required by 0.16. Using upstream's pre-built
-  # binary sidesteps the solver conflict; see build.sh for the handoff.
-  #
-  # The tarball must match the BUILD machine's arch (what rattler-build
-  # runs on), not the target. conda-forge's Azure uses osx-64 runners
-  # even for the `osx_arm64_*` variant labels, so we can't just gate on
-  # target=osx-arm64 — we'd ship an arm64 binary to an x86_64 host. Two
-  # separate source entries, each gated on the build platform.
-  # Every platform bootstraps from upstream 0.16.0 pre-built binaries.
-  # conda-forge's zig_impl 0.15.2 can't parse 0.16's build.zig
-  # (use_new_linker / graph.io fields), which forces the CMake
-  # fallback bootstrap path — and that path hits arch-specific bugs:
-  #   - osx-arm64 native: zig1 (baked into stage1/zig1.wasm by older
-  #     Zig) emits x86_64 asm in compiler_rt.c even with -target
-  #     aarch64-macos.
-  #   - win-64: MSVC rejects zig2.c's zero-sized array idiom (C2466).
-  #   - linux-ppc64le: zig2.c compiles to functions larger than ppc64
-  #     direct-branch range (±32MB), producing operand-out-of-range
-  #     assembler errors.
-  #   - osx libcxx ABI: 0.15.2 build env pins libcxx 20, we need 21.
-  # A 0.16.0 bootstrap parses 0.16's build.zig natively so `zig build`
-  # succeeds on the first attempt and CMake is never touched.
-  - if: build_platform == "osx-arm64"
+  # Upstream ziglang.org bootstrap — only on build 0 (the first build
+  # of a new zig release).  conda-forge's published zig_impl_X 0.15.2
+  # can't parse 0.16's build.zig, and the CMake-fallback path hits
+  # arch-specific bugs (osx-arm64 compiler_rt codegen, win MSVC
+  # C2466, linux-ppc64le branch-range, osx libcxx ABI clash with
+  # libcxx 21 toolchain).  Using upstream's pre-built 0.16.0 binary
+  # parses its own build.zig natively → zig build succeeds first try.
+  # Subsequent builds (build_number > 0) use conda-forge's
+  # zig_impl_${build_platform} which by then is the 0.16.x we just
+  # published, so no upstream download is needed.
+  - if: build_number == 0
     then:
-      - url: https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz
-        sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
-        target_directory: zig-bootstrap
-  - if: build_platform == "osx-64"
-    then:
-      - url: https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz
-        sha256: 0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7
-        target_directory: zig-bootstrap
-  - if: build_platform == "win-64"
-    then:
-      - url: https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip
-        sha256: 68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e
-        target_directory: zig-bootstrap
-  - if: build_platform == "linux-64"
-    then:
-      - url: https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
-        sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
-        target_directory: zig-bootstrap
-  - if: build_platform == "linux-aarch64"
-    then:
-      - url: https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz
-        sha256: ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17
-        target_directory: zig-bootstrap
-  - if: build_platform == "linux-ppc64le"
-    then:
-      - url: https://ziglang.org/download/0.16.0/zig-powerpc64le-linux-0.16.0.tar.xz
-        sha256: 18800b45c08bf40b335ca5ab79aea70aca287ca969036e938155772becaeebeb
-        target_directory: zig-bootstrap
+      - if: build_platform == "osx-arm64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz
+            sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
+            target_directory: zig-bootstrap
+      - if: build_platform == "osx-64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz
+            sha256: 0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7
+            target_directory: zig-bootstrap
+      - if: build_platform == "win-64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip
+            sha256: 68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e
+            target_directory: zig-bootstrap
+      - if: build_platform == "linux-64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+            sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+            target_directory: zig-bootstrap
+      - if: build_platform == "linux-aarch64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz
+            sha256: ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17
+            target_directory: zig-bootstrap
+      - if: build_platform == "linux-ppc64le"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-powerpc64le-linux-0.16.0.tar.xz
+            sha256: 18800b45c08bf40b335ca5ab79aea70aca287ca969036e938155772becaeebeb
+            target_directory: zig-bootstrap
 
 build:
   number: ${{ build_number }}
@@ -306,14 +294,16 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig.
-        # On osx (either arch) we bootstrap from an upstream tarball (see
-        # `source:`) because the published conda-forge zig_impl 0.15.2
-        # pins libcxx 20.* and conflicts with the LLVM-21 toolchain
-        # required by 0.16. Other platforms still use the conda-forge
-        # bootstrap.
-        - if: not osx
+        # build_number == 0 (first build of a new release): use the
+        #   upstream tarball pulled in via `source:` above. No conda-
+        #   forge zig_impl_${build_platform} matching this version
+        #   exists yet, and on osx the previous release pins libcxx 20
+        #   which clashes with the LLVM-21 host env.
+        # build_number > 0: the just-published zig_impl_X 0.16.x can
+        #   parse its own build.zig — no upstream download needed.
+        - if: build_number != 0
           then:
-            - zig_impl_${{ build_platform }} >=0.15.2
+            - zig_impl_${{ build_platform }} >=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*

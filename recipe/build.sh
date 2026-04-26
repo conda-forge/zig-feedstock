@@ -53,33 +53,15 @@ fi
 
 # --- Main ---
 
-# Every platform bootstraps from upstream 0.16.0 instead of the
-# conda-forge zig_impl 0.15.2 package. The 0.15.2 compiler can't
-# parse 0.16's build.zig (use_new_linker/graph.io), forcing a CMake
-# fallback path that has arch-specific bugs (osx-arm64 compiler_rt
-# codegen, win MSVC C2466, linux-ppc64le branch-range).  A 0.16.0
-# bootstrap parses 0.16's build.zig, so `zig build` succeeds on the
-# first attempt and CMake is never touched.  The binary needs its
-# adjacent lib/ dir to work, so we rename/hardlink in place inside
-# the bootstrap dir and prepend that dir to PATH.
-if [[ -d "${SRC_DIR}/zig-bootstrap" ]]; then
-  _bootstrap_root="$(find "${SRC_DIR}/zig-bootstrap" -maxdepth 1 -type d -name 'zig-*' -print -quit)"
-  if is_not_unix; then
-    _bootstrap_zig="${_bootstrap_root}/zig.exe"
-    _bootstrap_aliased="${_bootstrap_root}/${CONDA_ZIG_BUILD}.exe"
-  else
-    _bootstrap_zig="${_bootstrap_root}/zig"
-    _bootstrap_aliased="${_bootstrap_root}/${CONDA_ZIG_BUILD}"
-  fi
-  if [[ -n "${_bootstrap_root}" && -x "${_bootstrap_zig}" ]]; then
-    # Hard link (not symlink — MSYS ln -s on NTFS produces files that
-    # Windows programs don't follow). Falls back to copy if hardlink
-    # can't be created (cross-volume, non-NTFS, etc.).
-    ln -f "${_bootstrap_zig}" "${_bootstrap_aliased}" 2>/dev/null || cp -f "${_bootstrap_zig}" "${_bootstrap_aliased}"
-    export PATH="${_bootstrap_root}:${PATH}"
-    echo "=== Using upstream zig bootstrap: ${_bootstrap_aliased} ==="
-  fi
-fi
+# Bootstrap selection (build_number == 0 only): use upstream
+# ziglang.org binary as bootstrap when this is the first build of a
+# new zig release. Subsequent builds use conda-forge's published
+# zig_impl_${build_platform} which can parse the matching build.zig
+# directly. recipe.yaml gates the source-entry download on
+# build_number == 0; this helper is a no-op when zig-bootstrap/
+# wasn't extracted.
+source "${RECIPE_DIR}/building/_upstream_bootstrap.sh"
+setup_upstream_zig_bootstrap
 
 # Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
 BUILD_ZIG="${CONDA_ZIG_BUILD}"
@@ -205,7 +187,9 @@ is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}
 # sysroot. Compile weak-symbol syscall() stubs and inject the .o into
 # both the zig-build path (via config.h's ZIG_LLVM_LIBRARIES) and the
 # CMake fallback path (via cmake/0002 target_link_libraries).
-if is_linux; then
+# Guard on CONDA_BUILD_SYSROOT: outside conda-forge CI (e.g. local
+# dev with a modern glibc system), the stubs aren't needed.
+if is_linux && [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
   source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
   create_glibc217_syscall_stubs "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o\"|g" "${cmake_build_dir}/config.h"
