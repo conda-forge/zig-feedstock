@@ -186,6 +186,21 @@ if is_linux; then
   is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
 fi
 
+# Apply zigcpp-affecting cmake patches BEFORE configure_cmake_zigcpp so
+# the static archive picks them up (specifically the win-64 /MD switch
+# — without it zigcpp.a's DEFAULTLIB pragma would point at libucrt.lib
+# (static) and clash with the dynamic ucrt.lib that bootstrap zig
+# auto-adds when linking the final zig binary).
+if is_not_unix; then
+  source "${RECIPE_DIR}/building/_cmake.sh"  # for apply_cmake_patches
+  CMAKE_PATCHES=(
+    0001-win-deprecations-zig_llvm.cpp.patch
+    0001-win-deprecations-zig_llvm-ar.cpp.patch
+    0002-MD-libzigcpp.patch
+  )
+  apply_cmake_patches "${cmake_source_dir}"
+fi
+
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
 # --- Post CMake Configuration ---
