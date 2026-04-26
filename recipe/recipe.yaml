@@ -162,6 +162,11 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
+          # MementoRC pre-warned on this on his earlier #102 work:
+          # `@log2 with vectors` fails on x86_64-windows by 1 ULP
+          # between scalar libm and LLVM's vector log2 intrinsic.
+          # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
+          - patches/non_unix/floatop.zig-log2-vectors-approx.patch
     target_directory: zig-source
   # Bootstrap zig binary from upstream (ziglang.org) for osx.
   # The conda-forge zig_impl 0.15.2 pins libcxx 20.*, which clashes with
