@@ -231,7 +231,15 @@ outputs:
       # `linux_64_cross_target_platform_linux-ppc64le` variant still
       # runs (target_platform=linux-64, it's the cross-compiler build,
       # no ppc64le linking happens).
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      #
+      # Skip native osx-64: the conda-forge Azure macOS-x64 runner
+      # pool consistently abandons this job mid-package_contents
+      # listing (~7 attempts in a row, "##[section]This job was
+      # abandoned. ... lost contact with the agent").  The
+      # `osx_arm64_cross_target_platform_osx-64` cross variant
+      # produces the same deployable osx-64 package and passes every
+      # time on the macOS-arm64 runner.
+      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (is_native and cross_target_platform_ == "osx-64")
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx
@@ -455,7 +463,7 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (is_native and cross_target_platform_ == "osx-64")
       script:
         file: install_zig_activation.py
         env:
@@ -579,7 +587,7 @@ outputs:
   - package:
       name: zig
     build:
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (is_native and cross_target_platform_ == "osx-64")
       script:
         file: install_zig_symlinks.py
         env:
@@ -615,7 +623,7 @@ outputs:
       name: zig-compiler
     build:
       noarch: generic
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (is_native and cross_target_platform_ == "osx-64")
       script: echo "zig-compiler metapackage"
     requirements:
       run:
