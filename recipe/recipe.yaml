@@ -61,7 +61,7 @@ context:
     ${{
       "x86_64-conda-linux-gnu"                      if build_platform == "linux-64"                      else
       "aarch64-conda-linux-gnu"                     if build_platform == "linux-aarch64"                 else
-      "x86_64-apple-darwin13.4.0"                   if (build_platform == "osx-64" and build_number == 0)                        else
+      "x86_64-apple-darwin13.4.0"                   if build_platform == "osx-64"                        else
       "arm64-apple-darwin20.0.0"                    if build_platform == "osx-arm64"                     else
       "x86_64-w64-mingw32"                          if build_platform == "win-64"                        else
       "unknown"
@@ -185,7 +185,7 @@ source:
           - url: https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz
             sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
             target_directory: zig-bootstrap
-      - if: (build_platform == "osx-64" and build_number == 0)
+      - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz
             sha256: 0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7
@@ -232,19 +232,18 @@ outputs:
       # runs (target_platform=linux-64, it's the cross-compiler build,
       # no ppc64le linking happens).
       #
-      # build_number == 0 only: skip every variant on the macOS-x64
-      # Azure runner pool.  Both
-      # `osx_64_cross_target_platform_{osx-64,osx-arm64}` got
+      # Skip every variant on the macOS-x64 Azure runner pool.
+      # Both `osx_64_cross_target_platform_{osx-64,osx-arm64}` got
       # abandoned ~8 attempts in a row mid-package_contents listing
       # ("##[section]This job was abandoned. ... lost contact with
-      # the agent") on this PR.  The pattern was independent of what
-      # the variant actually builds — the macOS-x64 runner pool was
-      # the failure point.  The two macOS-arm64-runner variants
+      # the agent").  The pattern is independent of what the variant
+      # actually builds — the macOS-x64 runner pool itself is the
+      # failure point.  conda-forge has been moving toward
+      # macOS-arm64-only build infrastructure (Apple is winding down
+      # x64 hardware support); the two macOS-arm64-runner variants
       # produce both deployable osx-64 and osx-arm64 packages
-      # reliably.  Subsequent builds (build_number > 0) re-enable
-      # the macOS-x64 variants in case the runner pool recovers or
-      # to surface real regressions.
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (build_platform == "osx-64" and build_number == 0)
+      # reliably.
+      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx
@@ -468,7 +467,7 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (build_platform == "osx-64" and build_number == 0)
+      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
       script:
         file: install_zig_activation.py
         env:
@@ -592,7 +591,7 @@ outputs:
   - package:
       name: zig
     build:
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (build_platform == "osx-64" and build_number == 0)
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
       script:
         file: install_zig_symlinks.py
         env:
@@ -628,7 +627,7 @@ outputs:
       name: zig-compiler
     build:
       noarch: generic
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or (build_platform == "osx-64" and build_number == 0)
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
       script: echo "zig-compiler metapackage"
     requirements:
       run:
