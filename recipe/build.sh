@@ -94,14 +94,17 @@ EXTRA_CMAKE_ARGS=(
   -DZIG_USE_LLVM_CONFIG=ON
 )
 
-# Cross-compile stage1 host-tool split (osx only for now): zig-wasm2c /
-# zig1 are build-host tools; when CC ≠ CC_FOR_BUILD (osx-arm64 built on
-# osx-64 runner) CMAKE_C_COMPILER produces binaries that can't run on
-# the build host. Cache -DZIG_STAGE1_HOST_CC in the initial configure so
-# the fallback patch's if(ZIG_STAGE1_HOST_CC) branch activates when
-# cmake reconfigures. Linux cross uses CROSSCOMPILING_EMULATOR (qemu)
-# via patches/cmake/0003-cross-CMakeLists.txt.patch; don't double-patch.
-if is_osx && [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
+# Cross-compile stage1 host-tool split: zig-wasm2c / zig1 are
+# build-host tools; when CC ≠ CC_FOR_BUILD CMAKE_C_COMPILER produces
+# binaries that can't run on the build host.  ZIG_STAGE1_HOST_CC
+# routes those targets through the build-host compiler (via add_
+# custom_command in patches/cmake/0003-cmake-stage1-host-cc-...),
+# leaving zig2 / compiler_rt / zigcpp on CMAKE_C_COMPILER.
+#
+# Applied on every cross variant (osx + linux-cross).  For linux-cross
+# this replaces the qemu emulator path that used to wrap zig-wasm2c /
+# zig1 invocations in 0003-cross-CMakeLists.txt.patch.
+if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
   EXTRA_CMAKE_ARGS+=(-DZIG_STAGE1_HOST_CC="${CC_FOR_BUILD}")
 fi
 
