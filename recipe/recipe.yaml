@@ -232,7 +232,8 @@ outputs:
       # runs (target_platform=linux-64, it's the cross-compiler build,
       # no ppc64le linking happens).
       #
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      dynamic_linking:
+      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      dynamic_linking:
         missing_dso_allowlist:
           - if: osx
             then: /usr/lib/libSystem.B.dylib
@@ -455,7 +456,8 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      script:
+      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      script:
         file: install_zig_activation.py
         env:
           ZIG_TRIPLET: ${{ zig_triplet }}
@@ -578,7 +580,8 @@ outputs:
   - package:
       name: zig
     build:
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      script:
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      script:
         file: install_zig_symlinks.py
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -613,7 +616,8 @@ outputs:
       name: zig-compiler
     build:
       noarch: generic
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      script: echo "zig-compiler metapackage"
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
+      script: echo "zig-compiler metapackage"
     requirements:
       run:
         - ${{ pin_subpackage("zig", exact=True) }}
