@@ -232,19 +232,7 @@ outputs:
       # runs (target_platform=linux-64, it's the cross-compiler build,
       # no ppc64le linking happens).
       #
-      # Skip every variant on the macOS-x64 Azure runner pool.
-      # Both `osx_64_cross_target_platform_{osx-64,osx-arm64}` got
-      # abandoned ~8 attempts in a row mid-package_contents listing
-      # ("##[section]This job was abandoned. ... lost contact with
-      # the agent").  The pattern is independent of what the variant
-      # actually builds — the macOS-x64 runner pool itself is the
-      # failure point.  conda-forge has been moving toward
-      # macOS-arm64-only build infrastructure (Apple is winding down
-      # x64 hardware support); the two macOS-arm64-runner variants
-      # produce both deployable osx-64 and osx-arm64 packages
-      # reliably.
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
-      dynamic_linking:
+      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      dynamic_linking:
         missing_dso_allowlist:
           - if: osx
             then: /usr/lib/libSystem.B.dylib
@@ -467,8 +455,7 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
-      script:
+      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      script:
         file: install_zig_activation.py
         env:
           ZIG_TRIPLET: ${{ zig_triplet }}
@@ -591,8 +578,7 @@ outputs:
   - package:
       name: zig
     build:
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
-      script:
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      script:
         file: install_zig_symlinks.py
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -627,8 +613,7 @@ outputs:
       name: zig-compiler
     build:
       noarch: generic
-      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le") or build_platform == "osx-64"
-      script: echo "zig-compiler metapackage"
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")      script: echo "zig-compiler metapackage"
     requirements:
       run:
         - ${{ pin_subpackage("zig", exact=True) }}
