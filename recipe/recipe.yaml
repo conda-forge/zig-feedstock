@@ -111,16 +111,9 @@ source:
       # upstream 0.16 rewrote MinGW .def parsing in pure Zig
       # (src/libs/mingw/def.zig) and already appends `.dll` to LIBRARY names
       # without extensions, so this patch has been dropped permanently.
-      # Cap zig's declared max_rss from 8 GB → 7 GB. Azure macOS-15 + linux
-      # CI agents have ~7 GB RAM; without this cap zig refuses to schedule
-      # the heavy link step under our `--maxrss 7500000000` ceiling and
-      # falls back to CMake. Applies to both linux and osx (osx-64 native
-      # was abandoning Azure agents from runtime OOM during this step).
-      - if: unix
-        then:
-          - patches/build.zig-maxrss.patch
       - if: linux
         then:
+          - patches/build.zig-maxrss.patch
           - patches/linux/build.zig-02-doctest-forward-target.patch
           # NOTE: patches/linux/posix.zig-glibc-2.17-fstat.patch is obsolete —
           # `std.posix.fstat` was removed entirely in 0.16; no callers remain.

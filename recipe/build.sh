@@ -134,16 +134,16 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
-fi
-if is_linux; then
+else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
-fi
-# Cap zig's task-scheduler memory ceiling on every unix variant.
-# Pairs with patches/build.zig-maxrss.patch which lowers the
-# declared link-step max from 8 GB → 7 GB. Azure macOS-15 + linux
-# CI agents have ~7 GB RAM; 7.5 GB cap allows the 7 GB-declared
-# step to schedule with minimal headroom.
-if is_unix; then
+  # --maxrss + the build.zig max_rss patch are linux-only.  Adding
+  # them to osx (commit 22a8ddb) capped zig's build-graph scheduler
+  # at 7 GB → forced more serial task execution → osx_64 native
+  # build wall time grew from ~32 min (historical successes) to
+  # ~58 min, tipping Azure's macOS-15 agents into abandonment.
+  # Reverted to the no-cap default for osx; the heavy link step
+  # uses < 7 GB in practice on osx-arm64 native builds (proven by
+  # repeated successes), and lets zig parallelize across cores.
   EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
 fi
 
