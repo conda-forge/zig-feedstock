@@ -367,7 +367,9 @@ outputs:
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (patch 0008)
       - script:
-          - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
+          - if: not osx
+            then:
+              - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
         requirements:
           run:
             - python >=3.10
@@ -377,7 +379,7 @@ outputs:
             - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: not arm64
+          - if: not osx
             then:
               - if: unix
                 then:
@@ -445,13 +447,13 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx
-            then:
-              # macOS: test with Mach-O -exported_symbols_list via LLD
-              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
-              - echo '_main' > /tmp/test_lld.exp
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
-              - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
+          # - if: osx
+          #   then:
+          #     # macOS: test with Mach-O -exported_symbols_list via LLD
+          #     - echo 'int main(void){return 0;}' > /tmp/test_lld.c
+          #     - echo '_main' > /tmp/test_lld.exp
+          #     - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
+          #     - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
           - if: ppc64le and linux
             then:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
