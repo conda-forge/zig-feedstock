@@ -134,15 +134,16 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
-  # Azure macOS-15 hosted agents have ~7 GB RAM.  Without a max_rss
-  # cap zig's build graph can spike past the agent's memory ceiling
-  # and the kernel kills the agent process — surfaces in CI as
-  # "##[section]This job was abandoned. ... lost contact with the
-  # agent" with no error message (because the OS killed the
-  # process before flush).  Cap below 7 GB for headroom.
-  EXTRA_ZIG_ARGS+=(--maxrss 6000000000)
-else
+fi
+if is_linux; then
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
+fi
+# Cap zig's task-scheduler memory ceiling on every unix variant.
+# Pairs with patches/build.zig-maxrss.patch which lowers the
+# declared link-step max from 8 GB → 7 GB. Azure macOS-15 + linux
+# CI agents have ~7 GB RAM; 7.5 GB cap allows the 7 GB-declared
+# step to schedule with minimal headroom.
+if is_unix; then
   EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
 fi
 
