@@ -134,6 +134,13 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
+  # Azure macOS-15 hosted agents have ~7 GB RAM.  Without a max_rss
+  # cap zig's build graph can spike past the agent's memory ceiling
+  # and the kernel kills the agent process — surfaces in CI as
+  # "##[section]This job was abandoned. ... lost contact with the
+  # agent" with no error message (because the OS killed the
+  # process before flush).  Cap below 7 GB for headroom.
+  EXTRA_ZIG_ARGS+=(--maxrss 6000000000)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
