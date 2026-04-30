@@ -145,7 +145,9 @@ if is_osx; then
     EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
     if [[ "${target_platform}" == "osx-64" ]]; then
       CFLAGS=${CFLAGS//-march=core2/}
+      CFLAGS=${CFLAGS//-mtune=haswell/}
       CXXFLAGS=${CXXFLAGS//-march=core2/}
+      CXXFLAGS=${CXXFLAGS//-mtune=haswell/}
       export CFLAGS=${CFLAGS//-mssse3/} CXXFLAGS=${CXXFLAGS//-mssse3/}
     fi
   fi
