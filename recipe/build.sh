@@ -143,6 +143,11 @@ if is_osx; then
   # serialization slowdowns previously (see the linux comment below).
   if [[ "${build_platform}" == "osx-arm64" ]]; then
     EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
+    if [[ "${target_platform}" == "osx-64" ]]; then
+      CFLAGS=${CFLAGS//-march=core2/}
+      CXXFLAGS=${CXXFLAGS//-march=core2/}
+      export CFLAGS=${CFLAGS//-mssse3/} CXXFLAGS=${CXXFLAGS//-mssse3/}
+    fi
   fi
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
