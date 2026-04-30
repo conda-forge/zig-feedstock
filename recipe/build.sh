@@ -104,7 +104,7 @@ EXTRA_CMAKE_ARGS=(
 # Applied on every cross variant (osx + linux-cross).  For linux-cross
 # this replaces the qemu emulator path that used to wrap zig-wasm2c /
 # zig1 invocations in 0003-cross-CMakeLists.txt.patch.
-if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
+if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" && "${target_platform}" != "osx-64" ]]; then
   EXTRA_CMAKE_ARGS+=(-DZIG_STAGE1_HOST_CC="${CC_FOR_BUILD}")
 fi
 
