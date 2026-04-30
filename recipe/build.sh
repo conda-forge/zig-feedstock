@@ -135,21 +135,66 @@ fi
 # -mlongcall makes GCC emit indirect calls via CTR for any-distance reach.
 # Applies to both native and cross ppc64le builds (same generated source).
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  export CFLAGS="${CFLAGS:-} -mlongcall"
-  export CXXFLAGS="${CXXFLAGS:-} -mlongcall"
-  # Belt-and-suspenders: force CMAKE_C_FLAGS / CMAKE_CXX_FLAGS via the
-  # non-INIT command-line form (not _INIT). _INIT only seeds the cache on
+  # -mlongcall: convert direct calls to indirect for our local code. Insufficient
+  # alone since (a) partial-inline clones (.part.0/.constprop.0) plus -fno-plt
+  # (conda-forge default) can still emit raw R_PPC64_REL24, (b) prebuilt
+  # $PREFIX/lib/liblldELF.a (lld-20 package) was NOT built with -mlongcall, so
+  # its global ctors call into std::vector helpers via REL24 -- and as LLVM/LLD 20
+  # archives grew, the combined image exceeded REL24's +/-32MB reach.
+  # -mcmodel=large: forces TOC-relative call sequences in our local code,
+  # eliminating REL24 from zigcpp.a + zig2.c.o.
+  # -Wl,--no-relax was REMOVED (build 22 -> 23): originally added believing it
+  # preserved linker-inserted long-call stubs against prebuilt liblldELF.a, but
+  # REL24 truncation persisted and got worse after the 2026-04-29/30 conda-forge
+  # re-render bumped LLVM 20 archive sizes. --no-relax disables PPC64 TOC
+  # optimization that the linker also uses to insert long-branch stubs; letting
+  # default relaxation run allows ld.bfd to insert __longcall_* trampolines for
+  # far calls into prebuilt liblldELF.a/libzigcpp.a global ctors.
+  # Option B' only (B dropped: incompatible with PPC64 REL24).
+  # B (DROPPED): -ffunction-sections -fdata-sections + -Wl,--gc-sections scatter
+  #   intra-TU functions, defeating REL24 locality on PPC64 (+-32MB branch reach).
+  # B': -fno-partial-inlining -fno-ipa-cp-clone prevents GCC from emitting
+  #     .part.0/.constprop.0 cloned variants that bypass -mlongcall (the
+  #     existing comment above explicitly flags this as a -mlongcall escape).
+  # ppc64le huge-binary REL24: distributed stub groups (2MB chunks) reach all
+  # call sites; -1 = single group fails when total .text > 64MB. Switch to 2097152
+  # (2MB) to create many distributed stub groups, each within REL24 reach of nearby call sites.
+  export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=2097152"
+  export NINJA_FLAGS="-v"
+  # Belt-and-suspenders: force CMAKE_{C,CXX,EXE_LINKER,SHARED_LINKER}_FLAGS via
+  # the non-INIT command-line form (not _INIT). _INIT only seeds the cache on
   # the FIRST configure; cmake_fallback_build re-runs configure with the
-  # patched CMakeLists.txt and the cached value can drift (env CFLAGS is
-  # not re-read on re-configure once the cache is populated). Passing
-  # -DCMAKE_C_FLAGS/-DCMAKE_CXX_FLAGS on every invocation forces the
-  # value, so -mlongcall reaches both zigcpp's initial compile AND any
-  # rebuild triggered by the patched re-configure. Use the full env value
-  # so we don't strip conda-forge default flags (-O2, -fPIC, isystem ...).
+  # patched CMakeLists.txt and the cached value can drift (env flags are not
+  # re-read on re-configure once the cache is populated). Passing -D... on
+  # every invocation forces the value, so flags reach both zigcpp's initial
+  # compile/link AND any rebuild triggered by the patched re-configure.
   EXTRA_CMAKE_ARGS+=(
     -DCMAKE_C_FLAGS="${CFLAGS}"
     -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
+    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
+    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
+    -DZIG_LLD_BUNDLE_SO="${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so"
   )
+fi
+
+# osx cross with arch mismatch (e.g. osx-arm64 host -> osx-64 target):
+# conda-forge target activation injects x86_64-only flags (-march=core2,
+# -mtune=haswell, -mssse3) into CFLAGS/CXXFLAGS. CMake try_compile probes
+# the BUILD-host compiler with `-arch arm64`, and the cross-clang wrapper
+# x86_64-apple-darwin*-clang errors with "unsupported argument 'core2' to
+# option '-march='". Stripping is safer than rewriting: zig's own target
+# is set via -Dtarget=${ZIG_TRIPLET} and -Dcpu=baseline, so the dropped
+# tuning flags are not load-bearing for the produced binary.
+if is_osx && is_cross; then
+  for _v in CFLAGS CXXFLAGS; do
+    eval "_val=\${${_v}:-}"
+    _val="$(echo "${_val}" \
+      | sed -E 's/(^| )-march=[^ ]+//g; s/(^| )-mtune=[^ ]+//g; s/(^| )-mssse3//g; s/  +/ /g; s/^ +//; s/ +$//')"
+    eval "export ${_v}=\"\${_val}\""
+  done
+  unset _v _val
 fi
 
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref because zig2
@@ -177,9 +222,22 @@ if is_unix; then
   # ZIG_EXTRA_BUILD_ARGS hook: cmake appends it to ZIG_BUILD_ARGS, and zig's
   # --search-prefix adds ${PREFIX}/lib as -L and embeds it as DT_RUNPATH (linux)
   # or LC_RPATH (osx), so the dynamic linker can find libclang-cpp at startup.
+  # ZIG_EXTRA_BUILD_ARGS reaches upstream cmake's zig2 build invocation that
+  # produces stage3. On osx we ALSO append --maxrss here because that upstream
+  # invocation does NOT consume our EXTRA_ZIG_ARGS array (which only feeds our
+  # own build_zig_with_zig path). osx-arm64 GHA runners auto-budget zig's
+  # --maxrss to ~7 GiB; stage3 declares ~7.8 GB → `memory_blocked_steps`
+  # assertion in build_runner.zig:679. Semicolon-separated form is the cmake
+  # list syntax; cmake splits on ; and appends each token as a separate arg.
+  if is_osx; then
+    _zig_extra="--search-prefix;${PREFIX};--maxrss;8589934592"
+  else
+    _zig_extra="--search-prefix;${PREFIX}"
+  fi
   EXTRA_CMAKE_ARGS+=(
-    "-DZIG_EXTRA_BUILD_ARGS=--search-prefix;${PREFIX}"
+    "-DZIG_EXTRA_BUILD_ARGS=${_zig_extra}"
   )
+  unset _zig_extra
 fi
 
 if is_osx; then
@@ -187,6 +245,12 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
+  # Stage3 zig build declares ~7.8 GB upper bound; osx-arm64 GHA runners
+  # auto-budget zig's --maxrss to ~7 GiB based on system RAM, which trips
+  # `assert(memory_blocked_steps.items.len == 0)` in build_runner.zig.
+  # Pin to 8 GiB. Same value also appended via ZIG_EXTRA_BUILD_ARGS above
+  # for upstream cmake's zig2 build (different invocation path).
+  EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
@@ -249,6 +313,22 @@ fi
 # path. Insertion site (after find_package(Threads), ~line 187) is
 # outside the 784-1015 region the existing cmake patches touch.
 is_linux && perl -pi -e 's@(find_package\(Threads\))@$1\nlist(APPEND LLVM_LIBRARIES "-lzstd" "-lxml2" "-lz")@' "${cmake_source_dir}"/CMakeLists.txt
+
+# osx cross: CMake's compiler detection probes the raw clang binary which
+# resolves to the build (runner) arch — the conda cross-compiler on macOS is
+# the same clang++ binary with -arch <target> in CXXFLAGS, but try_compile
+# ignores those flags at probe time. CMake then writes CMAKE_OSX_ARCHITECTURES
+# matching the host, and Phase A's configure_cmake_zigcpp builds host-arch
+# objects into build-release/zigcpp/libzigcpp.a. Phase 3 stage3 (cross to
+# target arch) then fails with "invalid cpu architecture: <host>" parsing
+# libzigcpp.a. Fix: force the target arch via -DCMAKE_OSX_ARCHITECTURES so
+# both Phase A and Phase 2 (cmake_fallback_build) build target-arch objects.
+if is_osx && is_cross; then
+  case "${target_platform}" in
+    osx-64)     EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=x86_64) ;;
+    osx-arm64)  EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=arm64) ;;
+  esac
+fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
@@ -333,6 +413,7 @@ fi
 if is_linux; then
   patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
 fi
+
 
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 # Phase 1 skipped langref (zig2 has dev=core, no translate_c). Now use the

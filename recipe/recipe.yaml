@@ -167,6 +167,8 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
+          - patches/non_unix/mingw-crtexe-no-atexit-aarch64.patch
+      # Note: patches under recipe/patches/cmake/ are applied programmatically by recipe/building/_cmake.sh, not listed here.
     target_directory: zig-source
 
 build:
@@ -198,7 +200,7 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
           
-          CMAKE_BUILD: "1"
+          CMAKE_BUILD: "0"
           CMAKE_FALLBACK: "0"
           
           # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
@@ -250,7 +252,7 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2
+        - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -288,7 +290,7 @@ outputs:
           bin:
             - ${{ conda_triplet }}-zig
           files:
-            - if: not ppc64le and not (target_platform == "osx-arm64" and build_platform != target_platform)
+            - if: not ppc64le and not ("osx" in target_platform and build_platform != target_platform)
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -361,7 +363,7 @@ outputs:
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/__intrinsic_setjmpex.o" || { echo "FAIL missing __intrinsic_setjmpex.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/_fpreset_arm64.o" || { echo "FAIL missing _fpreset_arm64.o"; exit 1; }
               - echo "PASS ARM64 intrinsic stubs present"
-              # ARM64 CRT startup objects (consumed by flexlink/OCaml etc.)
+              # ARM64 MinGW CRT startup objects
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2.o" || { echo "FAIL missing crt2.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2win.o" || { echo "FAIL missing crt2win.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/dllcrt2.o" || { echo "FAIL missing dllcrt2.o"; exit 1; }
@@ -434,7 +436,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
       host:
         - if: not is_cross_compiler
           then:
@@ -444,7 +446,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: cross_target_platform_ == "linux-ppc64le"

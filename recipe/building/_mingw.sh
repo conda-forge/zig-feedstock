@@ -5,7 +5,7 @@
 
 generate_mingw_import_libs() {
   # Workaround for ziglang/zig#14919: add synchronization.def so zig can generate
-  # libsynchronization.a when cross-compiling to Windows (e.g. OCaml BYTECCLIBS uses -lsynchronization).
+  # libsynchronization.a when cross-compiling to Windows (consumers using -lsynchronization).
   # IMPORTANT: LIBRARY must be api-ms-win-core-synch-l1-2-0.dll, NOT synchronization.dll.
   # "synchronization.dll" is neither a real DLL on disk nor a valid API Set Schema name -- it doesn't
   # exist as a physical file in Windows or MSYS2. The real MinGW-w64 alias points to
@@ -45,10 +45,9 @@ SYNCHRONIZATION_DEF
   fi
 
   # Pre-generate Windows PE import libraries (.a) from zig's MinGW .def/.def.in files.
-  # flexlink (OCaml's Windows linker) calls -print-search-dirs to find library
-  # search paths, then looks for libXXX.a files at those paths.  zig generates
-  # import libs internally at link time (cached in ~/.cache/zig/), but flexlink
-  # needs them at a fixed, known location.
+  # MinGW consumers call -print-search-dirs to find library search paths, then look
+  # for libXXX.a files at those paths.  zig generates import libs internally at link
+  # time (cached in ~/.cache/zig/), but consumers need them at a fixed, known location.
   #
   # Two types of source files exist in lib-common/:
   #   .def     -- ready to use directly with dlltool (e.g. shlwapi.def)
@@ -208,8 +207,8 @@ SYNCHRONIZATION_DEF
         _crt_outdir="${_mingw_common}"
       fi
 
-      # Pre-compile Windows CRT startup objects for flexlink.
-      # flexlink explicitly links crt2.o (console exe), crt2win.o (GUI exe),
+      # Pre-compile MinGW CRT startup objects.
+      # Consumers explicitly link crt2.o (console exe), crt2win.o (GUI exe),
       # and dllcrt2.o (DLL) as the first object file.  Zig compiles these
       # internally, but flexlink searches for them on disk via -print-search-dirs
       # paths.  Compile from zig's bundled MinGW CRT sources.
