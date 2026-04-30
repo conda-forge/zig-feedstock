@@ -134,6 +134,16 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
+  # macOS-15-arm64 GitHub Actions runners ship with ~7 GB RAM; zig's
+  # ReleaseSafe link step declares an 8 GB upper bound and refuses to
+  # schedule itself unless explicitly allowed.  Pass --maxrss 8 GB so
+  # zig will run the step (overflow into swap is fine on a clean
+  # runner).  Do *not* set this on macOS-15 x86_64 (Azure) — those
+  # agents have plenty of RAM and capping the scheduler caused
+  # serialization slowdowns previously (see the linux comment below).
+  if [[ "${build_platform}" == "osx-arm64" ]]; then
+    EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
+  fi
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   # --maxrss + the build.zig max_rss patch are linux-only.  Adding
