@@ -150,7 +150,7 @@ if is_osx; then
       CXXFLAGS=${CXXFLAGS//-mtune=haswell/}
       export CFLAGS=${CFLAGS//-mssse3/} CXXFLAGS=${CXXFLAGS//-mssse3/}
       EXTRA_CMAKE_ARGS+=(
-        -DCMAKE_OSX_ARCHITECTURES=$(arch_from target_platform)
+        -DCMAKE_OSX_ARCHITECTURES=x86_64
       )
     fi
   fi
