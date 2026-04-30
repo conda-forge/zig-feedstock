@@ -383,7 +383,7 @@ outputs:
             - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: not osx
+          - if: linux or build_platform == target_platform
             then:
               - if: unix
                 then:
@@ -393,19 +393,9 @@ outputs:
               - ${{ conda_triplet }}-zig version
               - ${{ conda_triplet }}-zig zen
               - ${{ conda_triplet }}-zig init
-              # Behavior suite (2036 tests) is the only thing taking ~20 min
-              # on osx-64 native — Azure macOS-15 abandons jobs that linger
-              # past ~50 min. Skip on osx-64 to keep total wall time under
-              # the threshold; other platforms (linux-64) run it.  Smoke
-              # coverage on osx-64 comes from `zig version`/`zen`/`init`
-              # above plus the wrapper/-fuse-ld=lld tests below.
-              - if: osx
-                then:
-                  - echo "Skip behavior suite on osx-64 (Azure macOS-15 wall-time)"
-                else:
-                  - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
+              - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
-              - echo "Skip test on arm64"
+              - echo "Skip test on non-emulated archs"
         files:
           source:
             - zig-source/test
@@ -451,13 +441,13 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          # - if: osx
-          #   then:
-          #     # macOS: test with Mach-O -exported_symbols_list via LLD
-          #     - echo 'int main(void){return 0;}' > /tmp/test_lld.c
-          #     - echo '_main' > /tmp/test_lld.exp
-          #     - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
-          #     - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
+          - if: osx and build_platform == target_platform
+            then:
+              # macOS: test with Mach-O -exported_symbols_list via LLD
+              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
+              - echo '_main' > /tmp/test_lld.exp
+              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
+              - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
           - if: ppc64le and linux
             then:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
