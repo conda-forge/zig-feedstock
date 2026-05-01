@@ -1,20 +1,21 @@
 --- a/build.zig
 +++ b/build.zig
-@@ -204,8 +204,20 @@
-     exe.entitlements = entitlements;
+@@ -213,8 +213,20 @@ pub fn build(b: *std.Build) !void {
+     exe.use_new_linker = b.option(bool, "new-linker", "Use the new linker");
  
      const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
 -    exe.use_llvm = use_llvm;
 -    exe.use_lld = use_llvm;
 +
-+    // PowerPC64LE: Force LLVM backend + enable LLD code path
-+    // With use_lld=true, Zig goes through src/link/Lld.zig::elfLink()
-+    // Patch 0021 intercepts this path and spawns external GCC instead
-+    // GCC handles PowerPC64 ABI properly (.TOC., __tls_get_addr, pthread_atfork)
++    // PowerPC64LE: LLVM backend + system linker (not LLD).
++    // LLD doesn't support PowerPC64 TOC relocations (R_PPC64_* = 31/60/119/
++    // 120), so use_lld=false falls back to the system toolchain (`cc` via
++    // GCC / ld.bfd) for linking. Also applies to the bootstrap zig that
++    // compiles our zig — otherwise its built-in LLD chokes on zigcpp.a.
 +    if (target.result.cpu.arch == .powerpc64le) {
-+        exe.use_llvm = true;                // Force LLVM backend for code generation
-+        exe.use_lld = true;                 // Enable LLD code path (intercepted by patch 0021)
-+        exe.root_module.link_libc = true;   // Force libc linking
++        exe.use_llvm = true;
++        exe.use_lld = false;
++        exe.root_module.link_libc = true;
 +    } else {
 +        exe.use_llvm = use_llvm;
 +        exe.use_lld = use_llvm;
@@ -22,28 +23,26 @@
  
      if (no_bin) {
          b.getInstallStep().dependOn(&exe.step);
-@@ -367,6 +379,14 @@
-             exe.root_module.linkSystemLibrary("c++", .{ .use_pkg_config = .no });
+@@ -353,6 +365,12 @@ pub fn build(b: *std.Build) !void {
+             exe.root_module.linkSystemLibrary("uuid", .{});
+             exe.root_module.linkSystemLibrary("ole32", .{});
          }
-         exe.root_module.link_libc = true;
-+        // GCC 14 + glibc 2.28 compatibility: link stub library for __libc_csu_init/fini
-+        if (target.result.os.tag == .linux) {
-+            exe.root_module.linkSystemLibrary("csu_compat", .{});
-+        }
 +        // PowerPC64LE needs libgcc for GPR save/restore functions (_savegpr0_*, _restgpr0_*, etc.)
++        // __libc_csu_init/fini (GCC 14 + glibc 2.28 compat) is handled by
++        // _libc_tuning.sh patching crt1.o in-place — no separate library needed.
 +        if (target.result.cpu.arch == .powerpc64le) {
 +            exe.root_module.linkSystemLibrary("gcc", .{});
 +        }
+     }
  
-         if (target.result.os.tag == .windows) {
-             exe.root_module.linkSystemLibrary("dbghelp", .{});
-@@ -791,6 +811,13 @@
+     const semver = try std.SemanticVersion.parse(version);
+@@ -834,6 +852,13 @@ fn addCmakeCfgOptionsToExe(
      mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
      mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });
      mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
 +
 +    // Add PREFIX/lib for conda-forge cross-compilation (zlib, zstd, pthread, etc.)
-+    if (b.graph.env_map.get("PREFIX")) |prefix| {
++    if (b.graph.environ_map.get("PREFIX")) |prefix| {
 +        const prefix_lib = b.fmt("{s}/lib", .{prefix});
 +        mod.addLibraryPath(.{ .cwd_relative = prefix_lib });
 +    }

@@ -1,15 +1,19 @@
-# Linux: Link pthread_atfork stub into zig2 executable
+# Linux: Link glibc compatibility stubs into zig2 executable
 #
-# glibc 2.28 on some architectures (x86_64, aarch64, ppc64le) doesn't
-# export pthread_atfork symbol. Zig's crypto.tlcsprng module needs this
-# symbol, so we link a stub implementation.
+# 1. pthread_atfork stub — glibc 2.28 on some architectures doesn't
+#    export this symbol; Zig's crypto.tlcsprng module needs it.
 #
-# The stub is created in ZIG_LOCAL_CACHE_DIR/pthread_atfork_stub.o
-# during the build script execution.
+# 2. glibc 2.17 syscall stubs — zig2.c (pre-generated C bootstrap) calls
+#    getrandom (glibc 2.25), copy_file_range (glibc 2.27), and statx
+#    (glibc 2.28) which are absent from conda-forge's glibc 2.17 sysroot.
+#    The stubs use raw syscall() to provide these at link time.
+#
+# Both stub .o files are created in ZIG_LOCAL_CACHE_DIR during build.sh.
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -881,4 +881,13 @@ target_link_libraries(zig2
+@@ -716,6 +716,24 @@
+ target_include_directories(zig2 PUBLIC stage1)
  target_link_libraries(zig2 LINK_PUBLIC zigcpp)
 
 +# Link pthread_atfork stub if it exists (needed for glibc 2.28)
@@ -21,5 +25,15 @@
 +  message(STATUS "pthread_atfork stub not found at: ${PTHREAD_STUB}")
 +endif()
 +
++# Link glibc 2.17 syscall stubs (getrandom, copy_file_range, statx)
++set(GLIBC217_STUB "$ENV{ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o")
++if(EXISTS "${GLIBC217_STUB}")
++  message(STATUS "Linking glibc 2.17 syscall stubs: ${GLIBC217_STUB}")
++  target_link_libraries(zig2 PRIVATE "${GLIBC217_STUB}")
++else()
++  message(STATUS "glibc 2.17 syscall stubs not found at: ${GLIBC217_STUB}")
++endif()
++
  if(MSVC)
    target_link_libraries(zig2 LINK_PUBLIC ntdll.lib ws2_32.lib)
+ elseif(MINGW)

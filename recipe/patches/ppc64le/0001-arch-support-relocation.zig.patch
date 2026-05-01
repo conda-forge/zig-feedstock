@@ -1,7 +1,9 @@
---- a/src/link/Elf/relocation.zig
-+++ b/src/link/Elf/relocation.zig
-@@ -75,2 +75,15 @@
-
+--- a/src/link/Elf/relocation.zig	2026-04-13 20:19:17
++++ b/src/link/Elf/relocation.zig	2026-04-24 10:12:58
+@@ -73,11 +73,25 @@
+     .{ .tlsdesc, .TLSDESC },
+ });
+ 
 +const powerpc64_relocs = Table(10, elf.R_PPC64, .{
 +    .{ .none, .NONE },
 +    .{ .abs, .ADDR64 },
@@ -16,22 +18,36 @@
 +});
 +
  pub fn decode(r_type: u32, cpu_arch: std.Target.Cpu.Arch) ?Kind {
-@@ -80,2 +93,3 @@
-         .riscv64 => riscv64_relocs.decode(r_type),
+     return switch (cpu_arch) {
+         .x86_64 => x86_64_relocs.decode(r_type),
+         .aarch64, .aarch64_be => aarch64_relocs.decode(r_type),
+         .riscv64, .riscv64be => riscv64_relocs.decode(r_type),
 +        .powerpc64, .powerpc64le => powerpc64_relocs.decode(r_type),
          else => @panic("TODO unhandled cpu arch"),
-@@ -89,2 +103,3 @@
-         .riscv64 => riscv64_relocs.encode(kind),
+     };
+ }
+@@ -87,6 +101,7 @@
+         .x86_64 => x86_64_relocs.encode(kind),
+         .aarch64, .aarch64_be => aarch64_relocs.encode(kind),
+         .riscv64, .riscv64be => riscv64_relocs.encode(kind),
 +        .powerpc64, .powerpc64le => powerpc64_relocs.encode(kind),
          else => @panic("TODO unhandled cpu arch"),
-@@ -108,2 +123,6 @@
+     };
+ }
+@@ -106,6 +121,10 @@
+                 .@"32" => .@"32",
+                 .@"64" => .@"64",
              })),
 +            .powerpc64, .powerpc64le => @intFromEnum(@as(elf.R_PPC64, switch (format) {
 +                .@"32" => .ADDR32,
 +                .@"64" => .ADDR64,
 +            })),
              else => @panic("TODO unhandled cpu arch"),
-@@ -143,2 +162,10 @@
+         };
+     }
+@@ -141,6 +160,14 @@
+                 },
+                 .debug_frame => unreachable,
              })),
 +            .powerpc64, .powerpc64le => @intFromEnum(@as(elf.R_PPC64, switch (source_section) {
 +                else => switch (address_size) {
@@ -39,14 +55,16 @@
 +                    .@"64" => .ADDR64,
 +                    else => unreachable,
 +                },
-+                .debug_frame => .REL32,
++                .debug_frame => unreachable,
 +            })),
              else => @panic("TODO unhandled cpu arch"),
-@@ -192,6 +219,7 @@ fn formatRelocType(ctx: FormatRelocTypeCtx, writer: anytype) @TypeOf(writer).Er
+         };
+     }
+@@ -166,6 +193,7 @@
          .x86_64 => try writer.print("R_X86_64_{s}", .{@tagName(@as(elf.R_X86_64, @enumFromInt(r_type)))}),
-         .aarch64 => try writer.print("R_AARCH64_{s}", .{@tagName(@as(elf.R_AARCH64, @enumFromInt(r_type)))}),
-         .riscv64 => try writer.print("R_RISCV_{s}", .{@tagName(@as(elf.R_RISCV, @enumFromInt(r_type)))}),
-+        .powerpc64, .powerpc64le => try writer.print("R_PPC64_{}", .{r_type}),
+         .aarch64, .aarch64_be => try writer.print("R_AARCH64_{s}", .{@tagName(@as(elf.R_AARCH64, @enumFromInt(r_type)))}),
+         .riscv64, .riscv64be => try writer.print("R_RISCV_{s}", .{@tagName(@as(elf.R_RISCV, @enumFromInt(r_type)))}),
++        .powerpc64, .powerpc64le => try writer.print("R_PPC64_{s}", .{@tagName(@as(elf.R_PPC64, @enumFromInt(r_type)))}),
          else => unreachable,
      }
  }

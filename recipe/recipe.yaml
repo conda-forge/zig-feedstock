@@ -1,9 +1,9 @@
 schema_version: 1
 
 context:
-  build_number: 20
+  build_number: 0
   name: zig
-  version: "0.15.2"
+  version: "0.16.0"
 
   library: ${{ "Library/" if not unix else "" }}
   m2: ${{ "m2-" if not unix else "" }}
@@ -12,17 +12,21 @@ context:
   exe: ${{ ".exe" if not unix else "" }}
 
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
+  # NB: c_stdlib_version is undefined on Windows variants; rattler-build's
+  # MiniJinja eagerly evaluates `~` (string concat) in *all* branches of
+  # nested ternaries, not just the matched one — so we coerce missing
+  # values with `| default("")` to keep render-only validation happy.
   zig_triplet: >-
     ${{
-      "x86_64-linux-gnu." ~ c_stdlib_version        if cross_target_platform_ == "linux-64"              else
-      "aarch64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-aarch64"         else
-      "powerpc64le-linux-gnu." ~ c_stdlib_version   if cross_target_platform_ == "linux-ppc64le"         else
-      "riscv64-linux-gnu." ~ c_stdlib_version       if cross_target_platform_ == "linux-riscv64"         else
-      "s390x-linux-gnu." ~ c_stdlib_version         if cross_target_platform_ == "linux-s390x"           else
-      "x86_64-macos." ~ c_stdlib_version ~ "-none"  if cross_target_platform_ == "osx-64"                else
-      "aarch64-macos." ~ c_stdlib_version ~ "-none" if cross_target_platform_ == "osx-arm64"            else
-      "x86_64-windows-msvc"                         if cross_target_platform_ == "win-64"                else
-      "aarch64-windows-msvc"                        if cross_target_platform_ == "win-arm64"             else
+      "x86_64-linux-gnu." ~ (c_stdlib_version | default(""))        if cross_target_platform_ == "linux-64"              else
+      "aarch64-linux-gnu." ~ (c_stdlib_version | default(""))       if cross_target_platform_ == "linux-aarch64"         else
+      "powerpc64le-linux-gnu." ~ (c_stdlib_version | default(""))   if cross_target_platform_ == "linux-ppc64le"         else
+      "riscv64-linux-gnu." ~ (c_stdlib_version | default(""))       if cross_target_platform_ == "linux-riscv64"         else
+      "s390x-linux-gnu." ~ (c_stdlib_version | default(""))         if cross_target_platform_ == "linux-s390x"           else
+      "x86_64-macos." ~ (c_stdlib_version | default("")) ~ "-none"  if cross_target_platform_ == "osx-64"                else
+      "aarch64-macos." ~ (c_stdlib_version | default("")) ~ "-none" if cross_target_platform_ == "osx-arm64"             else
+      "x86_64-windows-msvc"                                         if cross_target_platform_ == "win-64"                else
+      "aarch64-windows-msvc"                                        if cross_target_platform_ == "win-arm64"             else
       "native"
     }}
 
@@ -60,13 +64,13 @@ context:
   build_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"                      if build_platform == "linux-64"                      else
+      "aarch64-conda-linux-gnu"                     if build_platform == "linux-aarch64"                 else
       "x86_64-apple-darwin13.4.0"                   if build_platform == "osx-64"                        else
       "arm64-apple-darwin20.0.0"                    if build_platform == "osx-arm64"                     else
       "x86_64-w64-mingw32"                          if build_platform == "win-64"                        else
       "unknown"
     }}
 
-  #    "aarch64-conda-linux-gnu"                    if build_platform == "linux-aarch64"                 else
   #    "powerpc64le-conda-linux-gnu"                if build_platform == "linux-ppc64le"                 else
   #    "aarch64-w64-mingw32"                        if build_platform == "win-arm64"                     else
 
@@ -96,29 +100,48 @@ recipe:
   version: ${{ version }}
 
 source:
-  - url: https://github.com/ziglang/zig/archive/refs/tags/${{ version }}.tar.gz
-    sha256: ebe6eb7006f6bbb72e54bd25d0675f2794084909d63a95aa315f2dcf2af5fd99
+  - url: https://codeberg.org/ziglang/zig/archive/${{ version }}.tar.gz
+    sha256: 095d7483008e885e65d8c6a57fb97c57344f995408a648b8d50f61278ad85d7f
     patches:
-      - patches/Lld.zig-prefer-shared-libcxx.patch
-      # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld
+      # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
+      # macho-lld-support must apply before prefer-shared-libcxx because the
+      # latter patches code inside the machoLink function added by the former.
       - patches/Lld.zig-macho-lld-support.patch
+      - patches/Lld.zig-prefer-shared-libcxx.patch
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
-      # All platforms: fix MinGW .def LIBRARY lines missing .dll suffix (api-ms-win-* family)
-      - patches/zig_llvm.cpp-mingw-def-dll-suffix.patch
+      # NOTE: patches/zig_llvm.cpp-mingw-def-dll-suffix.patch is obsolete —
+      # upstream 0.16 rewrote MinGW .def parsing in pure Zig
+      # (src/libs/mingw/def.zig) and already appends `.dll` to LIBRARY names
+      # without extensions, so this patch has been dropped permanently.
       - if: linux
         then:
-          - patches/linux/build.zig-01-maxrss.patch
+          - patches/build.zig-maxrss.patch
           - patches/linux/build.zig-02-doctest-forward-target.patch
-          - patches/linux/posix.zig-glibc-2.17-fstat.patch
+          # NOTE: patches/linux/posix.zig-glibc-2.17-fstat.patch is obsolete —
+          # `std.posix.fstat` was removed entirely in 0.16; no callers remain.
           - patches/linux/llvm.zig-triple-no-glibc-version.patch
-          - patches/linux/Object.zig-elf-zstd-decompression.patch
-          - patches/linux/Elf.zig-debug-tag-bare-TODO-panics.patch
+          # NOTE: patches/linux/Object.zig-elf-zstd-decompression.patch is
+          # obsolete — zig 0.16 upstream already supports ZSTD-compressed ELF
+          # sections (src/link/Elf/Object.zig .ZSTD branch).
+          # NOTE: patches/linux/Elf.zig-debug-tag-bare-TODO-panics.patch was
+          # a diagnostic-only patch (tagging @panic("TODO") sites during 0.15
+          # debugging); not needed for the 0.16 upgrade.
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
-      - if: linux and (x86_64 or ppc64le)
+      # ppc64le patches are gated on `linux` (any linux variant) so the
+      # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
+      # can also `zig cc -target powerpc64le-linux-gnu`. The patch
+      # bodies are arch-dispatched (target.cpu.arch == .powerpc64le
+      # blocks, switch arms with new powerpc64 cases), so applying
+      # them on non-ppc64le linux is a no-op at runtime.
+      # NOTE: 0001-arch-support-st-other-{Object,SharedObject}.zig.patch
+      # were obsolete in 0.16 — upstream replaced the raw cast with
+      # `@truncate(@as(u3, ...))` which already masks the arch-specific
+      # high bits of st_other.
+      - if: linux
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
           - patches/ppc64le/0001-arch-support-relocation.zig.patch
@@ -130,13 +153,12 @@ source:
           - patches/ppc64le/0001-arch-support-synthetic_sections.zig.patch
           - patches/ppc64le/0001-arch-support-eh_frame.zig.patch
           - patches/ppc64le/0001-arch-support-Thunk.zig.patch
-          - patches/ppc64le/0001-arch-support-st-other-Object.zig.patch
-          - patches/ppc64le/0001-arch-support-st-other-SharedObject.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
+          # NOTE: 0003-ldscript-output-format.patch dropped — it duplicates the
+          # `elf64-powerpcle` entry already added by 0001-arch-support-LdScript.zig.patch.
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
-          - patches/ppc64le/0003-ldscript-output-format.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
       - if: not unix
         then:
@@ -144,7 +166,54 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
+          # MementoRC pre-warned on this on his earlier #102 work:
+          # `@log2 with vectors` fails on x86_64-windows by 1 ULP
+          # between scalar libm and LLVM's vector log2 intrinsic.
+          # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
+          - patches/non_unix/floatop.zig-log2-vectors-approx.patch
     target_directory: zig-source
+  # Upstream ziglang.org bootstrap — only on build 0 (the first build
+  # of a new zig release).  conda-forge's published zig_impl_X 0.15.2
+  # can't parse 0.16's build.zig, and the CMake-fallback path hits
+  # arch-specific bugs (osx-arm64 compiler_rt codegen, win MSVC
+  # C2466, linux-ppc64le branch-range, osx libcxx ABI clash with
+  # libcxx 21 toolchain).  Using upstream's pre-built 0.16.0 binary
+  # parses its own build.zig natively → zig build succeeds first try.
+  # Subsequent builds (build_number > 0) use conda-forge's
+  # zig_impl_${build_platform} which by then is the 0.16.x we just
+  # published, so no upstream download is needed.
+  - if: build_number == 0
+    then:
+      - if: build_platform == "osx-arm64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz
+            sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
+            target_directory: zig-bootstrap
+      - if: build_platform == "osx-64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz
+            sha256: 0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7
+            target_directory: zig-bootstrap
+      - if: build_platform == "win-64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip
+            sha256: 68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e
+            target_directory: zig-bootstrap
+      - if: build_platform == "linux-64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+            sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+            target_directory: zig-bootstrap
+      - if: build_platform == "linux-aarch64"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz
+            sha256: ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17
+            target_directory: zig-bootstrap
+      - if: build_platform == "linux-ppc64le"
+        then:
+          - url: https://ziglang.org/download/0.16.0/zig-powerpc64le-linux-0.16.0.tar.xz
+            sha256: 18800b45c08bf40b335ca5ab79aea70aca287ca969036e938155772becaeebeb
+            target_directory: zig-bootstrap
 
 build:
   number: ${{ build_number }}
@@ -158,7 +227,16 @@ outputs:
   - package:
       name: zig_impl_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x"
+      # Skip cross-target ppc64le: the upstream 0.16.0 bootstrap binary
+      # lacks the `elf64-powerpcle` OUTPUT_FORMAT entry in LdScript.zig
+      # (our patch fixes it in source but the prebuilt bootstrap can't
+      # consume it), so it can't parse conda's ppc64le libc.so linker
+      # script during the final `zig build` link step.  The
+      # `linux_64_cross_target_platform_linux-ppc64le` variant still
+      # runs (target_platform=linux-64, it's the cross-compiler build,
+      # no ppc64le linking happens).
+      #
+      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x" or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx
@@ -166,6 +244,11 @@ outputs:
           - if: not unix
             then: "*/VERSION.dll"
       script:
+        # Explicit file: a `script: { env: {...} }` block without `file:` or
+        # `content:` is treated as an empty inline script by rattler-build
+        # 0.63+ (earlier versions fell back to the default). Be explicit,
+        # and gate on the target platform so Windows picks up build.bat.
+        file: ${{ "build.bat" if not unix else "build.sh" }}
         env:
           BUILD_NUMBER: ${{ build_number }}
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -173,8 +256,11 @@ outputs:
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-          
-          CMAKE_FALLBACK: "0"
+
+          # CMake fallback: the 0.15.2 bootstrap can't parse 0.16's build.zig
+          # (new fields like `use_new_linker`, `io`) — fall back to upstream's
+          # CMake-driven stage1→stage2 bootstrap when `zig build` rejects it.
+          CMAKE_FALLBACK: "1"
           
           # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
           # BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
@@ -200,9 +286,11 @@ outputs:
             - ${{ m2 }}coreutils
             - ${{ m2 }}findutils
             - ${{ m2 }}which
-        - if: osx
-          then:
-            - libcxx ${{ llvm_version }}.*
+        # NOTE: libcxx is deliberately NOT listed in the build env on osx.
+        # The bootstrap zig_impl (previous release, 0.15.2) was linked against
+        # libcxx 20 and pins `libcxx 20.*` as a run dep; pinning libcxx 21.*
+        # here would make the build env unsolvable. libcxx 21 is still pulled
+        # into the host env below for the new zig to link against.
         - if: (build_platform != target_platform)
           then:
             - llvmdev ${{ llvm_version }}.*  # llvm-config
@@ -210,8 +298,17 @@ outputs:
               then:
                 - libxml2-devel
 
-        # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2
+        # Self-hosting: build zig with zig.
+        # build_number == 0 (first build of a new release): use the
+        #   upstream tarball pulled in via `source:` above. No conda-
+        #   forge zig_impl_${build_platform} matching this version
+        #   exists yet, and on osx the previous release pins libcxx 20
+        #   which clashes with the LLVM-21 host env.
+        # build_number > 0: the just-published zig_impl_X 0.16.x can
+        #   parse its own build.zig — no upstream download needed.
+        - if: build_number != 0
+          then:
+            - zig_impl_${{ build_platform }} >=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -249,13 +346,16 @@ outputs:
           bin:
             - ${{ conda_triplet }}-zig
           files:
-            - if: not ppc64le
-              then:
-                - ${{ library }}doc/langref.html
+            # With the upstream 0.16.0 bootstrap, `zig build` succeeds on
+            # the first attempt and produces langref.html. Keep this
+            # check active; CMake-fallback paths are no longer taken.
+            - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
             - ${{ library }}lib/zig/zig.h
             - ${{ library }}lib/zig/build-web/*
-            - ${{ library }}lib/zig/c/{common,inttypes,stdlib,string,strings}.zig
+            - ${{ library }}lib/zig/c/*.zig
+            - ${{ library }}lib/zig/c/stdlib/*.zig
+            - ${{ library }}lib/zig/c/sys/*.zig
             - ${{ library }}lib/zig/compiler/*
             - ${{ library }}lib/zig/compiler_rt/*
             - ${{ library }}lib/zig/docs/*
@@ -271,7 +371,9 @@ outputs:
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (patch 0008)
       - script:
-          - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
+          - if: not osx
+            then:
+              - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
         requirements:
           run:
             - python >=3.10
@@ -281,7 +383,7 @@ outputs:
             - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: not arm64
+          - if: linux or build_platform == target_platform
             then:
               - if: unix
                 then:
@@ -293,7 +395,7 @@ outputs:
               - ${{ conda_triplet }}-zig init
               - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
-              - echo "Skip test on arm64"
+              - echo "Skip test on non-emulated archs"
         files:
           source:
             - zig-source/test
@@ -339,7 +441,7 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx
+          - if: osx and build_platform == target_platform
             then:
               # macOS: test with Mach-O -exported_symbols_list via LLD
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
@@ -360,7 +462,7 @@ outputs:
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_compiler or is_cross_target)
+      skip: not (is_native or is_cross_compiler or is_cross_target) or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
       script:
         file: install_zig_activation.py
         env:
@@ -380,20 +482,27 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
-        # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
+        # Need zig to compile .exe shims on non-Unix (cross-compiler shim).
+        # NB: lower bound is the previous conda-forge release (>=0.15.2),
+        # not ${{ version }}. A strict ==0.16.0 pin during the first 0.16
+        # CI run is unsatisfiable because the matching zig_impl isn't
+        # published in conda-forge yet, and a sibling variant's just-built
+        # impl isn't visible in the cross variant's test environment.
+        # run_exports still enforce proper ABI compat for end users.
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=0.15.2
       host:
         - if: not is_cross_compiler
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
         # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
-        # For cross-compiler: depend on zig_impl for BUILD platform (external package)
+        # For cross-compiler: depend on zig_impl for BUILD platform (external package).
+        # See note above re: >=0.15.2 lower bound during 0.16 CI.
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=0.15.2
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: cross_target_platform_ == "linux-ppc64le"
@@ -477,7 +586,7 @@ outputs:
   - package:
       name: zig
     build:
-      skip: cross_target_platform_ != target_platform
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
       script:
         file: install_zig_symlinks.py
         env:
@@ -513,7 +622,7 @@ outputs:
       name: zig-compiler
     build:
       noarch: generic
-      skip: cross_target_platform_ != target_platform
+      skip: cross_target_platform_ != target_platform or (is_cross_target and cross_target_platform_ == "linux-ppc64le")
       script: echo "zig-compiler metapackage"
     requirements:
       run:

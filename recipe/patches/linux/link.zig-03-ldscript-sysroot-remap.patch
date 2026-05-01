@@ -1,20 +1,26 @@
---- a/src/link.zig
-+++ b/src/link.zig
-@@ -1120,7 +1120,16 @@
+--- a/src/link.zig	2026-04-22 15:58:58
++++ b/src/link.zig	2026-04-22 15:58:43
+@@ -1226,11 +1226,18 @@
+                 };
              } else {
                  if (fs.path.isAbsolute(arg.path)) {
--                    const new_path = Path.initCwd(try gpa.dupe(u8, arg.path));
+-                    const new_path = Path.initCwd(path: {
+-                        comp.mutex.lockUncancelable(io);
+-                        defer comp.mutex.unlock(io);
+-                        break :path try comp.arena.dupe(u8, arg.path);
+-                    });
 +                    // When a sysroot is set, remap absolute paths from ld scripts
 +                    // through the sysroot prefix. This mirrors how GNU ld handles
 +                    // --sysroot for paths inside linker scripts (e.g., libc.so
 +                    // containing GROUP(/usr/lib64/libc_nonshared.a ...)).
-+                    const effective_path = if (base.comp.sysroot) |sr| blk: {
-+                        break :blk try fs.path.join(gpa, &.{ sr, arg.path });
-+                    } else try gpa.dupe(u8, arg.path);
-+                    const new_path: Path = if (base.comp.sysroot != null)
-+                        .{ .root_dir = path.root_dir, .sub_path = effective_path }
++                    const new_path: Path = if (base.comp.sysroot) |sr|
++                        .{ .root_dir = path.root_dir, .sub_path = try fs.path.join(gpa, &.{ sr, arg.path }) }
 +                    else
-+                        Path.initCwd(effective_path);
++                        Path.initCwd(path: {
++                            comp.mutex.lockUncancelable(io);
++                            defer comp.mutex.unlock(io);
++                            break :path try comp.arena.dupe(u8, arg.path);
++                        });
                      switch (Compilation.classifyFileExt(arg.path)) {
                          .shared_library => try openLoadDso(base, new_path, query),
                          .object => try openLoadObject(base, new_path),

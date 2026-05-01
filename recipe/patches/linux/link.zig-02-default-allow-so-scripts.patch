@@ -1,6 +1,6 @@
---- a/src/link.zig
-+++ b/src/link.zig
-@@ -1608,7 +1608,7 @@
+--- a/src/link.zig	2026-04-22 15:58:09
++++ b/src/link.zig	2026-04-22 15:57:49
+@@ -1771,7 +1771,7 @@
          reexport: bool = false,
          must_link: bool = false,
          hidden: bool = false,
@@ -8,4 +8,4 @@
 +        allow_so_scripts: bool = true,
          preferred_mode: std.builtin.LinkMode,
          search_strategy: SearchStrategy,
-
+ 

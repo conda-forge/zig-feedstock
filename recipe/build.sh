@@ -53,6 +53,16 @@ fi
 
 # --- Main ---
 
+# Bootstrap selection (build_number == 0 only): use upstream
+# ziglang.org binary as bootstrap when this is the first build of a
+# new zig release. Subsequent builds use conda-forge's published
+# zig_impl_${build_platform} which can parse the matching build.zig
+# directly. recipe.yaml gates the source-entry download on
+# build_number == 0; this helper is a no-op when zig-bootstrap/
+# wasn't extracted.
+source "${RECIPE_DIR}/building/_upstream_bootstrap.sh"
+setup_upstream_zig_bootstrap
+
 # Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
 BUILD_ZIG="${CONDA_ZIG_BUILD}"
 
@@ -63,7 +73,13 @@ export ZIG_LOCAL_CACHE_DIR="${SRC_DIR}/zig-local-cache"
 
 cmake_source_dir="${SRC_DIR}/zig-source"
 cmake_build_dir="${SRC_DIR}/build-release"
-cmake_install_dir="${SRC_DIR}/cmake-built-install"
+# Point the cmake install prefix directly at ${PREFIX}. Zig's upstream
+# cmake/install.cmake bakes the configure-time CMAKE_INSTALL_PREFIX into
+# the install script (it invokes `zig build --prefix ${CMAKE_INSTALL_PREFIX}`
+# via install(CODE ...)), so `cmake --install . --prefix X` at install time
+# is silently ignored. Using ${PREFIX} here ensures the CMake fallback path
+# lands files where the rest of build.sh expects them.
+cmake_install_dir="${PREFIX}"
 zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
@@ -77,6 +93,20 @@ EXTRA_CMAKE_ARGS=(
   -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
   -DZIG_USE_LLVM_CONFIG=ON
 )
+
+# Cross-compile stage1 host-tool split: zig-wasm2c / zig1 are
+# build-host tools; when CC ≠ CC_FOR_BUILD CMAKE_C_COMPILER produces
+# binaries that can't run on the build host.  ZIG_STAGE1_HOST_CC
+# routes those targets through the build-host compiler (via add_
+# custom_command in patches/cmake/0003-cmake-stage1-host-cc-...),
+# leaving zig2 / compiler_rt / zigcpp on CMAKE_C_COMPILER.
+#
+# Applied on every cross variant (osx + linux-cross).  For linux-cross
+# this replaces the qemu emulator path that used to wrap zig-wasm2c /
+# zig1 invocations in 0003-cross-CMakeLists.txt.patch.
+if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
+  EXTRA_CMAKE_ARGS+=(-DZIG_STAGE1_HOST_CC="${CC_FOR_BUILD}")
+fi
 
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
@@ -104,14 +134,44 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
+  # macOS-15-arm64 GitHub Actions runners ship with ~7 GB RAM; zig's
+  # ReleaseSafe link step declares an 8 GB upper bound and refuses to
+  # schedule itself unless explicitly allowed.  Pass --maxrss 8 GB so
+  # zig will run the step (overflow into swap is fine on a clean
+  # runner).  Do *not* set this on macOS-15 x86_64 (Azure) — those
+  # agents have plenty of RAM and capping the scheduler caused
+  # serialization slowdowns previously (see the linux comment below).
+  if [[ "${build_platform}" == "osx-arm64" ]]; then
+    EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
+    if [[ "${target_platform}" == "osx-64" ]]; then
+      CFLAGS=${CFLAGS//-march=core2/}
+      CFLAGS=${CFLAGS//-mtune=haswell/}
+      CXXFLAGS=${CXXFLAGS//-march=core2/}
+      CXXFLAGS=${CXXFLAGS//-mtune=haswell/}
+      export CFLAGS=${CFLAGS//-mssse3/} CXXFLAGS=${CXXFLAGS//-mssse3/}
+      EXTRA_CMAKE_ARGS+=(
+        -DCMAKE_OSX_ARCHITECTURES=x86_64
+      )
+    fi
+  fi
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
+  # --maxrss + the build.zig max_rss patch are linux-only.  Adding
+  # them to osx (commit 22a8ddb) capped zig's build-graph scheduler
+  # at 7 GB → forced more serial task execution → osx_64 native
+  # build wall time grew from ~32 min (historical successes) to
+  # ~58 min, tipping Azure's macOS-15 agents into abandonment.
+  # Reverted to the no-cap default for osx; the heavy link step
+  # uses < 7 GB in practice on osx-arm64 native builds (proven by
+  # repeated successes), and lets zig parallelize across cores.
   EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
 fi
 
 if is_not_unix; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=OFF
+    # Bootstrap libucrt/ucrt confilct may come from /DEFAULTLIB:libucrt (hopefully not from LLVM)
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
   )
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
@@ -135,7 +195,7 @@ fi
 if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
   create_gcc14_glibc28_compat_lib
-  
+
   is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
 fi
 
@@ -144,9 +204,27 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 # --- Post CMake Configuration ---
 
 # Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
-is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
+# Append LLVM deps that conda's split packaging doesn't bake into
+# config.h's ZIG_LLVM_LIBRARIES: zlib (adler32 refs in lld-ELF),
+# zstd (compression), libxml2. Needed on every native + cross linux
+# build — linux-aarch64 failed linking zig2 with undefined adler32
+# when this was gated on `is_cross`.
+is_linux && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
+
+# zig2.c (the pre-generated C bootstrap from 0.16) calls getrandom,
+# copy_file_range, and statx — all absent from conda-forge's glibc 2.17
+# sysroot. Compile weak-symbol syscall() stubs and inject the .o into
+# both the zig-build path (via config.h's ZIG_LLVM_LIBRARIES) and the
+# CMake fallback path (via cmake/0002 target_link_libraries).
+# Guard on CONDA_BUILD_SYSROOT: outside conda-forge CI (e.g. local
+# dev with a modern glibc system), the stubs aren't needed.
+if is_linux && [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
+  source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
+  create_glibc217_syscall_stubs "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+  perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o\"|g" "${cmake_build_dir}/config.h"
+fi
 
 is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
 
@@ -174,9 +252,11 @@ if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
 fi
 
 
-is_debug && echo "=== Building with ZIG ==="
+is_debug && echo "=== Building with ZIG ===" || true
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
-  is_debug && echo "SUCCESS: zig build completed successfully"
+  # NB: `|| true` — in non-debug is_debug returns 1 and that becomes the
+  # branch's last-executed exit status, which trips `set -e` in build.sh.
+  is_debug && echo "SUCCESS: zig build completed successfully" || true
 elif [[ "${CMAKE_FALLBACK:-1}" == "1" ]]; then
   source "${RECIPE_DIR}/building/_cmake.sh"  # cmake_fallback_build
   cmake_fallback_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"

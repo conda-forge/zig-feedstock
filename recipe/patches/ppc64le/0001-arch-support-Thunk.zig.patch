@@ -1,10 +1,20 @@
---- a/src/link/Elf/Thunk.zig
-+++ b/src/link/Elf/Thunk.zig
-@@ -28,2 +28,3 @@
-         .x86_64, .riscv64 => unreachable,
-+        .powerpc64, .powerpc64le => unreachable, // No thunks needed (requiresThunks = false)
+--- a/src/link/Elf/Thunk.zig	2026-04-13 20:19:17
++++ b/src/link/Elf/Thunk.zig	2026-04-24 10:14:24
+@@ -25,7 +25,7 @@
+ pub fn write(thunk: Thunk, elf_file: *Elf, writer: anytype) !void {
+     switch (elf_file.getTarget().cpu.arch) {
+         .aarch64, .aarch64_be => try aarch64.write(thunk, elf_file, writer),
+-        .x86_64, .riscv64, .riscv64be => unreachable,
++        .x86_64, .riscv64, .riscv64be, .powerpc64, .powerpc64le => unreachable,
          else => @panic("unhandled arch"),
-@@ -63,2 +64,3 @@
-         .x86_64, .riscv64 => unreachable,
-+        .powerpc64, .powerpc64le => unreachable, // No thunks needed
+     }
+ }
+@@ -60,7 +60,7 @@
+ fn trampolineSize(cpu_arch: std.Target.Cpu.Arch) usize {
+     return switch (cpu_arch) {
+         .aarch64, .aarch64_be => aarch64.trampoline_size,
+-        .x86_64, .riscv64, .riscv64be => unreachable,
++        .x86_64, .riscv64, .riscv64be, .powerpc64, .powerpc64le => unreachable,
          else => @panic("unhandled arch"),
+     };
+ }

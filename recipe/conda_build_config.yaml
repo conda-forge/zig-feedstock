@@ -1,17 +1,17 @@
 c_compiler_version:    # [osx]
-  - 20                 # [osx]
+  - 21                 # [osx]
 cxx_compiler_version:  # [osx]
-  - 20                 # [osx]
+  - 21                 # [osx]
 
 zig_compiler:
   - zig
 zig_compiler_version:
-  - "0.15.2"
+  - "0.16.0"
 
 llvm_version:
-  - "20"
+  - "21"
 llvm_src_version:
-  - "20.1.8"
+  - "21.1.8"
 
 cross_target_platform_:
   - linux-64

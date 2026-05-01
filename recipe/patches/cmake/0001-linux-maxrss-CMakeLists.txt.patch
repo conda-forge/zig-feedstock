@@ -1,8 +1,6 @@
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ef371fc..01a4f23 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -915,6 +915,7 @@ set(ZIG_BUILD_ARGS
+@@ -751,6 +751,7 @@
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
  
    -Dno-langref

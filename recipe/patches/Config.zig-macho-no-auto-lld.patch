@@ -1,6 +1,6 @@
 --- a/src/Compilation/Config.zig
 +++ b/src/Compilation/Config.zig
-@@ -438,11 +438,12 @@
+@@ -412,11 +412,12 @@
          if (options.use_lld) |x| break :b x;
 
          // If we have no zig code to compile, no need for the self-hosted linker.
@@ -14,4 +14,4 @@
 +        break :b (use_llvm and target.ofmt != .macho);
      };
 
-     const lto: std.zig.LtoMode = b: {
+     switch (options.output_mode) {

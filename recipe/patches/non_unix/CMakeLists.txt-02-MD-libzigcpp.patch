@@ -1,16 +1,24 @@
 # Fix library linking and build configuration for conda MSVC toolchain
 #
 # Changes:
-# - Set /MD flag for dynamic runtime library linking
+# - Force /MD (dynamic CRT) for zigcpp.  Upstream sets
+#   MSVC_RUNTIME_LIBRARY "MultiThreaded" which links libucrt.lib
+#   statically into zigcpp.a's DEFAULTLIB pragmas.  When the
+#   bootstrap zig links zigcpp.a, it also auto-adds ucrt.lib
+#   (dynamic) for `link_libc=true` on x86_64-windows-msvc — both
+#   resolve the same symbols → lld-link "duplicate symbol" errors.
+#   Switching zigcpp to MultiThreadedDLL aligns it with the dynamic
+#   ucrt the bootstrap pulls.
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -708,6 +710,8 @@
+@@ -518,6 +518,8 @@
      -Wno-comment
    )
  else()
 +target_compile_options(zigcpp PRIVATE -MD)
 +add_compile_options(/MD /wd4715 /wd4291)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
- set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+-set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
++set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
  endif()

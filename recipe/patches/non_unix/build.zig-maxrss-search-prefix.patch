@@ -1,17 +1,29 @@
-diff --git a/build.zig b/build.zig
-index 37523e6..a151dc6 100644
 --- a/build.zig
 +++ b/build.zig
-@@ -738,7 +738,7 @@ fn addCompilerMod(b: *std.Build, options: AddCompilerModOptions) *std.Build.Modu
- fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Step.Compile {
-     const exe = b.addExecutable(.{
-         .name = "zig",
--        .max_rss = 7_800_000_000,
+@@ -775,11 +775,21 @@ fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Ste
+         // This number should never be raised. If the value is exceeded, then
+         // it is considered a bug in the Zig project that building the
+         // compiler takes more than 8G of memory.
+-        .max_rss = 8_000_000_000,
 +        .max_rss = 7_500_000_000,
          .root_module = addCompilerMod(b, options),
      });
      exe.stack_size = stack_size;
-@@ -790,7 +790,11 @@
+ 
++    // Windows MSVC: force dynamic CRT linkage. Default is .static, which
++    // makes zig auto-add libucrt.lib (static) for `link_libc=true`. Our
++    // zigcpp.lib is built with /MD (DEFAULTLIB:msvcrt → ucrt.lib dynamic)
++    // and the manual `-lmsvcrt` from config.h's ZIG_LLVM_LIBRARIES is also
++    // dynamic. Mixing static libucrt with dynamic ucrt produces ~40
++    // lld-link "duplicate symbol" errors (errno, abort, malloc, …).
++    if (options.target.result.os.tag == .windows and options.target.result.abi == .msvc) {
++        exe.linkage = .dynamic;
++    }
++
+     // Must match the condition in CMakeLists.txt.
+     const function_data_sections = options.target.result.cpu.arch.isArm() or options.target.result.cpu.arch.isPowerPC();
+ 
+@@ -833,7 +843,11 @@ fn addCmakeCfgOptionsToExe(
      assert(cfg.lld_include_dir.len != 0);
      mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
      mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });

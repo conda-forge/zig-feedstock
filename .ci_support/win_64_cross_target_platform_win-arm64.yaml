@@ -13,7 +13,7 @@ cxx_compiler:
 libxml2_devel:
 - '2.14'
 llvm_version:
-- '20'
+- '21'
 target_platform:
 - win-64
 zlib:

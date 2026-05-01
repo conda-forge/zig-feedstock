@@ -53,7 +53,7 @@ function apply_cmake_patches() {
     done
   popd > /dev/null
 
-  is_debug && echo "All cmake patches applied successfully"
+  is_debug && echo "All cmake patches applied successfully" || true
   return 0
 }
 
@@ -71,14 +71,46 @@ function cmake_fallback_build() {
 
   CMAKE_PATCHES=()
 
+  # Cross-compile stage1 host-tool split: zig-wasm2c / zig1 must run
+  # on the build host.  Applied on every cross variant (osx + linux-
+  # cross).  The patch routes those two targets through add_custom_
+  # command + ZIG_STAGE1_HOST_CC (the -D flag is seeded earlier in
+  # build.sh).
+  #
+  # NB: 0003-cross-CMakeLists.txt.patch (linux-cross) used to wrap
+  # the wasm2c/zig1 invocations with ${CROSSCOMPILING_EMULATOR} so
+  # qemu could run target-arch binaries.  With stage1-host-cc those
+  # binaries are now host-arch and don't need an emulator.  The
+  # other halves of 0003-cross (ZIG_CROSS_TARGET_TRIPLE / zig2 /
+  # compiler_rt args / install.cmake's emulator-prefix substitution)
+  # are still valid because zig2 and the install step use the
+  # target-arch zig.
+  # TODO(stage1-host-cc unify): when both patches are applied, the
+  # 0003-cross hunks at @@-652 and @@-685 (emulator prefix on zig-
+  # wasm2c / zig1) will fail because stage1-host-cc already rewrote
+  # those COMMANDs.  Either:
+  #   (a) split 0003-cross into _stage1 (drop) + _stage2 (keep), or
+  #   (b) make stage1-host-cc patch resilient to the emulator-
+  #       prefixed COMMANDs.
+  # Until then, on linux-cross only stage1-host-cc applies; the
+  # qemu fallback path is unreachable in practice (upstream-bootstrap
+  # never enters CMake fallback).
+  if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
+    CMAKE_PATCHES+=(0003-cmake-stage1-host-cc-CMakeLists.txt.patch)
+  fi
+
   if is_linux; then
     CMAKE_PATCHES+=(
       0001-linux-maxrss-CMakeLists.txt.patch
       0002-linux-pthread-atfork-stub-zig2-CMakeLists.txt.patch
     )
     if is_cross; then
-      CMAKE_PATCHES+=(0003-cross-CMakeLists.txt.patch)
-      perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${source_dir}"/cmake/install.cmake
+      # 0003-cross conflicts with stage1-host-cc on linux-cross
+      # (see TODO above).  Apply only when stage1-host-cc isn't.
+      if [[ -z "${CC_FOR_BUILD:-}" || "${CC_FOR_BUILD:-}" == "${CC:-}" ]]; then
+        CMAKE_PATCHES+=(0003-cross-CMakeLists.txt.patch)
+        perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${source_dir}"/cmake/install.cmake
+      fi
       export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TRIPLET}"
       export ZIG_CROSS_TARGET_MCPU="baseline"
     fi
@@ -102,7 +134,10 @@ function cmake_fallback_build() {
   apply_cmake_patches "${source_dir}"
 
   if cmake_build_install "${build_dir}" "${install_prefix}"; then
-    is_debug && echo "SUCCESS: cmake fallback build completed successfully"
+    # NB: trailing `|| true` — in non-debug `is_debug` returns 1, which would
+    # otherwise become the function's exit status and trip `set -e` in the
+    # caller. Force a 0 return on the success path.
+    is_debug && echo "SUCCESS: cmake fallback build completed successfully" || true
   else
     echo "ERROR: Both zig build and cmake build failed" >&2
     exit 1

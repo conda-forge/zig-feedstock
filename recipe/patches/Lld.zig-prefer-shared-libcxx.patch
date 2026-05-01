@@ -1,6 +1,6 @@
---- a/src/link/Lld.zig
-+++ b/src/link/Lld.zig
-@@ -720,7 +720,11 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
+--- a/src/link/Lld.zig	2026-04-22 15:05:46
++++ b/src/link/Lld.zig	2026-04-22 15:07:08
+@@ -725,7 +725,11 @@
          // libc++ dep
          if (comp.config.link_libcpp) {
              try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -11,9 +11,9 @@
 +                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +            }
          }
-
+ 
          // libunwind dep
-@@ -1193,7 +1197,13 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -1206,7 +1210,13 @@
              // libc++ dep
              if (comp.config.link_libcpp) {
                  try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -26,52 +26,25 @@
 +                    try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +                }
              }
-
+ 
              // libunwind dep
-@@ -1544,10 +1552,15 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
-             if (comp.zigc_static_lib) |zigc| {
-                 try argv.append(try zigc.full_object_path.toString(arena));
+@@ -1577,7 +1587,12 @@
              }
-
--            if (comp.config.link_libcpp) {
+ 
+             if (comp.config.link_libcpp) {
 -                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
--                try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
-+            if (comp.config.link_libcpp) {
 +                // WASM: no shared library concept; probe always returns null
 +                if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
 +                    try argv.append(shared_path);
 +                } else {
 +                    try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +                }
-+                try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
+                 try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
              }
          }
-
-@@ -1742,4 +1755,5 @@ const wasi_libc = @import("../libs/wasi_libc.zig");
- const link = @import("../link.zig");
-+const libcxx_shared = @import("libcxx_shared.zig");
- const lldMain = @import("../main.zig").lldMain;
- const target_util = @import("../target.zig");
- const trace = @import("../tracy.zig").trace;
---- a/src/link/MachO.zig
-+++ b/src/link/MachO.zig
-@@ -421,7 +421,11 @@ pub fn flush(self: *MachO, arena: Allocator, tid: Zcu.PerThread.Id) !void {
-     if (comp.config.link_libcpp) {
-         try system_libs.ensureUnusedCapacity(2);
-         system_libs.appendAssumeCapacity(.{ .path = comp.libcxxabi_static_lib.?.full_object_path });
--        system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
-+        if (try libcxx_shared.findSharedLibCxxPath(comp, arena)) |shared_path| {
-+            system_libs.appendAssumeCapacity(.{ .path = shared_path });
-+        } else {
-+            system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
-+        }
-     }
-
-     const is_exe_or_dyn_lib = comp.config.output_mode == .Exe or
-@@ -799,11 +803,13 @@ pub fn flush(self: *MachO, arena: Allocator, tid: Zcu.PerThread.Id) !void {
-             try argv.append(arg);
-         }
-
+@@ -1789,10 +1804,12 @@
+         };
+ 
          if (comp.config.link_libcpp) {
 -            try argv.appendSlice(&.{
 -                try comp.libcxxabi_static_lib.?.full_object_path.toString(arena),
@@ -84,19 +57,59 @@
 +                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +            }
          }
-
+ 
          try argv.append("-lSystem");
-@@ -5385,6 +5391,7 @@ const link = @import("../link.zig");
- const load_commands = @import("MachO/load_commands.zig");
- const relocatable = @import("MachO/relocatable.zig");
- const tapi = @import("tapi.zig");
+@@ -1965,6 +1982,7 @@
+ const openbsd = @import("../libs/openbsd.zig");
+ const wasi_libc = @import("../libs/wasi_libc.zig");
+ const link = @import("../link.zig");
++const libcxx_shared = @import("libcxx_shared.zig");
+ const lldMain = @import("../main.zig").lldMain;
  const target_util = @import("../target.zig");
  const trace = @import("../tracy.zig").trace;
- const synthetic = @import("MachO/synthetic.zig");
+--- a/src/link/MachO.zig	2026-04-22 15:02:50
++++ b/src/link/MachO.zig	2026-04-22 15:07:16
+@@ -426,7 +426,11 @@
+     if (comp.config.link_libcpp) {
+         try system_libs.ensureUnusedCapacity(2);
+         system_libs.appendAssumeCapacity(.{ .path = comp.libcxxabi_static_lib.?.full_object_path });
+-        system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
++        if (try libcxx_shared.findSharedLibCxxPath(comp, arena)) |shared_path| {
++            system_libs.appendAssumeCapacity(.{ .path = shared_path });
++        } else {
++            system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
++        }
+     }
+ 
+     const is_exe_or_dyn_lib = comp.config.output_mode == .Exe or
+@@ -807,10 +811,12 @@
+         }
+ 
+         if (comp.config.link_libcpp) {
+-            try argv.appendSlice(&.{
+-                try comp.libcxxabi_static_lib.?.full_object_path.toString(arena),
+-                try comp.libcxx_static_lib.?.full_object_path.toString(arena),
+-            });
++            try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
++            if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                try argv.append(shared_path);
++            } else {
++                try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
++            }
+         }
+ 
+         try argv.append("-lSystem");
+@@ -5458,6 +5464,7 @@
+ const dead_strip = @import("MachO/dead_strip.zig");
+ const eh_frame = @import("MachO/eh_frame.zig");
+ const fat = @import("MachO/fat.zig");
 +const libcxx_shared = @import("libcxx_shared.zig");
---- /dev/null
-+++ b/src/link/libcxx_shared.zig
-@@ -0,0 +1,69 @@
+ const link = @import("../link.zig");
+ const load_commands = @import("MachO/load_commands.zig");
+ const relocatable = @import("MachO/relocatable.zig");
+--- a/src/link/libcxx_shared.zig	1970-01-01 01:00:00
++++ b/src/link/libcxx_shared.zig	2026-04-22 15:06:53
+@@ -0,0 +1,71 @@
 +//! Shared libc++ discovery for conda-forge zig packaging.
 +//! Probes for a shared libc++ library relative to zig_lib_dir,
 +//! falling back to null (caller uses static libc++.a).
@@ -108,6 +121,7 @@
 +
 +const std = @import("std");
 +const builtin = @import("builtin");
++const Io = std.Io;
 +const Allocator = std.mem.Allocator;
 +const Cache = std.Build.Cache;
 +const Compilation = @import("../Compilation.zig");
@@ -147,12 +161,13 @@
 +    if (names.len == 0) return null;
 +
 +    const zig_lib_path = comp.dirs.zig_lib.path orelse return null;
++    const io = comp.io;
 +
 +    for (&probe_subdirs) |subdir| {
 +        for (names) |name| {
 +            const probe = try std.fs.path.join(arena, &.{ zig_lib_path, subdir, name });
 +            // Check if file exists via access()
-+            std.fs.cwd().access(probe, .{}) catch continue;
++            Io.Dir.cwd().access(io, probe, .{}) catch continue;
 +            return probe;
 +        }
 +    }

@@ -1,6 +1,8 @@
 --- a/src/codegen/llvm.zig
 +++ b/src/codegen/llvm.zig
-@@ -1609,7 +1609,7 @@
+@@ -1733,11 +1733,11 @@
+         // If we're on COFF and linking with LLD, the linker cares about our exports to determine the subsystem in use.
+         coff_export_flags: {
              const lf = comp.bin_file orelse break :coff_export_flags;
              const lld = lf.cast(.lld) orelse break :coff_export_flags;
              const coff = switch (lld.ofmt) {
@@ -8,4 +10,6 @@
 +                .elf, .wasm, .macho => break :coff_export_flags,
                  .coff => |*coff| coff,
              };
-             if (!ip.isFunctionType(ip.getNav(nav_index).typeOf(ip))) break :coff_export_flags;
+             if (ty.zigTypeTag(zcu) != .@"fn") break :coff_export_flags;
+             const flags = &coff.lld_export_flags;
+             for (export_indices) |export_index| {

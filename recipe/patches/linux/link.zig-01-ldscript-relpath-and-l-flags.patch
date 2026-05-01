@@ -1,6 +1,6 @@
---- a/src/link.zig
-+++ b/src/link.zig
-@@ -1060,7 +1060,62 @@
+--- a/src/link.zig	2026-04-13 20:19:17
++++ b/src/link.zig	2026-04-22 15:57:26
+@@ -1168,7 +1168,62 @@
                  .allow_so_scripts = parent_query.allow_so_scripts,
              };
              if (mem.startsWith(u8, arg.path, "-l")) {
@@ -21,12 +21,12 @@
 +                        // that may recurse or fail, but libpthread.so.0 is a real ELF shared lib.
 +                        const found_versioned = blk: {
 +                            const dir_sub: []const u8 = if (script_dir.len > 0) script_dir else ".";
-+                            var dir = path.root_dir.handle.openDir(dir_sub, .{ .iterate = true }) catch break :blk false;
-+                            defer dir.close();
++                            var dir = path.root_dir.handle.openDir(io, dir_sub, .{ .iterate = true }) catch break :blk false;
++                            defer dir.close(io);
 +                            const prefix = std.fmt.allocPrint(gpa, "lib{s}.so.", .{lib_name}) catch break :blk false;
 +                            defer gpa.free(prefix);
 +                            var iter = dir.iterate();
-+                            while (iter.next() catch null) |entry| {
++                            while (iter.next(io) catch null) |entry| {
 +                                if (mem.startsWith(u8, entry.name, prefix)) {
 +                                    // Ownership of versioned_sub transfers to Input.Dso.path on
 +                                    // success. Only free on failure (the continue path).
@@ -63,8 +63,8 @@
 +                };
              } else {
                  if (fs.path.isAbsolute(arg.path)) {
-                     const new_path = Path.initCwd(try gpa.dupe(u8, arg.path));
-@@ -1071,7 +1126,16 @@
+                     const new_path = Path.initCwd(path: {
+@@ -1183,7 +1238,16 @@
                          else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
                      }
                  } else {

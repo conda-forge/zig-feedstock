@@ -1,6 +1,6 @@
 --- a/src/main.zig
 +++ b/src/main.zig
-@@ -293,6 +293,7 @@
+@@ -312,6 +312,7 @@
          dev.check(.clang_command);
          return process.exit(try clangMain(arena, args));
      } else if (mem.eql(u8, cmd, "ld.lld") or
@@ -8,7 +8,7 @@
          mem.eql(u8, cmd, "lld-link") or
          mem.eql(u8, cmd, "wasm-ld"))
      {
-@@ -1914,7 +1915,12 @@
+@@ -1940,7 +1941,12 @@
                          }
                      },
                      .other => {
@@ -22,8 +22,8 @@
                      },
                      .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
                          .assembly, .assembly_with_cpp, .c, .cpp, .ll, .bc, .h, .hpp, .hm, .hmm, .m, .mm => {
-@@ -2786,7 +2796,13 @@
-                     try fs.File.stdout().writeAll("zig ld " ++ build_options.version ++ "\n");
+@@ -2925,7 +2931,13 @@
+                     try Io.File.stdout().writeStreamingAll(io, "zig ld " ++ build_options.version ++ "\n");
                      process.exit(0);
                  } else {
 -                    fatal("unsupported linker arg: {s}", .{arg});
@@ -36,8 +36,8 @@
 +                    }
                  }
              }
- 
-@@ -5828,6 +5846,8 @@
+
+@@ -6057,6 +6069,8 @@
              break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
          } else if (mem.eql(u8, args[1], "wasm-ld")) {
              break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);

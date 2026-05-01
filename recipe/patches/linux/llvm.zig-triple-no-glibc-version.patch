@@ -1,6 +1,6 @@
---- a/src/codegen/llvm.zig
-+++ b/src/codegen/llvm.zig
-@@ -295,13 +295,8 @@
+--- a/src/codegen/llvm.zig	2026-04-13 20:19:17
++++ b/src/codegen/llvm.zig	2026-04-22 15:54:21
+@@ -306,13 +306,8 @@
          .semver,
          .windows,
          => {},

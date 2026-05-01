@@ -1,18 +1,18 @@
---- a/src/link/Elf/Atom.zig
-+++ b/src/link/Elf/Atom.zig
-@@ -359,6 +359,10 @@ pub fn scanRelocs(self: Atom, elf_file: *Elf, code: ?[]const u8, undefs: anyty
+--- a/src/link/Elf/Atom.zig	2026-04-13 20:19:17
++++ b/src/link/Elf/Atom.zig	2026-04-24 10:15:46
+@@ -353,6 +353,10 @@
+             .riscv64, .riscv64be => riscv.scanReloc(self, elf_file, rel, symbol, code, &it) catch |err| switch (err) {
                  error.RelocFailure => has_reloc_errors = true,
                  else => |e| return e,
-             },
++            },
 +            .powerpc64, .powerpc64le => {
 +                // PowerPC64 uses system linker (BFD) for relocations.
 +                // Self-hosted relocation handling is not needed.
-+            },
+             },
              else => return error.UnsupportedCpuArch,
          }
-     }
-@@ -688,6 +692,10 @@ pub fn resolveRelocsAlloc(self: Atom, elf_file: *Elf, code: []u8) RelocError!v
-                 error.DivisionByZero,
+@@ -682,6 +686,10 @@
+                 error.RelaxFailure,
                  => has_reloc_errors = true,
                  else => |e| return e,
 +            },
@@ -22,7 +22,7 @@
              },
              else => return error.UnsupportedCpuArch,
          }
-@@ -883,6 +891,10 @@ pub fn resolveRelocsNonAlloc(self: Atom, elf_file: *Elf, code: []u8) RelocErro
+@@ -868,6 +876,10 @@
                  error.RelocFailure => has_reloc_errors = true,
                  else => |e| return e,
              },
