@@ -2,6 +2,17 @@ schema_version: 1
 
 context:
   build_number: 1
+  # Bootstrap-source toggle, intentionally decoupled from build_number so
+  # the two paths can be iterated on independently:
+  #   true  → use upstream's pre-built ziglang.org binary as the stage-0
+  #           compiler (the only option on a fresh release before
+  #           anything is published).
+  #   false → bootstrap from conda-forge's already-published
+  #           zig_impl_${build_platform} of the same version.
+  # Bumping build_number for a rebuild no longer forces a path change,
+  # and conversely a scratch PR can re-exercise the upstream path
+  # without churning the package's build counter.
+  bootstrap_via_upstream: false
   name: zig
   version: "0.16.0"
 
@@ -172,17 +183,18 @@ source:
           # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
     target_directory: zig-source
-  # Upstream ziglang.org bootstrap — only on build 0 (the first build
-  # of a new zig release).  conda-forge's published zig_impl_X 0.15.2
-  # can't parse 0.16's build.zig, and the CMake-fallback path hits
-  # arch-specific bugs (osx-arm64 compiler_rt codegen, win MSVC
-  # C2466, linux-ppc64le branch-range, osx libcxx ABI clash with
-  # libcxx 21 toolchain).  Using upstream's pre-built 0.16.0 binary
-  # parses its own build.zig natively → zig build succeeds first try.
-  # Subsequent builds (build_number > 0) use conda-forge's
-  # zig_impl_${build_platform} which by then is the 0.16.x we just
-  # published, so no upstream download is needed.
-  - if: build_number == 0
+  # Upstream ziglang.org bootstrap — gated on the bootstrap_via_upstream
+  # context flag (decoupled from build_number so the two can be iterated
+  # on independently).  Required on a fresh release: conda-forge's
+  # previously-published zig_impl_X 0.15.2 can't parse 0.16's build.zig,
+  # and the CMake-fallback path hits arch-specific bugs (osx-arm64
+  # compiler_rt codegen, win MSVC C2466, linux-ppc64le branch-range,
+  # osx libcxx ABI clash with libcxx 21 toolchain).  Using upstream's
+  # pre-built 0.16.0 binary parses its own build.zig natively → zig
+  # build succeeds first try.  Once the matching zig_impl_X is on
+  # conda-forge, flip bootstrap_via_upstream to false; no upstream
+  # download is needed.
+  - if: bootstrap_via_upstream
     then:
       - if: build_platform == "osx-arm64"
         then:
@@ -299,14 +311,15 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig.
-        # build_number == 0 (first build of a new release): use the
-        #   upstream tarball pulled in via `source:` above. No conda-
-        #   forge zig_impl_${build_platform} matching this version
-        #   exists yet, and on osx the previous release pins libcxx 20
-        #   which clashes with the LLVM-21 host env.
-        # build_number > 0: the just-published zig_impl_X 0.16.x can
-        #   parse its own build.zig — no upstream download needed.
-        - if: build_number != 0
+        # bootstrap_via_upstream == true: use the upstream tarball
+        #   pulled in via `source:` above (the only option on a fresh
+        #   release — conda-forge has no zig_impl_${build_platform}
+        #   matching this version yet, and on osx the previous release
+        #   pins libcxx 20 which clashes with the LLVM-21 host env).
+        # bootstrap_via_upstream == false: the just-published
+        #   zig_impl_${build_platform} can parse its own build.zig
+        #   — no upstream download needed.
+        - if: not bootstrap_via_upstream
           then:
             - zig_impl_${{ build_platform }} >=${{ version }}
       host:
