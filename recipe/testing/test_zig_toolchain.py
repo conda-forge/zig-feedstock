@@ -733,17 +733,25 @@ def test_windows_import_libs() -> None:
                 and "SelfInfo" in r.stderr
                 and "increases pointer alignment" in r.stderr
             ):
-                # Upstream zig 0.16.0 stdlib bug: lib/std/debug/SelfInfo/Windows.zig:670
-                # uses @ptrCast on *anyopaque without @alignCast, tripping libubsan's
-                # alignment check during sub-compilation when the target is an
-                # aarch64-Windows triple (mingw or msvc).  Verified verbatim against
-                # upstream 0.16.0; no feedstock patch touches the file; same code is
-                # still present on master.  The synchronization.def workaround we're
-                # exercising here is unrelated — zig fails before it gets to link.
+                # Looks like an upstream zig 0.16.0 stdlib issue rather than a
+                # regression on our side: the error points at
+                # lib/std/debug/SelfInfo/Windows.zig:670 (a @ptrCast on
+                # *anyopaque without @alignCast), surfaced by libubsan's
+                # alignment check during sub-compilation for aarch64-Windows
+                # targets.  What we've checked: the file is verbatim against
+                # upstream 0.16.0 on codeberg and no feedstock patch touches
+                # it, so we don't appear to be the cause.  We haven't found
+                # an existing upstream issue, but we also can't rule out that
+                # one exists under different search terms — so this is an
+                # informed guess, not a confirmed upstream bug.  The
+                # synchronization.def workaround the test was meant to
+                # exercise is independent: zig errors out before reaching the
+                # link step.
                 WARN(
                     "windows import libs (-lsynchronization)",
-                    "zig 0.16.0 SelfInfo/Windows.zig:670 missing @alignCast — "
-                    "upstream stdlib bug, unrelated to synchronization.def fix",
+                    "suspected upstream stdlib issue in zig 0.16.0 "
+                    "SelfInfo/Windows.zig:670 (@ptrCast without @alignCast) "
+                    "— synchronization.def path unreached",
                 )
             else:
                 FAIL(
