@@ -728,6 +728,31 @@ def test_windows_import_libs() -> None:
                     "windows import libs (-lsynchronization)",
                     "libsynchronization.a not found — synchronization.def missing from sysroot",
                 )
+            elif (
+                "sub-compilation of libubsan failed" in r.stderr
+                and "SelfInfo" in r.stderr
+                and "increases pointer alignment" in r.stderr
+            ):
+                # Looks like an upstream zig 0.16.0 stdlib issue rather than a
+                # regression on our side: the error points at
+                # lib/std/debug/SelfInfo/Windows.zig:670 (a @ptrCast on
+                # *anyopaque without @alignCast), surfaced by libubsan's
+                # alignment check during sub-compilation for aarch64-Windows
+                # targets.  What we've checked: the file is verbatim against
+                # upstream 0.16.0 on codeberg and no feedstock patch touches
+                # it, so we don't appear to be the cause.  We haven't found
+                # an existing upstream issue, but we also can't rule out that
+                # one exists under different search terms — so this is an
+                # informed guess, not a confirmed upstream bug.  The
+                # synchronization.def workaround the test was meant to
+                # exercise is independent: zig errors out before reaching the
+                # link step.
+                WARN(
+                    "windows import libs (-lsynchronization)",
+                    "suspected upstream stdlib issue in zig 0.16.0 "
+                    "SelfInfo/Windows.zig:670 (@ptrCast without @alignCast) "
+                    "— synchronization.def path unreached",
+                )
             else:
                 FAIL(
                     "windows import libs (-lsynchronization)",
