@@ -32,6 +32,17 @@ dbg() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]] && "$@" || true; }
 [[ -z "${CONDA_ZIG_BUILD:-}" ]] && { echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"; exit 1; }
 [[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
 
+# zig 0.15+ requires macOS OS version as major.minor (e.g. "11.0" not bare "11").
+# conda-forge c_stdlib_version may supply a bare major integer.
+if is_osx; then
+  _zig_os_ver="${ZIG_TRIPLET#*-macos.}"   # "11-none" or "10.13-none"
+  _zig_os_ver="${_zig_os_ver%%-*}"         # "11"  or "10.13"
+  if [[ "${_zig_os_ver}" != *.* ]]; then
+    ZIG_TRIPLET="${ZIG_TRIPLET/-macos.${_zig_os_ver}-/-macos.${_zig_os_ver}.0-}"
+    export ZIG_TRIPLET
+  fi
+fi
+
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
   echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
   exit 1
@@ -58,12 +69,12 @@ BUILD_ZIG="${CONDA_ZIG_BUILD}"
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
-export ZIG_GLOBAL_CACHE_DIR="${SRC_DIR}/zig-global-cache"
+export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR_OVERRIDE:-${SRC_DIR}/zig-global-cache}"
 export ZIG_LOCAL_CACHE_DIR="${SRC_DIR}/zig-local-cache"
 
 cmake_source_dir="${SRC_DIR}/zig-source"
 cmake_build_dir="${SRC_DIR}/build-release"
-cmake_install_dir="${SRC_DIR}/cmake-built-install"
+cmake_install_dir="${PREFIX}"
 zig_build_dir="${SRC_DIR}/conda-zig-source"
 
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
@@ -97,17 +108,136 @@ EXTRA_ZIG_ARGS=(
 # On cross-builds, zig_lib_dir points to the build host, so the patch's
 # default probe finds wrong-arch libraries. This env var bypasses the
 # arch guard and probes the target prefix directly.
-export ZIG_SHARED_LIBCXX_DIR="${PREFIX}/lib/zig-llvm/lib"
+#
+# On macOS, conda places libcxx (a host: requirement, target-arch on cross)
+# directly in ${PREFIX}/lib, NOT under a zig-llvm subdir. Pointing the env
+# var here ensures the linker finds libc++.1.dylib at link time and emits a
+# shared-library load command instead of falling through to static libcxx,
+# which would otherwise collide at runtime with libLLVM/libclang-cpp's own
+# libc++ (zig fires "LLVM and Clang have separate copies of libc++").
+if is_osx; then
+  export ZIG_SHARED_LIBCXX_DIR="${PREFIX}/lib"
+else
+  export ZIG_SHARED_LIBCXX_DIR="${PREFIX}/lib/zig-llvm/lib"
+fi
 
-# Patch 0007 adds -Ddoctest-target to build.zig (Linux only)
-is_linux && EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
+# Patch build.zig-doctest-forward-target adds -Ddoctest-target to build.zig.
+# Applied universally; gated here to platforms that benefit from explicit
+# target forwarding to zig2 self-hosted backend (avoids comptime f16->f32 bug).
+if is_linux || is_osx; then
+  EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
+fi
 
-# ppc64le cross: enable docgen only if qemu is available (needs to run ppc64le doctests)
-if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross; then
-  _qemu_arch="${ZIG_TRIPLET%%-*}"
-  if ! command -v "qemu-${_qemu_arch}" &>/dev/null; then
-    EXTRA_ZIG_ARGS+=(-Dno-langref)
+# ppc64le: zig2.c is a ~11M-line auto-generated C TU. PowerPC direct branches
+# are limited to 26-bit signed displacement (+/-32MB), and inter-function
+# distances inside zig2.c exceed that range, producing GAS errors:
+#   "Error: operand out of range (... is not between 0xfffffffffe000000 and 0x1fffffc)"
+# -mlongcall makes GCC emit indirect calls via CTR for any-distance reach.
+# Applies to both native and cross ppc64le builds (same generated source).
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  # -mlongcall: convert direct calls to indirect for our local code. Insufficient
+  # alone since (a) partial-inline clones (.part.0/.constprop.0) plus -fno-plt
+  # (conda-forge default) can still emit raw R_PPC64_REL24, (b) prebuilt
+  # $PREFIX/lib/liblldELF.a (lld-20 package) was NOT built with -mlongcall, so
+  # its global ctors call into std::vector helpers via REL24 -- and as LLVM/LLD 20
+  # archives grew, the combined image exceeded REL24's +/-32MB reach.
+  # -mcmodel=large: forces TOC-relative call sequences in our local code,
+  # eliminating REL24 from zigcpp.a + zig2.c.o.
+  # -Wl,--no-relax was REMOVED (build 22 -> 23): originally added believing it
+  # preserved linker-inserted long-call stubs against prebuilt liblldELF.a, but
+  # REL24 truncation persisted and got worse after the 2026-04-29/30 conda-forge
+  # re-render bumped LLVM 20 archive sizes. --no-relax disables PPC64 TOC
+  # optimization that the linker also uses to insert long-branch stubs; letting
+  # default relaxation run allows ld.bfd to insert __longcall_* trampolines for
+  # far calls into prebuilt liblldELF.a/libzigcpp.a global ctors.
+  # Option B' only (B dropped: incompatible with PPC64 REL24).
+  # B (DROPPED): -ffunction-sections -fdata-sections + -Wl,--gc-sections scatter
+  #   intra-TU functions, defeating REL24 locality on PPC64 (+-32MB branch reach).
+  # B': -fno-partial-inlining -fno-ipa-cp-clone prevents GCC from emitting
+  #     .part.0/.constprop.0 cloned variants that bypass -mlongcall (the
+  #     existing comment above explicitly flags this as a -mlongcall escape).
+  # ppc64le huge-binary REL24: distributed stub groups (2MB chunks) reach all
+  # call sites; -1 = single group fails when total .text > 64MB. Switch to 2097152
+  # (2MB) to create many distributed stub groups, each within REL24 reach of nearby call sites.
+  export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=2097152"
+  export NINJA_FLAGS="-v"
+  # Belt-and-suspenders: force CMAKE_{C,CXX,EXE_LINKER,SHARED_LINKER}_FLAGS via
+  # the non-INIT command-line form (not _INIT). _INIT only seeds the cache on
+  # the FIRST configure; cmake_fallback_build re-runs configure with the
+  # patched CMakeLists.txt and the cached value can drift (env flags are not
+  # re-read on re-configure once the cache is populated). Passing -D... on
+  # every invocation forces the value, so flags reach both zigcpp's initial
+  # compile/link AND any rebuild triggered by the patched re-configure.
+  EXTRA_CMAKE_ARGS+=(
+    -DCMAKE_C_FLAGS="${CFLAGS}"
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
+    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
+    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
+    -DZIG_LLD_BUNDLE_SO="${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so"
+  )
+fi
+
+# osx cross with arch mismatch (e.g. osx-arm64 host -> osx-64 target):
+# conda-forge target activation injects x86_64-only flags (-march=core2,
+# -mtune=haswell, -mssse3) into CFLAGS/CXXFLAGS. CMake try_compile probes
+# the BUILD-host compiler with `-arch arm64`, and the cross-clang wrapper
+# x86_64-apple-darwin*-clang errors with "unsupported argument 'core2' to
+# option '-march='". Stripping is safer than rewriting: zig's own target
+# is set via -Dtarget=${ZIG_TRIPLET} and -Dcpu=baseline, so the dropped
+# tuning flags are not load-bearing for the produced binary.
+if is_osx && is_cross; then
+  for _v in CFLAGS CXXFLAGS; do
+    eval "_val=\${${_v}:-}"
+    _val="$(echo "${_val}" \
+      | sed -E 's/(^| )-march=[^ ]+//g; s/(^| )-mtune=[^ ]+//g; s/(^| )-mssse3//g; s/  +/ /g; s/^ +//; s/ +$//')"
+    eval "export ${_v}=\"\${_val}\""
+  done
+  unset _v _val
+fi
+
+# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref because zig2
+# is built with dev=core (no translate_c), and @cImport doctests panic with
+# "development environment core does not support feature translate_c_command".
+# Phase 2 below regenerates langref using the installed stage3 zig (dev=full).
+EXTRA_ZIG_ARGS+=(-Dno-langref)
+# cmake path: patch 0004-no-langref-optional makes upstream's hardcoded
+# -Dno-langref opt-in via ZIG_NO_LANGREF; flip ON to match zig-with-zig path.
+EXTRA_CMAKE_ARGS+=(-DZIG_NO_LANGREF=ON)
+
+if is_unix; then
+  # zig binary links libclang-cpp.so.20.1 (linux) / libclang-cpp.20.1.dylib (osx)
+  # at runtime; the cmake path does not use zig's native linker (which auto-embeds
+  # DT_RUNPATH on linux or LC_RPATH on osx), so we must add the rpath explicitly --
+  # otherwise the dynamic linker cannot locate the library at startup.
+  # Windows PE/COFF has no rpath concept and is excluded from this block.
+  EXTRA_CMAKE_ARGS+=(
+    -DCMAKE_INSTALL_RPATH="${PREFIX}/lib"
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+  )
+  # CMAKE_INSTALL_RPATH only affects zig2 itself (the cmake-built intermediate).
+  # Stage3 (the final $PREFIX/bin/zig) is built by zig2 invoking `zig build install`,
+  # so it doesn't inherit cmake's rpath.  Pass --search-prefix via the upstream
+  # ZIG_EXTRA_BUILD_ARGS hook: cmake appends it to ZIG_BUILD_ARGS, and zig's
+  # --search-prefix adds ${PREFIX}/lib as -L and embeds it as DT_RUNPATH (linux)
+  # or LC_RPATH (osx), so the dynamic linker can find libclang-cpp at startup.
+  # ZIG_EXTRA_BUILD_ARGS reaches upstream cmake's zig2 build invocation that
+  # produces stage3. On osx we ALSO append --maxrss here because that upstream
+  # invocation does NOT consume our EXTRA_ZIG_ARGS array (which only feeds our
+  # own build_zig_with_zig path). osx-arm64 GHA runners auto-budget zig's
+  # --maxrss to ~7 GiB; stage3 declares ~7.8 GB → `memory_blocked_steps`
+  # assertion in build_runner.zig:679. Semicolon-separated form is the cmake
+  # list syntax; cmake splits on ; and appends each token as a separate arg.
+  if is_osx; then
+    _zig_extra="--search-prefix;${PREFIX};--maxrss;8589934592"
+  else
+    _zig_extra="--search-prefix;${PREFIX}"
   fi
+  EXTRA_CMAKE_ARGS+=(
+    "-DZIG_EXTRA_BUILD_ARGS=${_zig_extra}"
+  )
+  unset _zig_extra
 fi
 
 if is_osx; then
@@ -115,6 +245,12 @@ if is_osx; then
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
+  # Stage3 zig build declares ~7.8 GB upper bound; osx-arm64 GHA runners
+  # auto-budget zig's --maxrss to ~7 GiB based on system RAM, which trips
+  # `assert(memory_blocked_steps.items.len == 0)` in build_runner.zig.
+  # Pin to 8 GiB. Same value also appended via ZIG_EXTRA_BUILD_ARGS above
+  # for upstream cmake's zig2 build (different invocation path).
+  EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
@@ -123,6 +259,12 @@ fi
 if is_not_unix; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=OFF
+    # Force dynamic CRT (/MD) for zigcpp objects so their /DEFAULTLIB
+    # directives emit ucrt.lib (dynamic), matching what bootstrap zig's
+    # Lld.zig adds. Without this, cmake may compile with /MT (static)
+    # producing /DEFAULTLIB:libucrt -- then lld-link sees both libucrt.lib
+    # and ucrt.lib and fails with duplicate symbols.
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
   )
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
@@ -133,6 +275,18 @@ if is_linux && is_cross; then
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
+  # qemu binary-name shim: ZIG_TRIPLET on ppc64le starts with the GCC arch
+  # name "powerpc64le-...", so "${ZIG_TRIPLET%%-*}" = "powerpc64le". The
+  # conda-forge package qemu-execve-ppc64le ships its binary as qemu-ppc64le,
+  # so qemu-powerpc64le is missing from PATH and CROSSCOMPILING_EMULATOR
+  # detection in _cmake.sh fails. Bridge the gap by symlinking into
+  # BUILD_PREFIX/bin (always on PATH and writable in build env).
+  # TODO: drop once qemu-execve-ppc64le ships qemu-powerpc64le upstream.
+  if [[ "${target_platform}" == "linux-ppc64le" ]] \
+     && ! command -v qemu-powerpc64le &>/dev/null \
+     && command -v qemu-ppc64le &>/dev/null; then
+    ln -sf "$(command -v qemu-ppc64le)" "${BUILD_PREFIX}/bin/qemu-powerpc64le"
+  fi
   # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
   # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
   _qemu_arch="${ZIG_TRIPLET%%-*}"
@@ -148,6 +302,32 @@ if is_linux; then
   create_gcc14_glibc28_compat_lib
   
   is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+fi
+
+# CMAKE_BUILD=1 path: cmake's target_link_libraries(zig2 ...) gets
+# LLVM_LIBRARIES from llvm-config which omits zstd/xml2/z. LLD's
+# static archives (liblldELF.a etc.) reference ZSTD_createCCtx and
+# friends, so the link fails (e.g. linux-aarch64). Append the libs
+# to LLVM_LIBRARIES at the source — this mirrors the post-configure
+# config.h perl edit (line below) that handles the zig-with-zig
+# path. Insertion site (after find_package(Threads), ~line 187) is
+# outside the 784-1015 region the existing cmake patches touch.
+is_linux && perl -pi -e 's@(find_package\(Threads\))@$1\nlist(APPEND LLVM_LIBRARIES "-lzstd" "-lxml2" "-lz")@' "${cmake_source_dir}"/CMakeLists.txt
+
+# osx cross: CMake's compiler detection probes the raw clang binary which
+# resolves to the build (runner) arch — the conda cross-compiler on macOS is
+# the same clang++ binary with -arch <target> in CXXFLAGS, but try_compile
+# ignores those flags at probe time. CMake then writes CMAKE_OSX_ARCHITECTURES
+# matching the host, and Phase A's configure_cmake_zigcpp builds host-arch
+# objects into build-release/zigcpp/libzigcpp.a. Phase 3 stage3 (cross to
+# target arch) then fails with "invalid cpu architecture: <host>" parsing
+# libzigcpp.a. Fix: force the target arch via -DCMAKE_OSX_ARCHITECTURES so
+# both Phase A and Phase 2 (cmake_fallback_build) build target-arch objects.
+if is_osx && is_cross; then
+  case "${target_platform}" in
+    osx-64)     EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=x86_64) ;;
+    osx-arm64)  EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=arm64) ;;
+  esac
 fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
@@ -194,7 +374,11 @@ fi
 
 dbg echo "=== ZIG BUILD: starting zig build ==="
 dbg echo "=== ZIG BUILD: zig=${BUILD_ZIG} dir=${zig_build_dir} ==="
-if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
+  dbg echo "=== ZIG BUILD: CMAKE_BUILD=1, forcing cmake build (bypass zig-with-zig) ==="
+  source "${RECIPE_DIR}/building/_cmake.sh"  # cmake_fallback_build
+  cmake_fallback_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
+elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 elif [[ "${CMAKE_FALLBACK:-1}" == "1" ]]; then
   dbg echo "=== ZIG BUILD: FAILED, trying cmake fallback ==="
@@ -208,6 +392,68 @@ fi
 
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb
+
+# macOS: stage3 is built by zig2 invoking `zig build install`, which does not
+# inherit cmake's CMAKE_INSTALL_RPATH.  --search-prefix adds a library search
+# path at link time but does not embed LC_RPATH in the Mach-O binary.  Without
+# an explicit rpath the dynamic linker cannot locate libclang-cpp.20.1.dylib at
+# startup (e.g. when Phase 2 runs $PREFIX/bin/zig build langref).
+if is_osx; then
+  install_name_tool -add_rpath "${PREFIX}/lib" "${PREFIX}/bin/zig"
+fi
+
+# Linux: same problem on ELF. --search-prefix does not unconditionally embed
+# DT_RUNPATH. Use a relative rpath ($ORIGIN/../lib) so the binary works under
+# qemu user-mode emulation in cross builds (qemu rewrites absolute paths via
+# QEMU_LD_PREFIX/sysroot, which would hide $PREFIX/lib; relative rpath is
+# resolved by the dynamic linker from the binary's own location, bypassing
+# qemu's path rewriting). Phase 2 langref needs to dlopen libclang-cpp.so.20.1
+# from $PREFIX/lib via qemu-${arch}, so without this the cross build silently
+# skips langref and the package_contents test fails on linux-aarch64.
+if is_linux; then
+  patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
+fi
+
+
+# --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
+# Phase 1 skipped langref (zig2 has dev=core, no translate_c). Now use the
+# just-installed stage3/bin/zig (dev=full) to generate doc/langref.html.
+# Gated on stage3 being executable: native always, linux-cross only if a
+# qemu user-mode emulator for the target arch is available in PATH.
+_can_run_stage3() {
+  if ! is_cross; then return 0; fi
+  if is_linux; then
+    local _qa="${ZIG_TRIPLET%%-*}"
+    command -v "qemu-${_qa}" &>/dev/null && return 0
+  fi
+  return 1
+}
+
+if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
+  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
+elif _can_run_stage3; then
+  dbg echo "=== PHASE 2: building langref via stage3 zig ==="
+  _stage3_runner=()
+  if is_cross && is_linux; then
+    _stage3_runner=("qemu-${ZIG_TRIPLET%%-*}")
+  fi
+
+  (
+    cd "${cmake_source_dir}" &&
+    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+      --prefix "${PREFIX}" \
+      -Dversion-string="${PKG_VERSION}" \
+      -Ddoctest-target="${ZIG_TRIPLET}"
+  ) || {
+    if ! is_cross; then
+      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
+      exit 1
+    fi
+    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
+  }
+else
+  echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
+fi
 
 dbg echo "=== POST-INSTALL: mv zig to ${CONDA_TRIPLET}-zig ==="
 mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig

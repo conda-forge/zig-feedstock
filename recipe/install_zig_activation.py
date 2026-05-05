@@ -173,6 +173,19 @@ def _strip_glibc_version(triplet: str) -> str:
     return m.group(1) if m else triplet
 
 
+def _normalize_cc_target(triplet: str) -> str:
+    """Normalize a zig triplet for use as a zig cc -target value.
+
+    Applies two transformations:
+    1. Strip glibc version suffix (clang rejects e.g. x86_64-linux-gnu.2.17)
+    2. Expand bare macOS major version to major.minor (zig 0.15+ rejects e.g.
+       'aarch64-macos.11-none'; requires 'aarch64-macos.11.0-none').
+    """
+    triplet = _strip_glibc_version(triplet)
+    triplet = re.sub(r'(-macos\.)(\d+)(-)', r'\g<1>\2.0\3', triplet)
+    return triplet
+
+
 def _find_zig_bin(conda_triplet: str, is_nonunix: bool = False) -> str:
     """Return the zig binary reference for wrappers.
 
@@ -236,7 +249,7 @@ def install_zig_cc_wrappers(
     scripts_dir = recipe_dir / "scripts"
 
     # Strip glibc version for cc/c++ target (clang rejects ".2.17" suffix)
-    cc_target = _strip_glibc_version(zig_triplet)
+    cc_target = _normalize_cc_target(zig_triplet)
     zig_bin = _find_zig_bin(conda_triplet, is_nonunix=is_nonunix)
 
     # Architecture prefix for sysroot detection (e.g. x86_64 from x86_64-linux-gnu.2.17)
@@ -246,6 +259,7 @@ def install_zig_cc_wrappers(
         "@ZIG_BIN@": zig_bin,
         "@ZIG_TARGET@": cc_target,
         "@ZIG_TARGET_ARCH@": target_arch,
+        "@WRAPPER_PREFIX@": f"{conda_triplet}-",
     }
 
     if is_nonunix:
@@ -258,13 +272,13 @@ def install_zig_cc_wrappers(
             zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
             for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
                 mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name}
-                _compile_c_shim(cc_src, wrapper_dir / f"{exe_name}.exe", mode_replacements)
+                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
 
         # Keep .bat for simple pass-through tools (no flag filtering needed)
         for name in ["zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld"]:
             src = scripts_dir / f"{name}.bat"
             if src.exists():
-                _install_template(src, wrapper_dir / f"{name}.bat", replacements)
+                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}.bat", replacements)
 
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"
@@ -272,12 +286,12 @@ def install_zig_cc_wrappers(
         for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
             src = scripts_dir / helper
             if src.exists():
-                _install_template(src, wrapper_dir / helper, replacements)
+                _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
         wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():
-                _install_template(src, wrapper_dir / name, replacements, executable=True)
+                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
 
 
 def install_unix_cross_wrappers(
@@ -291,7 +305,7 @@ def install_unix_cross_wrappers(
     native_zig = f"{native_triplet}-zig"
 
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
-    cc_triplet = _strip_glibc_version(zig_triplet)
+    cc_triplet = _normalize_cc_target(zig_triplet)
 
     replacements = {
         "@NATIVE_ZIG@": native_zig,
@@ -321,7 +335,7 @@ def install_nonunix_cross_wrappers(
     native_zig_exe = f"{native_triplet}-zig.exe"
 
     # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
-    cc_triplet = _strip_glibc_version(zig_triplet)
+    cc_triplet = _normalize_cc_target(zig_triplet)
 
     replacements = {
         "@NATIVE_ZIG_EXE@": native_zig_exe,

@@ -1,5 +1,6 @@
 # ARM64 Windows intrinsic stubs for win-arm64 cross-compilation.
 # These resolve link-time symbols that lld can't auto-import on ARM64.
+# Stubs are written to libarm64/ (MinGW arch-convention dir for ARM64 imports).
 
 function create_chkstk_ms_stub() {
   # ___chkstk_ms (3 underscores on ARM64) -- stack probe called by MSVC ABI.
@@ -84,10 +85,12 @@ EOF
 
 function create_win_arm64_stubs() {
   # Create all ARM64 Windows intrinsic stubs.
+  # output_dir should be the libarm64/ directory; it is created if absent.
   local zig_bin="${1}"
   local win_target="${2}"
   local output_dir="${3}"
 
+  mkdir -p "${output_dir}"
   dbg echo "=== Compiling ARM64 intrinsic stubs ==="
   create_chkstk_ms_stub "${zig_bin}" "${win_target}" "${output_dir}"
   create_fpreset_stub "${zig_bin}" "${win_target}" "${output_dir}"

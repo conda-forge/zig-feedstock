@@ -60,7 +60,7 @@ function configure_cmake_zigcpp() {
 
   configure_cmake "${build_dir}" "${install_dir}"
   pushd "${build_dir}"
-    cmake --build . --target zigcpp -- -j"${CPU_COUNT}"
+    cmake --build . --target zigcpp -- -j"${CPU_COUNT}" ${NINJA_FLAGS:-}
   popd
 }
 

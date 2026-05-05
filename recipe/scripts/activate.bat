@@ -5,6 +5,7 @@ REM
 REM Exports ZIG_CC, ZIG_CXX, etc. pointing to pre-installed wrapper scripts
 REM in %CONDA_PREFIX%\Library\share\zig\wrappers\
 
+set "_CONDA_TRIPLET=@CONDA_TRIPLET@"
 set "_CROSS_TARGET_TRIPLET=@CROSS_TARGET_TRIPLET@"
 
 REM === Zig toolchain identification ===
@@ -31,18 +32,19 @@ REM === Export variables ===
 set "_zig_bin=%CONDA_PREFIX%\Library\bin\@CONDA_TRIPLET@-zig.exe"
 if exist "%_zig_bin%" set "ZIG=%_zig_bin%"
 
-if exist "%_wrapper_dir%\zig-cc.exe"     set "ZIG_CC=%_wrapper_dir%\zig-cc.exe"
-if exist "%_wrapper_dir%\zig-cxx.exe"    set "ZIG_CXX=%_wrapper_dir%\zig-cxx.exe"
-if exist "%_wrapper_dir%\zig-ar.bat"     set "ZIG_AR=%_wrapper_dir%\zig-ar.bat"
-if exist "%_wrapper_dir%\zig-ranlib.bat" set "ZIG_RANLIB=%_wrapper_dir%\zig-ranlib.bat"
-if exist "%_wrapper_dir%\zig-asm.bat"    set "ZIG_ASM=%_wrapper_dir%\zig-asm.bat"
-if exist "%_wrapper_dir%\zig-rc.bat" (
-    set "ZIG_RC=%_wrapper_dir%\zig-rc.bat"
-    set "ZIG_RC_CMAKE=%_wrapper_dir:\=/%/zig-rc.bat"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-cc.exe"     set "ZIG_CC=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-cc.exe"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-cxx.exe"    set "ZIG_CXX=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-cxx.exe"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-ar.bat"     set "ZIG_AR=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-ar.bat"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-ranlib.bat" set "ZIG_RANLIB=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-ranlib.bat"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-asm.bat"    set "ZIG_ASM=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-asm.bat"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-rc.bat" (
+    set "ZIG_RC=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-rc.bat"
+    set "ZIG_RC_CMAKE=%_wrapper_dir:\=/%/%_CONDA_TRIPLET%-zig-rc.bat"
 )
-if exist "%_wrapper_dir%\zig-ld.bat" set "ZIG_LLD=%_wrapper_dir%\zig-ld.bat"
+if exist "%_wrapper_dir%\%_CONDA_TRIPLET%-zig-ld.bat" set "ZIG_LLD=%_wrapper_dir%\%_CONDA_TRIPLET%-zig-ld.bat"
 
 :cleanup
+set "_CONDA_TRIPLET="
 set "_CROSS_TARGET_TRIPLET="
 set "_wrapper_dir="
 set "_zig_bin="

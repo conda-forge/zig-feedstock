@@ -1,0 +1,183 @@
+--- a/lib/std/posix.zig
++++ b/lib/std/posix.zig
+@@ -625,6 +625,25 @@
+         .SUCCESS => return,
+         else => |err| return unexpectedErrno(err),
+     };
++    // On Linux, use the direct syscall to avoid depending on the libc getrandom
++    // symbol (added in glibc 2.25). When building zig2 (CMake stage) against a
++    // glibc 2.17 sysroot the symbol is absent and the link fails. linux.getrandom
++    // is a thin syscall wrapper that requires no libc symbol.
++    if (native_os == .linux) {
++        var buf = buffer;
++        while (buf.len != 0) {
++            const rc = linux.getrandom(buf.ptr, buf.len, 0);
++            const err = linux.E.init(rc);
++            switch (err) {
++                .SUCCESS => buf = buf[rc..],
++                .INVAL => unreachable,
++                .FAULT => unreachable,
++                .INTR => continue,
++                else => return unexpectedErrno(err),
++            }
++        }
++        return;
++    }
+     if (@TypeOf(system.getrandom) != void) {
+         var buf = buffer;
+         const use_c = native_os != .linux or
+@@ -4466,8 +4485,32 @@
+         @compileError("fstat is not yet implemented on Windows");
+     }
+
+-    const fstat_sym = if (lfs64_abi) system.fstat64 else system.fstat;
+     var stat = mem.zeroes(Stat);
++
++    // On Linux with link_libc targeting glibc < 2.33, the libc fstat/fstat64
++    // symbols may not be available in the shared library stubs (they live in
++    // libc_nonshared.a which requires __fxstat). When using --libc with a
++    // sysroot, the nonshared archive may not be linked. Use direct syscalls
++    // to avoid the broken symbol chain.
++    if (native_os == .linux) {
++        const rc = blk: {
++            if (@hasField(linux.SYS, "fstat64")) {
++                break :blk linux.syscall2(.fstat64, @as(usize, @bitCast(@as(isize, fd))), @intFromPtr(&stat));
++            } else {
++                break :blk linux.syscall2(.fstat, @as(usize, @bitCast(@as(isize, fd))), @intFromPtr(&stat));
++            }
++        };
++        switch (errno(rc)) {
++            .SUCCESS => return stat,
++            .INVAL => unreachable,
++            .BADF => unreachable,
++            .NOMEM => return error.SystemResources,
++            .ACCES => return error.AccessDenied,
++            else => |err| return unexpectedErrno(err),
++        }
++    }
++
++    const fstat_sym = if (lfs64_abi) system.fstat64 else system.fstat;
+     switch (errno(fstat_sym(fd, &stat))) {
+         .SUCCESS => return stat,
+         .INVAL => unreachable,
+@@ -4515,8 +4558,35 @@
+         return Stat.fromFilestat(filestat);
+     }
+
+-    const fstatat_sym = if (lfs64_abi) system.fstatat64 else system.fstatat;
+     var stat = mem.zeroes(Stat);
++
++    // Same syscall bypass as fstat -- see comment above.
++    if (native_os == .linux) {
++        const rc = blk: {
++            if (@hasField(linux.SYS, "fstatat64")) {
++                break :blk linux.syscall4(.fstatat64, @as(usize, @bitCast(@as(isize, dirfd))), @intFromPtr(pathname), @intFromPtr(&stat), flags);
++            } else if (@hasField(linux.SYS, "newfstatat")) {
++                break :blk linux.syscall4(.newfstatat, @as(usize, @bitCast(@as(isize, dirfd))), @intFromPtr(pathname), @intFromPtr(&stat), flags);
++            } else {
++                break :blk linux.syscall4(.fstatat, @as(usize, @bitCast(@as(isize, dirfd))), @intFromPtr(pathname), @intFromPtr(&stat), flags);
++            }
++        };
++        switch (errno(rc)) {
++            .SUCCESS => return stat,
++            .INVAL => unreachable,
++            .BADF => unreachable,
++            .NOMEM => return error.SystemResources,
++            .ACCES => return error.AccessDenied,
++            .PERM => return error.PermissionDenied,
++            .NAMETOOLONG => return error.NameTooLong,
++            .LOOP => return error.SymLinkLoop,
++            .NOENT => return error.FileNotFound,
++            .NOTDIR => return error.FileNotFound,
++            else => |err| return unexpectedErrno(err),
++        }
++    }
++
++    const fstatat_sym = if (lfs64_abi) system.fstatat64 else system.fstatat;
+     switch (errno(fstatat_sym(dirfd, pathname, &stat, flags))) {
+         .SUCCESS => return stat,
+         .INVAL => unreachable,
+@@ -6387,45 +6457,49 @@
+ ///
+ /// Maximum offsets on Linux and FreeBSD are `maxInt(i64)`.
+ pub fn copy_file_range(fd_in: fd_t, off_in: u64, fd_out: fd_t, off_out: u64, len: usize, flags: u32) CopyFileRangeError!usize {
+-    if (builtin.os.tag == .freebsd or builtin.os.tag == .linux) {
+-        const use_c = native_os != .linux or
+-            std.c.versionCheck(if (builtin.abi.isAndroid()) .{ .major = 34, .minor = 0, .patch = 0 } else .{ .major = 2, .minor = 27, .patch = 0 });
+-        const sys = if (use_c) std.c else linux;
++    // On Linux, use the direct syscall to avoid depending on the libc
++    // copy_file_range symbol (added in glibc 2.27). When building zig2 (CMake
++    // stage) against a glibc 2.17 sysroot the symbol is absent and the link
++    // fails. linux.copy_file_range is a thin syscall wrapper.
++    if (native_os == .linux) {
++        var off_in_copy: i64 = @bitCast(off_in);
++        var off_out_copy: i64 = @bitCast(off_out);
+
++        while (true) {
++            const rc = linux.copy_file_range(fd_in, &off_in_copy, fd_out, &off_out_copy, len, flags);
++            switch (linux.E.init(rc)) {
++                .SUCCESS => return @intCast(rc),
++                .BADF => return error.FilesOpenedWithWrongFlags,
++                .FBIG => return error.FileTooBig,
++                .IO => return error.InputOutput,
++                .ISDIR => return error.IsDir,
++                .NOSPC => return error.NoSpaceLeft,
++                .INVAL => break, // these may not be regular files, try fallback
++                .NOMEM => return error.OutOfMemory,
++                .OVERFLOW => return error.Unseekable,
++                .PERM => return error.PermissionDenied,
++                .TXTBSY => return error.SwapFile,
++                .XDEV => break, // cross-filesystem copy added in Linux 5.3, use fallback
++                else => |err| return unexpectedErrno(err),
++            }
++        }
++    } else if (builtin.os.tag == .freebsd) {
+         var off_in_copy: i64 = @bitCast(off_in);
+         var off_out_copy: i64 = @bitCast(off_out);
+
+         while (true) {
+-            const rc = sys.copy_file_range(fd_in, &off_in_copy, fd_out, &off_out_copy, len, flags);
+-            if (native_os == .freebsd) {
+-                switch (errno(rc)) {
+-                    .SUCCESS => return @intCast(rc),
+-                    .BADF => return error.FilesOpenedWithWrongFlags,
+-                    .FBIG => return error.FileTooBig,
+-                    .IO => return error.InputOutput,
+-                    .ISDIR => return error.IsDir,
+-                    .NOSPC => return error.NoSpaceLeft,
+-                    .INVAL => break, // these may not be regular files, try fallback
+-                    .INTEGRITY => return error.CorruptedData,
+-                    .INTR => continue,
+-                    else => |err| return unexpectedErrno(err),
+-                }
+-            } else { // assume linux
+-                switch (errno(rc)) {
+-                    .SUCCESS => return @intCast(rc),
+-                    .BADF => return error.FilesOpenedWithWrongFlags,
+-                    .FBIG => return error.FileTooBig,
+-                    .IO => return error.InputOutput,
+-                    .ISDIR => return error.IsDir,
+-                    .NOSPC => return error.NoSpaceLeft,
+-                    .INVAL => break, // these may not be regular files, try fallback
+-                    .NOMEM => return error.OutOfMemory,
+-                    .OVERFLOW => return error.Unseekable,
+-                    .PERM => return error.PermissionDenied,
+-                    .TXTBSY => return error.SwapFile,
+-                    .XDEV => break, // support for cross-filesystem copy added in Linux 5.3, use fallback
+-                    else => |err| return unexpectedErrno(err),
+-                }
++            const rc = std.c.copy_file_range(fd_in, &off_in_copy, fd_out, &off_out_copy, len, flags);
++            switch (errno(rc)) {
++                .SUCCESS => return @intCast(rc),
++                .BADF => return error.FilesOpenedWithWrongFlags,
++                .FBIG => return error.FileTooBig,
++                .IO => return error.InputOutput,
++                .ISDIR => return error.IsDir,
++                .NOSPC => return error.NoSpaceLeft,
++                .INVAL => break, // these may not be regular files, try fallback
++                .INTEGRITY => return error.CorruptedData,
++                .INTR => continue,
++                else => |err| return unexpectedErrno(err),
+             }
+         }
+     }

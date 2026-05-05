@@ -34,15 +34,15 @@ fi
 _zig_bin="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig"
 [[ -x "${_zig_bin}" ]] && export ZIG="${_zig_bin}"
 
-[[ -x "${_wrapper_dir}/zig-cc" ]]         && export ZIG_CC="${_wrapper_dir}/zig-cc"
-[[ -x "${_wrapper_dir}/zig-cxx" ]]        && export ZIG_CXX="${_wrapper_dir}/zig-cxx"
-[[ -x "${_wrapper_dir}/zig-ar" ]]         && export ZIG_AR="${_wrapper_dir}/zig-ar"
-[[ -x "${_wrapper_dir}/zig-ranlib" ]]     && export ZIG_RANLIB="${_wrapper_dir}/zig-ranlib"
-[[ -x "${_wrapper_dir}/zig-asm" ]]        && export ZIG_ASM="${_wrapper_dir}/zig-asm"
-[[ -x "${_wrapper_dir}/zig-rc" ]]         && export ZIG_RC="${_wrapper_dir}/zig-rc"
-[[ -x "${_wrapper_dir}/zig-ld" ]]         && export ZIG_LLD="${_wrapper_dir}/zig-ld"
-[[ -x "${_wrapper_dir}/zig-force-load-cc" ]]  && export ZIG_FORCE_LOAD_CC="${_wrapper_dir}/zig-force-load-cc"
-[[ -x "${_wrapper_dir}/zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${_wrapper_dir}/zig-force-load-cxx"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cc" ]]         && export ZIG_CC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cc"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cxx" ]]        && export ZIG_CXX="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cxx"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ar" ]]         && export ZIG_AR="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ar"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ranlib" ]]     && export ZIG_RANLIB="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ranlib"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-asm" ]]        && export ZIG_ASM="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-asm"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-rc" ]]         && export ZIG_RC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-rc"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ld" ]]         && export ZIG_LLD="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ld"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cc" ]]  && export ZIG_FORCE_LOAD_CC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cc"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cxx"
 
 # === Ensure zig can resolve its cache directory ===
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;

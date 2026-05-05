@@ -8,7 +8,7 @@
 # Expects caller to set: _ZIG_MODE ("cc" or "c++")
 
 _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${_self_dir}/_zig-cc-common.sh"
+source "${_self_dir}/@WRAPPER_PREFIX@_zig-cc-common.sh"
 
 # _exec_args is now set by _zig-cc-common.sh (mode, -target, -mcpu, sysroot, filtered args).
 # But _zig-cc-common.sh already strips -Wl,-all_load and -Wl,-force_load,* silently.

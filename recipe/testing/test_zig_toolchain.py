@@ -208,28 +208,29 @@ int main(void) {
 def test_wrapper_existence() -> None:
     print("--- Wrapper existence ---")
 
+    _pfx = f"{_triplet}-"
     if _build_is_win:
         expected = [
-            "zig-cc.exe",
-            "zig-cxx.exe",
-            "zig-ar.bat",
-            "zig-ranlib.bat",
-            "zig-asm.bat",
-            "zig-rc.bat",
-            "zig-lld.bat",
+            f"{_pfx}zig-cc.exe",
+            f"{_pfx}zig-cxx.exe",
+            f"{_pfx}zig-ar.bat",
+            f"{_pfx}zig-ranlib.bat",
+            f"{_pfx}zig-asm.bat",
+            f"{_pfx}zig-rc.bat",
+            f"{_pfx}zig-lld.bat",
         ]
     else:
         expected = [
-            "zig-cc",
-            "zig-cxx",
-            "zig-force-load-cc",
-            "zig-force-load-cxx",
-            "zig-ar",
-            "zig-ranlib",
-            "zig-asm",
-            "zig-rc",
-            "zig-lld",
-            "_zig-cc-common.sh",
+            f"{_pfx}zig-cc",
+            f"{_pfx}zig-cxx",
+            f"{_pfx}zig-force-load-cc",
+            f"{_pfx}zig-force-load-cxx",
+            f"{_pfx}zig-ar",
+            f"{_pfx}zig-ranlib",
+            f"{_pfx}zig-asm",
+            f"{_pfx}zig-rc",
+            f"{_pfx}zig-lld",
+            f"{_pfx}_zig-cc-common.sh",
         ]
 
     for w in expected:
@@ -576,7 +577,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
     zig_ar = _env_var("ZIG_AR")
     if not zig_ar:
         # Fallback: try wrapper dir
-        candidate = _wrapper_dir / ("zig-ar.bat" if _build_is_win else "zig-ar")
+        candidate = _wrapper_dir / (f"{_triplet}-zig-ar.bat" if _build_is_win else f"{_triplet}-zig-ar")
         if candidate.exists():
             zig_ar = str(candidate)
 
@@ -988,7 +989,7 @@ def test_flag_filter_content() -> None:
         SKIP("flag filter content", "Unix-only")
         return
 
-    common = _wrapper_dir / "_zig-cc-common.sh"
+    common = _wrapper_dir / f"{_triplet}-_zig-cc-common.sh"
     if not common.exists():
         FAIL("_zig-cc-common.sh exists for content check")
         return
@@ -1043,7 +1044,7 @@ def test_force_load_wrappers() -> None:
         SKIP("force-load wrappers", "Unix-only")
         return
 
-    fl_cc = _wrapper_dir / "zig-force-load-cc"
+    fl_cc = _wrapper_dir / f"{_triplet}-zig-force-load-cc"
     if not fl_cc.exists():
         FAIL("zig-force-load-cc exists")
         return
@@ -1058,7 +1059,7 @@ def test_force_load_wrappers() -> None:
         else:
             FAIL(label)
 
-    fl_cxx = _wrapper_dir / "zig-force-load-cxx"
+    fl_cxx = _wrapper_dir / f"{_triplet}-zig-force-load-cxx"
     if not fl_cxx.exists():
         FAIL("zig-force-load-cxx exists")
         return
@@ -1074,7 +1075,7 @@ def test_force_load_wrappers() -> None:
             FAIL(label)
 
     # Check the shared helper for implementation details
-    fl_common = _wrapper_dir / "_zig-force-load-common.sh"
+    fl_common = _wrapper_dir / f"{_triplet}-_zig-force-load-common.sh"
     if not fl_common.exists():
         FAIL("_zig-force-load-common.sh exists")
         return

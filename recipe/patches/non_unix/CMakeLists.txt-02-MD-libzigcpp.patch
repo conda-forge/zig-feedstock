@@ -1,16 +1,19 @@
-# Fix library linking and build configuration for conda MSVC toolchain
+# non-unix: Force dynamic CRT (/MD) for zigcpp to match conda-forge LLVM libs
 #
-# Changes:
-# - Set /MD flag for dynamic runtime library linking
+# conda-forge builds LLVM with /MD (dynamic CRT). zig's CMakeLists.txt
+# sets zigcpp to "MultiThreaded" (/MT, static CRT). Mixing these causes
+# lld-link /failifmismatch errors. Change zigcpp to match LLVM.
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -708,6 +710,8 @@
+@@ -710,8 +710,9 @@
      -Wno-comment
    )
  else()
-+target_compile_options(zigcpp PRIVATE -MD)
-+add_compile_options(/MD /wd4715 /wd4291)
++add_compile_options(/wd4715 /wd4291)
  target_compile_options(zigcpp PRIVATE /Zc:preprocessor)
- set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+-set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
++set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
  endif()
+
+ target_include_directories(zigcpp PUBLIC

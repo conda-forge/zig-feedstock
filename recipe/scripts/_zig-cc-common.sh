@@ -33,22 +33,42 @@ for _arg in "$@"; do
     if [[ "$_arg" == "-print-search-dirs" ]]; then
         _zig_lib="${CONDA_PREFIX}/lib/zig"
         _mingw_common="${_zig_lib}/libc/mingw/lib-common"
-        _mingw_arch="${_zig_lib}/libc/mingw/lib-x86_64"
+        _mingw_arch="${_zig_lib}/libc/mingw/lib-@ZIG_TARGET_ARCH@"
+        _mingw_libpath="${_mingw_common}:${_mingw_arch}"
+        if [[ "@ZIG_TARGET@" == "aarch64-windows-gnu" ]]; then
+            _mingw_libpath="${_mingw_libpath}:${_zig_lib}/libc/mingw/libarm64"
+        fi
         echo "install: ${_zig_lib}/"
         echo "programs: =${CONDA_PREFIX}/bin/"
-        echo "libraries: =${_mingw_common}:${_mingw_arch}:${_zig_lib}"
+        echo "libraries: =${_mingw_libpath}:${_zig_lib}"
         exit 0
     fi
 done
 
 # --- Handle -print-file-name=<name> (GCC/Clang compat) ---
-# zig doesn't support this flag. Intercept it, probe for the file in the
-# same locations as libcxx_shared.zig (zig-llvm/lib then lib), print the
-# path if found (or echo back the name if not), and exit.
+# zig doesn't support this flag. Intercept it and search:
+#   1. zig-llvm/lib and lib/ -- for LLVM/clang runtime libs (libclang_rt.*, libc++.a, ...)
+#   2. MinGW lib-common and arch-specific dirs -- for import libs (libkernel32.a, ...)
+# Print the resolved path if found, or echo back the name if not (GCC behaviour).
 for _arg in "$@"; do
     if [[ "$_arg" == -print-file-name=* ]]; then
         _name="${_arg#-print-file-name=}"
-        for _dir in "${CONDA_PREFIX}/lib/zig-llvm/lib" "${CONDA_PREFIX}/lib"; do
+        _zig_lib="${CONDA_PREFIX}/lib/zig"
+        _pfn_dirs=(
+            "${CONDA_PREFIX}/lib/zig-llvm/lib"
+            "${CONDA_PREFIX}/lib"
+            "${_zig_lib}/libc/mingw/lib-common"
+            "${_zig_lib}/libc/mingw/lib-@ZIG_TARGET_ARCH@"
+            "${CONDA_PREFIX}/Library/lib/zig/libc/mingw/lib-common"
+            "${CONDA_PREFIX}/Library/lib/zig/libc/mingw/lib-@ZIG_TARGET_ARCH@"
+        )
+        if [[ "@ZIG_TARGET@" == "aarch64-windows-gnu" ]]; then
+            _pfn_dirs+=(
+                "${_zig_lib}/libc/mingw/libarm64"
+                "${CONDA_PREFIX}/Library/lib/zig/libc/mingw/libarm64"
+            )
+        fi
+        for _dir in "${_pfn_dirs[@]}"; do
             if [[ -e "${_dir}/${_name}" ]]; then
                 echo "${_dir}/${_name}"
                 exit 0
@@ -60,12 +80,21 @@ for _arg in "$@"; do
 done
 
 # --- Sysroot detection (Linux only) ---
+# Search order: CONDA_PREFIX > BUILD_PREFIX > CONDA_BUILD_SYSROOT
+# BUILD_PREFIX fallback is needed for cross-build native tool sub-builds
+# (CROSS_TOOLCHAIN_FLAGS_NATIVE) where the x86_64 sysroot lives in
+# BUILD_PREFIX but CONDA_PREFIX may not point there.
 _sysroot_flags=()
 if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then
     _arch="@ZIG_TARGET_ARCH@"
-    _sr="${CONDA_PREFIX}/${_arch}-conda-linux-gnu/sysroot"
-    [[ ! -d "${_sr}" ]] && _sr="${CONDA_BUILD_SYSROOT:-}"
-    if [[ -d "${_sr}" ]]; then
+    _sr=""
+    for _candidate in \
+        "${CONDA_PREFIX:+${CONDA_PREFIX}/${_arch}-conda-linux-gnu/sysroot}" \
+        "${BUILD_PREFIX:+${BUILD_PREFIX}/${_arch}-conda-linux-gnu/sysroot}" \
+        "${CONDA_BUILD_SYSROOT:-}"; do
+        [[ -d "${_candidate:-}" ]] && _sr="${_candidate}" && break
+    done
+    if [[ -n "${_sr}" ]]; then
         _sysroot_flags+=(-isysroot "${_sr}" -L"${_sr}/usr/lib64" -L"${_sr}/usr/lib" -L"${_sr}/lib64" -L"${_sr}/lib")
     fi
 fi
@@ -153,6 +182,20 @@ while [[ $i -lt $argc ]]; do
             fi
             ;;
         # --- Always filtered: unsupported by all linkers or Clang ---
+        # macOS: -isysroot is a compiler flag; ld64.lld needs -syslibroot.
+        # zig's patched MachO lld path may not translate -isysroot → comp.sysroot,
+        # so machoLink never emits -syslibroot and lld can't find libSystem.tbd.
+        # Fix: strip -isysroot and re-emit as -Wl,-syslibroot,<path> (single comma-
+        # joined token). Two-token form (-Wl,-syslibroot -Wl,<path>) causes zig's cc
+        # driver to pass them as independent linker args: lld sees -syslibroot with no
+        # path, and <path> as an unrecognized positional — sysroot is never configured.
+        -isysroot)
+            next_i=$((i + 1))
+            if [[ $next_i -lt $argc ]]; then
+                args+=("-Wl,-syslibroot,${argv[$next_i]}")
+                i=$next_i
+            fi
+            ;;
         -Wl,-rpath-link|-Wl,-rpath-link,*|-Wl,--disable-new-dtags) ;;
         -Wl,--color-diagnostics) ;;
         # (macOS Mach-O flags now handled via auto-LLD promotion above)
@@ -165,12 +208,32 @@ while [[ $i -lt $argc ]]; do
         # -lgcc_eh: GCC exception handling — zig uses its own EH mechanism
         # -lgcc_s:  GCC shared runtime — zig uses its own runtime
         -lgcc_eh|-lgcc_s) ;;
+        # UNIX-only libraries not present on Windows targets.
+        # -ldl:      dlopen/dlsym → LoadLibrary/GetProcAddress (kernel32), not a lib
+        # -lpthread: Win32 threads; zig provides pthreads via its Win32 adapter
+        # Pass through unchanged on non-Windows targets (Linux/macOS need them).
+        -ldl|-lpthread)
+            [[ "@ZIG_TARGET@" == *-windows-* ]] || args+=("$arg")
+            ;;
+        # ARM64 Windows uses ucrt only -- no msvcrt.lib in zig's MinGW sysroot.
+        # flexlink/OCaml inject -lmsvcrt via BYTECCLIBS; translate to -lucrtbase.
+        -lmsvcrt)
+            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
+                args+=("-lucrtbase")
+            else
+                args+=("$arg")
+            fi
+            ;;
         # GNU ld colon-prefix syntax (-l:filename) for known zig-provided libs
         # The -l: prefix means "exact filename match" (GNU ld extension).
         # Zig's linker hits unreachable code when it sees this syntax.
         # For targets where zig provides pthreads natively (Windows, Linux via
         # libc), the static-pthread request is unnecessary and panics the linker.
         -l:libpthread.a|-l:libpthread.so*) ;;
+        # macOS: cmake generates bare -l (empty library name) for pthread/dl/atomic
+        # since those live in libSystem and cmake vars are empty. ld64.lld rejects
+        # bare -l with "library not found for -l"; filter them (harmless no-ops).
+        -l) ;;
         *) args+=("$arg") ;;
     esac
     ((i++))
@@ -206,6 +269,14 @@ if (( _use_lld )); then
         [[ "$_a" == "-fuse-ld=lld" ]] && _has_explicit=1 && break
     done
     (( _has_explicit )) || _lld_flag=(-fuse-ld=lld)
+    # Disable ELF dependent library specifiers (#pragma comment(lib, ...))
+    # on Linux. LLD resolves these separately from -l flags and may fail
+    # when the sysroot lacks stub libraries (glibc ≥2.34 merges libdl/
+    # libpthread into libc). The specifiers are always redundant — cmake
+    # and build systems add explicit -l flags on the link command line.
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        _lld_flag+=(-Wl,--no-dependent-libraries)
+    fi
 fi
 
 # --- Translate conda triplets to zig triplets in -target args ---
@@ -251,4 +322,21 @@ for _i in "${!_final_args[@]}"; do
     esac
 done
 
-_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_translated_args[@]}")
+# --- WIN-ARM64: inject _fpreset stub to satisfy CRT auto-import relocation ---
+# MinGW crt2.obj references _fpreset via DLL auto-import using
+# IMAGE_REL_ARM64_BRANCH26 which lld-link cannot use for import stubs.
+# Providing a direct definition via the stub bypasses auto-import entirely.
+# Only inject on link steps (no -c flag in args).
+_fpreset_stub=()
+if [[ "@ZIG_TARGET@" == "aarch64-windows-gnu" ]]; then
+    _stub="${CONDA_PREFIX}/lib/zig/libc/mingw/libarm64/_fpreset_arm64.o"
+    _is_compile_only=0
+    for _a in "${_translated_args[@]}"; do
+        [[ "$_a" == "-c" ]] && _is_compile_only=1 && break
+    done
+    if [[ ${_is_compile_only} -eq 0 ]] && [[ -f "${_stub}" ]]; then
+        _fpreset_stub=("${_stub}")
+    fi
+fi
+
+_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_translated_args[@]}" "${_fpreset_stub[@]}")

@@ -1,43 +1,45 @@
 # non-unix: Replace deprecated POSIX functions with MSVC equivalents
 #
-# MSVC marks strdup() and close() as deprecated, preferring _strdup()
-# and _close() respectively. This patch updates:
-# - src/zig_llvm.cpp: 5 instances of strdup -> _strdup
+# MSVC marks strdup() as deprecated, preferring _strdup().
+# This patch updates src/zig_llvm.cpp: 5 instances of strdup -> _strdup
 #
 # Eliminates deprecation warnings during non-unix builds.
+#
+# NOTE: Line numbers reflect post-source-patches state (after
+# zig_llvm.cpp-mingw-def-dll-suffix.patch adds 5 lines at ~line 490).
 
 --- a/src/zig_llvm.cpp
 +++ b/src/zig_llvm.cpp
-@@ -204,7 +204,7 @@
+@@ -230,7 +230,7 @@
          std::error_code EC;
-         dest_asm_ptr = new(std::nothrow) raw_fd_ostream(asm_filename, EC, sys::fs::OF_None);
+         dest_asm_ptr = new(std::nothrow) raw_fd_ostream(options->asm_filename, EC, sys::fs::OF_None);
          if (EC) {
 -            *error_message = strdup((const char *)StringRef(EC.message()).bytes_begin());
 +            *error_message = _strdup((const char *)StringRef(EC.message()).bytes_begin());
              return true;
          }
      }
-@@ -212,7 +212,7 @@
+@@ -238,7 +238,7 @@
          std::error_code EC;
-         dest_bin_ptr = new(std::nothrow) raw_fd_ostream(bin_filename, EC, sys::fs::OF_None);
+         dest_bin_ptr = new(std::nothrow) raw_fd_ostream(options->bin_filename, EC, sys::fs::OF_None);
          if (EC) {
 -            *error_message = strdup((const char *)StringRef(EC.message()).bytes_begin());
 +            *error_message = _strdup((const char *)StringRef(EC.message()).bytes_begin());
              return true;
          }
      }
-@@ -220,7 +220,7 @@
+@@ -246,7 +246,7 @@
          std::error_code EC;
-         dest_bitcode_ptr = new(std::nothrow) raw_fd_ostream(bitcode_filename, EC, sys::fs::OF_None);
+         dest_bitcode_ptr = new(std::nothrow) raw_fd_ostream(options->bitcode_filename, EC, sys::fs::OF_None);
          if (EC) {
 -            *error_message = strdup((const char *)StringRef(EC.message()).bytes_begin());
 +            *error_message = _strdup((const char *)StringRef(EC.message()).bytes_begin());
              return true;
          }
      }
-@@ -337,13 +337,13 @@
+@@ -388,13 +388,13 @@
 
-     if (dest_bin && !lto) {
+     if (dest_bin && !options->lto) {
          if (target_machine.addPassesToEmitFile(codegen_pm, *dest_bin, nullptr, CodeGenFileType::ObjectFile)) {
 -            *error_message = strdup("TargetMachine can't emit an object file");
 +            *error_message = _strdup("TargetMachine can't emit an object file");

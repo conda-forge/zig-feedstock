@@ -1,0 +1,23 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -946,6 +946,9 @@
+
+ # To obtain this document, run `zig build` against stage3 rather than stage2.
+ # Note that the `langref` step can be used to isolate this task.
++
++option(ZIG_NO_LANGREF "Skip generating doc/langref.html (e.g. when no emulator available for cross-target docgen)" OFF)
++
+ set(ZIG_BUILD_ARGS
+   --zig-lib-dir "${PROJECT_SOURCE_DIR}/lib"
+
+@@ -960,6 +963,10 @@
+   --maxrss 7000000000
+ )
+
++if(NOT ZIG_NO_LANGREF)
++  list(REMOVE_ITEM ZIG_BUILD_ARGS "-Dno-langref")
++endif()
++
+ set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")
+ if(ZIG_EXTRA_BUILD_ARGS)
+   list(APPEND ZIG_BUILD_ARGS ${ZIG_EXTRA_BUILD_ARGS})

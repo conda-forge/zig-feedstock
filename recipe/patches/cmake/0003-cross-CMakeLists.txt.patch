@@ -10,7 +10,7 @@ index ef371fc..e5548b7 100644
 +++ b/CMakeLists.txt
 @@ -784,6 +784,36 @@
  endif()
- 
+
  set(ZIG_HOST_TARGET_TRIPLE "${ZIG_HOST_TARGET_ARCH}-${ZIG_HOST_TARGET_OS}${ZIG_HOST_TARGET_ABI}" CACHE STRING "Host zig target triple.")
 +if(DEFINED ENV{CROSSCOMPILING_EMULATOR})
 +  set(CROSSCOMPILING_EMULATOR $ENV{CROSSCOMPILING_EMULATOR})
@@ -35,18 +35,18 @@ index ef371fc..e5548b7 100644
 +  endif()
 +else()
 +  set(CROSSCOMPILING_EMULATOR "")
-+  set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_TARGET_TRIPLE})
++  set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_HOST_TARGET_TRIPLE})
 +  set(ZIG_CROSS_TARGET_MCPU ${ZIG_TARGET_MCPU})
 +endif()
 +
 +if(NOT DEFINED CROSSCOMPILING_LIBC)
 +  set(CROSSCOMPILING_LIBC "-lc")
 +endif()
- 
+
  if(MSVC)
    set(ZIG_WASM2C_COMPILE_FLAGS "")
-@@ -816,7 +846,7 @@
- 
+@@ -819,7 +849,7 @@
+
  add_custom_command(
    OUTPUT "${ZIG1_C_SOURCE}"
 -  COMMAND zig-wasm2c "${ZIG1_WASM_MODULE}" "${ZIG1_C_SOURCE}"
@@ -54,10 +54,10 @@ index ef371fc..e5548b7 100644
    DEPENDS zig-wasm2c "${ZIG1_WASM_MODULE}"
    COMMENT "Converting ${ZIG1_WASM_MODULE} to ${ZIG1_C_SOURCE}"
    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-@@ -834,12 +864,15 @@
+@@ -837,12 +867,15 @@
    endif()
  endif()
- 
+
 +if(NOT DEFINED ZIG_CROSS_TARGET_TRIPLE)
 +    set(ZIG_CROSS_TARGET_TRIPLE ${ZIG_HOST_TARGET_TRIPLE})
 +endif()
@@ -72,8 +72,8 @@ index ef371fc..e5548b7 100644
    --dep "build_options"
    --dep "aro"
    "-Mroot=src/main.zig"
-@@ -849,7 +882,7 @@
- 
+@@ -852,7 +885,7 @@
+
  add_custom_command(
    OUTPUT "${ZIG2_C_SOURCE}"
 -  COMMAND zig1 ${BUILD_ZIG2_ARGS}
@@ -89,7 +89,7 @@ index ef371fc..e5548b7 100644
 +  -target "${ZIG_CROSS_TARGET_TRIPLE}"
    "-Mroot=lib/compiler_rt.zig"
  )
- 
+
  add_custom_command(
    OUTPUT "${ZIG_COMPILER_RT_C_SOURCE}"
 -  COMMAND zig1 ${BUILD_COMPILER_RT_ARGS}
@@ -97,7 +97,7 @@ index ef371fc..e5548b7 100644
    DEPENDS zig1 "${ZIG_STAGE2_SOURCES}"
    COMMENT "Running zig1.wasm to produce ${ZIG_COMPILER_RT_C_SOURCE}"
    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-@@ -950,8 +992,8 @@
+@@ -917,8 +950,8 @@
    --zig-lib-dir "${PROJECT_SOURCE_DIR}/lib"
 
    "-Dversion-string=${RESOLVED_ZIG_VERSION}"
@@ -108,7 +108,7 @@ index ef371fc..e5548b7 100644
 
    -Denable-llvm
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
-@@ -981,11 +1015,13 @@
+@@ -984,11 +1017,13 @@
  add_custom_command(
    OUTPUT "${PROJECT_BINARY_DIR}/stage3/bin/zig"
 -  COMMAND zig2 build --prefix "${PROJECT_BINARY_DIR}/stage3" ${ZIG_BUILD_ARGS}

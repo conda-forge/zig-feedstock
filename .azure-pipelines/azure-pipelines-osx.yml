@@ -11,22 +11,22 @@ jobs:
       osx_64_cross_target_platform_osx-64:
         CONFIG: osx_64_cross_target_platform_osx-64
         UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15
+        VMIMAGE: macOS-15-arm64
         store_build_artifacts: false
       osx_64_cross_target_platform_osx-arm64:
         CONFIG: osx_64_cross_target_platform_osx-arm64
         UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15
+        VMIMAGE: macOS-15-arm64
         store_build_artifacts: false
       osx_arm64_cross_target_platform_osx-64:
         CONFIG: osx_arm64_cross_target_platform_osx-64
         UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15
+        VMIMAGE: macOS-15-arm64
         store_build_artifacts: false
       osx_arm64_cross_target_platform_osx-arm64:
         CONFIG: osx_arm64_cross_target_platform_osx-arm64
         UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15
+        VMIMAGE: macOS-15-arm64
         store_build_artifacts: false
   timeoutInMinutes: 360
   variables: {}

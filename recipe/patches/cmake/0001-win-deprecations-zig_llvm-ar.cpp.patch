@@ -8,7 +8,7 @@
 
 --- a/src/zig_llvm-ar.cpp
 +++ b/src/zig_llvm-ar.cpp
-@@ -619,8 +619,8 @@
+@@ -620,8 +620,8 @@
          sys::fs::setLastAccessAndModificationTime(FD, ModTimeOrErr.get()));
    }
 
