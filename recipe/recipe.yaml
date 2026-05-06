@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 22
+  build_number: 23
   name: zig
   version: "0.15.2"
   
@@ -141,6 +141,14 @@ source:
           # attempt. If this still breaks stage3, the issue is deeper than the
           # .Exe restriction and we pivot to gcc_s-injection design.
           - patches/linux/target.zig-glibc-needs-libunwind.patch
+          # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
+          # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
+          - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
+          # LLVM backend: downgrade .shr_exact → .shr when safety checks are on.
+          # LLVM InstCombine folds shl(lshr_exact(x,N),N) → x, making the runtime
+          # back-shift comparison trivially true and silently dropping the panic.
+          # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, …).
+          - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
       - if: linux and (x86_64 or ppc64le)
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -200,7 +208,7 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
           
-          CMAKE_BUILD: "0"
+          CMAKE_BUILD: ${{ "0" if ppc64le else "0" }}
           CMAKE_FALLBACK: "0"
           
           # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
@@ -208,7 +216,7 @@ outputs:
 
           # --- DEBUGGING ---
           # DEBUG_ZIG_BUILD: "1"
-          ZIG_USE_CACHE: ${{ env.get("ZIG_USE_CACHE", default="0") }}
+          # ZIG_USE_CACHE: "0"
 
           # --- LOCAL DEV: persistent caches + Phase 2 langref skip ---
           # Both default to no-op in CI (env.get returns ""/"0"); local
@@ -289,6 +297,11 @@ outputs:
           strict: true
           bin:
             - ${{ conda_triplet }}-zig
+          lib:
+            - if: ppc64le
+              then:
+                - zig-lld-bundle
+                - zig-zigcpp-bundle
           files:
             - if: not ppc64le and not ("osx" in target_platform and build_platform != target_platform)
               then:

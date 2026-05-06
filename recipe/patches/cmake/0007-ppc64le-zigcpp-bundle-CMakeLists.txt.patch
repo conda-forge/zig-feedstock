@@ -1,0 +1,36 @@
+# ppc64le: override zigcpp link target with a pre-built shared bundle to avoid
+# R_PPC64_REL24 relocation overflow from libzigcpp.a.
+#
+# conda-forge libzigcpp.a (zig_clang_cc1_main.cpp.o et al.) calls LLVM/Clang
+# symbols whose global-ctor distance exceeds the +/-32MB REL24 reach when
+# linked into the large zig2 binary, causing:
+#   R_PPC64_REL24 relocation truncated to fit: ... AliasSetTracker::~AliasSetTracker() ...
+#
+# Bundling libzigcpp.a into a single .so gives it its own compact address space;
+# intra-.so calls are resolved by the dynamic linker within that region, and the
+# REL24 overflow disappears.
+#
+# The .so path is supplied at configure time via -DZIG_ZIGCPP_BUNDLE_SO=<path>.
+# If the variable is absent or the file does not exist the block is a no-op and
+# the normal static-archive link proceeds (safe on non-ppc64le hosts).
+#
+# CLANG_LIBRARIES, LLD_LIBRARIES, LLVM_LIBRARIES, CMAKE_THREAD_LIBS_INIT are
+# added as explicit PUBLIC dependencies so that transitive symbols pulled in by
+# zigcpp (pthread_*, LLVMInitialize*, etc.) are resolved for zig2.
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -930,7 +930,13 @@
+   LINK_FLAGS "${ZIG2_LINK_FLAGS}"
+ )
+ target_include_directories(zig2 PUBLIC stage1)
+-target_link_libraries(zig2 LINK_PUBLIC zigcpp)
++if(DEFINED ZIG_ZIGCPP_BUNDLE_SO AND EXISTS "${ZIG_ZIGCPP_BUNDLE_SO}")
++    message(STATUS "ZIG: overriding zigcpp link target with bundle: ${ZIG_ZIGCPP_BUNDLE_SO}")
++    target_link_libraries(zig2 LINK_PUBLIC "${ZIG_ZIGCPP_BUNDLE_SO}")
++    target_link_libraries(zig2 LINK_PUBLIC ${CLANG_LIBRARIES} ${LLD_LIBRARIES} ${LLVM_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
++else()
++    target_link_libraries(zig2 LINK_PUBLIC zigcpp)
++endif()
+
+ # ppc64le: zig2.c is a ~11M-line auto-generated C TU; same 32MB branch limit
+ # applies.  Force indirect calls so the linker can resolve all cross-unit refs.

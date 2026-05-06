@@ -1,6 +1,6 @@
 --- a/src/link.zig
 +++ b/src/link.zig
-@@ -522,9 +522,21 @@
+@@ -522,9 +522,17 @@
          emit: Path,
          options: OpenOptions,
      ) !*File {
@@ -12,10 +12,6 @@
 +            .powerpc64le => target.ofmt == .elf,
 +            else => false,
 +        };
-+
-+        std.log.err("=== LINK.ZIG open: arch={s} ofmt={s} use_lld={} force_lld={} ===", .{
-+            @tagName(target.cpu.arch), @tagName(target.ofmt), comp.config.use_lld, force_lld_for_external,
-+        });
 +
 +        if (comp.config.use_lld or force_lld_for_external) {
              dev.check(.lld_linker);
@@ -24,7 +20,7 @@
              // LLD does not support incremental linking.
              const lld: *Lld = try .createEmpty(arena, comp, emit, options);
              return &lld.base;
-@@ -546,9 +558,21 @@
+@@ -546,9 +554,17 @@
          emit: Path,
          options: OpenOptions,
      ) !*File {
@@ -36,10 +32,6 @@
 +            .powerpc64le => target.ofmt == .elf,
 +            else => false,
 +        };
-+
-+        std.log.err("=== LINK.ZIG createEmpty: arch={s} ofmt={s} use_lld={} force_lld={} ===", .{
-+            @tagName(target.cpu.arch), @tagName(target.ofmt), comp.config.use_lld, force_lld_for_external,
-+        });
 +
 +        if (comp.config.use_lld or force_lld_for_external) {
              dev.check(.lld_linker);

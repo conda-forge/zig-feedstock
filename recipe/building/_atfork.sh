@@ -10,10 +10,16 @@ function create_pthread_atfork_stub() {
   dbg echo "Creating pthread_atfork stub for glibc 2.28 ${arch_name}"
 
   cat > "${output_dir}/pthread_atfork_stub.c" << 'EOF'
-// Weak stub for pthread_atfork when glibc 2.28 doesn't provide it
-// This is safe because Zig compiler doesn't actually use fork()
-__attribute__((weak))
-int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void)) {
+// Strong __wrap_pthread_atfork for --wrap=pthread_atfork linker redirect.
+// The linker rewrites all pthread_atfork references to __wrap_pthread_atfork;
+// this strong definition satisfies them without pulling in libpthread_nonshared.a
+// (which emits R_PPC64_REL24 relocations that truncate on ppc64le).
+// Declared strong because the cmake path's --wrap mechanism does not require weak;
+// the stub is intentionally NOT injected on the zig-build path (see recipe/build.sh),
+// so duplicate-symbol concerns do not apply. The --wrap flag renames references
+// regardless of weak/strong, so the redirect still activates correctly on the cmake path.
+// This is safe because Zig compiler doesn't actually use fork().
+int __wrap_pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void)) {
     // Stub implementation - returns success without doing anything
     // (void) casts suppress unused parameter warnings
     (void)prepare;

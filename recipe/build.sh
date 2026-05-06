@@ -88,6 +88,11 @@ EXTRA_CMAKE_ARGS=(
   -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
   -DZIG_USE_LLVM_CONFIG=ON
 )
+# Args consumed only by cmake_fallback_build (patches 0004/0006/0007 apply there,
+# not during the initial configure_cmake_zigcpp). Kept separate to avoid
+# "Manually-specified variables were not used by the project" CMake warnings on
+# the first configure pass.
+EXTRA_CMAKE_ARGS_FALLBACK=()
 
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
@@ -156,12 +161,14 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   # B': -fno-partial-inlining -fno-ipa-cp-clone prevents GCC from emitting
   #     .part.0/.constprop.0 cloned variants that bypass -mlongcall (the
   #     existing comment above explicitly flags this as a -mlongcall escape).
-  # ppc64le huge-binary REL24: distributed stub groups (2MB chunks) reach all
-  # call sites; -1 = single group fails when total .text > 64MB. Switch to 2097152
-  # (2MB) to create many distributed stub groups, each within REL24 reach of nearby call sites.
   export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
   export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
-  export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=2097152"
+  # REL24 mitigation: --stub-group-size=0 lets binutils auto-size stub groups
+  # per section (replaces fixed 2MB; 0 = automatic, avoids "section .text exceeds
+  # stub group size" when a single TU already exceeds 2MB).
+  # REL24: route pthread_atfork through stub via --wrap to avoid R_PPC64_REL24
+  # truncation from libpthread_nonshared.a(pthread_atfork.oS) in the sysroot.
+  export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=0 -Wl,--wrap=pthread_atfork"
   export NINJA_FLAGS="-v"
   # Belt-and-suspenders: force CMAKE_{C,CXX,EXE_LINKER,SHARED_LINKER}_FLAGS via
   # the non-INIT command-line form (not _INIT). _INIT only seeds the cache on
@@ -175,7 +182,13 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
     -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
     -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
+  )
+  # Bundle paths: consumed only by patches 0006/0007 in cmake_fallback_build.
+  # Kept out of EXTRA_CMAKE_ARGS to silence CMake "unused variable" warnings
+  # on the initial configure_cmake_zigcpp pass (patches not yet applied there).
+  EXTRA_CMAKE_ARGS_FALLBACK+=(
     -DZIG_LLD_BUNDLE_SO="${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so"
+    -DZIG_ZIGCPP_BUNDLE_SO="${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so"
   )
 fi
 
@@ -204,7 +217,10 @@ fi
 EXTRA_ZIG_ARGS+=(-Dno-langref)
 # cmake path: patch 0004-no-langref-optional makes upstream's hardcoded
 # -Dno-langref opt-in via ZIG_NO_LANGREF; flip ON to match zig-with-zig path.
-EXTRA_CMAKE_ARGS+=(-DZIG_NO_LANGREF=ON)
+# Kept in EXTRA_CMAKE_ARGS_FALLBACK (not EXTRA_CMAKE_ARGS) so it is only
+# passed to cmake_fallback_build's re-configure (after patch 0004 is applied),
+# silencing "unused variable" warnings on the initial configure_cmake_zigcpp.
+EXTRA_CMAKE_ARGS_FALLBACK+=(-DZIG_NO_LANGREF=ON)
 
 if is_unix; then
   # zig binary links libclang-cpp.so.20.1 (linux) / libclang-cpp.20.1.dylib (osx)
@@ -233,6 +249,11 @@ if is_unix; then
     _zig_extra="--search-prefix;${PREFIX};--maxrss;8589934592"
   else
     _zig_extra="--search-prefix;${PREFIX}"
+  fi
+  # Wire --libc to the cmake path (ZIG_EXTRA_BUILD_ARGS); without this, zig2 under
+  # qemu auto-augments the target triple with kernel-version range and fails libc resolution.
+  if is_linux && is_cross; then
+    _zig_extra="${_zig_extra};--libc;${zig_build_dir}/libc_file"
   fi
   EXTRA_CMAKE_ARGS+=(
     "-DZIG_EXTRA_BUILD_ARGS=${_zig_extra}"
@@ -332,6 +353,23 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
+# --- ppc64le: build + install LLD and zigcpp bundles (path-independent) ---
+# Must run AFTER configure_cmake_zigcpp (which produces build-release/zigcpp/libzigcpp.a)
+# and BEFORE the build-path fork so both cmake_fallback_build and build_zig_with_zig
+# paths ship the bundles in ${PREFIX}/lib.
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  dbg echo "=== ppc64le: build + install bundles (path-independent) ==="
+  mkdir -p "${PREFIX}/lib"
+  source "${RECIPE_DIR}/building/_lld_bundle.sh"
+  dbg echo "=== ppc64le: build_lld_bundle_ppc64le ==="
+  build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
+  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
+  source "${RECIPE_DIR}/building/_zigcpp_bundle.sh"
+  dbg echo "=== ppc64le: build_zigcpp_bundle_ppc64le ==="
+  build_zigcpp_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" "${cmake_build_dir}" || exit 1
+  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so" "${PREFIX}/lib/" || exit 1
+fi
+
 # --- Post CMake Configuration ---
 dbg echo "=== POST-CMAKE: starting post-cmake configuration ==="
 
@@ -356,9 +394,16 @@ if is_linux && is_cross; then
 
   dbg echo "=== POST-CMAKE: create_zig_linux_libc_file ==="
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
-  perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
-  dbg echo "=== POST-CMAKE: create_pthread_atfork_stub ==="
-  create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+
+  # pthread_atfork stub + --wrap mechanism is cmake-path-only. zig-build path
+  # falls through to libpthread_nonshared.a's pthread_atfork (REL24 risk --
+  # bundles will address that separately).
+  if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
+    perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
+    dbg echo "=== POST-CMAKE: create_pthread_atfork_stub ==="
+    create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+  fi
+
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/libc_single_threaded_stub.o\"|g" "${cmake_build_dir}/config.h"
   dbg echo "=== POST-CMAKE: create_libc_single_threaded_stub ==="
   create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
@@ -371,6 +416,17 @@ if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
   build_native_zig "${SRC_DIR}/native-zig-install"
 fi
 
+# QEMU env for ppc64le cross-build execution.
+# QEMU_LD_PREFIX lets qemu-user find the ppc64le dynamic linker (/lib64/ld64.so.2)
+# and shared libraries from the cross sysroot. Without this, dynamically-linked
+# binaries crash with SIGSEGV before reaching main() because the loader fails.
+# Must be exported BEFORE any qemu invocation (zig build install can trigger
+# qemu via binfmt when the freshly-cross-compiled zig binary is run).
+# The cross gcc package installs its sysroot at ${BUILD_PREFIX}/${CONDA_TOOLCHAIN_HOST}/sysroot.
+if is_linux && is_cross; then
+  export QEMU_LD_PREFIX="${BUILD_PREFIX}/${CONDA_TOOLCHAIN_HOST}/sysroot"
+
+fi
 
 dbg echo "=== ZIG BUILD: starting zig build ==="
 dbg echo "=== ZIG BUILD: zig=${BUILD_ZIG} dir=${zig_build_dir} ==="
@@ -438,6 +494,20 @@ elif _can_run_stage3; then
     _stage3_runner=("qemu-${ZIG_TRIPLET%%-*}")
   fi
 
+  # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
+  # (symlinked from qemu-ppc64le at build setup) doesn't redirect nested execve
+  # calls -- but doctest panic/runtime-safety paths (dl_iterate_phdr, getcontext,
+  # abort) require it. Shadow PATH with the execve variant for this step only;
+  # QEMU_EXECVE is set by the qemu-execve-ppc64le activation script.
+  _qemu_shadow_dir=""
+  _qemu_arch_local="${ZIG_TRIPLET%%-*}"
+  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+    _qemu_shadow_dir=$(mktemp -d)
+    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${_qemu_arch_local}"
+    export PATH="${_qemu_shadow_dir}:${PATH}"
+    dbg echo "PATH shadow: qemu-${_qemu_arch_local} -> ${QEMU_EXECVE}"
+  fi
+
   (
     cd "${cmake_source_dir}" &&
     "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
@@ -451,6 +521,11 @@ elif _can_run_stage3; then
     fi
     echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
   }
+
+  if [ -n "${_qemu_shadow_dir:-}" ]; then
+    rm -rf "${_qemu_shadow_dir}"
+    unset _qemu_shadow_dir _qemu_arch_local
+  fi
 else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
 fi
@@ -481,3 +556,4 @@ if ([[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]) && [
   stub_cache_save
   dbg echo "=== Build cached for future restoration ==="
 fi
+

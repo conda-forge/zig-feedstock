@@ -172,6 +172,7 @@ function cmake_fallback_build() {
   if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     CMAKE_PATCHES+=(0005-ppc64le-mlongcall-CMakeLists.txt.patch)
     CMAKE_PATCHES+=(0006-ppc64le-lld-bundle-CMakeLists.txt.patch)
+    CMAKE_PATCHES+=(0007-ppc64le-zigcpp-bundle-CMakeLists.txt.patch)
   fi
 
   if is_linux; then
@@ -205,6 +206,26 @@ function cmake_fallback_build() {
     need_host_build=1
   fi
 
+  # ppc64le: build libzig-lld-bundle.so and libzig-zigcpp-bundle.so BEFORE
+  # applying patches and configuring cmake, so that -DZIG_LLD_BUNDLE_SO and
+  # -DZIG_ZIGCPP_BUNDLE_SO are valid when cmake evaluates the if(EXISTS ...) guards
+  # in patches 0006/0007 at configure time. Install them immediately after build
+  # so they are available in $PREFIX/lib for zig2 (built during cmake_build_install)
+  # to link against when invoked via qemu in Phase 3.
+  # libzigcpp.a is produced by configure_cmake_zigcpp (run in build.sh before
+  # cmake_fallback_build), so it is guaranteed to exist at this point.
+  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+    mkdir -p "${install_prefix}/lib/" || return 1
+    source "${RECIPE_DIR}/building/_lld_bundle.sh"
+    dbg echo "=== CMAKE FALLBACK: build_lld_bundle_ppc64le ==="
+    build_lld_bundle_ppc64le "${CXX}" "${install_prefix}" "${ZIG_LOCAL_CACHE_DIR}"
+    install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${install_prefix}/lib/" || return 1
+    source "${RECIPE_DIR}/building/_zigcpp_bundle.sh"
+    dbg echo "=== CMAKE FALLBACK: build_zigcpp_bundle_ppc64le ==="
+    build_zigcpp_bundle_ppc64le "${CXX}" "${install_prefix}" "${ZIG_LOCAL_CACHE_DIR}" "${build_dir}"
+    install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so" "${install_prefix}/lib/" || return 1
+  fi
+
   dbg echo "Applying CMake patches..."
   apply_cmake_patches "${source_dir}"
 
@@ -235,6 +256,13 @@ function cmake_fallback_build() {
       fi
     fi
     dbg echo "Re-configuring cmake with patched CMakeLists.txt..."
+    # Merge EXTRA_CMAKE_ARGS_FALLBACK into EXTRA_CMAKE_ARGS for this re-configure.
+    # These vars (ZIG_NO_LANGREF, ZIG_LLD_BUNDLE_SO, ZIG_ZIGCPP_BUNDLE_SO) are
+    # only consumed by patches 0004/0006/0007 applied above, so they must NOT be
+    # passed to the initial configure_cmake_zigcpp call (which runs before patches).
+    if [[ -n "${EXTRA_CMAKE_ARGS_FALLBACK+x}" ]] && [[ ${#EXTRA_CMAKE_ARGS_FALLBACK[@]} -gt 0 ]]; then
+      EXTRA_CMAKE_ARGS+=("${EXTRA_CMAKE_ARGS_FALLBACK[@]}")
+    fi
   if ! configure_cmake "${build_dir}" "${install_prefix}"; then
       echo "ERROR: cmake re-configure after patch application failed" >&2
       return 1
@@ -322,23 +350,10 @@ function cmake_fallback_build() {
     return 0
   fi
 
-  # ppc64le: build libzig-lld-bundle.so before invoking cmake, so the bundle
-  # is available for the linker when zig2 is linked.  This is a cmake-path-only
-  # concern: the zig-build-zig path does not consume the bundle at all.
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-    source "${RECIPE_DIR}/building/_lld_bundle.sh"
-    dbg echo "=== CMAKE FALLBACK: build_lld_bundle_ppc64le ==="
-    build_lld_bundle_ppc64le "${CXX}" "${install_prefix}" "${ZIG_LOCAL_CACHE_DIR}"
-  fi
-
   if cmake_build_install "${build_dir}" "${install_prefix}"; then
     dbg echo "SUCCESS: cmake fallback build completed successfully"
   else
     echo "ERROR: Both zig build and cmake build failed" >&2
     exit 1
-  fi
-
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-    install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${install_prefix}/lib/"
   fi
 }
