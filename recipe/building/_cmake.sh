@@ -247,12 +247,11 @@ function cmake_fallback_build() {
   # effect. Skip for osx-cross which has its own Phase 2 reconfigure flow.
   if [[ "${need_host_build}" -eq 0 ]]; then
     if is_linux && is_cross; then
-      _qemu_arch="${ZIG_TRIPLET%%-*}"
-      if command -v "qemu-${_qemu_arch}" &>/dev/null; then
-        export CROSSCOMPILING_EMULATOR="qemu-${_qemu_arch}"
+      if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
+        export CROSSCOMPILING_EMULATOR="qemu-${ZIG_QEMU_ARCH}"
         dbg echo "Set CROSSCOMPILING_EMULATOR=${CROSSCOMPILING_EMULATOR} for cross-cmake reconfigure"
       else
-        echo "WARNING: linux-cross cmake path requires qemu-${_qemu_arch}; build will likely fail" >&2
+        echo "WARNING: linux-cross cmake path requires qemu-${ZIG_QEMU_ARCH}; build will likely fail" >&2
       fi
     fi
     dbg echo "Re-configuring cmake with patched CMakeLists.txt..."

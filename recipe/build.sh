@@ -47,6 +47,7 @@ if is_osx; then
     export ZIG_TRIPLET
   fi
 fi
+export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
 
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
   echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
@@ -315,8 +316,7 @@ if is_linux && is_cross; then
   fi
   # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
   # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
-  _qemu_arch="${ZIG_TRIPLET%%-*}"
-  if command -v "qemu-${_qemu_arch}" &>/dev/null; then
+  if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
     EXTRA_ZIG_ARGS+=(-fqemu)
   fi
 fi
@@ -487,8 +487,7 @@ fi
 _can_run_stage3() {
   if ! is_cross; then return 0; fi
   if is_linux; then
-    local _qa="${ZIG_TRIPLET%%-*}"
-    command -v "qemu-${_qa}" &>/dev/null && return 0
+    command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
   fi
   return 1
 }
@@ -499,7 +498,7 @@ elif _can_run_stage3; then
   dbg echo "=== PHASE 2: building langref via stage3 zig ==="
   _stage3_runner=()
   if is_cross && is_linux; then
-    _stage3_runner=("qemu-${ZIG_TRIPLET%%-*}")
+    _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
   fi
 
   # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
@@ -508,12 +507,11 @@ elif _can_run_stage3; then
   # abort) require it. Shadow PATH with the execve variant for this step only;
   # QEMU_EXECVE is set by the qemu-execve-ppc64le activation script.
   _qemu_shadow_dir=""
-  _qemu_arch_local="${ZIG_TRIPLET%%-*}"
   if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
     _qemu_shadow_dir=$(mktemp -d)
-    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${_qemu_arch_local}"
+    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "PATH shadow: qemu-${_qemu_arch_local} -> ${QEMU_EXECVE}"
+    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
   fi
 
   (
@@ -532,7 +530,7 @@ elif _can_run_stage3; then
 
   if [ -n "${_qemu_shadow_dir:-}" ]; then
     rm -rf "${_qemu_shadow_dir}"
-    unset _qemu_shadow_dir _qemu_arch_local
+    unset _qemu_shadow_dir
   fi
 else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
