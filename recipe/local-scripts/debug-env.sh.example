@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Local debug overrides for zig-feedstock builds.
+#
+# Copy this to debug-env.sh (gitignored) and uncomment the knobs you need.
+# Sourced automatically by recipe/build.sh and recipe/build_native_for_test.sh
+# when the file is present.
+
+# export DEBUG_ZIG_BUILD=1      # verbose dbg() output throughout build
+# export ZIG_USE_CACHE=0        # bypass stub_cache restore/save
+# export BUILD_NATIVE_ZIG=1     # re-enable removed native-zig build path (see _build.sh)
+# export WORK_DIR_KEEP=1        # don't auto-clean build_native.sh workdir
+# export LOCAL_PATCHES_DIR="${RECIPE_DIR}/patches-local"  # apply additional patches

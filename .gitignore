@@ -24,6 +24,12 @@
 
 *.pyc
 
+# Local-only debug material — not shipped, not tracked
+recipe/local-scripts/*
+!recipe/local-scripts/*.example
+recipe/patches-local/*
+!recipe/patches-local/.gitkeep
+
 # Rattler-build's artifacts are in `output` when not specifying anything.
 /output
 # Pixi's configuration

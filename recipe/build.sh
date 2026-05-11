@@ -12,6 +12,11 @@ if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO
   fi
 fi
 
+# Local-only debug overrides — file is gitignored; create from recipe/local-scripts/debug-env.sh.example
+if [[ -f "${RECIPE_DIR}/local-scripts/debug-env.sh" ]]; then
+    source "${RECIPE_DIR}/local-scripts/debug-env.sh"
+fi
+
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
@@ -351,6 +356,15 @@ if is_osx && is_cross; then
   esac
 fi
 
+# Local-only additional patches (gitignored directory)
+if [[ -n "${LOCAL_PATCHES_DIR:-}" && -d "${LOCAL_PATCHES_DIR}" ]]; then
+    for _p in "${LOCAL_PATCHES_DIR}"/*.patch; do
+        [[ -f "${_p}" ]] || continue
+        echo "Applying local patch: $(basename "${_p}")"
+        patch -p1 < "${_p}"
+    done
+fi
+
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
 # --- ppc64le: build + install LLD and zigcpp bundles (path-independent) ---
@@ -408,12 +422,6 @@ if is_linux && is_cross; then
   dbg echo "=== POST-CMAKE: create_libc_single_threaded_stub ==="
   create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   dbg echo "=== POST-CMAKE: cross-build setup DONE ==="
-fi
-
-# Optional: build native zig from source when conda bootstrap can't compile new version.
-# Set BUILD_NATIVE_ZIG=1 to enable. Not needed since build 12 (ld script patch in package).
-if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
-  build_native_zig "${SRC_DIR}/native-zig-install"
 fi
 
 # QEMU env for ppc64le cross-build execution.
