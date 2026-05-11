@@ -272,7 +272,7 @@ function cmake_fallback_build() {
     local host_build_dir="${SRC_DIR}/build-host"
     if ! cmake_host_build "${source_dir}" "${host_build_dir}"; then
       echo "ERROR: Phase 1 host cmake build failed" >&2
-      exit 1
+      return 1
     fi
 
     # Phase 2: configure target cmake (generates target config.h) but do NOT
@@ -297,7 +297,7 @@ function cmake_fallback_build() {
     )
     if ! configure_cmake "${build_dir}" "${install_prefix}"; then
       echo "ERROR: Phase 2 target cmake configure failed" >&2
-      exit 1
+      return 1
     fi
     # Restore EXTRA_CMAKE_ARGS so subsequent invocations are unaffected.
     EXTRA_CMAKE_ARGS=("${_saved_extra_cmake_args[@]+"${_saved_extra_cmake_args[@]}"}")
@@ -308,14 +308,13 @@ function cmake_fallback_build() {
     # first via PATH/CMAKE_PREFIX_PATH. This poisons ZIG_LLVM_* paths with
     # BUILD_PREFIX (x86_64) entries that break aarch64 stage3 link.
     # Rewrite all BUILD_PREFIX -> PREFIX in ZIG_LLVM_* lines + append libc++.
-    perl -pi -e "s@${BUILD_PREFIX}@${PREFIX}@g if /ZIG_LLVM_/" "${build_dir}/config.h"
-    perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${build_dir}/config.h"
+    perl -pi -e "s@${BUILD_PREFIX}@${PREFIX}@g if /ZIG_LLVM_/" -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${build_dir}/config.h"
 
     # Phase 3: drive stage3 cross-compile via host zig2 with target config.h
     local host_zig2="${host_build_dir}/zig2"
     if [[ ! -x "${host_zig2}" ]]; then
       echo "ERROR: host zig2 not found at ${host_zig2}" >&2
-      exit 1
+      return 1
     fi
 
     # Phase 3 hardcodes its zig-build invocation (does NOT pull EXTRA_ZIG_ARGS).
@@ -342,7 +341,7 @@ function cmake_fallback_build() {
         -Dstrip
     ) || {
         echo "ERROR: Phase 3 stage3 cross-compile failed" >&2
-        exit 1
+        return 1
       }
 
     dbg echo "SUCCESS: two-phase cmake cross-build completed"
@@ -353,6 +352,6 @@ function cmake_fallback_build() {
     dbg echo "SUCCESS: cmake fallback build completed successfully"
   else
     echo "ERROR: Both zig build and cmake build failed" >&2
-    exit 1
+    return 1
   fi
 }

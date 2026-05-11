@@ -248,7 +248,7 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
+        - zig_impl_${{ build_platform }} >=${{ version }},<=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -435,7 +435,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=${{ version }},<=${{ version }}
       host:
         - if: not is_cross_compiler
           then:
@@ -445,7 +445,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=${{ version }},<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: cross_target_platform_ == "linux-ppc64le"
