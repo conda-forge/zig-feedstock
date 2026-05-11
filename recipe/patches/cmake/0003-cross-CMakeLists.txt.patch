@@ -1,9 +1,3 @@
-commit e048c4b13c41f9eeabe0222c13727f9eae9de2f0
-Author: Tim de Jager <tdejager89@gmail.com>
-Date:   Fri Nov 7 12:17:37 2025 +0100
-
-    add default
-
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index ef371fc..e5548b7 100644
 --- a/CMakeLists.txt

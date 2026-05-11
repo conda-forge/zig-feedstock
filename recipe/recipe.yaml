@@ -118,6 +118,9 @@ source:
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
+      # Note: recipe/patches/cmake/0001..0007 are NOT listed here.
+      # They are applied programmatically by recipe/building/_cmake.sh::cmake_fallback_build
+      # (only invoked on the cmake fallback build path).
       # All platforms: fix MinGW .def LIBRARY lines missing .dll suffix (api-ms-win-* family)
       - patches/zig_llvm.cpp-mingw-def-dll-suffix.patch
       # All platforms: forward target to langref doctests via -Ddoctest-target
@@ -189,7 +192,7 @@ outputs:
   - package:
       name: zig_impl_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x"
+      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64"
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx
@@ -208,12 +211,6 @@ outputs:
           
           CMAKE_BUILD: "0"
           CMAKE_FALLBACK: "0"
-          
-          # --- LOCAL DEV: persistent caches + Phase 2 langref skip ---
-          # Both default to no-op in CI (env.get returns ""/"0"); local
-          # iteration can override via run-build.sh.
-          ZIG_GLOBAL_CACHE_DIR_OVERRIDE: ${{ env.get("ZIG_GLOBAL_CACHE_DIR_OVERRIDE", default="") }}
-          SKIP_LANGREF: ${{ env.get("SKIP_LANGREF", default="0") }}
     requirements:
       build:
         # --- Common build deps (all cases) ---

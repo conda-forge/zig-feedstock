@@ -103,7 +103,7 @@ SYNCHRONIZATION_DEF
       _gen_count=0
 
       # Helper: generate .a from a processed .def file
-      _gen_implib() {
+      function _gen_implib() {
         local stem="$1" def="$2"
         local lib="${_mingw_common}/lib${stem}.a"
         [[ -f "${lib}" ]] && return 0

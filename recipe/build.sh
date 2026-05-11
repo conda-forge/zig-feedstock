@@ -555,6 +555,11 @@ generate_mingw_import_libs
 
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="
 
+# ZIG_USE_CACHE trinary semantics (intentional):
+#   unset / empty → no cache action (CI default)
+#   "0"           → save current build artifacts into cache
+#   "1"           → restore cached artifacts from prior run
+#   any other     → no-op (filters garbage values silently)
 # Cache successful build (saves before rattler-build cleanup)
 if ([[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]) && [[ -f "${RECIPE_DIR}/local-scripts/stub_cache.sh" ]]; then
   # stub_cache.sh already sourced at the top if ZIG_USE_CACHE=1

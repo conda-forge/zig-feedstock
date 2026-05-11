@@ -38,10 +38,8 @@ function fix_sysroot_libc_scripts() {
             -e "s|( /lib/ld-|( ../../lib/ld-|g" \
             "${script_file}"
 
-          if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
-            echo "      Before: $(cat "${script_file}.orig")"
-            echo "      After:  $(cat "${script_file}")"
-          fi
+          dbg echo "      Before: $(cat "${script_file}.orig")"
+          dbg echo "      After:  $(cat "${script_file}")"
         fi
       done
     done
