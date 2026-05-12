@@ -177,7 +177,8 @@ function cmake_fallback_build() {
 
   if is_linux; then
     if is_cross; then
-      perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${source_dir}"/cmake/install.cmake
+      grep -qF "${CROSSCOMPILING_EMULATOR}" "${source_dir}/cmake/install.cmake" || \
+        perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/\1${CROSSCOMPILING_EMULATOR} ${ZIG_EXECUTABLE}/' "${source_dir}"/cmake/install.cmake
       export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TRIPLET}"
       export ZIG_CROSS_TARGET_MCPU="baseline"
     fi
@@ -262,7 +263,7 @@ function cmake_fallback_build() {
     if [[ -n "${EXTRA_CMAKE_ARGS_FALLBACK+x}" ]] && [[ ${#EXTRA_CMAKE_ARGS_FALLBACK[@]} -gt 0 ]]; then
       EXTRA_CMAKE_ARGS+=("${EXTRA_CMAKE_ARGS_FALLBACK[@]}")
     fi
-  if ! configure_cmake "${build_dir}" "${install_prefix}"; then
+    if ! configure_cmake "${build_dir}" "${install_prefix}"; then
       echo "ERROR: cmake re-configure after patch application failed" >&2
       return 1
     fi

@@ -8,7 +8,7 @@
 # allowing any-distance calls at the cost of 1-2 extra instructions.
 #
 # Applied after patches 0001+0002+0003 in cmake_fallback_build.
-# Guarded with a CMAKE_SYSTEM_PROCESSOR check so the patch is harmless
+# Guarded with ZIG_LLD_BUNDLE_SO AND CMAKE_SYSTEM_PROCESSOR so the patch is harmless
 # if inadvertently applied to non-ppc64le builds.
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
@@ -18,7 +18,7 @@
 
 +# ppc64le: 24-bit relative branches cannot span the >32MB distance to LLVM
 +# symbols in shared libs.  Force indirect (CTR-based) calls for all zigcpp TUs.
-+if(DEFINED ZIG_LLD_BUNDLE_SO)
++if(DEFINED ZIG_LLD_BUNDLE_SO AND CMAKE_SYSTEM_PROCESSOR STREQUAL "powerpc64le")
 +  message(STATUS "zig-0005-debug: zigcpp ppc64le compile flags applied")
 +  target_compile_options(zigcpp PRIVATE
 +      -mlongcall
@@ -38,7 +38,7 @@
 
 +# ppc64le: zig2.c is a ~11M-line auto-generated C TU; same 32MB branch limit
 +# applies.  Force indirect calls so the linker can resolve all cross-unit refs.
-+if(DEFINED ZIG_LLD_BUNDLE_SO)
++if(DEFINED ZIG_LLD_BUNDLE_SO AND CMAKE_SYSTEM_PROCESSOR STREQUAL "powerpc64le")
 +  message(STATUS "zig-0005-debug: zig2 ppc64le compile flags applied")
 +  target_compile_options(zig2 PRIVATE
 +      -mlongcall
