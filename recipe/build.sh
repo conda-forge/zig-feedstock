@@ -201,12 +201,11 @@ fi
 # tuning flags are not load-bearing for the produced binary.
 if is_osx && is_cross; then
   for _v in CFLAGS CXXFLAGS; do
-    eval "_val=\${${_v}:-}"
-    _val="$(echo "${_val}" \
-      | sed -E 's/(^| )-march=[^ ]+//g; s/(^| )-mtune=[^ ]+//g; s/(^| )-mssse3//g; s/  +/ /g; s/^ +//; s/ +$//')"
-    eval "export ${_v}=\"\${_val}\""
+    declare -n _ref="${_v}"
+    _ref="$(echo "${_ref:-}" | sed -E 's/(^| )-march=[^ ]+//g; s/(^| )-mtune=[^ ]+//g; s/(^| )-mssse3//g; s/  +/ /g; s/^ +//; s/ +$//')"
+    unset -n _ref
   done
-  unset _v _val
+  unset _v
 fi
 
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref because zig2

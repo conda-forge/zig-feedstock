@@ -22,6 +22,13 @@ function build_zigcpp_bundle_ppc64le() {
   local output_so="${output_dir}/libzig-zigcpp-bundle.so"
   local zigcpp_archive="${build_dir}/zigcpp/libzigcpp.a"
 
+  # Idempotency guard: skip rebuild if output .so already exists
+  # (build.sh and cmake_fallback_build both call this; second call no-ops)
+  if [[ -f "${output_so}" ]]; then
+    dbg echo "build_zigcpp_bundle_ppc64le: skipping rebuild — ${output_so} already present"
+    return 0
+  fi
+
   mkdir -p "${output_dir}"
 
   if [[ ! -f "${zigcpp_archive}" ]]; then
