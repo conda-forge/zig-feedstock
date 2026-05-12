@@ -1,16 +1,13 @@
+# Purpose: Split cfg.llvm_lib_dir on semicolons and add each as a library search path
+# Affects: Non-Unix (Windows) build of zig 0.15.x
+# Upstream: not filed
+# Drop-when: Upstream supports multi-path llvm_lib_dir natively
+# Last-verified: 2026-05-12 (build 23)
+
 diff --git a/build.zig b/build.zig
 index 37523e6..a151dc6 100644
 --- a/build.zig
 +++ b/build.zig
-@@ -738,7 +738,7 @@ fn addCompilerMod(b: *std.Build, options: AddCompilerModOptions) *std.Build.Modu
- fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Step.Compile {
-     const exe = b.addExecutable(.{
-         .name = "zig",
--        .max_rss = 7_800_000_000,
-+        .max_rss = 7_500_000_000,
-         .root_module = addCompilerMod(b, options),
-     });
-     exe.stack_size = stack_size;
 @@ -790,7 +790,11 @@
      assert(cfg.lld_include_dir.len != 0);
      mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });

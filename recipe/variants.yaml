@@ -48,5 +48,5 @@ cross_target_platform_:
   - win-64
   - win-arm64
 
-# This builds, but is it not EOL?
+# Disabled: s390x EOL on conda-forge. Restore only if upstream re-enables.
 #  - linux-s390x

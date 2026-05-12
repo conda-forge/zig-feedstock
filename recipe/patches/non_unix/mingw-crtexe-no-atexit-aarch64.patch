@@ -1,3 +1,9 @@
+# Purpose: Guard atexit() definition with #ifndef __aarch64__ to avoid duplicate symbol collision in mingw-w64 aarch64 Windows cross builds
+# Affects: Windows aarch64 cross builds
+# Upstream: not filed
+# Drop-when: mingw-w64 ships a working atexit for aarch64 that does not conflict
+# Last-verified: 2026-05-12 (build 23)
+
 --- a/lib/libc/mingw/crt/crtexe.c
 +++ b/lib/libc/mingw/crt/crtexe.c
 @@ -324,6 +324,7 @@

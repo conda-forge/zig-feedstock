@@ -1,8 +1,8 @@
-# non-unix: Force dynamic CRT (/MD) for zigcpp to match conda-forge LLVM libs
-#
-# conda-forge builds LLVM with /MD (dynamic CRT). zig's CMakeLists.txt
-# sets zigcpp to "MultiThreaded" (/MT, static CRT). Mixing these causes
-# lld-link /failifmismatch errors. Change zigcpp to match LLVM.
+# Purpose: Switch zigcpp MSVC runtime from /MT (static) to /MD (dynamic) to match conda-forge LLVM and avoid lld-link /failifmismatch CRT mismatch errors
+# Affects: Non-Unix (Windows) build of zig 0.15.x
+# Upstream: not filed
+# Drop-when: zig upstream aligns zigcpp CRT setting with conda-forge LLVM build, or conda-forge LLVM switches to /MT
+# Last-verified: 2026-05-12 (build 23)
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt

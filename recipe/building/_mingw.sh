@@ -3,7 +3,7 @@
 # Requires: PREFIX, BUILD_PREFIX, BUILD_ZIG, ZIG_TRIPLET, RECIPE_DIR
 # and the dbg() function defined in build.sh.
 
-generate_mingw_import_libs() {
+function generate_mingw_import_libs() {
   # Workaround for ziglang/zig#14919: add synchronization.def so zig can generate
   # libsynchronization.a when cross-compiling to Windows (consumers using -lsynchronization).
   # IMPORTANT: LIBRARY must be api-ms-win-core-synch-l1-2-0.dll, NOT synchronization.dll.

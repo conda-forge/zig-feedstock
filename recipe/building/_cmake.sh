@@ -331,7 +331,7 @@ function cmake_fallback_build() {
         --prefix "${install_prefix}" \
         --search-prefix "${PREFIX}" \
         --maxrss 8589934592 \
-        "-Dversion-string=${PKG_VERSION:-0.16.0}" \
+        "-Dversion-string=${PKG_VERSION}" \
         "-Dtarget=${ZIG_TRIPLET}" \
         -Dcpu=baseline \
         -Denable-llvm \

@@ -6,7 +6,25 @@ context:
   version: "0.15.2"
   
   _c_v: ${{ c_stdlib_version | default("") }}
+  
+  # runs-on (cross-compiled) and generates-code-for (cross-compilers)
+  xc_l64:     ${{ cross_target_platform_ == "linux-64" }}
+  xc_aarch64: ${{ cross_target_platform_ == "linux-aarch64" }}
+  xc_ppc64le: ${{ cross_target_platform_ == "linux-ppc64le" }}
+  xc_riscv64: ${{ cross_target_platform_ == "linux-riscv64" }}
+  xc_s390x:   ${{ cross_target_platform_ == "linux-s390x" }}
+  xc_o64:     ${{ cross_target_platform_ == "osx-64" }}
+  xc_oarm64:  ${{ cross_target_platform_ == "osx-arm64" }}
+  xc_w64:     ${{ cross_target_platform_ == "win-64" }}
+  xc_warm64:  ${{ cross_target_platform_ == "win-arm64" }}
 
+  xc_lnx:     ${{ "linux" in cross_target_platform_ and "linux" in build_platform }}
+  xc_osx:     ${{ "osx"   in cross_target_platform_ and "osx"   in build_platform }}
+  xc_nlo:     ${{ "win"   in cross_target_platform_ and "win"   in build_platform }}
+
+  xc_valid:   ${{ xc_lnx or xc_osx or xc_nlo }}
+  
+  # Silly shortcuts
   library: ${{ "Library/" if not unix else "" }}
   m2: ${{ "m2-" if not unix else "" }}
   sh: ${{ ".bat" if not unix else ".sh" }}
@@ -16,58 +34,45 @@ context:
   # Zig target mapping (for zig -target flag, differs from GCC triplets)
   zig_triplet: >-
     ${{
-      "x86_64-linux-gnu." ~ _c_v        if cross_target_platform_ == "linux-64"              else
-      "aarch64-linux-gnu." ~ _c_v       if cross_target_platform_ == "linux-aarch64"         else
-      "powerpc64le-linux-gnu." ~ _c_v   if cross_target_platform_ == "linux-ppc64le"         else
-      "riscv64-linux-gnu." ~ _c_v       if cross_target_platform_ == "linux-riscv64"         else
-      "s390x-linux-gnu." ~ _c_v         if cross_target_platform_ == "linux-s390x"           else
-      "x86_64-macos." ~ _c_v ~ "-none"  if cross_target_platform_ == "osx-64"                else
-      "aarch64-macos." ~ _c_v ~ "-none" if cross_target_platform_ == "osx-arm64"             else
-      "x86_64-windows-msvc"             if cross_target_platform_ == "win-64"                else
-      "aarch64-windows-msvc"            if cross_target_platform_ == "win-arm64"             else
+      "x86_64-linux-gnu." ~ _c_v        if xc_l64                              else
+      "aarch64-linux-gnu." ~ _c_v       if xc_aarch64                          else
+      "powerpc64le-linux-gnu." ~ _c_v   if xc_ppc64le                          else
+      "riscv64-linux-gnu." ~ _c_v       if xc_riscv64                          else
+      "s390x-linux-gnu." ~ _c_v         if xc_s390x                            else
+      "x86_64-macos." ~ _c_v ~ "-none"  if xc_o64                              else
+      "aarch64-macos." ~ _c_v ~ "-none" if xc_oarm64                           else
+      "x86_64-windows-msvc"             if xc_w64                              else
+      "aarch64-windows-msvc"            if xc_warm64                           else
       "native"
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
   conda_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"          if cross_target_platform_ == "linux-64"              else
-      "aarch64-conda-linux-gnu"         if cross_target_platform_ == "linux-aarch64"         else
-      "powerpc64le-conda-linux-gnu"     if cross_target_platform_ == "linux-ppc64le"         else
-      "riscv64-conda-linux-gnu"         if cross_target_platform_ == "linux-riscv64"         else
-      "s390x-conda-linux-gnu"           if cross_target_platform_ == "linux-s390x"           else
-      "x86_64-apple-darwin13.4.0"       if cross_target_platform_ == "osx-64"                else
-      "arm64-apple-darwin20.0.0"        if cross_target_platform_ == "osx-arm64"             else
-      "x86_64-w64-mingw32"              if cross_target_platform_ == "win-64"                else
-      "aarch64-w64-mingw32"             if cross_target_platform_ == "win-arm64"             else
+      "x86_64-conda-linux-gnu"          if xc_l64                              else
+      "aarch64-conda-linux-gnu"         if xc_aarch64                          else
+      "powerpc64le-conda-linux-gnu"     if xc_ppc64le                          else
+      "riscv64-conda-linux-gnu"         if xc_riscv64                          else
+      "s390x-conda-linux-gnu"           if xc_s390x                            else
+      "x86_64-apple-darwin13.4.0"       if xc_o64                              else
+      "arm64-apple-darwin20.0.0"        if xc_oarm64                           else
+      "x86_64-w64-mingw32"              if xc_w64                              else
+      "aarch64-w64-mingw32"             if xc_warm64                           else
       "unknown"
     }}
 
   # Build mode detection helpers
-  # Which platform builds cross-compilers for each target
-  cross_build_platform: >-
-    ${{
-      "linux-64"                        if cross_target_platform_ in [
-          "linux-64",
-          "linux-aarch64",
-          "linux-ppc64le",
-          "linux-riscv64",
-          "linux-s390x"
-       ]                                                                                     else
-      build_platform                    if cross_target_platform_ in ["osx-64", "osx-arm64"] and build_platform in ["osx-64", "osx-arm64"] else
-      build_platform                    if cross_target_platform_ in ["win-64", "win-arm64"] and build_platform in ["win-64", "win-arm64"] else
-      "unknown"
-    }}
-
   build_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"          if build_platform == "linux-64"                      else
-      "aarch64-conda-linux-gnu"         if build_platform == "linux-aarch64"                 else
-      "powerpc64le-conda-linux-gnu"     if build_platform == "linux-ppc64le"                 else
-      "x86_64-apple-darwin13.4.0"       if build_platform == "osx-64"                        else
-      "arm64-apple-darwin20.0.0"        if build_platform == "osx-arm64"                     else
-      "x86_64-w64-mingw32"              if build_platform == "win-64"                        else
-      "aarch64-w64-mingw32"             if build_platform == "win-arm64"                     else
+      "x86_64-conda-linux-gnu"          if build_platform == "linux-64"        else
+      "aarch64-conda-linux-gnu"         if build_platform == "linux-aarch64"   else
+      "powerpc64le-conda-linux-gnu"     if build_platform == "linux-ppc64le"   else
+      "riscv64-conda-linux-gnu"         if build_platform == "linux-riscv64"   else
+      "s390x-conda-linux-gnu"           if build_platform == "linux-s390x"     else
+      "x86_64-apple-darwin13.4.0"       if build_platform == "osx-64"          else
+      "arm64-apple-darwin20.0.0"        if build_platform == "osx-arm64"       else
+      "x86_64-w64-mingw32"              if build_platform == "win-64"          else
+      "aarch64-w64-mingw32"             if build_platform == "win-arm64"       else
       "unknown"
     }}
 
@@ -75,28 +80,30 @@ context:
   # Used by xc_build_triplet for unhosted cross-compilers (runs on target_platform).
   target_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"          if target_platform == "linux-64"                     else
-      "aarch64-conda-linux-gnu"         if target_platform == "linux-aarch64"                else
-      "powerpc64le-conda-linux-gnu"     if target_platform == "linux-ppc64le"                else
-      "x86_64-apple-darwin13.4.0"       if target_platform == "osx-64"                       else
-      "arm64-apple-darwin20.0.0"        if target_platform == "osx-arm64"                    else
-      "x86_64-w64-mingw32"              if target_platform == "win-64"                       else
-      "aarch64-w64-mingw32"             if target_platform == "win-arm64"                    else
+      "x86_64-conda-linux-gnu"          if target_platform == "linux-64"       else
+      "aarch64-conda-linux-gnu"         if target_platform == "linux-aarch64"  else
+      "powerpc64le-conda-linux-gnu"     if target_platform == "linux-ppc64le"  else
+      "riscv64-conda-linux-gnu"         if target_platform == "linux-riscv64"  else
+      "s390x-conda-linux-gnu"           if target_platform == "linux-s390x"    else
+      "x86_64-apple-darwin13.4.0"       if target_platform == "osx-64"         else
+      "arm64-apple-darwin20.0.0"        if target_platform == "osx-arm64"      else
+      "x86_64-w64-mingw32"              if target_platform == "win-64"         else
+      "aarch64-w64-mingw32"             if target_platform == "win-arm64"      else
       "unknown"
     }}
 
-  is_hosted_xcompiler: ${{ build_platform == target_platform and cross_target_platform_ != target_platform and cross_build_platform == build_platform }}
-  is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and cross_build_platform == build_platform }}
+  is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
+  is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
   xc_build_platform: >-
     ${{
-      build_platform                    if is_hosted_xcompiler                               else
-      target_platform                   if is_unhosted_xcompiler                             else
+      build_platform                    if is_hosted_xcompiler                 else
+      target_platform                   if is_unhosted_xcompiler               else
       "unknown"
     }}
 
   xc_build_triplet: >-
     ${{
-      build_triplet                     if not is_unhosted_xcompiler                         else
+      build_triplet                     if not is_unhosted_xcompiler           else
       target_triplet
     }}
 
@@ -135,13 +142,7 @@ source:
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
-          # Auto-link libunwind for `-lc` on glibc. HUNK-1-ONLY variant:
-          # only drops the static-only guard in target.zig:libCNeedsLibUnwind,
-          # leaves Config.zig:300 .Exe gate intact. This isolates libunwind
-          # trigger to executable links only, avoiding the .Lib/.Obj sub-target
-          # libunwind sub-compile path that broke stage3 in the prior 2-hunk
-          # attempt. If this still breaks stage3, the issue is deeper than the
-          # .Exe restriction and we pivot to gcc_s-injection design.
+          # Drop when conda-forge linux glibc floor reaches a version that no longer forces libunwind.
           - patches/linux/target.zig-glibc-needs-libunwind.patch
           # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
           # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
@@ -172,7 +173,8 @@ source:
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
       - if: not unix
         then:
-          - patches/non_unix/build.zig-maxrss-search-prefix.patch
+          - patches/non_unix/build.zig-01-maxrss.patch
+          - patches/non_unix/build.zig-02-llvm-lib-multipath.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
@@ -192,7 +194,7 @@ outputs:
   - package:
       name: zig_impl_${{ cross_target_platform_ }}
     build:
-      skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64"
+      skip: not (is_native or is_cross_target)
       dynamic_linking:
         missing_dso_allowlist:
           - if: osx
@@ -237,12 +239,12 @@ outputs:
             - libcxx ${{ llvm_version }}.*
         - if: (build_platform != target_platform)
           then:
-            - llvmdev ${{ llvm_version }}.*  # llvm-config
+            - llvmdev ${{ llvm_version }}.*   # llvm-config
             - clangdev ${{ llvm_version }}.*  # host-arch Clang static libs for zigcpp (Plan B host build)
             - lld ${{ llvm_version }}.*       # host-arch Lld static libs for zigcpp (Plan B host build)
             - if: linux
               then:
-                - qemu-execve-${{ "aarch64" if aarch64 else "ppc64le" if ppc64le else "riscv64" if "riscv64" in cross_target_platform_ else "s390x" if s390x else "unknown" }}
+                - qemu-execve-${{ "aarch64" if aarch64 else "ppc64le" if ppc64le else "riscv64" if "riscv64" in target_platform else "s390x" if s390x else "unknown" }}
             - if: osx
               then:
                 - libxml2-devel
@@ -353,11 +355,11 @@ outputs:
             then:
               - for %%L in (kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase pthread) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
               - echo PASS MinGW import libs present (Windows)
-          - if: unix and (win-64 in cross_target_platform_ or win-arm64 in cross_target_platform_)
+          - if: unix and xc_nlo
             then:
               - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase pthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
               - echo "PASS MinGW import libs present (cross-compiled)"
-          - if: win-arm64 in cross_target_platform_
+          - if: xc_warm64
             then:
               # ARM64 intrinsic stubs (only for win-arm64)
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/___chkstk_ms.o" || { echo "FAIL missing ___chkstk_ms.o"; exit 1; }
@@ -370,8 +372,7 @@ outputs:
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/dllcrt2.o" || { echo "FAIL missing dllcrt2.o"; exit 1; }
               - echo "PASS ARM64 CRT startup objects present"
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
-      # unrecognized linker args to LLD instead of rejecting them.
-      # Verify -fuse-ld=lld patch (Linux/ELF + NonUnix/COFF, not macOS/Mach-O)
+      # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
           - if: unix
             then:
@@ -448,7 +449,7 @@ outputs:
             - zig_impl_${{ xc_build_platform }} >=${{ version }},<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
-        - if: cross_target_platform_ == "linux-ppc64le"
+        - if: xc_ppc64le
           then:
             # ppc64le patches redirect zig linking to gcc/ld.bfd
             # (LLD lacks PowerPC64 relocation support)
@@ -482,11 +483,11 @@ outputs:
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
-          - if: arm64 not in cross_target_platform_
+          - if: linux or is_native
             then:
               - ${{ conda_triplet }}-zig version
             else:
-              - echo "Skip functional tests on arm64"
+              - echo "Skip functional tests on non-native or emulated"
           # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
           - if: unix
             then:
