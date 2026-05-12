@@ -49,6 +49,8 @@ _zig_bin="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig"
 # if neither is set it fails with AppDataDirUnavailable.  ZIG_GLOBAL_CACHE_DIR
 # overrides the lookup.  Set it here so direct zig invocations (recipe tests,
 # zig test, zig build) always have a writable cache, not just wrapper calls.
+# NOTE: same fallback logic is duplicated in recipe/testing/_test_utils.py:setup_zig_global_cache_dir()
+# Keep both implementations in sync until the cross-language duplication is consolidated.
 if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
     if [[ -n "${XDG_DATA_HOME:-}" ]]; then
         export ZIG_GLOBAL_CACHE_DIR="${XDG_DATA_HOME}/zig/zig-cache"

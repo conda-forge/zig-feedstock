@@ -1,3 +1,9 @@
+# Purpose: Force ppc64le ELF links through LLD backend (which patch 0003-gcc redirects to GCC)
+# Affects: src/link.zig
+# Upstream: TBD
+# Drop-when: Upstream LLD self-hosted ELF linker supports ppc64le relocations natively
+# Last-verified: 2026-05-12
+
 --- a/src/link.zig
 +++ b/src/link.zig
 @@ -522,9 +522,17 @@

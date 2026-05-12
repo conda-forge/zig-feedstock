@@ -1,3 +1,5 @@
+source "${RECIPE_DIR}/building/_common.sh"
+
 function _compile_stub_object() {
   # Helper to compile a stub .c file into a .o object
   # Args: cc_compiler src_file out_file label (for error messages)

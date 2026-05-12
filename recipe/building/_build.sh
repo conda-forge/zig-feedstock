@@ -1,5 +1,7 @@
 # ZIG BUILD FUNCTIONS
 
+source "${RECIPE_DIR}/building/_common.sh"
+
 function build_zig_with_zig() {
   local build_dir=$1
   local zig=$2

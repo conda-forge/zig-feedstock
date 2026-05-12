@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test shared libc++ discovery for zig_impl_ package (patch 0008).
+Test shared libc++ discovery for zig_impl_ package (Lld.zig-prefer-shared-libcxx.patch).
 
 Runs during zig_impl_$platform test phase using the triplet-prefixed binary
 directly (no activation wrappers). Verifies that the zig binary:
@@ -40,8 +40,9 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _build_is_mac,
+    _build_is_win,
     _is_emulated,
-    _record,
     _results,
     _run,
     setup_zig_global_cache_dir,
@@ -53,11 +54,8 @@ from _test_utils import (
 _prefix = Path(os.environ.get("CONDA_PREFIX", ""))
 _conda_triplet = sys.argv[1] if len(sys.argv) > 1 else ""
 _zig_triplet = sys.argv[2] if len(sys.argv) > 2 else ""
-_build_is_win = sys.platform == "win32"
 
 setup_zig_global_cache_dir()
-
-_build_is_mac = sys.platform == "darwin"
 
 # The zig binary in zig_impl_ is triplet-prefixed
 _zig_bin_name = f"{_conda_triplet}-zig" if _conda_triplet else ""
@@ -179,7 +177,7 @@ def test_libcxx_fallback_static() -> None:
     Linux:  readelf -d shows NO NEEDED libc++.so entry
     macOS:  otool -L shows NO libc++ dylib dependency
     """
-    print("--- [patch-0008] Fallback to static libc++ ---")
+    print("--- [Lld.zig-prefer-shared-libcxx.patch] Fallback to static libc++ ---")
 
     if is_arm64 or is_ppc64le or _is_emulated:
         SKIP("libcxx-static-fallback", "arm64/ppc64le/emulated, skip linking tests")
@@ -304,7 +302,7 @@ def test_libcxx_probe_paths() -> None:
     Linux: strace captures access()/faccessat() syscalls.
     All:   structural check that probe target dirs resolve correctly.
     """
-    print("--- [patch-0008] Shared libc++ probe paths ---")
+    print("--- [Lld.zig-prefer-shared-libcxx.patch] Shared libc++ probe paths ---")
 
     if is_arm64 or is_ppc64le or _is_emulated:
         SKIP("libcxx-probe", "arm64/ppc64le/emulated, skip linking tests")
@@ -336,7 +334,7 @@ def test_libcxx_probe_paths() -> None:
             WARN(f"probe dir missing: {label}",
                  "expected until zig-llvm package available")
 
-    # --- Diagnostic: check if patch 0008 is compiled into the binary ---
+    # --- Diagnostic: check if Lld.zig-prefer-shared-libcxx.patch is compiled into the binary ---
     if zig:
         strings_bin = shutil.which("strings")
         if strings_bin:
@@ -345,10 +343,10 @@ def test_libcxx_probe_paths() -> None:
                 has_probe_str = any("zig-llvm/lib" in l for l in r_str.stdout.splitlines())
                 has_libcxx_so = any("libc++.so.1" in l for l in r_str.stdout.splitlines())
                 if has_probe_str or has_libcxx_so:
-                    PASS("patch 0008 strings found in binary",
+                    PASS("Lld.zig-prefer-shared-libcxx.patch strings found in binary",
                          f"zig-llvm/lib={has_probe_str}, libc++.so.1={has_libcxx_so}")
                 else:
-                    FAIL("patch 0008 strings NOT in binary",
+                    FAIL("Lld.zig-prefer-shared-libcxx.patch strings NOT in binary",
                          "libcxx_shared.zig was not compiled into this zig")
 
     # --- Diagnostic: verbose link output ---
@@ -427,7 +425,7 @@ def test_libcxx_probe_paths() -> None:
 
         if not probed:
             WARN("no libc++ probes detected in strace",
-                 "patch 0008 may not be applied or link_libcpp path not entered")
+                 "Lld.zig-prefer-shared-libcxx.patch may not be applied or link_libcpp path not entered")
             return
 
         PASS(f"zig probes for shared libc++ ({len(probed)} access calls)")
@@ -632,7 +630,7 @@ def test_libcxx_shared_simulation() -> None:
       - If no shared libc++ exists: build one from zig's cached libc++.a,
         place at preferred probe path, then test.
     """
-    print("--- [patch-0008] Shared libc++ simulation ---")
+    print("--- [Lld.zig-prefer-shared-libcxx.patch] Shared libc++ simulation ---")
 
     plat = _get_platform_key()
     if not plat:
@@ -756,7 +754,7 @@ def test_libcxx_env_override() -> None:
     The code path is architecture-independent, so testing on native
     validates the mechanism for all cross-built variants (ppc64le, arm64).
     """
-    print("--- [patch-0008] ZIG_SHARED_LIBCXX_DIR env var override ---")
+    print("--- [Lld.zig-prefer-shared-libcxx.patch] ZIG_SHARED_LIBCXX_DIR env var override ---")
 
     if _is_emulated:
         SKIP("libcxx-env-override", "emulated, skip linking tests")
@@ -1049,7 +1047,7 @@ def test_whole_archive_shared_lib() -> None:
 # Main
 # ===================================================================
 def main() -> int:
-    print("=== Shared libc++ Discovery Tests (patch 0008) ===")
+    print("=== Shared libc++ Discovery Tests (Lld.zig-prefer-shared-libcxx.patch) ===")
     print(f"  CONDA_PREFIX  = {_prefix}")
     print(f"  CONDA_TRIPLET = {_conda_triplet}")
     print(f"  ZIG_TRIPLET   = {_zig_triplet}")

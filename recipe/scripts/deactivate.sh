@@ -13,6 +13,7 @@ unset ZIG_RC
 unset ZIG_LLD
 unset ZIG_FORCE_LOAD_CC
 unset ZIG_FORCE_LOAD_CXX
+unset ZIG_GLOBAL_CACHE_DIR
 
 # === Unset toolchain identification ===
 unset CONDA_ZIG_BUILD

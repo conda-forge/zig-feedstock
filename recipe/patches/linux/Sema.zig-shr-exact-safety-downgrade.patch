@@ -1,5 +1,5 @@
 # Purpose: Downgrade .shr_exact to .shr when safety is enabled to prevent LLVM-20 PowerPC backend from folding the safety back-shift check into a no-op
-# Affects: Linux + all LLVM-backend targets (applied linux-only as documented compromise)
+# Affects: src/Sema.zig
 # Upstream: not filed
 # Drop-when: LLVM-20 PowerPC backend fixes @shrExact codegen, or zig switches to self-hosted backend on ppc64le
 # Last-verified: 2026-05-12 (build 23)

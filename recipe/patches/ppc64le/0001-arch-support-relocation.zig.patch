@@ -1,3 +1,9 @@
+# Purpose: Add PowerPC64LE relocation table to ELF linker relocation dispatch
+# Affects: src/link/Elf/relocation.zig
+# Upstream: TBD
+# Drop-when: Upstream LLD self-hosted ELF linker gains ppc64le relocation support
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/relocation.zig
 +++ b/src/link/Elf/relocation.zig
 @@ -75,2 +75,15 @@

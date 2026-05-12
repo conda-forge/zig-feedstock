@@ -1,3 +1,9 @@
+# Purpose: Skip __global_pointer$ synthesis for ppc64le (RISC-V only construct)
+# Affects: src/link/Elf/LinkerDefined.zig
+# Upstream: TBD
+# Drop-when: Upstream LinkerDefined.zig guards __global_pointer$ behind a RISC-V check
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/LinkerDefined.zig
 +++ b/src/link/Elf/LinkerDefined.zig
 @@ -291,12 +291,15 @@

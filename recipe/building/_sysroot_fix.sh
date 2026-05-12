@@ -41,6 +41,7 @@ function fix_sysroot_libc_scripts() {
 
           dbg echo "      Before: $(cat "${script_file}.orig")"
           dbg echo "      After:  $(cat "${script_file}")"
+          rm -f "${script_file}.orig"
         fi
       done
     done

@@ -1,3 +1,9 @@
+# Purpose: Intercept ppc64le ELF final links in Lld.zig::elfLink and invoke GCC linker instead of LLD
+# Affects: src/link/Lld.zig
+# Upstream: TBD
+# Drop-when: Upstream LLD gains full PowerPC64 ELF relocation support (R_PPC64_REL24, TOC, etc.)
+# Last-verified: 2026-05-12
+
 diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 index 18682705..1fe344a7 100644
 --- a/src/link/Lld.zig

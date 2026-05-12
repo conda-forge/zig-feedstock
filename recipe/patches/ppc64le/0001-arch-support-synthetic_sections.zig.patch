@@ -1,3 +1,9 @@
+# Purpose: Return zero preamble/entry sizes for ppc64le PLT stubs (no self-hosted PLT generation)
+# Affects: src/link/Elf/synthetic_sections.zig
+# Upstream: TBD
+# Drop-when: Upstream synthetic_sections.zig implements ppc64le PLT entry generation
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/synthetic_sections.zig
 +++ b/src/link/Elf/synthetic_sections.zig
 @@ -656,2 +656,3 @@

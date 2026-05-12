@@ -1,12 +1,8 @@
-# non-unix: Replace deprecated POSIX functions with MSVC equivalents
-#
-# MSVC marks strdup() as deprecated, preferring _strdup().
-# This patch updates src/zig_llvm.cpp: 5 instances of strdup -> _strdup
-#
-# Eliminates deprecation warnings during non-unix builds.
-#
-# NOTE: Line numbers reflect post-source-patches state (after
-# zig_llvm.cpp-mingw-def-dll-suffix.patch adds 5 lines at ~line 490).
+# Purpose: Replace strdup() with _strdup() in zig_llvm.cpp to eliminate MSVC deprecation warnings
+# Affects: src/zig_llvm.cpp
+# Upstream: TBD
+# Drop-when: Upstream zig_llvm.cpp uses _strdup() on MSVC builds, or MSVC removes the deprecation
+# Last-verified: 2026-05-12
 
 --- a/src/zig_llvm.cpp
 +++ b/src/zig_llvm.cpp

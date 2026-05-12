@@ -1,5 +1,5 @@
 # Purpose: Force libunwind dependency for all glibc targets (not just static), required by conda-forge glibc 2.17 floor
-# Affects: Linux (glibc 2.17 floor)
+# Affects: src/target.zig
 # Upstream: not filed
 # Drop-when: conda-forge linux glibc floor reaches a version that no longer needs libunwind forced
 # Last-verified: 2026-05-12 (build 23)

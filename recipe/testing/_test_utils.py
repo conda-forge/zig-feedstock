@@ -48,10 +48,13 @@ def SKIP(name: str, detail: str = "") -> None:
 # Build-machine OS (needed by _run for Windows process-kill path)
 # ---------------------------------------------------------------------------
 _build_is_win = sys.platform == "win32"
+_build_is_mac = sys.platform == "darwin"
 
 # ---------------------------------------------------------------------------
 # ZIG_GLOBAL_CACHE_DIR setup
 # ---------------------------------------------------------------------------
+# NOTE: same fallback logic is duplicated in recipe/scripts/activate.sh ZIG_GLOBAL_CACHE_DIR block.
+# Keep both implementations in sync until the cross-language duplication is consolidated.
 def setup_zig_global_cache_dir() -> None:
     """Set ZIG_GLOBAL_CACHE_DIR in os.environ if not already set.
 

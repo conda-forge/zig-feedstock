@@ -1,3 +1,9 @@
+# Purpose: Default allow_so_scripts to true so ld-script .so files work without -fallow-so-scripts
+# Affects: src/link.zig
+# Upstream: TBD
+# Drop-when: Upstream sets allow_so_scripts = true by default or removes the flag
+# Last-verified: 2026-05-12
+
 --- a/src/link.zig
 +++ b/src/link.zig
 @@ -1608,7 +1608,7 @@

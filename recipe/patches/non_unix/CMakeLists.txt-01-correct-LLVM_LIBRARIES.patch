@@ -1,5 +1,5 @@
 # Purpose: Strip .dll extensions from LLVM_LIBRARIES and add msvcrt.lib to fix conda MSVC toolchain linking (prevents zstd.dll.lib double-extension)
-# Affects: Non-Unix (Windows) build of zig 0.15.x
+# Affects: CMakeLists.txt
 # Upstream: not filed
 # Drop-when: conda-forge LLVM Windows packages ship clean import-lib names without .dll suffix
 # Last-verified: 2026-05-12 (build 23)

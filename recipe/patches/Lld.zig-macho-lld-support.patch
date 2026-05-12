@@ -1,3 +1,9 @@
+# Purpose: Wire ld64.lld (MachO) into zig's LLD dispatch layer
+# Affects: src/zig_llvm.h, src/zig_llvm.cpp, src/codegen/llvm/bindings.zig, src/main.zig, src/link/Lld.zig, src/target.zig
+# Upstream: TBD
+# Drop-when: Upstream zig exposes ZigLLDLinkMachO and machoLink() natively
+# Last-verified: 2026-05-12
+
 --- a/src/zig_llvm.h
 +++ b/src/zig_llvm.h
 @@ -120,6 +120,7 @@

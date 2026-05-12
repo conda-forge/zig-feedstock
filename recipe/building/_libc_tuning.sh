@@ -16,7 +16,7 @@
 #   4. Use ld -r to combine original and stub objects
 #   5. Replace original with combined version
 #
-patch_crt_object() {
+function patch_crt_object() {
   local crt_path="$1"
   local stub_dir="$2"
 

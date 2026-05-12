@@ -1,3 +1,9 @@
+# Purpose: Mask st_other to lower 2 visibility bits in SharedObject symbol export marking
+# Affects: src/link/Elf/SharedObject.zig
+# Upstream: TBD
+# Drop-when: Upstream SharedObject.zig masks st_other to STV bits correctly for all architectures
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/SharedObject.zig
 +++ b/src/link/Elf/SharedObject.zig
 @@ -357,7 +357,8 @@ pub fn markImportExports(self: *SharedObject, elf_file: *Elf) void {

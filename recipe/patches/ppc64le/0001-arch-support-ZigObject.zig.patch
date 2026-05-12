@@ -1,3 +1,9 @@
+# Purpose: Add ppc64/ppc64le trampoline size (8 bytes) and fix trampolineSize return type
+# Affects: src/link/Elf/ZigObject.zig
+# Upstream: TBD
+# Drop-when: Upstream ZigObject.zig defines trampoline size for ppc64le
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/ZigObject.zig	2025-11-17 13:25:09.464662667 -0600
 +++ b/src/link/Elf/ZigObject.zig	2025-11-17 13:28:23.884130623 -0600
 @@ -1981,13 +1981,12 @@

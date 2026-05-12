@@ -1,15 +1,9 @@
-# ppc64le: force -mlongcall on zigcpp and zig2 to avoid R_PPC64_REL24 overflow
-#
-# PowerPC64LE direct-branch instructions have a signed 26-bit displacement
-# (+/-32 MB). libzigcpp.a objects (e.g. zig_clang_cc1_main.cpp.o) call LLVM
-# functions located in shared libraries far outside that range, producing:
-#   R_PPC64_REL24 relocation overflow against <symbol>
-# -mlongcall makes GCC/Clang emit indirect calls via the CTR register,
-# allowing any-distance calls at the cost of 1-2 extra instructions.
-#
-# Applied after patches 0001+0002+0003 in cmake_fallback_build.
-# Guarded with ZIG_LLD_BUNDLE_SO AND CMAKE_SYSTEM_PROCESSOR so the patch is harmless
-# if inadvertently applied to non-ppc64le builds.
+# Purpose: Add -mlongcall to zigcpp and zig2 compile options to prevent R_PPC64_REL24 overflow on ppc64le
+# Affects: CMakeLists.txt (zigcpp and zig2 target_compile_options)
+# Upstream: TBD
+# Drop-when: conda-forge ppc64le LLVM static archives compiled with -mlongcall, or conda-forge switches to shared LLVM
+# Last-verified: 2026-05-12
+
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -713,6 +713,19 @@

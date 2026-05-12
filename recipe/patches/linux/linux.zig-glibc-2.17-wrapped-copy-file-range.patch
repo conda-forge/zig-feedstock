@@ -1,3 +1,9 @@
+# Purpose: Make copy_file_range use_c check comptime to avoid referencing std.c.copy_file_range on glibc < 2.27
+# Affects: lib/std/os/linux.zig
+# Upstream: TBD
+# Drop-when: conda-forge glibc minimum floor reaches 2.27 or higher
+# Last-verified: 2026-05-12
+
 --- a/lib/std/os/linux.zig
 +++ b/lib/std/os/linux.zig
 @@ -9802,8 +9802,14 @@

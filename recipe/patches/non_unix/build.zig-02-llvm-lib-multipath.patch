@@ -1,5 +1,5 @@
 # Purpose: Split cfg.llvm_lib_dir on semicolons and add each as a library search path
-# Affects: Non-Unix (Windows) build of zig 0.15.x
+# Affects: build.zig
 # Upstream: not filed
 # Drop-when: Upstream supports multi-path llvm_lib_dir natively
 # Last-verified: 2026-05-12 (build 23)

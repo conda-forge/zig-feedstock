@@ -32,8 +32,9 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _build_is_mac,
+    _build_is_win,
     _is_emulated,
-    _record,
     _results,
     _run,
     setup_zig_global_cache_dir,
@@ -55,10 +56,6 @@ is_aarch64_win = is_win_target and _arch == "aarch64"
 # Normalise: arm64 == aarch64
 if _arch == "arm64":
     _arch = "aarch64"
-
-# Build-machine OS (where the test actually runs)
-_build_is_win = sys.platform == "win32"
-_build_is_mac = sys.platform == "darwin"
 
 setup_zig_global_cache_dir()
 
@@ -722,6 +719,9 @@ def test_print_search_dirs() -> None:
 
 def test_mingw_prebuilt_import_libs() -> None:
     """Verify pre-generated MinGW import .a files exist for core Windows libs.
+
+    # NOTE: this Python test complements the inline subset in recipe.yaml MinGW lib-common check
+    # which validates msvcrt/ucrtbase/pthread at build time. Split is intentional.
 
     The -print-search-dirs response points flexlink to lib-common/.  These .a
     files must exist on disk at install time so flexlink can resolve -lws2_32,

@@ -1,3 +1,9 @@
+# Purpose: Prevent auto-selection of LLD for MachO targets; let self-hosted MachO linker run
+# Affects: src/Compilation/Config.zig
+# Upstream: TBD
+# Drop-when: Upstream Config.zig no longer auto-selects LLD for MachO when LLVM backend is active
+# Last-verified: 2026-05-12
+
 --- a/src/Compilation/Config.zig
 +++ b/src/Compilation/Config.zig
 @@ -438,11 +438,12 @@

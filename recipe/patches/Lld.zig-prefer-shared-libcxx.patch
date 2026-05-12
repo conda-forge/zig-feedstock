@@ -1,3 +1,9 @@
+# Purpose: Prefer conda-forge shared libc++ over static libc++.a in LLD/MachO link steps
+# Affects: src/link/Lld.zig, src/link/MachO.zig, src/link/libcxx_shared.zig (new file)
+# Upstream: TBD
+# Drop-when: Upstream zig links against shared libc++ natively in conda-forge builds
+# Last-verified: 2026-05-12
+
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
 @@ -720,7 +720,11 @@

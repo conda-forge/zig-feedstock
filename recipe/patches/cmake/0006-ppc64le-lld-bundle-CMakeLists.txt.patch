@@ -1,14 +1,9 @@
-# ppc64le: override LLD_LIBRARIES with a pre-built shared bundle to avoid
-# R_PPC64_REL24 relocation overflow from prebuilt static liblld*.a archives.
-#
-# conda-forge liblld{ELF,COFF,...}.a were compiled without -mlongcall, so their
-# global-ctor calls into libLLVM-20.so exceed the +/-32MB REL24 reach when
-# linked into the large zig2 binary.  Bundling them into a single .so lets the
-# dynamic linker resolve intra-.so refs within a compact address window.
-#
-# The .so path is supplied at configure time via -DZIG_LLD_BUNDLE_SO=<path>.
-# If the variable is absent or the file does not exist the block is a no-op and
-# the normal static-archive link proceeds (safe on non-ppc64le hosts).
+# Purpose: Override LLD_LIBRARIES with a shared .so bundle on ppc64le to avoid R_PPC64_REL24 overflow
+# Affects: CMakeLists.txt (LLD_LIBRARIES override block)
+# Upstream: TBD
+# Drop-when: conda-forge ppc64le liblld*.a archives compiled with -mlongcall or dynamic linker layout changes
+# Last-verified: 2026-05-12
+
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -138,1 +138,7 @@ find_package(clang 20)

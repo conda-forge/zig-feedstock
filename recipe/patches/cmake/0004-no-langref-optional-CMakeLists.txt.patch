@@ -1,3 +1,9 @@
+# Purpose: Make langref.html generation opt-out via ZIG_NO_LANGREF=ON cmake option (default OFF)
+# Affects: CMakeLists.txt (ZIG_BUILD_ARGS, new option() block)
+# Upstream: TBD
+# Drop-when: Upstream CMakeLists.txt provides a langref skip option or conda-forge no longer needs cmake path
+# Last-verified: 2026-05-12
+
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -946,6 +946,9 @@
