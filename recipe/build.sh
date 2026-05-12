@@ -319,7 +319,7 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
   create_gcc14_glibc28_compat_lib
   
-  is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+  is_cross && { rm -f "${PREFIX}/bin/llvm-config"; cp "${BUILD_PREFIX}/bin/llvm-config" "${PREFIX}/bin/llvm-config"; }
 fi
 
 # CMAKE_BUILD=1 path: cmake's target_link_libraries(zig2 ...) gets
@@ -447,7 +447,7 @@ fi
 
 
 # Odd random occurence of zig.pdb
-rm -f ${PREFIX}/bin/zig.pdb
+rm -f "${PREFIX}/bin/zig.pdb"
 
 # macOS: stage3 is built by zig2 invoking `zig build install`, which does not
 # inherit cmake's CMAKE_INSTALL_RPATH.  --search-prefix adds a library search

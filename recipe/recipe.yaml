@@ -242,7 +242,7 @@ outputs:
             - lld ${{ llvm_version }}.*       # host-arch Lld static libs for zigcpp (Plan B host build)
             - if: linux
               then:
-                - qemu-execve-${{ "aarch64" if aarch64 else "ppc64le" if ppc64le else "riscv64" if riscv64 else "s390x" if s390x else "unknown" }}
+                - qemu-execve-${{ "aarch64" if aarch64 else "ppc64le" if ppc64le else "riscv64" if "riscv64" in cross_target_platform_ else "s390x" if s390x else "unknown" }}
             - if: osx
               then:
                 - libxml2-devel
