@@ -196,6 +196,11 @@ outputs:
     build:
       skip: not (is_native or is_cross_target)
       dynamic_linking:
+        rpath_allowlist:
+          - if: osx
+            then:
+              - "@loader_path/../lib/zig-llvm/lib"
+              - "@loader_path/../lib"
         missing_dso_allowlist:
           - if: osx
             then: /usr/lib/libSystem.B.dylib
