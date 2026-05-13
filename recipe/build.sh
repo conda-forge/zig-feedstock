@@ -134,14 +134,11 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   )
 fi
 
-# osx cross with arch mismatch (e.g. osx-arm64 host -> osx-64 target):
-if is_osx && is_cross; then
-  for _v in CFLAGS CXXFLAGS; do
-    declare -n _ref="${_v}"
-    _ref="$(echo "${_ref:-}" | sed -E 's/(^| )-march=[^ ]+//g; s/(^| )-mtune=[^ ]+//g; s/(^| )-mssse3//g; s/  +/ /g; s/^ +//; s/ +$//')"
-    unset -n _ref
-  done
-  unset _v
+# Strip host-arch flags injected by conda-build for all cross targets.
+# Safe for ppc64le: intentional -mlongcall etc. are target-arch flags
+# (set in the ppc64le block above) and don't match the _drop_ppc filter.
+if is_cross; then
+  sanitize_and_export_cross_flags
 fi
 
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref because zig2
