@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 2
+  build_number: 3
   # Bootstrap-source toggle, intentionally decoupled from build_number so
   # the two paths can be iterated on independently:
   #   true  → use upstream's pre-built ziglang.org binary as the stage-0
@@ -142,6 +142,11 @@ source:
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
+          # Drop when conda-forge linux glibc floor reaches a version that no longer forces libunwind.
+          - patches/linux/target.zig-glibc-needs-libunwind.patch
+          # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
+          # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
+          - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
       # can also `zig cc -target powerpc64le-linux-gnu`. The patch
@@ -171,9 +176,17 @@ source:
           # `elf64-powerpcle` entry already added by 0001-arch-support-LdScript.zig.patch.
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
+          # NOTE: patches/ppc64le/lib_std_start-ppc64le-libc-pie.patch is obsolete —
+          # zig 0.16.0 correctly links crt1.o for ppc64le PIE builds, providing
+          # _start natively. The 0.15.2 patch added a custom ppc64le_libc_start
+          # exported as _start because zig 0.15.2's linker did NOT pull crt1.o
+          # for ppc64le PIE. In 0.16.0 this works upstream; our patch causes a
+          # duplicate-_start link error. Drop-when: never.
       - if: not unix
         then:
-          - patches/non_unix/build.zig-maxrss-search-prefix.patch
+          - patches/non_unix/build.zig-01-maxrss.patch
+          - patches/non_unix/build.zig-02-llvm-lib-multipath.patch
+          - patches/non_unix/build.zig-03-msvc-crt-dynamic.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
@@ -182,6 +195,9 @@ source:
           # between scalar libm and LLVM's vector log2 intrinsic.
           # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
+          # aarch64 Windows: MinGW CRT exeentry.o calls atexit() which is absent in
+          # the aarch64 MinGW CRT startup chain; patch removes the call.
+          - patches/non_unix/mingw-crtexe-no-atexit-aarch64.patch
     target_directory: zig-source
   # Upstream ziglang.org bootstrap — gated on the bootstrap_via_upstream
   # context flag (decoupled from build_number so the two can be iterated
@@ -241,6 +257,11 @@ outputs:
     build:
       skip: not (is_native or is_cross_target) or cross_target_platform_ == "win-arm64" or cross_target_platform_ == "linux-s390x"
       dynamic_linking:
+        rpath_allowlist:
+          - if: osx
+            then:
+              - "@loader_path/../lib/zig-llvm/lib"
+              - "@loader_path/../lib"
         missing_dso_allowlist:
           - if: osx
             then: /usr/lib/libSystem.B.dylib
@@ -358,7 +379,7 @@ outputs:
             # __tls_get_addr DSO ordering issues with doctests — so
             # langref.html is intentionally absent there. Gate the
             # test to match.
-            - if: not (cross_target_platform_ == "linux-ppc64le" and is_cross_target)
+            - if: not cross_target_platform_ == "linux-ppc64le"
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -380,18 +401,21 @@ outputs:
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*
+
       # Shared libc++ discovery tests (patch 0008)
-      - script:
-          - if: not osx
-            then:
+
+      - if: not osx
+        then:
+          - script:
               - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
-        requirements:
-          run:
-            - python >=3.10
-            - libcxx
-        files:
-          recipe:
-            - testing/test_libcxx_shared.py
+            requirements:
+              run:
+                - python >=3.10
+                - libcxx
+            files:
+              recipe:
+                - testing/test_libcxx_shared.py
+
       # Functional test using triplet-prefixed binary
       - script:
           - if: linux or build_platform == target_platform
@@ -410,6 +434,7 @@ outputs:
         files:
           source:
             - zig-source/test
+
       # Verify zig cc compile+run works (MSYS2 UCRT DLL resolution on Windows)
       - script:
           - if: not unix
@@ -418,6 +443,7 @@ outputs:
               - ${{ conda_triplet }}-zig cc -mconsole -o %TEMP%\test_run.exe %TEMP%\test_run.c
               - '%TEMP%\test_run.exe'
               - echo PASS zig cc compile+run (UCRT DLL resolution)
+
       # Verify MinGW import libs were pre-generated in lib-common/
       - script:
           - if: not unix

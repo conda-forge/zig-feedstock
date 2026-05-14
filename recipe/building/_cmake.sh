@@ -114,6 +114,9 @@ function cmake_fallback_build() {
       export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TRIPLET}"
       export ZIG_CROSS_TARGET_MCPU="baseline"
     fi
+    if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+      CMAKE_PATCHES+=(0005-ppc64le-mlongcall-CMakeLists.txt.patch)
+    fi
   fi
 
   if is_not_unix; then
@@ -132,6 +135,15 @@ function cmake_fallback_build() {
 
   is_debug && echo "Applying CMake patches..."
   apply_cmake_patches "${source_dir}"
+
+  # ppc64le: 0005 patch adds target_compile_options(zigcpp PRIVATE -mlongcall)
+  # but ninja considers libzigcpp.a up-to-date (source files unchanged) and
+  # skips recompile. Delete the archive so ninja MUST rebuild zigcpp objects
+  # with the new flag, otherwise zig2 link fails with R_PPC64_REL24 overflow.
+  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+    rm -f "${build_dir}/zigcpp/libzigcpp.a"
+    rm -rf "${build_dir}/CMakeFiles/zigcpp.dir"
+  fi
 
   if cmake_build_install "${build_dir}" "${install_prefix}"; then
     # NB: trailing `|| true` — in non-debug `is_debug` returns 1, which would
