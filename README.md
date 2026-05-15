@@ -66,10 +66,31 @@ Current build status
                 </a>
               </td>
             </tr><tr>
+              <td>linux_aarch64_cross_target_platform_linux-64</td>
+              <td>
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=linux&configuration=linux%20linux_aarch64_cross_target_platform_linux-64" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
               <td>linux_aarch64_cross_target_platform_linux-aarch64</td>
               <td>
                 <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
                   <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=linux&configuration=linux%20linux_aarch64_cross_target_platform_linux-aarch64" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>linux_aarch64_cross_target_platform_linux-ppc64le</td>
+              <td>
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=linux&configuration=linux%20linux_aarch64_cross_target_platform_linux-ppc64le" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>linux_aarch64_cross_target_platform_linux-riscv64</td>
+              <td>
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=linux&configuration=linux%20linux_aarch64_cross_target_platform_linux-riscv64" alt="variant">
                 </a>
               </td>
             </tr><tr>
