@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 23
+  build_number: 24
   name: zig
   version: "0.15.2"
   
@@ -22,7 +22,8 @@ context:
   xc_osx:     ${{ "osx"   in cross_target_platform_ and "osx"   in build_platform }}
   xc_nlo:     ${{ "win"   in cross_target_platform_ and "win"   in build_platform }}
 
-  xc_valid:   ${{ xc_lnx or xc_osx or xc_nlo }}
+  xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-arm64'] }}
+  xc_valid:   ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
   
   # Silly shortcuts
   library: ${{ "Library/" if not unix else "" }}
