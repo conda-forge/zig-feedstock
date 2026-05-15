@@ -19,9 +19,15 @@ function build_lld_bundle_ppc64le() {
   local output_dir="${3}"
   local output_so="${output_dir}/libzig-lld-bundle.so"
 
+  # Idempotency guard: skip rebuild if output .so already exists
+  # (build.sh and cmake_build both call this; second call no-ops)
+  if [[ -f "${output_so}" ]]; then
+    dbg echo "build_lld_bundle_ppc64le: skipping rebuild — ${output_so} already present"
+    return 0
+  fi
+
   mkdir -p "${output_dir}"
 
-  dbg echo "[lld-bundle] Building ${output_so} from \${PREFIX}/lib/liblld*.a"
   echo "[lld-bundle] Building ${output_so} from \${PREFIX}/lib/liblld*.a"
 
   "${cxx_compiler}" -shared -fPIC \

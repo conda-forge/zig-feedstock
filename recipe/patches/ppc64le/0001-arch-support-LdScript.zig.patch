@@ -1,3 +1,9 @@
+# Purpose: Recognise "elf64-powerpcle" OUTPUT_FORMAT string in GNU ld script parser
+# Affects: src/link/LdScript.zig
+# Upstream: TBD
+# Drop-when: Upstream LdScript.zig recognises elf64-powerpcle natively
+# Last-verified: 2026-05-12
+
 --- a/src/link/LdScript.zig
 +++ b/src/link/LdScript.zig
 @@ -283,6 +283,7 @@ const Parser = struct {

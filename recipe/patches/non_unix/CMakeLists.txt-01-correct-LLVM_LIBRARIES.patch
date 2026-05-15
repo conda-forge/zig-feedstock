@@ -1,8 +1,8 @@
-# Fix library linking and build configuration for conda MSVC toolchain
-#
-# Changes:
-# - Strip .dll extensions from library names to prevent double-extension (zstd.dll.lib)
-# - Add required non-unix libraries (msvcrt.lib)
+# Purpose: Strip .dll extensions from LLVM_LIBRARIES and add msvcrt.lib to fix conda MSVC toolchain linking (prevents zstd.dll.lib double-extension)
+# Affects: CMakeLists.txt
+# Upstream: not filed
+# Drop-when: conda-forge LLVM Windows packages ship clean import-lib names without .dll suffix
+# Last-verified: 2026-05-12 (build 23)
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt

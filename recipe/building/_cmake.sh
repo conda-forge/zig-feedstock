@@ -1,5 +1,7 @@
 # CMake Configuration and Build Helpers for Zig Compilation
 
+source "${RECIPE_DIR}/building/_common.sh"
+
 function cmake_build_install() {
   local build_dir=$1
   local install_prefix=${2:-}
@@ -65,6 +67,9 @@ function apply_cmake_patches() {
 # Args:
 #   $1 - cmake source directory (already patched)
 #   $2 - host build directory (e.g. $SRC_DIR/build-host)
+
+# Called by both cmake_host_build (Phase 1 host triple) and cmake_build (CMake-path triple).
+# Cannot be nested into a single caller; intentionally at file scope.
 function _zig_compute_triple_from_uname() {
   # Derive a versioned zig target triple from uname (build_platform jinja
   # vars are not exported to shell). Used as fallback when ZIG_TRIPLET is
@@ -131,14 +136,14 @@ function cmake_host_build() {
   return 0
 }
 
-# CMake fallback build — invoked when zig-build-with-zig fails.
+# CMake-based build path — invoked when CMAKE_BUILD=1 is set.
 # Assembles platform-specific CMAKE_PATCHES, applies them, and runs cmake build.
 #
 # Args:
 #   $1 - cmake source directory
 #   $2 - cmake build directory
 #   $3 - install prefix
-function cmake_fallback_build() {
+function cmake_build() {
   local source_dir=$1
   local build_dir=$2
   local install_prefix=$3
@@ -172,11 +177,13 @@ function cmake_fallback_build() {
   if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     CMAKE_PATCHES+=(0005-ppc64le-mlongcall-CMakeLists.txt.patch)
     CMAKE_PATCHES+=(0006-ppc64le-lld-bundle-CMakeLists.txt.patch)
+    CMAKE_PATCHES+=(0007-ppc64le-zigcpp-bundle-CMakeLists.txt.patch)
   fi
 
   if is_linux; then
     if is_cross; then
-      perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/ ${CROSSCOMPILING_EMULATOR}\1${ZIG_EXECUTABLE}/' "${source_dir}"/cmake/install.cmake
+      grep -qF "${CROSSCOMPILING_EMULATOR}" "${source_dir}/cmake/install.cmake" || \
+        perl -pi -e 's/( | ")${ZIG_EXECUTABLE}/\1${CROSSCOMPILING_EMULATOR} ${ZIG_EXECUTABLE}/' "${source_dir}"/cmake/install.cmake
       export ZIG_CROSS_TARGET_TRIPLE="${ZIG_TRIPLET}"
       export ZIG_CROSS_TARGET_MCPU="baseline"
     fi
@@ -226,16 +233,15 @@ function cmake_fallback_build() {
   # effect. Skip for osx-cross which has its own Phase 2 reconfigure flow.
   if [[ "${need_host_build}" -eq 0 ]]; then
     if is_linux && is_cross; then
-      _qemu_arch="${ZIG_TRIPLET%%-*}"
-      if command -v "qemu-${_qemu_arch}" &>/dev/null; then
-        export CROSSCOMPILING_EMULATOR="qemu-${_qemu_arch}"
+      if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
+        export CROSSCOMPILING_EMULATOR="qemu-${ZIG_QEMU_ARCH}"
         dbg echo "Set CROSSCOMPILING_EMULATOR=${CROSSCOMPILING_EMULATOR} for cross-cmake reconfigure"
       else
-        echo "WARNING: linux-cross cmake path requires qemu-${_qemu_arch}; build will likely fail" >&2
+        echo "WARNING: linux-cross cmake path requires qemu-${ZIG_QEMU_ARCH}; build will likely fail" >&2
       fi
     fi
     dbg echo "Re-configuring cmake with patched CMakeLists.txt..."
-  if ! configure_cmake "${build_dir}" "${install_prefix}"; then
+    if ! configure_cmake "${build_dir}" "${install_prefix}"; then
       echo "ERROR: cmake re-configure after patch application failed" >&2
       return 1
     fi
@@ -245,7 +251,7 @@ function cmake_fallback_build() {
     local host_build_dir="${SRC_DIR}/build-host"
     if ! cmake_host_build "${source_dir}" "${host_build_dir}"; then
       echo "ERROR: Phase 1 host cmake build failed" >&2
-      exit 1
+      return 1
     fi
 
     # Phase 2: configure target cmake (generates target config.h) but do NOT
@@ -270,7 +276,7 @@ function cmake_fallback_build() {
     )
     if ! configure_cmake "${build_dir}" "${install_prefix}"; then
       echo "ERROR: Phase 2 target cmake configure failed" >&2
-      exit 1
+      return 1
     fi
     # Restore EXTRA_CMAKE_ARGS so subsequent invocations are unaffected.
     EXTRA_CMAKE_ARGS=("${_saved_extra_cmake_args[@]+"${_saved_extra_cmake_args[@]}"}")
@@ -281,14 +287,13 @@ function cmake_fallback_build() {
     # first via PATH/CMAKE_PREFIX_PATH. This poisons ZIG_LLVM_* paths with
     # BUILD_PREFIX (x86_64) entries that break aarch64 stage3 link.
     # Rewrite all BUILD_PREFIX -> PREFIX in ZIG_LLVM_* lines + append libc++.
-    perl -pi -e "s@${BUILD_PREFIX}@${PREFIX}@g if /ZIG_LLVM_/" "${build_dir}/config.h"
-    perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${build_dir}/config.h"
+    perl -pi -e "s@${BUILD_PREFIX}@${PREFIX}@g if /ZIG_LLVM_/" -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${build_dir}/config.h"
 
     # Phase 3: drive stage3 cross-compile via host zig2 with target config.h
     local host_zig2="${host_build_dir}/zig2"
     if [[ ! -x "${host_zig2}" ]]; then
       echo "ERROR: host zig2 not found at ${host_zig2}" >&2
-      exit 1
+      return 1
     fi
 
     # Phase 3 hardcodes its zig-build invocation (does NOT pull EXTRA_ZIG_ARGS).
@@ -305,7 +310,7 @@ function cmake_fallback_build() {
         --prefix "${install_prefix}" \
         --search-prefix "${PREFIX}" \
         --maxrss 8589934592 \
-        "-Dversion-string=${PKG_VERSION:-0.16.0}" \
+        "-Dversion-string=${PKG_VERSION}" \
         "-Dtarget=${ZIG_TRIPLET}" \
         -Dcpu=baseline \
         -Denable-llvm \
@@ -315,30 +320,17 @@ function cmake_fallback_build() {
         -Dstrip
     ) || {
         echo "ERROR: Phase 3 stage3 cross-compile failed" >&2
-        exit 1
+        return 1
       }
 
     dbg echo "SUCCESS: two-phase cmake cross-build completed"
     return 0
   fi
 
-  # ppc64le: build libzig-lld-bundle.so before invoking cmake, so the bundle
-  # is available for the linker when zig2 is linked.  This is a cmake-path-only
-  # concern: the zig-build-zig path does not consume the bundle at all.
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-    source "${RECIPE_DIR}/building/_lld_bundle.sh"
-    dbg echo "=== CMAKE FALLBACK: build_lld_bundle_ppc64le ==="
-    build_lld_bundle_ppc64le "${CXX}" "${install_prefix}" "${ZIG_LOCAL_CACHE_DIR}"
-  fi
-
   if cmake_build_install "${build_dir}" "${install_prefix}"; then
-    dbg echo "SUCCESS: cmake fallback build completed successfully"
+    dbg echo "SUCCESS: cmake build completed successfully"
   else
     echo "ERROR: Both zig build and cmake build failed" >&2
-    exit 1
-  fi
-
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-    install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${install_prefix}/lib/"
+    return 1
   fi
 }

@@ -19,6 +19,15 @@ c_stdlib_version:
     then:
       - "2022.14"
 
+c_compiler:
+  - if: not unix
+    then:
+      - vs2022
+cxx_compiler:
+  - if: not unix
+    then:
+      - vs2022
+
 c_compiler_version:
   - if: osx
     then:
@@ -48,5 +57,5 @@ cross_target_platform_:
   - win-64
   - win-arm64
 
-# This builds, but is it not EOL?
+# Disabled: s390x EOL on conda-forge. Restore only if upstream re-enables.
 #  - linux-s390x

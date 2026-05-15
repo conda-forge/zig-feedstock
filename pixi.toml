@@ -47,12 +47,30 @@ description = "Build zig-feedstock with variant linux_64_cross_target_platform_l
 [tasks."inspect-linux_64_cross_target_platform_linux-riscv64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_cross_target_platform_linux-riscv64.yaml"
 description = "List contents of zig-feedstock packages built for variant linux_64_cross_target_platform_linux-riscv64"
+[tasks."build-linux_aarch64_cross_target_platform_linux-64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-64.yaml"
+description = "Build zig-feedstock with variant linux_aarch64_cross_target_platform_linux-64 directly (without setup scripts)"
+[tasks."inspect-linux_aarch64_cross_target_platform_linux-64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-64.yaml"
+description = "List contents of zig-feedstock packages built for variant linux_aarch64_cross_target_platform_linux-64"
 [tasks."build-linux_aarch64_cross_target_platform_linux-aarch64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-aarch64.yaml"
 description = "Build zig-feedstock with variant linux_aarch64_cross_target_platform_linux-aarch64 directly (without setup scripts)"
 [tasks."inspect-linux_aarch64_cross_target_platform_linux-aarch64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-aarch64.yaml"
 description = "List contents of zig-feedstock packages built for variant linux_aarch64_cross_target_platform_linux-aarch64"
+[tasks."build-linux_aarch64_cross_target_platform_linux-ppc64le"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-ppc64le.yaml"
+description = "Build zig-feedstock with variant linux_aarch64_cross_target_platform_linux-ppc64le directly (without setup scripts)"
+[tasks."inspect-linux_aarch64_cross_target_platform_linux-ppc64le"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-ppc64le.yaml"
+description = "List contents of zig-feedstock packages built for variant linux_aarch64_cross_target_platform_linux-ppc64le"
+[tasks."build-linux_aarch64_cross_target_platform_linux-riscv64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-riscv64.yaml"
+description = "Build zig-feedstock with variant linux_aarch64_cross_target_platform_linux-riscv64 directly (without setup scripts)"
+[tasks."inspect-linux_aarch64_cross_target_platform_linux-riscv64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_cross_target_platform_linux-riscv64.yaml"
+description = "List contents of zig-feedstock packages built for variant linux_aarch64_cross_target_platform_linux-riscv64"
 [tasks."build-linux_ppc64le_cross_target_platform_linux-ppc64le"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/linux_ppc64le_cross_target_platform_linux-ppc64le.yaml"
 description = "Build zig-feedstock with variant linux_ppc64le_cross_target_platform_linux-ppc64le directly (without setup scripts)"

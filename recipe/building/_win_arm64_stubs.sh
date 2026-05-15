@@ -2,6 +2,8 @@
 # These resolve link-time symbols that lld can't auto-import on ARM64.
 # Stubs are written to libarm64/ (MinGW arch-convention dir for ARM64 imports).
 
+source "${RECIPE_DIR}/building/_common.sh"
+
 function create_chkstk_ms_stub() {
   # ___chkstk_ms (3 underscores on ARM64) -- stack probe called by MSVC ABI.
   # Minimal no-op: safe when stack size < guard page distance.

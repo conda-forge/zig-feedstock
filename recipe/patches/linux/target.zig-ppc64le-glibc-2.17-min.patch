@@ -1,0 +1,17 @@
+# Purpose: Lower ppc64le glibc_min validator floor from 2.19 to 2.17 to match conda-forge abilist coverage
+# Affects: lib/std/zig/target.zig
+# Upstream: TBD
+# Drop-when: conda-forge ppc64le glibc minimum floor reaches 2.18 or higher
+# Last-verified: 2026-05-12
+
+--- a/lib/std/zig/target.zig
++++ b/lib/std/zig/target.zig
+@@ -81,7 +81,7 @@
+     .{ .arch = .powerpc64, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 2, .minor = 6, .patch = 0 } },
+     .{ .arch = .powerpc64, .os = .linux, .abi = .musl, .os_ver = .{ .major = 2, .minor = 6, .patch = 0 } },
+     .{ .arch = .powerpc64le, .os = .freebsd, .abi = .none, .os_ver = .{ .major = 13, .minor = 0, .patch = 0 } },
+-    .{ .arch = .powerpc64le, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 3, .minor = 14, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 19, .patch = 0 } },
++    .{ .arch = .powerpc64le, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 3, .minor = 14, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 17, .patch = 0 } },
+     .{ .arch = .powerpc64le, .os = .linux, .abi = .musl, .os_ver = .{ .major = 3, .minor = 14, .patch = 0 } },
+     .{ .arch = .riscv32, .os = .linux, .abi = .gnu, .os_ver = .{ .major = 4, .minor = 15, .patch = 0 }, .glibc_min = .{ .major = 2, .minor = 33, .patch = 0 }, .glibc_triple = "riscv32-linux-gnu-rv32imafdc-ilp32d" },
+     .{ .arch = .riscv32, .os = .linux, .abi = .musl, .os_ver = .{ .major = 4, .minor = 15, .patch = 0 } },

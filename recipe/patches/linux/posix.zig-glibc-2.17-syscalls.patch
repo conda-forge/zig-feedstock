@@ -1,3 +1,9 @@
+# Purpose: Use direct linux.getrandom syscall to avoid libc getrandom symbol absent in glibc < 2.25
+# Affects: lib/std/posix.zig
+# Upstream: TBD
+# Drop-when: conda-forge glibc minimum floor reaches 2.25 or higher
+# Last-verified: 2026-05-12
+
 --- a/lib/std/posix.zig
 +++ b/lib/std/posix.zig
 @@ -625,6 +625,25 @@

@@ -16,7 +16,7 @@
 #   4. Use ld -r to combine original and stub objects
 #   5. Replace original with combined version
 #
-patch_crt_object() {
+function patch_crt_object() {
   local crt_path="$1"
   local stub_dir="$2"
 
@@ -136,8 +136,6 @@ EOF
     done
   done
 
-  if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
-    echo "Created GCC 14 + glibc 2.28 compatibility:"
-    echo "  - Patched all glibc crt1*.o files with stub symbols"
-  fi
+  dbg echo "Created GCC 14 + glibc 2.28 compatibility:"
+  dbg echo "  - Patched all glibc crt1*.o files with stub symbols"
 }

@@ -1,3 +1,9 @@
+# Purpose: Mark ppc64/ppc64le as unreachable in Thunk dispatch (no thunks needed; system linker used)
+# Affects: src/link/Elf/Thunk.zig
+# Upstream: TBD
+# Drop-when: Upstream Thunk.zig handles ppc64le or requiresThunks() returns false for it
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/Thunk.zig
 +++ b/src/link/Elf/Thunk.zig
 @@ -28,2 +28,3 @@

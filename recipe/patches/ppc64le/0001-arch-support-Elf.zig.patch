@@ -1,3 +1,9 @@
+# Purpose: Implement tpAddress for powerpc64/powerpc64le in ELF TLS handling
+# Affects: src/link/Elf.zig
+# Upstream: TBD
+# Drop-when: Upstream Elf.zig implements getTpAddress for ppc64le
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf.zig
 +++ b/src/link/Elf.zig
 @@ -3721,6 +3721,7 @@ pub fn tpAddress(self: *Elf) i64 {

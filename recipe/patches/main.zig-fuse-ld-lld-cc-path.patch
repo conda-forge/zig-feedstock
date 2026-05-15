@@ -1,3 +1,9 @@
+# Purpose: Recognize ld64.lld as an LLD invocation and correctly route -fuse-ld=lld in zig cc so macOS and cross linker selection works
+# Affects: All platforms (linker selection via zig cc)
+# Upstream: not filed
+# Drop-when: upstream adds ld64.lld recognition and fixes -fuse-ld=lld cc path routing
+# Last-verified: 2026-05-12 (build 23)
+
 --- a/src/main.zig
 +++ b/src/main.zig
 @@ -293,6 +293,7 @@

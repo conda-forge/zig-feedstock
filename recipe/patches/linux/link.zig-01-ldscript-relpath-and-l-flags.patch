@@ -1,3 +1,9 @@
+# Purpose: Handle -l<name> flags and relative paths inside GNU ld scripts (fixes @panic("TODO"))
+# Affects: src/link.zig
+# Upstream: TBD
+# Drop-when: Upstream link.zig implements -l flag and relative path handling in loadGnuLdScript
+# Last-verified: 2026-05-12
+
 --- a/src/link.zig
 +++ b/src/link.zig
 @@ -1060,7 +1060,62 @@

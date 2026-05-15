@@ -1,3 +1,9 @@
+# Purpose: Remap absolute paths inside GNU ld scripts through --sysroot (mirrors GNU ld behavior)
+# Affects: src/link.zig
+# Upstream: TBD
+# Drop-when: Upstream link.zig honors --sysroot for absolute paths found in linker scripts
+# Last-verified: 2026-05-12
+
 --- a/src/link.zig
 +++ b/src/link.zig
 @@ -1120,7 +1120,16 @@

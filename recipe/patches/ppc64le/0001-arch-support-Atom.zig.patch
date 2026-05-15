@@ -1,3 +1,9 @@
+# Purpose: Skip self-hosted reloc scanning for ppc64/ppc64le (defers to system linker)
+# Affects: src/link/Elf/Atom.zig
+# Upstream: TBD
+# Drop-when: Upstream LLD self-hosted ELF linker handles ppc64le relocations natively
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/Atom.zig
 +++ b/src/link/Elf/Atom.zig
 @@ -359,6 +359,10 @@ pub fn scanRelocs(self: Atom, elf_file: *Elf, code: ?[]const u8, undefs: anyty

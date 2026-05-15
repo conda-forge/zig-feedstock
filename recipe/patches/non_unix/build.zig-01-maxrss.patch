@@ -1,8 +1,8 @@
-# Purpose: Reduce max_rss limit from 7.8 GB to 7.0 GB to fit conda-forge CI runner memory constraints
+# Purpose: Lower exe.max_rss from 7.8 GB to 7.5 GB for Windows runners
 # Affects: build.zig
 # Upstream: not filed
-# Drop-when: upstream lowers the default, or conda-forge runners have sufficient memory headroom
-# Sibling: patches/non_unix/build.zig-01-maxrss.patch — update together if upstream build.zig:738 context shifts
+# Drop-when: Upstream lowers base value below 7.5 GB
+# Sibling: patches/linux/build.zig-01-maxrss.patch — update together if upstream build.zig:738 context shifts
 # Last-verified: 2026-05-12 (build 23)
 
 diff --git a/build.zig b/build.zig
@@ -14,7 +14,7 @@ index 37523e6..a151dc6 100644
      const exe = b.addExecutable(.{
          .name = "zig",
 -        .max_rss = 7_800_000_000,
-+        .max_rss = 7_000_000_000,
++        .max_rss = 7_500_000_000,
          .root_module = addCompilerMod(b, options),
      });
      exe.stack_size = stack_size;

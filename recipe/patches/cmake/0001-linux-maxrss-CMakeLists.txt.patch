@@ -1,3 +1,9 @@
+# Purpose: Set --maxrss 7000000000 in cmake ZIG_BUILD_ARGS to cap zig stage3 build memory on Linux
+# Affects: CMakeLists.txt (ZIG_BUILD_ARGS)
+# Upstream: TBD
+# Drop-when: Upstream CMakeLists.txt sets adequate --maxrss, or conda-forge Linux runners have >7 GB available
+# Last-verified: 2026-05-12
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index ef371fc..01a4f23 100644
 --- a/CMakeLists.txt

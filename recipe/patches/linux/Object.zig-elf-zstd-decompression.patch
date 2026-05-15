@@ -1,13 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: conda-forge <conda-forge@users.noreply.github.com>
-Date: Mon, 17 Mar 2026 00:00:00 +0000
-Subject: [PATCH] link(ELF): add ZSTD decompression support for compressed
- sections
-
-Backport of ziglang/zig#25107 to 0.15.2. Fixes @panic("TODO unhandled
-compression scheme") when linking against libc archives that contain
-ZSTD-compressed ELF sections (common on modern distros using GCC 13+
-with -gz=zstd default).
+# Purpose: Add ZSTD decompression for SHF_COMPRESSED ELF sections (backport of ziglang/zig#25107)
+# Affects: src/link/Elf/Object.zig
+# Upstream: https://github.com/ziglang/zig/pull/25107
+# Drop-when: Upstream 0.15.x release incorporates ziglang/zig#25107 or bootstrap zig version >= 0.16.0
+# Last-verified: 2026-05-12
 
 diff --git a/src/link/Elf/Object.zig b/src/link/Elf/Object.zig
 --- a/src/link/Elf/Object.zig

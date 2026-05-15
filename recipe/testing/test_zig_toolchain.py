@@ -16,8 +16,6 @@ from __future__ import annotations
 import os
 import platform
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 
@@ -29,35 +27,18 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Result tracking
-# ---------------------------------------------------------------------------
-_results: dict[str, list[str]] = {"PASS": [], "FAIL": [], "WARN": [], "SKIP": []}
-
-
-def _record(status: str, name: str, detail: str = "") -> None:
-    tag = f"  {status}: {name}"
-    if detail:
-        tag += f" ({detail})"
-    print(tag)
-    _results[status].append(name)
-
-
-def PASS(name: str, detail: str = "") -> None:
-    _record("PASS", name, detail)
-
-
-def FAIL(name: str, detail: str = "") -> None:
-    _record("FAIL", name, detail)
-
-
-def WARN(name: str, detail: str = "") -> None:
-    _record("WARN", name, detail)
-
-
-def SKIP(name: str, detail: str = "") -> None:
-    _record("SKIP", name, detail)
-
+from _test_utils import (
+    FAIL,
+    PASS,
+    SKIP,
+    WARN,
+    _build_is_mac,
+    _build_is_win,
+    _is_emulated,
+    _results,
+    _run,
+    setup_zig_global_cache_dir,
+)
 
 # ---------------------------------------------------------------------------
 # Platform detection from CONDA_ZIG_HOST
@@ -76,35 +57,7 @@ is_aarch64_win = is_win_target and _arch == "aarch64"
 if _arch == "arm64":
     _arch = "aarch64"
 
-# Build-machine OS (where the test actually runs)
-_build_is_win = sys.platform == "win32"
-_build_is_mac = sys.platform == "darwin"
-
-# Ensure zig can resolve its cache directory when called directly (no wrapper).
-# zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
-# ZIG_GLOBAL_CACHE_DIR overrides the lookup entirely.  Set it here so direct
-# zig invocations (e.g. raw zig cc, zig lld) work in CI envs without HOME.
-if "ZIG_GLOBAL_CACHE_DIR" not in os.environ:
-    _xdg_data = os.environ.get("XDG_DATA_HOME", "")
-    _home = os.environ.get("HOME", "")
-    if _xdg_data:
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_xdg_data}/zig/zig-cache"
-    elif _home:
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_home}/.local/share/zig/zig-cache"
-    else:
-        _uid = str(os.getuid()) if hasattr(os, "getuid") else "0"
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.path.join(
-            tempfile.gettempdir(), f"zig-cache-{_uid}"
-        )
-
-# Emulation detection: on CI, non-x86_64 Linux typically runs under QEMU.
-# zig's linker is too memory-hungry for emulated environments (OOM → exit 137).
-_native_machine = platform.machine()
-_is_emulated = (
-    sys.platform == "linux"
-    and _native_machine not in ("x86_64", "i686")
-    and os.environ.get("CI", "") != ""
-)
+setup_zig_global_cache_dir()
 
 # Cross-compiler detection: build != host means the zig binary targets a
 # different platform.  Cross-compilers use the *prior published* zig_impl,
@@ -118,71 +71,10 @@ if _build_is_win:
 else:
     _wrapper_dir = _prefix / "share" / "zig" / "wrappers"
 
-# Detect zig_impl build number from conda-meta for feature gating
-_zig_impl_build_number = 0
-_conda_meta = _prefix / "conda-meta"
-if _conda_meta.exists():
-    import glob as _glob
-    for _meta in _glob.glob(str(_conda_meta / "zig_impl_*.json")):
-        try:
-            import json as _json
-            with open(_meta) as _f:
-                _meta_data = _json.load(_f)
-                _zig_impl_build_number = int(_meta_data.get("build_number", 0))
-        except (ValueError, KeyError, OSError):
-            pass
-
 
 def _env_var(name: str) -> str:
     """Return env var value or empty string."""
     return os.environ.get(name, "")
-
-
-def _run(
-    cmd: list[str],
-    *,
-    timeout: int = 30,
-    cwd: str | Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    """Run a command, return CompletedProcess. Never raises on non-zero rc."""
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=cwd,
-    )
-    try:
-        stdout_b, stderr_b = proc.communicate(timeout=timeout)
-        stdout = stdout_b.decode("utf-8", errors="replace")
-        stderr = stderr_b.decode("utf-8", errors="replace")
-        return subprocess.CompletedProcess(cmd, returncode=proc.returncode,
-                                           stdout=stdout, stderr=stderr)
-    except subprocess.TimeoutExpired:
-        # Kill the process tree to prevent zombie processes producing
-        # non-UTF-8 output that can crash the caller (e.g. rattler-build on non-unix).
-        try:
-            if _build_is_win:
-                # taskkill /T kills the entire process tree (zig-cc.exe + child zig)
-                # Plain proc.kill() only kills the wrapper, leaving zig alive on pipes
-                subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                    capture_output=True, timeout=5,
-                )
-            else:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except Exception:
-            proc.kill()
-        try:
-            proc.communicate(timeout=5)  # Drain pipes — may hang if children survive
-        except (subprocess.TimeoutExpired, OSError):
-            # Children still alive: force-close pipes so we don't block forever
-            for pipe in (proc.stdout, proc.stderr):
-                if pipe:
-                    try:
-                        pipe.close()
-                    except OSError:
-                        pass
-        return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +278,7 @@ def test_flag_filtering() -> None:
 
             # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
+            # Counterpart: recipe.yaml zig_impl_ test skips -fuse-ld=lld on ppc64le (no wrapper there).
             if is_ppc64le_target:
                 # ppc64le: LLD lacks relocation support -- verify wrapper blocks it
                 r_block = _run([zig_cc, "-fuse-ld=lld", "-o", "/dev/null",
@@ -397,11 +290,9 @@ def test_flag_filtering() -> None:
                          f"expected rejection, got rc={r_block.returncode} stderr={r_block.stderr[:500]}")
                 SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
-            elif not is_linux_target or _zig_impl_build_number < 17:
-                _reason = (f"non-Linux target ({_triplet}), see zig_impl tests" if not is_linux_target
-                           else f"zig_impl build {_zig_impl_build_number} < 17")
-                SKIP("--dynamic-list auto-LLD promotion", _reason)
-                SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
+            elif not is_linux_target:
+                SKIP("--dynamic-list auto-LLD promotion", f"non-Linux target ({_triplet}), see zig_impl tests")
+                SKIP("-fuse-ld=lld explicit with --dynamic-list", f"non-Linux target ({_triplet}), see zig_impl tests")
             else:
                 # Step 2: Verify --dynamic-list succeeds via wrapper (auto-LLD promotion)
                 exe_dl = Path(td) / "test_dynlist_lld"
@@ -445,11 +336,6 @@ def test_target_override() -> None:
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("target override", "ZIG_CC not set")
-        return
-
-    if _zig_impl_build_number < 17:
-        SKIP("target override",
-             f"zig_impl build {_zig_impl_build_number} < 17 (wrappers lack override support)")
         return
 
     if _is_emulated or _is_cross_compiler:
@@ -786,11 +672,6 @@ def test_print_search_dirs() -> None:
         SKIP("print-search-dirs", "Windows target only")
         return
 
-    if _zig_impl_build_number < 20:
-        SKIP("print-search-dirs",
-             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
-        return
-
     if _is_cross_compiler:
         SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
         return
@@ -839,6 +720,9 @@ def test_print_search_dirs() -> None:
 def test_mingw_prebuilt_import_libs() -> None:
     """Verify pre-generated MinGW import .a files exist for core Windows libs.
 
+    # NOTE: this Python test complements the inline subset in recipe.yaml MinGW lib-common check
+    # which validates msvcrt/ucrtbase/pthread at build time. Split is intentional.
+
     The -print-search-dirs response points flexlink to lib-common/.  These .a
     files must exist on disk at install time so flexlink can resolve -lws2_32,
     -lkernel32, etc. as library links rather than literal filenames.
@@ -852,11 +736,6 @@ def test_mingw_prebuilt_import_libs() -> None:
 
     if not is_win_target:
         SKIP("mingw prebuilt import libs", "Windows target only")
-        return
-
-    if _zig_impl_build_number < 20:
-        SKIP("mingw prebuilt import libs",
-             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
         return
 
     if _build_is_win:

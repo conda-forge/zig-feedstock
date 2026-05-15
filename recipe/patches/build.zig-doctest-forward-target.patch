@@ -1,3 +1,9 @@
+# Purpose: Forward --default-target to doctest tool so langref examples compile for the correct target
+# Affects: tools/doctest.zig, build.zig
+# Upstream: TBD
+# Drop-when: Upstream doctest.zig gains --default-target option
+# Last-verified: 2026-05-12
+
 --- a/tools/doctest.zig	2026-03-19 17:32:52.420028686 -0500
 +++ b/tools/doctest.zig	2026-03-19 17:34:22.379993628 -0500
 @@ -23,6 +23,7 @@

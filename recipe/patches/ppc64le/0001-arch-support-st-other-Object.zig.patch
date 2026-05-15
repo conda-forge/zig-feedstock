@@ -1,3 +1,9 @@
+# Purpose: Mask st_other to lower 2 visibility bits to ignore ppc64le arch-specific upper bits
+# Affects: src/link/Elf/Object.zig
+# Upstream: TBD
+# Drop-when: Upstream Object.zig masks st_other to STV bits correctly for all architectures
+# Last-verified: 2026-05-12
+
 --- a/src/link/Elf/Object.zig
 +++ b/src/link/Elf/Object.zig
 @@ -634,7 +634,8 @@ pub fn resolveSymbols(self: *Object, elf_file: *Elf) void {

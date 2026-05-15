@@ -1,8 +1,14 @@
+# Purpose: Force LLVM backend and LLD code path for ppc64le so patch 0003 can redirect to GCC linker
+# Affects: build.zig
+# Upstream: TBD
+# Drop-when: Upstream LLD self-hosted ELF linker supports ppc64le relocations natively
+# Last-verified: 2026-05-12
+
 --- a/build.zig
 +++ b/build.zig
 @@ -204,8 +204,19 @@
      exe.entitlements = entitlements;
- 
+
      const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
 -    exe.use_llvm = use_llvm;
 -    exe.use_lld = use_llvm;

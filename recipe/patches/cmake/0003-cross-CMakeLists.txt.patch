@@ -1,9 +1,9 @@
-commit e048c4b13c41f9eeabe0222c13727f9eae9de2f0
-Author: Tim de Jager <tdejager89@gmail.com>
-Date:   Fri Nov 7 12:17:37 2025 +0100
-
-    add default
-
+# Purpose: Inject cross-compile emulator and libc settings into cmake bootstrap build.
+# Affects: cmake bootstrap path (cross-compile config)
+# Upstream: not filed
+# Drop-when: cmake bootstrap path is retired or upstream CMakeLists.txt gains native cross-compile support.
+# Last-verified: 2026-05-12 (build 23)
+# Note: numbered 0003 for historical reasons; earlier 0001/0002 were retired.
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index ef371fc..e5548b7 100644
 --- a/CMakeLists.txt

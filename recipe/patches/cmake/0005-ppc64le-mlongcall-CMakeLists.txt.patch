@@ -1,15 +1,9 @@
-# ppc64le: force -mlongcall on zigcpp and zig2 to avoid R_PPC64_REL24 overflow
-#
-# PowerPC64LE direct-branch instructions have a signed 26-bit displacement
-# (+/-32 MB). libzigcpp.a objects (e.g. zig_clang_cc1_main.cpp.o) call LLVM
-# functions located in shared libraries far outside that range, producing:
-#   R_PPC64_REL24 relocation overflow against <symbol>
-# -mlongcall makes GCC/Clang emit indirect calls via the CTR register,
-# allowing any-distance calls at the cost of 1-2 extra instructions.
-#
-# Applied after patches 0001+0002+0003 in cmake_fallback_build.
-# Guarded with a CMAKE_SYSTEM_PROCESSOR check so the patch is harmless
-# if inadvertently applied to non-ppc64le builds.
+# Purpose: Add -mlongcall to zigcpp and zig2 compile options to prevent R_PPC64_REL24 overflow on ppc64le
+# Affects: CMakeLists.txt (zigcpp and zig2 target_compile_options)
+# Upstream: TBD
+# Drop-when: conda-forge ppc64le LLVM static archives compiled with -mlongcall, or conda-forge switches to shared LLVM
+# Last-verified: 2026-05-12
+
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -713,6 +713,19 @@
@@ -18,7 +12,7 @@
 
 +# ppc64le: 24-bit relative branches cannot span the >32MB distance to LLVM
 +# symbols in shared libs.  Force indirect (CTR-based) calls for all zigcpp TUs.
-+if(DEFINED ZIG_LLD_BUNDLE_SO)
++if(DEFINED ZIG_LLD_BUNDLE_SO AND CMAKE_SYSTEM_PROCESSOR STREQUAL "powerpc64le")
 +  message(STATUS "zig-0005-debug: zigcpp ppc64le compile flags applied")
 +  target_compile_options(zigcpp PRIVATE
 +      -mlongcall
@@ -38,7 +32,7 @@
 
 +# ppc64le: zig2.c is a ~11M-line auto-generated C TU; same 32MB branch limit
 +# applies.  Force indirect calls so the linker can resolve all cross-unit refs.
-+if(DEFINED ZIG_LLD_BUNDLE_SO)
++if(DEFINED ZIG_LLD_BUNDLE_SO AND CMAKE_SYSTEM_PROCESSOR STREQUAL "powerpc64le")
 +  message(STATUS "zig-0005-debug: zig2 ppc64le compile flags applied")
 +  target_compile_options(zig2 PRIVATE
 +      -mlongcall
