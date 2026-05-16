@@ -182,6 +182,7 @@ i=0
 argv=("$@")
 argc=${#argv[@]}
 _next_is_rpath_link=0
+_next_is_xclang=0
 
 while [[ $i -lt $argc ]]; do
     arg="${argv[$i]}"
@@ -192,7 +193,32 @@ while [[ $i -lt $argc ]]; do
         ((i++))
         continue
     fi
+    # Handle two-arg form of /Xclang FLAG: forward FLAG directly to zig.
+    if (( _next_is_xclang )); then
+        _next_is_xclang=0
+        args+=( "$arg" )
+        ((i++))
+        continue
+    fi
     case "$arg" in
+        # clang-cl passthrough: /clang:X means "pass X to the underlying clang driver".
+        # zig-cc is gcc-style and doesn't recognize the /clang: prefix. Strip it and
+        # append the un-prefixed flag so zig receives it directly.
+        # Used by cmake when target ABI is *-windows-msvc, e.g. normalization probes
+        # like `/clang:--target=x86_64-pc-windows-msvc /clang:-print-target-triple`.
+        /clang:*)
+            args+=( "${arg#/clang:}" )
+            ((i++))
+            continue
+            ;;
+        # clang-cl two-arg form: /Xclang FLAG passes FLAG to the clang frontend.
+        # zig-cc doesn't recognize /Xclang; consume the flag name here and let the
+        # next iteration forward the bare FLAG through to zig directly.
+        /Xclang)
+            _next_is_xclang=1
+            ((i++))
+            continue
+            ;;
         -Xlinker)
             next_i=$((i + 1))
             if [[ $next_i -lt $argc ]]; then
@@ -513,7 +539,7 @@ if [[ -z "${_macos_syslibroot:-}" ]] && [[ "${_zig_target}" == *-macos* ]]; then
         if [[ ${_is_compile_only} -eq 1 ]]; then
             _syslibroot_flag=("-isysroot" "${_macos_syslibroot}")
         elif (( _use_lld )); then
-            _syslibroot_flag=("-Wl,-syslibroot,${_macos_syslibroot}")
+            _syslibroot_flag=("-isysroot" "${_macos_syslibroot}" "-Wl,-syslibroot,${_macos_syslibroot}")
         fi
     fi
 fi
