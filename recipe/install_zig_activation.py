@@ -252,6 +252,10 @@ def install_zig_cc_wrappers(
     cc_target = _normalize_cc_target(zig_triplet)
     zig_bin = _find_zig_bin(conda_triplet, is_nonunix=is_nonunix)
 
+    # Wrapper filenames use the short triplet (no '-conda-') to match ZIG_TARGET_HOST
+    # e.g. x86_64-conda-linux-gnu → x86_64-linux-gnu
+    zig_short_triplet = conda_triplet.replace("-conda-", "-") if conda_triplet else conda_triplet
+
     # Architecture prefix for sysroot detection (e.g. x86_64 from x86_64-linux-gnu.2.17)
     target_arch = zig_triplet.split("-")[0] if "-" in zig_triplet else ""
 
@@ -265,20 +269,36 @@ def install_zig_cc_wrappers(
     if is_nonunix:
         wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
 
+        # Extract zig binary filename from full %CONDA_PREFIX%\... path (used by both shims)
+        zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
+
         # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
         cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
         if cc_src.exists():
-            # Extract zig binary filename from full %CONDA_PREFIX%\... path
-            zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
             for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
                 mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name}
                 _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
 
-        # Keep .bat for simple pass-through tools (no flag filtering needed)
-        for name in ["zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld"]:
-            src = scripts_dir / f"{name}.bat"
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}.bat", replacements)
+        # Compile zig-ar/ranlib/rc/lld/asm as .exe shims so they match the
+        # extension-less paths exported by _zig_wrappers.sh (bash's -x test
+        # auto-resolves .exe but not .bat under MSYS2).
+        tool_src = recipe_dir / "building" / "zig-tool-nonunix.c"
+        if tool_src.exists():
+            zig_target_for_asm = replacements.get("@ZIG_TARGET@", "native")
+            tool_prefix_args = {
+                "zig-ar":     '"ar"',
+                "zig-ranlib": '"ranlib"',
+                "zig-rc":     '"rc"',
+                "zig-lld":    '"lld-link"',
+                "zig-asm":    f'"cc", "-target", "{zig_target_for_asm}", "-mcpu=baseline"',
+            }
+            for name, prefix_args in tool_prefix_args.items():
+                tool_replacements = {
+                    **replacements,
+                    "@ZIG_BIN_NAME@": zig_bin_name,
+                    "@ZIG_PREFIX_ARGS@": prefix_args,
+                }
+                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
 
     else:
         wrapper_dir = prefix / "share" / "zig" / "wrappers"

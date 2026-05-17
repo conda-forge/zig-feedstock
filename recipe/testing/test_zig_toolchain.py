@@ -105,11 +105,11 @@ def test_wrapper_existence() -> None:
         expected = [
             f"{_pfx}zig-cc.exe",
             f"{_pfx}zig-cxx.exe",
-            f"{_pfx}zig-ar.bat",
-            f"{_pfx}zig-ranlib.bat",
-            f"{_pfx}zig-asm.bat",
-            f"{_pfx}zig-rc.bat",
-            f"{_pfx}zig-lld.bat",
+            f"{_pfx}zig-ar.exe",
+            f"{_pfx}zig-ranlib.exe",
+            f"{_pfx}zig-asm.exe",
+            f"{_pfx}zig-rc.exe",
+            f"{_pfx}zig-lld.exe",
         ]
     else:
         expected = [
@@ -203,10 +203,10 @@ def test_activation_variables() -> None:
                 PASS("ZIG_RC_CMAKE has forward slashes")
             else:
                 FAIL("ZIG_RC_CMAKE has forward slashes", rc_cmake)
-            if "zig-rc.bat" in rc_cmake:
-                PASS("ZIG_RC_CMAKE contains zig-rc.bat")
+            if "zig-rc.exe" in rc_cmake:
+                PASS("ZIG_RC_CMAKE contains zig-rc.exe")
             else:
-                FAIL("ZIG_RC_CMAKE contains zig-rc.bat", rc_cmake)
+                FAIL("ZIG_RC_CMAKE contains zig-rc.exe", rc_cmake)
         else:
             FAIL("ZIG_RC_CMAKE is set")
 
@@ -463,7 +463,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
     zig_ar = _env_var("ZIG_AR")
     if not zig_ar:
         # Fallback: try wrapper dir
-        candidate = _wrapper_dir / (f"{_triplet}-zig-ar.bat" if _build_is_win else f"{_triplet}-zig-ar")
+        candidate = _wrapper_dir / (f"{_triplet}-zig-ar.exe" if _build_is_win else f"{_triplet}-zig-ar")
         if candidate.exists():
             zig_ar = str(candidate)
 

@@ -382,6 +382,16 @@ for _i in "${!_final_args[@]}"; do
             _target_flag=()
             ;;
         -mcpu=*) _mcpu_flag=(); _translated_args+=("$_a") ;;
+        # macOS: zig native linker (self-hosted Mach-O) rejects -syslibroot.
+        # Drop these when not using external LLD on macOS targets; the
+        # -isysroot emitted by _syslibroot_flag covers SDK location instead.
+        # When _use_lld=1, ld64.lld accepts -syslibroot, so pass through.
+        -Wl,-syslibroot|-Wl,-syslibroot,*)
+            if (( ! _use_lld )) && [[ "${_zig_target}" == *-macos* || "${_zig_target}" == *-darwin* ]]; then
+                continue
+            fi
+            _translated_args+=("$_a")
+            ;;
         *) _translated_args+=("$_a") ;;
     esac
 done
@@ -403,10 +413,10 @@ if [[ "${_zig_target}" == "aarch64-windows-gnu" ]]; then
     fi
 fi
 
-# --- Link-only flags: detect compile-only mode (-c) ---
+# --- Link-only flags: detect compile-only mode (-c/-E/-S) ---
 _is_compile_only=0
 for _a in "${_translated_args[@]}"; do
-    [[ "$_a" == "-c" ]] && _is_compile_only=1 && break
+    case "$_a" in -c|-E|-S) _is_compile_only=1; break;; esac
 done
 
 # --- macOS SDK selection helper ---
