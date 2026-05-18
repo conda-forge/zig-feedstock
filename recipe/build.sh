@@ -3,6 +3,18 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
+  echo "Attempting to re-exec with conda bash..."
+  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
+    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
+  elif [[ -x "${BUILD_PREFIX}/Library/bin/bash" ]]; then
+    exec "${BUILD_PREFIX}/Library/bin/bash" "$0" "$@"
+  else
+    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
+    exit 1
+  fi
+fi
+
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # Local-only debug overrides — file is gitignored; create from recipe/local-scripts/debug-env.sh.example
@@ -36,7 +48,7 @@ fi
 export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
 
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
-  echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
+  echo "ERROR: Unknown package name: >${PKG_NAME:-}< - Verify recipe.yaml script:"
   exit 1
 fi
 

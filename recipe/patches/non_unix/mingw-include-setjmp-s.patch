@@ -1,0 +1,22 @@
+# Purpose: Add misc/setjmp.S to i386-only mingw source list to fix __setjmp3 undefined symbol
+# Affects: src/libs/mingw.zig
+# Upstream: https://github.com/ziglang/zig/issues/TBD
+# Drop-when: zig upstream lists setjmp.S in mingw32_x86_32_src
+# Last-verified: 2026-05-18
+#
+# Background: lib/libc/mingw/misc/setjmp.S defines __setjmp3 and __intrinsic_setjmp for i386.
+# These symbols are referenced by winpthreads/thread.c (via setjmp()) when compiling for
+# i386-windows-gnu. Without this file in the build, lld-link reports:
+#   lld-link: error: undefined symbol: __setjmp3
+# The file is i386-only (x86_64 uses a different setjmp mechanism per _mingw_mac.h:122-125),
+# so it belongs in mingw32_x86_32_src (guarded by target.cpu.arch == .x86).
+
+--- a/src/libs/mingw.zig
++++ b/src/libs/mingw.zig
+@@ -974,6 +974,7 @@ const mingw32_x86_32_src = [_][]const u8{
+     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "atan2f.c",
+     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "atanf.c",
+     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "ceilf.S",
+     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "fmodf.c",
++    "misc" ++ path.sep_str ++ "setjmp.S",
+ };

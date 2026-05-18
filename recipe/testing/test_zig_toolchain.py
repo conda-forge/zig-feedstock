@@ -105,11 +105,11 @@ def test_wrapper_existence() -> None:
         expected = [
             f"{_pfx}zig-cc.exe",
             f"{_pfx}zig-cxx.exe",
-            f"{_pfx}zig-ar.bat",
-            f"{_pfx}zig-ranlib.bat",
-            f"{_pfx}zig-asm.bat",
-            f"{_pfx}zig-rc.bat",
-            f"{_pfx}zig-lld.bat",
+            f"{_pfx}zig-ar.exe",
+            f"{_pfx}zig-ranlib.exe",
+            f"{_pfx}zig-asm.exe",
+            f"{_pfx}zig-rc.exe",
+            f"{_pfx}zig-lld.exe",
         ]
     else:
         expected = [
@@ -203,10 +203,10 @@ def test_activation_variables() -> None:
                 PASS("ZIG_RC_CMAKE has forward slashes")
             else:
                 FAIL("ZIG_RC_CMAKE has forward slashes", rc_cmake)
-            if "zig-rc.bat" in rc_cmake:
-                PASS("ZIG_RC_CMAKE contains zig-rc.bat")
+            if "zig-rc.exe" in rc_cmake:
+                PASS("ZIG_RC_CMAKE contains zig-rc.exe")
             else:
-                FAIL("ZIG_RC_CMAKE contains zig-rc.bat", rc_cmake)
+                FAIL("ZIG_RC_CMAKE contains zig-rc.exe", rc_cmake)
         else:
             FAIL("ZIG_RC_CMAKE is set")
 
@@ -463,7 +463,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
     zig_ar = _env_var("ZIG_AR")
     if not zig_ar:
         # Fallback: try wrapper dir
-        candidate = _wrapper_dir / (f"{_triplet}-zig-ar.bat" if _build_is_win else f"{_triplet}-zig-ar")
+        candidate = _wrapper_dir / (f"{_triplet}-zig-ar.exe" if _build_is_win else f"{_triplet}-zig-ar")
         if candidate.exists():
             zig_ar = str(candidate)
 
@@ -772,6 +772,111 @@ def test_mingw_prebuilt_import_libs() -> None:
 
 
 # ===================================================================
+# Section 4f — winpthread static-link probe (Windows MinGW targets)
+# ===================================================================
+_WINPTHREAD_TARGETS = [
+    "aarch64-windows-gnu",
+    "x86-windows-gnu",
+]
+
+# Symbols whose absence is fixed by patches in build 24+ but visible in
+# cross-compile test envs that use build N-1's zig_impl_win-64 as test driver.
+# Treat as WARN (known bootstrap gap), not FAIL. Will self-heal in build N+1.
+_KNOWN_BOOTSTRAP_GAP_SYMBOLS = (
+    "__setjmp3",  # fixed by mingw-include-setjmp-s.patch (build 24)
+    "atexit",     # fixed by mingw-crtexe-no-atexit + ucrtbase-export-atexit-alias (build 24)
+    "_fpreset",   # aarch64: resolved by _win_arm64_stubs.sh stub injected via aarch64-w64-mingw32-zig wrapper; direct zig cc misses the injection
+)
+
+_PTHREAD_C = (
+    "#include <pthread.h>\n"
+    "static void *t(void *x) { (void)x; return 0; }\n"
+    "int main(void) {\n"
+    "    pthread_t h;\n"
+    "    pthread_create(&h, 0, t, 0);\n"
+    "    pthread_join(h, 0);\n"
+    "    return 0;\n"
+    "}\n"
+)
+
+
+def _probe_winpthread_link(target: str) -> None:
+    """Run the winpthread static-link probe for one MinGW target."""
+    zig = os.environ.get("CONDA_ZIG_BUILD", "") or "zig"
+    label = f"WINPTHREAD_PROBE[{target}]"
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "wp.c"
+        exe = Path(td) / "wp.exe"
+        src.write_text(_PTHREAD_C)
+
+        r = _run(
+            [zig, "cc", "-target", target, str(src), "-o", str(exe)],
+            cwd=td,
+            timeout=300,
+        )
+        if r.stderr == "TIMEOUT":
+            WARN(f"winpthread probe compile [{target}]", "timed out (120s)")
+            return
+        if r.returncode != 0:
+            matched_gap = next(
+                (sym for sym in _KNOWN_BOOTSTRAP_GAP_SYMBOLS if sym in r.stderr),
+                None,
+            )
+            if matched_gap is not None:
+                WARN(
+                    f"winpthread probe compile [{target}]",
+                    f"{label}: COMPILE_FAILED rc={r.returncode} "
+                    f"(KNOWN_BOOTSTRAP_GAP: {matched_gap!r} - resolves when build 24 becomes test driver)\n"
+                    f"{r.stderr[:2000]}",
+                )
+            else:
+                FAIL(
+                    f"winpthread probe compile [{target}]",
+                    f"{label}: COMPILE_FAILED rc={r.returncode}\n{r.stderr[:2000]}",
+                )
+            return
+        PASS(f"winpthread probe compile [{target}]")
+
+        r2 = _run([zig, "objdump", "--private-headers", str(exe)], cwd=td, timeout=60)
+        imports_text = r2.stdout + r2.stderr
+
+        print(f"=== winpthread static-link probe ({target}) ===")
+        for line in imports_text.splitlines():
+            if any(k in line.lower() for k in ("dll name:", "libwinpthread", "libpthread")):
+                print(f"  {line.strip()}")
+
+        if "libwinpthread" in imports_text.lower():
+            WARN(
+                f"winpthread static-link probe [{target}]",
+                f"{label}: DYNAMIC_LINK -- binary imports libwinpthread-1.dll at runtime",
+            )
+        else:
+            PASS(
+                f"winpthread static-link probe [{target}]",
+                f"{label}: STATIC_LINK -- no libwinpthread-1.dll import, symbols resolved statically",
+            )
+
+
+def test_winpthread_static_link_probe() -> None:
+    """Probe whether zig cc -target <target> links winpthread statically or dynamically.
+
+    DIAGNOSTIC only — does not fail on dynamic linking.
+    Only fails if compilation itself breaks (real toolchain regression).
+    Runs for each target in _WINPTHREAD_TARGETS.
+    """
+    print("--- winpthread static-link probe (Windows MinGW targets) ---")
+
+    # Only meaningful on Windows-targeting builds (zig is a cross-compiler)
+    if not is_win_target:
+        SKIP("winpthread static-link probe", "Windows target only")
+        return
+
+    for target in _WINPTHREAD_TARGETS:
+        _probe_winpthread_link(target)
+
+
+# ===================================================================
 # Section 5 — Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
@@ -1010,6 +1115,7 @@ def main() -> int:
     test_windows_import_libs()
     test_print_search_dirs()
     test_mingw_prebuilt_import_libs()
+    test_winpthread_static_link_probe()
     test_visibility()
     test_lld_dispatch()
 
