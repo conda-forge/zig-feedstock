@@ -804,7 +804,7 @@ def _probe_winpthread_link(target: str) -> None:
         r = _run(
             [zig, "cc", "-target", target, str(src), "-o", str(exe)],
             cwd=td,
-            timeout=120,
+            timeout=300,
         )
         if r.stderr == "TIMEOUT":
             WARN(f"winpthread probe compile [{target}]", "timed out (120s)")

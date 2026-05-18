@@ -178,6 +178,7 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
+          - patches/non_unix/mingw-include-setjmp-s.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
       # Note: patches under recipe/patches/cmake/ are applied programmatically by recipe/building/_cmake.sh::cmake_build (only when CMAKE_BUILD=1).
