@@ -157,20 +157,18 @@ SYNCHRONIZATION_DEF
       dbg echo "=== Generated ${_gen_count} import libs in ${_mingw_common} ==="
 
       # Step 4: Supplemental import libs from mingw-w64 .def.in templates.
-      # Zig doesn't ship msvcrt.def or ucrtbase.def -- we provide complete
-      # mingw-w64 versions that cover all exports (stdio, math, POSIX I/O, etc.).
-      # These use #include "func.def.in" for arch macros, so -I must point to
-      # our mingw-defs/ directory (NOT zig's def-include/).
+      # Zig doesn't ship msvcrt.def -- we provide a complete mingw-w64 version
+      # that covers all exports (stdio, math, POSIX I/O, etc.).
+      # msvcrt.def.in uses #include "func.def.in" and #include "crt-aliases.def.in",
+      # both of which live in zig's own def-include/.  We also include zig's
+      # lib-common/ so any future templates can resolve ucrtbase-common.def.in etc.
+      # _supp_defs remains first so pthread.def and msvcrt.def.in are still found.
       _supp_defs="${RECIPE_DIR}/building/mingw-defs"
       if [[ -d "${_supp_defs}" ]]; then
         dbg echo "=== Processing supplemental mingw-w64 .def.in templates ==="
         for _supp_in in "${_supp_defs}"/*.def.in; do
           [[ -f "${_supp_in}" ]] || continue
           _supp_stem="$(basename "${_supp_in%.def.in}")"
-          # Skip support files (included by other .def.in, not standalone libs)
-          case "${_supp_stem}" in
-            func|ucrtbase-common|crt-aliases) continue ;;
-          esac
           _supp_lib="${_mingw_common}/lib${_supp_stem}.a"
           [[ -f "${_supp_lib}" ]] && continue
           _supp_def="${_mingw_common}/${_supp_stem}.def"
@@ -179,6 +177,8 @@ SYNCHRONIZATION_DEF
               -target "${_win_target}" \
               -x assembler-with-cpp \
               -I"${_supp_defs}" \
+              -I"${_def_include}" \
+              -I"${_mingw_common}" \
               "${_supp_in}" 2>/dev/null > "${_supp_def}" || { rm -f "${_supp_def}"; continue; }
           fi
           _gen_implib "${_supp_stem}" "${_supp_def}"

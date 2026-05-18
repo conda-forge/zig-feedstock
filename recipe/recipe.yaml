@@ -1,9 +1,9 @@
-schema_version: 1
-
 context:
   build_number: 24
   name: zig
   version: "0.15.2"
+  llvm_version: "20"
+  llvm_src_version: "20.1.8"
   
   _c_v: ${{ c_stdlib_version | default("") }}
   
@@ -174,7 +174,8 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
-          - patches/non_unix/mingw-crtexe-no-atexit-aarch64.patch
+          - patches/non_unix/mingw-crtexe-no-atexit.patch
+          - patches/non_unix/ucrtbase-export-atexit-alias.patch
       # Note: patches under recipe/patches/cmake/ are applied programmatically by recipe/building/_cmake.sh::cmake_build (only when CMAKE_BUILD=1).
     target_directory: zig-source
 

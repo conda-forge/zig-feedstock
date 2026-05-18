@@ -101,6 +101,12 @@ description = "Build zig-feedstock-2-feedstock with variant osx_arm64_cross_targ
 [tasks."inspect-osx_arm64_cross_target_platform_osx-arm64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_arm64_cross_target_platform_osx-arm64.yaml"
 description = "List contents of zig-feedstock-2-feedstock packages built for variant osx_arm64_cross_target_platform_osx-arm64"
+[tasks."build-win_64_cross_target_platform_win-32"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/win_64_cross_target_platform_win-32.yaml"
+description = "Build zig-feedstock-2-feedstock with variant win_64_cross_target_platform_win-32 directly (without setup scripts)"
+[tasks."inspect-win_64_cross_target_platform_win-32"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/win_64_cross_target_platform_win-32.yaml"
+description = "List contents of zig-feedstock-2-feedstock packages built for variant win_64_cross_target_platform_win-32"
 [tasks."build-win_64_cross_target_platform_win-64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/win_64_cross_target_platform_win-64.yaml"
 description = "Build zig-feedstock-2-feedstock with variant win_64_cross_target_platform_win-64 directly (without setup scripts)"

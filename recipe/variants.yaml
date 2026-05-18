@@ -37,11 +37,6 @@ cxx_compiler_version:
     then:
       - "20"
   
-llvm_version:
-  - "20"
-llvm_src_version:
-  - "20.1.8"
-
 zig_compiler:
   - zig
 zig_compiler_version:
@@ -54,6 +49,7 @@ cross_target_platform_:
   - linux-riscv64
   - osx-64
   - osx-arm64
+  - win-32
   - win-64
   - win-arm64
 

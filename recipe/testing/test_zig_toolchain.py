@@ -772,6 +772,76 @@ def test_mingw_prebuilt_import_libs() -> None:
 
 
 # ===================================================================
+# Section 4f — winpthread static-link probe (aarch64-windows-gnu)
+# ===================================================================
+def test_winpthread_static_link_probe() -> None:
+    """Probe: does zig cc -target aarch64-windows-gnu link winpthread statically or dynamically?
+
+    DIAGNOSTIC only — exits 0 on either static or dynamic result.
+    Only fails if compilation itself breaks (real toolchain regression).
+    """
+    print("--- winpthread static-link probe (aarch64-windows-gnu) ---")
+
+    # Only meaningful when targeting Windows/aarch64
+    if not is_win_target or _arch != "aarch64":
+        SKIP("winpthread static-link probe", "aarch64-windows-gnu target only")
+        return
+
+    zig = os.environ.get("CONDA_ZIG_BUILD", "") or "zig"
+
+    _PTHREAD_C = (
+        "#include <pthread.h>\n"
+        "static void *t(void *x) { (void)x; return 0; }\n"
+        "int main(void) {\n"
+        "    pthread_t h;\n"
+        "    pthread_create(&h, 0, t, 0);\n"
+        "    pthread_join(h, 0);\n"
+        "    return 0;\n"
+        "}\n"
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "wp.c"
+        exe = Path(td) / "wp.exe"
+        src.write_text(_PTHREAD_C)
+
+        r = _run(
+            [zig, "cc", "-target", "aarch64-windows-gnu", str(src), "-o", str(exe)],
+            cwd=td,
+            timeout=120,
+        )
+        if r.stderr == "TIMEOUT":
+            WARN("winpthread probe compile", "timed out (120s)")
+            return
+        if r.returncode != 0:
+            FAIL(
+                "winpthread probe compile",
+                f"WINPTHREAD_PROBE: COMPILE_FAILED rc={r.returncode}\n{r.stderr[:2000]}",
+            )
+            return
+        PASS("winpthread probe compile (aarch64-windows-gnu)")
+
+        r2 = _run([zig, "objdump", "--private-headers", str(exe)], cwd=td, timeout=60)
+        imports_text = r2.stdout + r2.stderr
+
+        print("=== winpthread static-link probe (aarch64-windows-gnu) ===")
+        for line in imports_text.splitlines():
+            if any(k in line.lower() for k in ("dll name:", "libwinpthread", "libpthread")):
+                print(f"  {line.strip()}")
+
+        if "libwinpthread" in imports_text.lower():
+            WARN(
+                "winpthread static-link probe",
+                "WINPTHREAD_PROBE: DYNAMIC_LINK -- binary imports libwinpthread-1.dll at runtime",
+            )
+        else:
+            PASS(
+                "winpthread static-link probe",
+                "WINPTHREAD_PROBE: STATIC_LINK -- no libwinpthread-1.dll import, symbols resolved statically",
+            )
+
+
+# ===================================================================
 # Section 5 — Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
@@ -1010,6 +1080,7 @@ def main() -> int:
     test_windows_import_libs()
     test_print_search_dirs()
     test_mingw_prebuilt_import_libs()
+    test_winpthread_static_link_probe()
     test_visibility()
     test_lld_dispatch()
 

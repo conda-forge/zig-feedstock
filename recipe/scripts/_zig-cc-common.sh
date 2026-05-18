@@ -160,6 +160,7 @@ done
 case "${_zig_target}" in
     *-macos*|*-darwin*) _use_lld=0 ;;
 esac
+[[ "${ZIG_WRAPPER_DEBUG:-0}" == 1 ]] && >&2 echo "ZIG_WRAPPER_DBG: target=${_zig_target} use_lld=${_use_lld} argc=$# syslibroot_in_argv=$(printf '%s\n' "$@" | grep -c -- '-syslibroot')"
 
 # --- Block explicit LLD on ppc64le: LLD lacks ppc64le relocation support ---
 # Only error on explicit -fuse-ld=lld. Standard ELF flags (--version-script,

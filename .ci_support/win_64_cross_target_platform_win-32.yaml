@@ -9,7 +9,7 @@ channel_sources:
 channel_targets:
 - conda-forge main
 cross_target_platform_:
-- win-arm64
+- win-32
 cxx_compiler:
 - vs2022
 libxml2_devel:
