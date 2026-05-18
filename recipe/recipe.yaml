@@ -4,9 +4,9 @@ context:
   version: "0.15.2"
   llvm_version: "20"
   llvm_src_version: "20.1.8"
-  
+
   _c_v: ${{ c_stdlib_version | default("") }}
-  
+
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
   xc_aarch64:    ${{ cross_target_platform_ == "linux-aarch64" }}
@@ -17,14 +17,15 @@ context:
   xc_oarm64:     ${{ cross_target_platform_ == "osx-arm64" }}
   xc_w64:        ${{ cross_target_platform_ == "win-64" }}
   xc_warm64:     ${{ cross_target_platform_ == "win-arm64" }}
+  xc_win32:      ${{ cross_target_platform_ == "win-32" }}
 
   xc_lnx:        ${{ "linux" in cross_target_platform_ and "linux" in build_platform }}
   xc_osx:        ${{ "osx"   in cross_target_platform_ and "osx"   in build_platform }}
   xc_nlo:        ${{ "win"   in cross_target_platform_ and "win"   in build_platform }}
 
-  xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-arm64'] }}
+  xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-arm64', 'win-32'] }}
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
-  
+
   # Silly shortcuts
   exe: ${{ ".exe" if not unix else "" }}
   library: ${{ "Library/" if not unix else "" }}
@@ -43,6 +44,7 @@ context:
       "aarch64-macos." ~ _c_v ~ "-none" if xc_oarm64                           else
       "x86_64-windows-msvc"             if xc_w64                              else
       "aarch64-windows-msvc"            if xc_warm64                           else
+      "x86-windows-msvc"                if xc_win32                            else
       "native"
     }}
 
@@ -58,6 +60,7 @@ context:
       "arm64-apple-darwin20.0.0"        if xc_oarm64                           else
       "x86_64-w64-mingw32"              if xc_w64                              else
       "aarch64-w64-mingw32"             if xc_warm64                           else
+      "i686-w64-mingw32"                if xc_win32                            else
       "unknown_conda_triplet"
     }}
 
@@ -85,6 +88,7 @@ context:
       "arm64-apple-darwin20.0.0"        if target_platform == "osx-arm64"      else
       "x86_64-w64-mingw32"              if target_platform == "win-64"         else
       "aarch64-w64-mingw32"             if target_platform == "win-arm64"      else
+      "i686-w64-mingw32"                if target_platform == "win-32"         else
       "unknown_target_triplet"
     }}
 
@@ -106,7 +110,7 @@ context:
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
   is_cross_target: ${{ build_platform != target_platform and cross_target_platform_ == target_platform }}
-  
+
 recipe:
   name: zig-package
   version: ${{ version }}
@@ -212,7 +216,7 @@ outputs:
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-          
+
           CMAKE_BUILD: "0"
     requirements:
       build:
@@ -379,6 +383,13 @@ outputs:
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2win.o" || { echo "FAIL missing crt2win.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/dllcrt2.o" || { echo "FAIL missing dllcrt2.o"; exit 1; }
               - echo "PASS ARM64 CRT startup objects present"
+          - if: xc_win32
+            then:
+              # i386 MinGW CRT startup objects (compiled into lib32/ to avoid cross-arch collision)
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2.o" || { echo "FAIL missing lib32/crt2.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2win.o" || { echo "FAIL missing lib32/crt2win.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/dllcrt2.o" || { echo "FAIL missing lib32/dllcrt2.o"; exit 1; }
+              - echo "PASS i386 CRT startup objects present"
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
@@ -473,7 +484,7 @@ outputs:
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-            
+
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cc${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cxx${{ exe }}
 
@@ -614,4 +625,3 @@ extra:
     - MementoRC
     - xmnlab
     - tdejager
-  feedstock_name: zig

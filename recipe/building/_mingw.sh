@@ -63,10 +63,11 @@ SYNCHRONIZATION_DEF
   # ZIG_TRIPLET is e.g. "x86_64-windows-gnu" or "aarch64-windows-gnu".
   _win_arch="${ZIG_TRIPLET%%-*}"
   case "${_win_arch}" in
-    x86_64)       _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu" ;;
-    aarch64)      _dlltool_machine="arm64";        _win_target="aarch64-windows-gnu" ;;
-    *)            _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu"
-                  echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
+    x86_64)         _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu" ;;
+    aarch64)        _dlltool_machine="arm64";        _win_target="aarch64-windows-gnu" ;;
+    x86|i386|i686)  _dlltool_machine="i386";         _win_target="x86-windows-gnu" ;;
+    *)              _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu"
+                    echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
   esac
   if [[ -d "${_mingw_common}" ]]; then
     # Use the BUILD machine's zig binary (CONDA_ZIG_BUILD) so this works even
@@ -194,16 +195,19 @@ SYNCHRONIZATION_DEF
         dbg echo "=== Supplemental import libs done (total ${_gen_count}) ==="
       fi
 
-      # Step 5: ARM64 intrinsic stubs (only for aarch64-windows-gnu).
-      # Sets _crt_outdir for the subsequent CRT object compilation block:
+      # Step 5: arch-specific stubs and CRT output directory routing.
       # aarch64 emits CRT objects into libarm64/ (arch-specific dir, prevents
-      # cross-arch contamination); other archs keep historical lib-common/.
+      # cross-arch contamination); i386 into lib32/; x86_64 keeps lib-common/.
       if [[ "${_win_arch}" == "aarch64" ]]; then
         _mingw_libarm64="${_mingw_common}/../libarm64"
         mkdir -p "${_mingw_libarm64}"
         source "${RECIPE_DIR}/building/_win_arm64_stubs.sh"
         create_win_arm64_stubs "${_zig_bin}" "${_win_target}" "${_mingw_libarm64}"
         _crt_outdir="${_mingw_libarm64}"
+      elif [[ "${_win_arch}" == "x86" || "${_win_arch}" == "i386" || "${_win_arch}" == "i686" ]]; then
+        _mingw_lib32="${_mingw_common}/../lib32"
+        mkdir -p "${_mingw_lib32}"
+        _crt_outdir="${_mingw_lib32}"
       else
         _crt_outdir="${_mingw_common}"
       fi
