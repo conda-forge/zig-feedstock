@@ -1,0 +1,22 @@
+c_compiler:
+- vs2022
+c_stdlib:
+- vs
+c_stdlib_version:
+- '2022.14'
+channel_sources:
+- conda-forge
+channel_targets:
+- conda-forge main
+cross_target_platform_:
+- win-32
+cxx_compiler:
+- vs2022
+libxml2_devel:
+- '2.14'
+target_platform:
+- win-32
+zlib:
+- '1'
+zstd:
+- '1.5'
