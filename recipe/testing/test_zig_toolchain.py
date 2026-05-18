@@ -785,6 +785,7 @@ _WINPTHREAD_TARGETS = [
 _KNOWN_BOOTSTRAP_GAP_SYMBOLS = (
     "__setjmp3",  # fixed by mingw-include-setjmp-s.patch (build 24)
     "atexit",     # fixed by mingw-crtexe-no-atexit + ucrtbase-export-atexit-alias (build 24)
+    "_fpreset",   # aarch64: resolved by _win_arm64_stubs.sh stub injected via aarch64-w64-mingw32-zig wrapper; direct zig cc misses the injection
 )
 
 _PTHREAD_C = (
