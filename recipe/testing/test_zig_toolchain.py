@@ -826,9 +826,7 @@ def _probe_winpthread_link(target: str) -> None:
             if matched_gap is not None:
                 WARN(
                     f"winpthread probe compile [{target}]",
-                    f"{label}: COMPILE_FAILED rc={r.returncode} "
-                    f"(KNOWN_BOOTSTRAP_GAP: {matched_gap!r} - resolves when build 24 becomes test driver)\n"
-                    f"{r.stderr[:2000]}",
+                    f"KNOWN_BOOTSTRAP_GAP: {matched_gap} - resolves when build 24 becomes test driver\n{r.stderr[:2000]}",
                 )
             else:
                 FAIL(
