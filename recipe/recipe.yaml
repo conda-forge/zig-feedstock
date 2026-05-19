@@ -1,9 +1,9 @@
 context:
-  build_number: 25
+  build_number: 26
   name: zig
   version: "0.15.2"
-  llvm_version: "20"
   llvm_src_version: "20.1.8"
+  llvm_version: ${{ llvm_src_version | split(".") | first }}
 
   _c_v: ${{ c_stdlib_version | default("") }}
 
