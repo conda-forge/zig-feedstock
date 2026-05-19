@@ -8,6 +8,10 @@ jobs:
     vmImage: windows-2022
   strategy:
     matrix:
+      win_32_cross_target_platform_win-32:
+        CONFIG: win_32_cross_target_platform_win-32
+        UPLOAD_PACKAGES: 'True'
+        store_build_artifacts: false
       win_64_cross_target_platform_win-32:
         CONFIG: win_64_cross_target_platform_win-32
         UPLOAD_PACKAGES: 'True'
