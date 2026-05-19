@@ -15,7 +15,7 @@ context:
   bootstrap_via_upstream: false
   name: zig
   version: "0.16.0"
-  llvm_src_version: "20.1.8"
+  llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
   _c_v: ${{ c_stdlib_version | default("") }}
