@@ -1,0 +1,60 @@
+# Purpose: Add aarch64 stub sources to mingw32_arm64_src so libmingw32.lib resolves _fpreset,
+#          __intrinsic_setjmp/setjmpex, and ___chkstk_ms natively without wrapper injection.
+# Affects: src/libs/mingw.zig, lib/libc/mingw/crt/fpreset_arm64.c, lib/libc/mingw/crt/chkstk_arm64.S
+# Upstream: TBD
+# drop-when: zig upstream includes these sources in mingw32_arm64_src
+# Last-verified: 2026-05-18
+
+From: zig-feedstock
+Subject: [PATCH] mingw: add aarch64 stub sources to libmingw32
+
+Adds three sources to mingw32_arm64_src so libmingw32.lib for
+aarch64-windows-gnu resolves _fpreset, __intrinsic_setjmp/setjmpex,
+and ___chkstk_ms natively. Previously these required wrapper injection
+via aarch64-w64-mingw32-zig.exe (recipe/building/_win_arm64_stubs.sh),
+which broke direct `zig cc -target aarch64-windows-gnu` invocations.
+
+drop-when: zig upstream includes these sources in mingw32_arm64_src
+
+--- a/src/libs/mingw.zig
++++ b/src/libs/mingw.zig
+@@ -995,6 +995,9 @@
+     "math" ++ path.sep_str ++ "arm64" ++ path.sep_str ++ "rint.c",
+     "math" ++ path.sep_str ++ "arm64" ++ path.sep_str ++ "rintf.c",
+     "math" ++ path.sep_str ++ "arm64" ++ path.sep_str ++ "sincos.S",
++    "crt" ++ path.sep_str ++ "chkstk_arm64.S",
++    "crt" ++ path.sep_str ++ "fpreset_arm64.c",
++    "misc" ++ path.sep_str ++ "setjmp.S",
+ };
+
+ const mingw32_winpthreads_src = [_][]const u8{
+
+--- /dev/null
++++ b/lib/libc/mingw/crt/fpreset_arm64.c
+@@ -0,0 +1,11 @@
++/* aarch64 stub for _fpreset and fpreset.
++ *
++ * CRT_fp10.c provides these symbols for x86 via `__asm__ ("fninit")`,
++ * but is excluded from aarch64 builds. References to _fpreset from
++ * crt_handler.c, tlsthrd.c, crtexe.c, winpthreads/thread.c need a
++ * resolved symbol on aarch64-windows-gnu -- they get one here.
++ *
++ * No-op: aarch64 has no x87 FPU to reset.
++ */
++void _fpreset(void) {}
++void fpreset(void) {}
+
+--- /dev/null
++++ b/lib/libc/mingw/crt/chkstk_arm64.S
+@@ -0,0 +1,11 @@
++// aarch64 stub for ___chkstk_ms -- stack probe entry point.
++//
++// Zig's bundled mingw layer has no ___chkstk_ms definition anywhere
++// (grep returns zero hits across all of lib/libc/mingw/). For small
++// stack allocations (< guard page distance) the probe is unnecessary,
++// so a no-op suffices. Used to live in _win_arm64_stubs.sh; lifted here
++// so libmingw32.lib resolves it natively without wrapper injection.
++    .global ___chkstk_ms
++    .text
++___chkstk_ms:
++    ret

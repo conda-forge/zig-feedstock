@@ -779,13 +779,15 @@ _WINPTHREAD_TARGETS = [
     "x86-windows-gnu",
 ]
 
-# Symbols whose absence is fixed by patches in build 24+ but visible in
-# cross-compile test envs that use build N-1's zig_impl_win-64 as test driver.
-# Treat as WARN (known bootstrap gap), not FAIL. Will self-heal in build N+1.
+# Symbols whose absence in the test driver (conda-forge channel's published
+# zig_impl_win-64) will surface as compile-failure in the probe. Build 25
+# added mingw-arm64-stubs.patch which puts _fpreset into libmingw32.lib for
+# aarch64 natively -- but until build 25 propagates to the conda-forge
+# channel, the test driver still hits BRANCH26 on _fpreset. Treat as WARN
+# (known bootstrap-chain gap), not FAIL. Will self-heal once build 25+ is
+# the published test driver. Then this tuple can be emptied or removed.
 _KNOWN_BOOTSTRAP_GAP_SYMBOLS = (
-    "__setjmp3",  # fixed by mingw-include-setjmp-s.patch (build 24)
-    "atexit",     # fixed by mingw-crtexe-no-atexit + ucrtbase-export-atexit-alias (build 24)
-    "_fpreset",   # aarch64: resolved by _win_arm64_stubs.sh stub injected via aarch64-w64-mingw32-zig wrapper; direct zig cc misses the injection
+    "_fpreset",
 )
 
 _PTHREAD_C = (
@@ -826,9 +828,7 @@ def _probe_winpthread_link(target: str) -> None:
             if matched_gap is not None:
                 WARN(
                     f"winpthread probe compile [{target}]",
-                    f"{label}: COMPILE_FAILED rc={r.returncode} "
-                    f"(KNOWN_BOOTSTRAP_GAP: {matched_gap!r} - resolves when build 24 becomes test driver)\n"
-                    f"{r.stderr[:2000]}",
+                    f"KNOWN_BOOTSTRAP_GAP: {matched_gap} - resolves when build 25 propagates to test driver\n{r.stderr[:2000]}",
                 )
             else:
                 FAIL(
