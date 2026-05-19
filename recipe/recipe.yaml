@@ -375,11 +375,6 @@ outputs:
               - echo "PASS MinGW import libs present (cross-compiled)"
           - if: xc_warm64
             then:
-              # ARM64 intrinsic stubs (only for win-arm64)
-              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/___chkstk_ms.o" || { echo "FAIL missing ___chkstk_ms.o"; exit 1; }
-              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/__intrinsic_setjmpex.o" || { echo "FAIL missing __intrinsic_setjmpex.o"; exit 1; }
-              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/_fpreset_arm64.o" || { echo "FAIL missing _fpreset_arm64.o"; exit 1; }
-              - echo "PASS ARM64 intrinsic stubs present"
               # ARM64 MinGW CRT startup objects
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2.o" || { echo "FAIL missing crt2.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2win.o" || { echo "FAIL missing crt2win.o"; exit 1; }

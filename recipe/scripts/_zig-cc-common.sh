@@ -397,23 +397,6 @@ for _i in "${!_final_args[@]}"; do
     esac
 done
 
-# --- WIN-ARM64: inject _fpreset stub to satisfy CRT auto-import relocation ---
-# MinGW crt2.obj references _fpreset via DLL auto-import using
-# IMAGE_REL_ARM64_BRANCH26 which lld-link cannot use for import stubs.
-# Providing a direct definition via the stub bypasses auto-import entirely.
-# Only inject on link steps (no -c flag in args).
-_fpreset_stub=()
-if [[ "${_zig_target}" == "aarch64-windows-gnu" ]]; then
-    _stub="${CONDA_PREFIX}/lib/zig/libc/mingw/libarm64/_fpreset_arm64.o"
-    _is_compile_only=0
-    for _a in "${_translated_args[@]}"; do
-        [[ "$_a" == "-c" ]] && _is_compile_only=1 && break
-    done
-    if [[ ${_is_compile_only} -eq 0 ]] && [[ -f "${_stub}" ]]; then
-        _fpreset_stub=("${_stub}")
-    fi
-fi
-
 # --- Link-only flags: detect compile-only mode (-c/-E/-S) ---
 _is_compile_only=0
 for _a in "${_translated_args[@]}"; do
@@ -555,6 +538,6 @@ if [[ -z "${_macos_syslibroot:-}" ]] && [[ "${_zig_target}" == *-macos* ]]; then
     fi
 fi
 
-_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_syslibroot_flag[@]}" "${_translated_args[@]}" "${_fpreset_stub[@]}")
+_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_syslibroot_flag[@]}" "${_translated_args[@]}")
 [[ "${ZIG_DEBUG_SDK:-0}" == 1 ]] && >&2 echo "zig-wrapper SDK: target=${MACOSX_DEPLOYMENT_TARGET:-unset} isysroot_in=${_macos_syslibroot:-unset} syslibroot_flag=${_syslibroot_flag[*]:-unset} use_lld=${_use_lld}"
 [[ "${ZIG_DEBUG_SDK:-0}" == 1 ]] && >&2 echo "zig-wrapper FINAL: ${_exec_args[*]}"

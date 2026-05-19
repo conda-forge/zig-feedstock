@@ -201,8 +201,6 @@ SYNCHRONIZATION_DEF
       if [[ "${_win_arch}" == "aarch64" ]]; then
         _mingw_libarm64="${_mingw_common}/../libarm64"
         mkdir -p "${_mingw_libarm64}"
-        source "${RECIPE_DIR}/building/_win_arm64_stubs.sh"
-        create_win_arm64_stubs "${_zig_bin}" "${_win_target}" "${_mingw_libarm64}"
         _crt_outdir="${_mingw_libarm64}"
       elif [[ "${_win_arch}" == "x86" || "${_win_arch}" == "i386" || "${_win_arch}" == "i686" ]]; then
         _mingw_lib32="${_mingw_common}/../lib32"

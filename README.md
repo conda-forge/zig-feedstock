@@ -115,13 +115,6 @@ Current build status
                 </a>
               </td>
             </tr><tr>
-              <td>linux_s390x_cross_target_platform_linux-s390x</td>
-              <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=linux&configuration=linux%20linux_s390x_cross_target_platform_linux-s390x" alt="variant">
-                </a>
-              </td>
-            </tr><tr>
               <td>osx_64_cross_target_platform_osx-64</td>
               <td>
                 <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
@@ -147,13 +140,6 @@ Current build status
               <td>
                 <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
                   <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-arm64" alt="variant">
-                </a>
-              </td>
-            </tr><tr>
-              <td>win_32_cross_target_platform_win-32</td>
-              <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=win&configuration=win%20win_32_cross_target_platform_win-32" alt="variant">
                 </a>
               </td>
             </tr><tr>
@@ -195,10 +181,8 @@ Current release info
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__linux--64-green.svg)](https://anaconda.org/conda-forge/zig_impl_linux-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_linux-64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_linux-64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_linux-64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__linux--aarch64-green.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__linux--ppc64le-green.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) |
-| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__linux--s390x-green.svg)](https://anaconda.org/conda-forge/zig_impl_linux-s390x) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_linux-s390x.svg)](https://anaconda.org/conda-forge/zig_impl_linux-s390x) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_linux-s390x.svg)](https://anaconda.org/conda-forge/zig_impl_linux-s390x) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_linux-s390x.svg)](https://anaconda.org/conda-forge/zig_impl_linux-s390x) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__osx--64-green.svg)](https://anaconda.org/conda-forge/zig_impl_osx-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_osx-64.svg)](https://anaconda.org/conda-forge/zig_impl_osx-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_osx-64.svg)](https://anaconda.org/conda-forge/zig_impl_osx-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_osx-64.svg)](https://anaconda.org/conda-forge/zig_impl_osx-64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__osx--arm64-green.svg)](https://anaconda.org/conda-forge/zig_impl_osx-arm64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_osx-arm64.svg)](https://anaconda.org/conda-forge/zig_impl_osx-arm64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_osx-arm64.svg)](https://anaconda.org/conda-forge/zig_impl_osx-arm64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_osx-arm64.svg)](https://anaconda.org/conda-forge/zig_impl_osx-arm64) |
-| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__win--32-green.svg)](https://anaconda.org/conda-forge/zig_impl_win-32) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_win-32.svg)](https://anaconda.org/conda-forge/zig_impl_win-32) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_win-32.svg)](https://anaconda.org/conda-forge/zig_impl_win-32) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_win-32.svg)](https://anaconda.org/conda-forge/zig_impl_win-32) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__win--64-green.svg)](https://anaconda.org/conda-forge/zig_impl_win-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_win-64.svg)](https://anaconda.org/conda-forge/zig_impl_win-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_win-64.svg)](https://anaconda.org/conda-forge/zig_impl_win-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_win-64.svg)](https://anaconda.org/conda-forge/zig_impl_win-64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--64-green.svg)](https://anaconda.org/conda-forge/zig_linux-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-64.svg)](https://anaconda.org/conda-forge/zig_linux-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-64.svg)](https://anaconda.org/conda-forge/zig_linux-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-64.svg)](https://anaconda.org/conda-forge/zig_linux-64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--aarch64-green.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) |
@@ -221,16 +205,16 @@ conda config --add channels conda-forge
 conda config --set channel_priority strict
 ```
 
-Once the `conda-forge` channel has been enabled, `zig, zig-compiler, zig_impl_linux-64, zig_impl_linux-aarch64, zig_impl_linux-ppc64le, zig_impl_linux-s390x, zig_impl_osx-64, zig_impl_osx-arm64, zig_impl_win-32, zig_impl_win-64, zig_linux-64, zig_linux-aarch64, zig_linux-ppc64le, zig_linux-riscv64, zig_linux-s390x, zig_osx-64, zig_osx-arm64, zig_win-32, zig_win-64, zig_win-arm64` can be installed with `conda`:
+Once the `conda-forge` channel has been enabled, `zig, zig-compiler, zig_impl_linux-64, zig_impl_linux-aarch64, zig_impl_linux-ppc64le, zig_impl_osx-64, zig_impl_osx-arm64, zig_impl_win-64, zig_linux-64, zig_linux-aarch64, zig_linux-ppc64le, zig_linux-riscv64, zig_linux-s390x, zig_osx-64, zig_osx-arm64, zig_win-32, zig_win-64, zig_win-arm64` can be installed with `conda`:
 
 ```
-conda install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_linux-s390x zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-32 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
+conda install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
 ```
 
 or with `mamba`:
 
 ```
-mamba install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_linux-s390x zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-32 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
+mamba install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
 ```
 
 It is possible to list all of the versions of `zig` available on your platform with `conda`:

@@ -779,15 +779,6 @@ _WINPTHREAD_TARGETS = [
     "x86-windows-gnu",
 ]
 
-# Symbols whose absence is fixed by patches in build 24+ but visible in
-# cross-compile test envs that use build N-1's zig_impl_win-64 as test driver.
-# Treat as WARN (known bootstrap gap), not FAIL. Will self-heal in build N+1.
-_KNOWN_BOOTSTRAP_GAP_SYMBOLS = (
-    "__setjmp3",  # fixed by mingw-include-setjmp-s.patch (build 24)
-    "atexit",     # fixed by mingw-crtexe-no-atexit + ucrtbase-export-atexit-alias (build 24)
-    "_fpreset",   # aarch64: resolved by _win_arm64_stubs.sh stub injected via aarch64-w64-mingw32-zig wrapper; direct zig cc misses the injection
-)
-
 _PTHREAD_C = (
     "#include <pthread.h>\n"
     "static void *t(void *x) { (void)x; return 0; }\n"
@@ -819,20 +810,10 @@ def _probe_winpthread_link(target: str) -> None:
             WARN(f"winpthread probe compile [{target}]", "timed out (120s)")
             return
         if r.returncode != 0:
-            matched_gap = next(
-                (sym for sym in _KNOWN_BOOTSTRAP_GAP_SYMBOLS if sym in r.stderr),
-                None,
+            FAIL(
+                f"winpthread probe compile [{target}]",
+                f"{label}: COMPILE_FAILED rc={r.returncode}\n{r.stderr[:2000]}",
             )
-            if matched_gap is not None:
-                WARN(
-                    f"winpthread probe compile [{target}]",
-                    f"KNOWN_BOOTSTRAP_GAP: {matched_gap} - resolves when build 24 becomes test driver\n{r.stderr[:2000]}",
-                )
-            else:
-                FAIL(
-                    f"winpthread probe compile [{target}]",
-                    f"{label}: COMPILE_FAILED rc={r.returncode}\n{r.stderr[:2000]}",
-                )
             return
         PASS(f"winpthread probe compile [{target}]")
 
