@@ -1,13 +1,13 @@
 schema_version: 1
 
 context:
-  build_number: 3
+  build_number: 4
   # Bootstrap-source toggle, intentionally decoupled from build_number so
   # the two paths can be iterated on independently:
-  #   true  → use upstream's pre-built ziglang.org binary as the stage-0
+  #   true  - use upstream's pre-built ziglang.org binary as the stage-0
   #           compiler (the only option on a fresh release before
   #           anything is published).
-  #   false → bootstrap from conda-forge's already-published
+  #   false - bootstrap from conda-forge's already-published
   #           zig_impl_${build_platform} of the same version.
   # Bumping build_number for a rebuild no longer forces a path change,
   # and conversely a scratch PR can re-exercise the upstream path
@@ -213,9 +213,11 @@ source:
           # between scalar libm and LLVM's vector log2 intrinsic.
           # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
-          # aarch64 Windows: MinGW CRT exeentry.o calls atexit() which is absent in
-          # the aarch64 MinGW CRT startup chain; patch removes the call.
-          - patches/non_unix/mingw-crtexe-no-atexit-aarch64.patch
+          # All Windows arches: suppress crtexe.c atexit() definition; provide it
+          # via UCRT import-lib alias instead (avoids duplicate-symbol on x86_64
+          # and undefined-symbol on aarch64).
+          - patches/non_unix/mingw-crtexe-no-atexit.patch
+          - patches/non_unix/ucrtbase-export-atexit-alias.patch
     target_directory: zig-source
   # Upstream ziglang.org bootstrap — gated on the bootstrap_via_upstream
   # context flag (decoupled from build_number so the two can be iterated
