@@ -1,24 +1,14 @@
 schema_version: 1
 
 context:
-  build_number: 5
-  # Bootstrap-source toggle, intentionally decoupled from build_number so
-  # the two paths can be iterated on independently:
-  #   true  - use upstream's pre-built ziglang.org binary as the stage-0
-  #           compiler (the only option on a fresh release before
-  #           anything is published).
-  #   false - bootstrap from conda-forge's already-published
-  #           zig_impl_${build_platform} of the same version.
-  # Bumping build_number for a rebuild no longer forces a path change,
-  # and conversely a scratch PR can re-exercise the upstream path
-  # without churning the package's build counter.
-  bootstrap_via_upstream: false
+  build_number: 6
   name: zig
   version: "0.16.0"
+  
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  _c_v: ${{ c_stdlib_version | default("") }}
+  bootstrap_via_upstream: false
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -45,11 +35,8 @@ context:
   bat: ${{ ".bat" if not unix else "" }}
   exe: ${{ ".exe" if not unix else "" }}
 
-  # Zig target mapping (for zig -target flag, differs from GCC triplets)
-  # NB: c_stdlib_version is undefined on Windows variants; rattler-build's
-  # MiniJinja eagerly evaluates `~` (string concat) in *all* branches of
-  # nested ternaries, not just the matched one — so we coerce missing
-  # values with `| default("")` to keep render-only validation happy.
+  # Zig target mapping https://github.com/ziglang/zig-bootstrap
+  _c_v: ${{ c_stdlib_version | default("") }}
   zig_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ _c_v        if xc_l64                              else
@@ -129,8 +116,8 @@ recipe:
   version: ${{ version }}
 
 source:
-  - url: https://codeberg.org/ziglang/zig/archive/${{ version }}.tar.gz
-    sha256: 095d7483008e885e65d8c6a57fb97c57344f995408a648b8d50f61278ad85d7f
+  - url: https://ziglang.org/download/${{ version }}/zig-${{ version }}.tar.xz
+    sha256: 43186959edc87d5c7a1be7b7d2a25efffd22ce5807c7af99067f86f99641bfdf
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -219,47 +206,37 @@ source:
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
     target_directory: zig-source
-  # Upstream ziglang.org bootstrap — gated on the bootstrap_via_upstream
-  # context flag (decoupled from build_number so the two can be iterated
-  # on independently).  Required on a fresh release: conda-forge's
-  # previously-published zig_impl_X 0.15.2 can't parse 0.16's build.zig,
-  # and the CMake-fallback path hits arch-specific bugs (osx-arm64
-  # compiler_rt codegen, win MSVC C2466, linux-ppc64le branch-range,
-  # osx libcxx ABI clash with libcxx 21 toolchain).  Using upstream's
-  # pre-built 0.16.0 binary parses its own build.zig natively → zig
-  # build succeeds first try.  Once the matching zig_impl_X is on
-  # conda-forge, flip bootstrap_via_upstream to false; no upstream
-  # download is needed.
+
   - if: bootstrap_via_upstream
     then:
       - if: build_platform == "osx-arm64"
         then:
-          - url: https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz
+          - url: https://ziglang.org/download/${{ version }}/zig-aarch64-macos-${{ version }}.tar.xz
             sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
-          - url: https://ziglang.org/download/0.16.0/zig-x86_64-macos-0.16.0.tar.xz
+          - url: https://ziglang.org/download/${{ version }}/zig-x86_64-macos-${{ version }}.tar.xz
             sha256: 0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
-          - url: https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip
+          - url: https://ziglang.org/download/${{ version }}/zig-x86_64-windows-${{ version }}.zip
             sha256: 68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
-          - url: https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+          - url: https://ziglang.org/download/${{ version }}/zig-x86_64-linux-${{ version }}.tar.xz
             sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
-          - url: https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz
+          - url: https://ziglang.org/download/${{ version }}/zig-aarch64-linux-${{ version }}.tar.xz
             sha256: ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
-          - url: https://ziglang.org/download/0.16.0/zig-powerpc64le-linux-0.16.0.tar.xz
+          - url: https://ziglang.org/download/${{ version }}/zig-powerpc64le-linux-${{ version }}.tar.xz
             sha256: 18800b45c08bf40b335ca5ab79aea70aca287ca969036e938155772becaeebeb
             target_directory: zig-bootstrap
 
@@ -288,10 +265,6 @@ outputs:
           - if: not unix
             then: "*/VERSION.dll"
       script:
-        # Explicit file: a `script: { env: {...} }` block without `file:` or
-        # `content:` is treated as an empty inline script by rattler-build
-        # 0.63+ (earlier versions fell back to the default). Be explicit,
-        # and gate on the target platform so Windows picks up build.bat.
         file: build${{ sh }}
         env:
           BUILD_NUMBER: ${{ build_number }}
@@ -333,14 +306,6 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig.
-        # bootstrap_via_upstream == true: use the upstream tarball
-        #   pulled in via `source:` above (the only option on a fresh
-        #   release — conda-forge has no zig_impl_${build_platform}
-        #   matching this version yet, and on osx the previous release
-        #   pins libcxx 20 which clashes with the LLVM-21 host env).
-        # bootstrap_via_upstream == false: the just-published
-        #   zig_impl_${build_platform} can parse its own build.zig
-        #   — no upstream download needed.
         - if: not bootstrap_via_upstream
           then:
             - zig_impl_${{ build_platform }} >=${{ version }}
@@ -381,14 +346,7 @@ outputs:
           bin:
             - ${{ conda_triplet }}-zig
           files:
-            # langref.html is generated by `zig build docs`, which has
-            # to run the just-built zig.  On the ppc64le cross-build
-            # (target_platform=linux-ppc64le, is_cross_target=true) we
-            # pass -Dno-langref in build.sh because qemu-ppc64le
-            # doesn't faithfully emulate traps and the GCC linker has
-            # __tls_get_addr DSO ordering issues with doctests — so
-            # langref.html is intentionally absent there. Gate the
-            # test to match.
+            # qemu-ppc64le doesn't faithfully emulate traps
             - if: not cross_target_platform_ == "linux-ppc64le"
               then:
                 - ${{ library }}doc/langref.html
@@ -412,8 +370,7 @@ outputs:
             # Post-install tests
             - etc/conda/test-files/zig*
 
-      # Shared libc++ discovery tests (patch 0008)
-
+      # Shared libc++ discovery tests
       - if: not osx
         then:
           - script:
@@ -464,9 +421,9 @@ outputs:
             then:
               - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
               - echo "PASS MinGW import libs present (cross-compiled)"
+
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them.
-      # Verify -fuse-ld=lld patch (Linux/ELF + NonUnix/COFF, not macOS/Mach-O)
       - script:
           - if: unix
             then:
@@ -522,8 +479,6 @@ outputs:
           CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
-          # --- FORCING REBUILD of native zig due to incompatible previous build version in conda-forge ---
-          # BUILD_NATIVE_ZIG: ${{ cross_target_platform_ == "linux-ppc64le" and is_cross_compiler }}
           LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:
