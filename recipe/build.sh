@@ -176,6 +176,8 @@ if is_not_unix; then
     # Bootstrap libucrt/ucrt confilct may come from /DEFAULTLIB:libucrt (hopefully not from LLVM)
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
   )
+  # Suppress lld-link [importeddllmain] warning from xml2.lib (treated as failure by zig)
+  EXTRA_ZIG_ARGS+=(--Xlinker /IGNORE:importeddllmain)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
 fi
