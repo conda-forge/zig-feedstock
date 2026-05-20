@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 4
+  build_number: 5
   # Bootstrap-source toggle, intentionally decoupled from build_number so
   # the two paths can be iterated on independently:
   #   true  - use upstream's pre-built ziglang.org binary as the stage-0
