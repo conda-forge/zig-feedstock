@@ -167,6 +167,7 @@ source:
           - patches/non_unix/build.zig-03-msvc-crt-dynamic.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
+          - patches/non_unix/Lld.zig-suppress-importeddllmain.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
           - patches/non_unix/mingw-arm-fpreset-stub.patch
@@ -234,7 +235,6 @@ outputs:
       script:
         file: build${{ sh }}
         env:
-          BUILD_NUMBER: ${{ build_number }}
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
 

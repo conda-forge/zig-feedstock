@@ -118,21 +118,6 @@ if _build_is_win:
 else:
     _wrapper_dir = _prefix / "share" / "zig" / "wrappers"
 
-# Detect zig_impl build number from conda-meta for feature gating
-_zig_impl_build_number = 0
-_conda_meta = _prefix / "conda-meta"
-if _conda_meta.exists():
-    import glob as _glob
-    for _meta in _glob.glob(str(_conda_meta / "zig_impl_*.json")):
-        try:
-            import json as _json
-            with open(_meta) as _f:
-                _meta_data = _json.load(_f)
-                _zig_impl_build_number = int(_meta_data.get("build_number", 0))
-        except (ValueError, KeyError, OSError):
-            pass
-
-
 def _env_var(name: str) -> str:
     """Return env var value or empty string."""
     return os.environ.get(name, "")
@@ -396,9 +381,8 @@ def test_flag_filtering() -> None:
                          f"expected rejection, got rc={r_block.returncode} stderr={r_block.stderr[:500]}")
                 SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
-            elif not is_linux_target or _zig_impl_build_number < 17:
-                _reason = (f"non-Linux target ({_triplet}), see zig_impl tests" if not is_linux_target
-                           else f"zig_impl build {_zig_impl_build_number} < 17")
+            elif not is_linux_target:
+                _reason = f"non-Linux target ({_triplet}), see zig_impl tests"
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
             else:
@@ -444,11 +428,6 @@ def test_target_override() -> None:
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("target override", "ZIG_CC not set")
-        return
-
-    if _zig_impl_build_number < 17:
-        SKIP("target override",
-             f"zig_impl build {_zig_impl_build_number} < 17 (wrappers lack override support)")
         return
 
     if _is_emulated or _is_cross_compiler:
@@ -810,11 +789,6 @@ def test_print_search_dirs() -> None:
         SKIP("print-search-dirs", "Windows target only")
         return
 
-    if _zig_impl_build_number < 20:
-        SKIP("print-search-dirs",
-             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
-        return
-
     if _is_cross_compiler:
         SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
         return
@@ -876,11 +850,6 @@ def test_mingw_prebuilt_import_libs() -> None:
 
     if not is_win_target:
         SKIP("mingw prebuilt import libs", "Windows target only")
-        return
-
-    if _zig_impl_build_number < 20:
-        SKIP("mingw prebuilt import libs",
-             f"requires zig_impl build>=20 (installed: {_zig_impl_build_number})")
         return
 
     if _build_is_win:
