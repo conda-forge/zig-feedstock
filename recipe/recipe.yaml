@@ -127,23 +127,11 @@ source:
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
-      # NOTE: patches/zig_llvm.cpp-mingw-def-dll-suffix.patch is obsolete —
-      # upstream 0.16 rewrote MinGW .def parsing in pure Zig
-      # (src/libs/mingw/def.zig) and already appends `.dll` to LIBRARY names
-      # without extensions, so this patch has been dropped permanently.
       - if: linux
         then:
           - patches/build.zig-maxrss.patch
           - patches/linux/build.zig-02-doctest-forward-target.patch
-          # NOTE: patches/linux/posix.zig-glibc-2.17-fstat.patch is obsolete —
-          # `std.posix.fstat` was removed entirely in 0.16; no callers remain.
           - patches/linux/llvm.zig-triple-no-glibc-version.patch
-          # NOTE: patches/linux/Object.zig-elf-zstd-decompression.patch is
-          # obsolete — zig 0.16 upstream already supports ZSTD-compressed ELF
-          # sections (src/link/Elf/Object.zig .ZSTD branch).
-          # NOTE: patches/linux/Elf.zig-debug-tag-bare-TODO-panics.patch was
-          # a diagnostic-only patch (tagging @panic("TODO") sites during 0.15
-          # debugging); not needed for the 0.16 upgrade.
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
@@ -154,14 +142,7 @@ source:
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
-      # can also `zig cc -target powerpc64le-linux-gnu`. The patch
-      # bodies are arch-dispatched (target.cpu.arch == .powerpc64le
-      # blocks, switch arms with new powerpc64 cases), so applying
-      # them on non-ppc64le linux is a no-op at runtime.
-      # NOTE: 0001-arch-support-st-other-{Object,SharedObject}.zig.patch
-      # were obsolete in 0.16 — upstream replaced the raw cast with
-      # `@truncate(@as(u3, ...))` which already masks the arch-specific
-      # high bits of st_other.
+      # can also `zig cc -target powerpc64le-linux-gnu`.
       - if: linux
         then:
           # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
@@ -177,16 +158,8 @@ source:
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
-          # NOTE: 0003-ldscript-output-format.patch dropped — it duplicates the
-          # `elf64-powerpcle` entry already added by 0001-arch-support-LdScript.zig.patch.
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
-          # NOTE: patches/ppc64le/lib_std_start-ppc64le-libc-pie.patch is obsolete —
-          # zig 0.16.0 correctly links crt1.o for ppc64le PIE builds, providing
-          # _start natively. The 0.15.2 patch added a custom ppc64le_libc_start
-          # exported as _start because zig 0.15.2's linker did NOT pull crt1.o
-          # for ppc64le PIE. In 0.16.0 this works upstream; our patch causes a
-          # duplicate-_start link error. Drop-when: never.
       - if: not unix
         then:
           - patches/non_unix/build.zig-01-maxrss.patch
@@ -195,14 +168,8 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
-          # MementoRC pre-warned on this on his earlier #102 work:
-          # `@log2 with vectors` fails on x86_64-windows by 1 ULP
-          # between scalar libm and LLVM's vector log2 intrinsic.
-          # Loosen `==` to expectApproxEqRel(_, _, 1e-6).
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
-          # All Windows arches: suppress crtexe.c atexit() definition; provide it
-          # via UCRT import-lib alias instead (avoids duplicate-symbol on x86_64
-          # and undefined-symbol on aarch64).
+          - patches/non_unix/mingw-arm-fpreset-stub.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
     target_directory: zig-source
