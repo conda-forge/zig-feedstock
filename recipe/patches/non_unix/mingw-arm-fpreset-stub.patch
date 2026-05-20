@@ -1,0 +1,38 @@
+From: zig-feedstock
+Subject: [PATCH] mingw: add _fpreset stub for arm (thumb + aarch64)
+
+_fpreset is defined only in CRT_fp10.c (x86-only via mingw32_x86_src). It
+is called by crt_handler.c, tlsthrd.c, crtexe.c, and winpthreads/thread.c
+which are compiled for all arches. On aarch64, lld-link cannot auto-import
+_fpreset from ucrtbase.dll because BL instructions generate
+IMAGE_REL_ARM64_BRANCH26 relocations that cannot be patched to indirect
+import thunks. Provide a no-op stub for arm targets (no x87 FPU to reset).
+
+drop-when: zig upstream adds a fpreset arm stub to mingw32_arm_src
+
+diff --git a/lib/libc/mingw/crt/fpreset_arm.c b/lib/libc/mingw/crt/fpreset_arm.c
+new file mode 100644
+--- /dev/null
++++ b/lib/libc/mingw/crt/fpreset_arm.c
+@@ -0,0 +1,12 @@
++/* No-op _fpreset stub for ARM (thumb + aarch64).
++ *
++ * CRT_fp10.c provides _fpreset for x86 via `__asm__ ("fninit")` (x87 FPU
++ * instruction) and is in mingw32_x86_src. ARM has no x87 FPU. References
++ * to _fpreset from generic sources (crt_handler.c, tlsthrd.c, crtexe.c,
++ * winpthreads/thread.c) need a resolved symbol on arm targets -- they get
++ * one here. lld-link cannot auto-import _fpreset from a DLL on aarch64
++ * because the BL (branch) instruction generates IMAGE_REL_ARM64_BRANCH26
++ * relocations that cannot be patched to indirect import thunks.
++ */
++void _fpreset(void) {}
++void fpreset(void) {}
+diff --git a/src/libs/mingw.zig b/src/libs/mingw.zig
+--- a/src/libs/mingw.zig
++++ b/src/libs/mingw.zig
+@@ -902,4 +902,5 @@
+ const mingw32_arm_src = [_][]const u8{
+     // mingwex
+     "math" ++ path.sep_str ++ "arm-common" ++ path.sep_str ++ "ldexpl.c",
++    "crt" ++ path.sep_str ++ "fpreset_arm.c",
+ };
