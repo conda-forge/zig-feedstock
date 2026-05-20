@@ -1,0 +1,45 @@
+# Purpose: Add atexit as an alias for _crt_atexit in the always-linked UCRT runtime forwarder import-lib
+#
+# Problem: On aarch64-windows-gnu, lld-link reports "undefined symbol: atexit".
+#   - Zig 0.15.2 defaults *-windows-gnu to UCRT (Compilation.zig:6948).
+#   - UCRT's ucrtbase.dll exports the function only as _crt_atexit, not atexit.
+#   - The mingw-w64 stub in crtexe.c (int __cdecl atexit(...) { return _crt_atexit(func); })
+#     is compiled into crt2.o and crtexe.o for x86/x86_64/arm32, but that file is not
+#     linked for aarch64 console programs built with this toolchain, leaving atexit unresolved.
+#   - The companion patch (mingw-crtexe-no-atexit-aarch64.patch) removes the crtexe.c stub
+#     on aarch64; this patch ensures the import library itself exports the alias so any
+#     consumer (exe, DLL, or library) can resolve atexit without a separate stub object.
+#
+# Fix: Add "atexit == _crt_atexit" alias entry to api-ms-win-crt-runtime-l1-1-0.def.in,
+#   the always-linked UCRT runtime forwarder (mingw.zig:always_link_libs). This follows the
+#   identical pattern used in:
+#     - recipe/building/mingw-defs/msvcrt.def.in:942 (_crt_atexit == atexit)
+#     - lib/libc/mingw/libarm32/kernelbase.def:1892 (_crt_atexit == atexit)
+#   The alias propagates to all Windows targets (x86_64, aarch64, arm) through the import lib.
+#
+# Why not a stub .o: A stub object in libmingwex would conflict with the msvcrt path and
+#   requires arch-specific conditionals; an import-lib alias is zero-cost and self-consistent.
+#
+# x86_64 duplicate-symbol note: api-ms-win-crt-runtime-l1-1-0 is in always_link_libs
+#   (mingw.zig:1026), so x86_64 WILL import atexit from this .a as well. crtexe.c still
+#   defines int __cdecl atexit() for x86_64. This creates a DUPLICATE SYMBOL risk on x86_64:
+#   one strong definition from crt2.o, one from the import lib. The companion patch
+#   mingw-crtexe-no-atexit-aarch64.patch should be extended to remove the crtexe.c stub
+#   on ALL arches (not just aarch64), making all arches rely solely on this alias.
+#   Until that companion patch is updated, apply both patches together.
+#
+# Upstream: Not filed (feedstock workaround only).
+# Drop-when: zig bundles a UCRT def.in with the atexit alias, or upstream fixes the
+#   aarch64 crtexe path so atexit is never undefined.
+# Last-verified: 2026-05-18
+
+--- a/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
++++ b/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
+@@ -37,6 +37,7 @@
+ _controlfp_s
+ _crt_at_quick_exit
+ _crt_atexit
++atexit == _crt_atexit ; export atexit as alias for _crt_atexit (UCRT only names it _crt_atexit; crtexe.c stub absent on aarch64)
+ F_I386(_crt_debugger_hook)
+ _endthread
+ _endthreadex

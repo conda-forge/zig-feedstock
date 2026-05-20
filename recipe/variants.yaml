@@ -1,0 +1,56 @@
+c_stdlib:
+  - if: linux
+    then:
+      - sysroot
+  - if: osx
+    then:
+      - macosx_deployment_target
+  - if: not unix
+    then:
+      - vs
+c_stdlib_version:
+  - if: linux
+    then:
+      - "2.17"
+  - if: osx
+    then:
+      - "11.0"
+  - if: not unix
+    then:
+      - "2022.14"
+
+c_compiler:
+  - if: not unix
+    then:
+      - vs2022
+cxx_compiler:
+  - if: not unix
+    then:
+      - vs2022
+
+c_compiler_version:
+  - if: osx
+    then:
+      - "21"
+cxx_compiler_version:
+  - if: osx
+    then:
+      - "21"
+
+zig_compiler:
+  - zig
+zig_compiler_version:
+  - "0.16.0"
+
+cross_target_platform_:
+  - linux-64
+  - linux-aarch64
+  - linux-ppc64le
+  - linux-riscv64
+  - linux-s390x
+  - osx-64
+  - osx-arm64
+  - win-32
+  - win-64
+  - win-arm64
+

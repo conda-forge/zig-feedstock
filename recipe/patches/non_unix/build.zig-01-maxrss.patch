@@ -1,0 +1,17 @@
+# Purpose: Lower exe.max_rss from 8 GB to 7.5 GB to fit conda-forge Windows runners
+# Affects: build.zig
+# Upstream: not filed
+# Drop-when: Upstream lowers base value to <=7.5 GB
+# Last-verified: 2026-05-13 (zig 0.16.0)
+
+--- a/build.zig
++++ b/build.zig
+@@ -775,7 +775,7 @@ fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Ste
+         // This number should never be raised. If the value is exceeded, then
+         // it is considered a bug in the Zig project that building the
+         // compiler takes more than 8G of memory.
+-        .max_rss = 8_000_000_000,
++        .max_rss = 7_500_000_000,
+         .root_module = addCompilerMod(b, options),
+     });
+     exe.stack_size = stack_size;

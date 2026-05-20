@@ -1,0 +1,3 @@
+# OBSOLETE — superseded by mingw-crtexe-no-atexit.patch (all-arch #if 0 suppression)
+# and ucrtbase-export-atexit-alias.patch (UCRT import-lib alias).
+# Remove this file: git rm recipe/patches/non_unix/mingw-crtexe-no-atexit-aarch64.patch

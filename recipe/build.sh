@@ -129,6 +129,14 @@ is_linux && EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 # and the ppc64le GCC linker has __tls_get_addr DSO ordering issues with doctests
 [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && EXTRA_ZIG_ARGS+=(-Dno-langref)
 
+# Strip host-arch flags injected by conda-build for cross builds.
+# Safe for ppc64le/aarch64: intentional target-arch flags (e.g. -mlongcall,
+# -march=armv8-a) are added in target-specific blocks elsewhere and don't
+# match the sanitize filter for their own arch family.
+if is_cross; then
+  sanitize_and_export_cross_flags
+fi
+
 if is_osx; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SYSTEM_LIBCXX=c++
@@ -144,11 +152,6 @@ if is_osx; then
   if [[ "${build_platform}" == "osx-arm64" ]]; then
     EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
     if [[ "${target_platform}" == "osx-64" ]]; then
-      CFLAGS=${CFLAGS//-march=core2/}
-      CFLAGS=${CFLAGS//-mtune=haswell/}
-      CXXFLAGS=${CXXFLAGS//-march=core2/}
-      CXXFLAGS=${CXXFLAGS//-mtune=haswell/}
-      export CFLAGS=${CFLAGS//-mssse3/} CXXFLAGS=${CXXFLAGS//-mssse3/}
       EXTRA_CMAKE_ARGS+=(
         -DCMAKE_OSX_ARCHITECTURES=x86_64
       )
