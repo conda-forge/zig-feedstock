@@ -170,6 +170,10 @@ SYNCHRONIZATION_DEF
         for _supp_in in "${_supp_defs}"/*.def.in; do
           [[ -f "${_supp_in}" ]] || continue
           _supp_stem="$(basename "${_supp_in%.def.in}")"
+          # Skip pure include helpers (not standalone DLL definitions)
+          case "${_supp_stem}" in
+            func|ucrtbase-common|crt-aliases) continue ;;
+          esac
           _supp_lib="${_mingw_common}/lib${_supp_stem}.a"
           [[ -f "${_supp_lib}" ]] && continue
           _supp_def="${_mingw_common}/${_supp_stem}.def"
