@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 6
+  build_number: 7
   name: zig
   version: "0.16.0"
   
@@ -302,10 +302,6 @@ outputs:
           - if: linux
             then:
               - libxml2-16
-          - if: not unix
-            then:
-              - ucrt
-              - vc14_runtime
     tests:
       # Package contents verification - impl has triplet-prefixed binary
       - package_contents:
