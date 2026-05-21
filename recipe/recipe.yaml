@@ -457,6 +457,13 @@ outputs:
         - if: is_cross_compiler and not unix
           then:
             - zig_impl_${{ xc_build_platform }} >=0.15.2
+        # On Windows the wrappers compile to .exe; declare the MSVC compiler
+        # so vs2022_*'s run_exports auto-pin ucrt and vc14_runtime as run
+        # deps of the wrappers package (fixes overlinking on api-ms-win-crt-*).
+        - if: not unix
+          then:
+            - ${{ compiler('c') }}
+            - ${{ stdlib("c") }}
       host:
         - if: not is_cross_compiler
           then:
