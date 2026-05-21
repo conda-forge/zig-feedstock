@@ -21,11 +21,11 @@ function apply_cmake_patches() {
 
   # Check if CMAKE_PATCHES array exists and has elements
   if [[ -z "${CMAKE_PATCHES+x}" ]] || [[ ${#CMAKE_PATCHES[@]} -eq 0 ]]; then
-    is_debug && echo "No CMAKE_PATCHES defined, skipping patch application"
+    dbg echo "No CMAKE_PATCHES defined, skipping patch application"
     return 0
   fi
 
-  is_debug && echo "Applying ${#CMAKE_PATCHES[@]} cmake patches to ${source_dir}"
+  dbg echo "Applying ${#CMAKE_PATCHES[@]} cmake patches to ${source_dir}"
 
   local patch_dir="${RECIPE_DIR}/patches/cmake"
   if [[ ! -d "${patch_dir}" ]]; then
@@ -42,9 +42,9 @@ function apply_cmake_patches() {
         return 1
       fi
 
-      is_debug && echo "  Applying patch: ${patch_file}"
+      dbg echo "  Applying patch: ${patch_file}"
       if patch -p1 < "${patch_path}"; then
-        is_debug && echo "    ${patch_file} applied successfully"
+        dbg echo "    ${patch_file} applied successfully"
       else
         echo "ERROR: Failed to apply patch ${patch_file}" >&2
         popd > /dev/null
@@ -53,7 +53,7 @@ function apply_cmake_patches() {
     done
   popd > /dev/null
 
-  is_debug && echo "All cmake patches applied successfully" || true
+  dbg echo "All cmake patches applied successfully"
   return 0
 }
 
@@ -133,7 +133,7 @@ function cmake_fallback_build() {
     )
   fi
 
-  is_debug && echo "Applying CMake patches..."
+  dbg echo "Applying CMake patches..."
   apply_cmake_patches "${source_dir}"
 
   # ppc64le: 0005 patch adds target_compile_options(zigcpp PRIVATE -mlongcall)
@@ -146,10 +146,7 @@ function cmake_fallback_build() {
   fi
 
   if cmake_build_install "${build_dir}" "${install_prefix}"; then
-    # NB: trailing `|| true` — in non-debug `is_debug` returns 1, which would
-    # otherwise become the function's exit status and trip `set -e` in the
-    # caller. Force a 0 return on the success path.
-    is_debug && echo "SUCCESS: cmake fallback build completed successfully" || true
+    dbg echo "SUCCESS: cmake fallback build completed successfully"
   else
     echo "ERROR: Both zig build and cmake build failed" >&2
     exit 1

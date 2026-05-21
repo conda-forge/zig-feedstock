@@ -16,7 +16,7 @@
 #   4. Use ld -r to combine original and stub objects
 #   5. Replace original with combined version
 #
-patch_crt_object() {
+function patch_crt_object() {
   local crt_path="$1"
   local stub_dir="$2"
 
@@ -68,7 +68,7 @@ patch_crt_object() {
 
   # Replace original with combined version
   mv "${crt_path}.tmp" "${crt_path}"
-  is_debug && echo "    Patched $(basename "${crt_path}") [${obj_arch}]" >&2
+  dbg echo "    Patched $(basename "${crt_path}") [${obj_arch}]" >&2
   return 0
 }
 
@@ -104,7 +104,7 @@ void __libc_csu_fini(void) {
 }
 EOF
 
-  is_debug && echo "Compiling CSU stubs for available architectures..."
+  dbg echo "Compiling CSU stubs for available architectures..."
 
   # Compile stub objects for all available architectures
   local arch_compilers=(
@@ -116,7 +116,7 @@ EOF
   for entry in "${arch_compilers[@]}"; do
     IFS=: read -r arch compiler output <<< "${entry}"
     if [[ -x "${compiler}" ]]; then
-      is_debug && echo "  - Compiling for ${arch}"
+      dbg echo "  - Compiling for ${arch}"
       "${compiler}" -c "${stub_dir}/libc_csu_stubs.c" -o "${stub_dir}/${output}" || {
         echo "    Warning: Failed to compile for ${arch}" >&2
       }
@@ -125,7 +125,7 @@ EOF
 
   # Patch glibc crt1.o files which reference __libc_csu_init/fini
   # NOTE: We do NOT patch GCC's crtbegin*.o files to avoid duplicate symbol definitions
-  is_debug && echo "Patching glibc crt1.o files..."
+  dbg echo "Patching glibc crt1.o files..."
   local crt_files=(crt1.o Scrt1.o gcrt1.o grcrt1.o)
 
   for sysroot_dir in "${prefix}"/*-conda-linux-gnu/sysroot/usr/lib; do
@@ -136,8 +136,6 @@ EOF
     done
   done
 
-  if is_debug; then
-    echo "Created GCC 14 + glibc 2.28 compatibility:"
-    echo "  - Patched all glibc crt1*.o files with stub symbols"
-  fi
+  dbg echo "Created GCC 14 + glibc 2.28 compatibility:"
+  dbg echo "  - Patched all glibc crt1*.o files with stub symbols"
 }
