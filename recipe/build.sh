@@ -12,6 +12,8 @@ if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO
   fi
 fi
 
+source "${RECIPE_DIR}/building/_bash_check.sh"
+
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
@@ -31,6 +33,8 @@ is_debug() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; }
 [[ -z "${CONDA_TRIPLET:-}" ]] && { echo "CONDA_TRIPLET must be specified in recipe.yaml env"; exit 1; }
 [[ -z "${CONDA_ZIG_BUILD:-}" ]] && { echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"; exit 1; }
 [[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
+
+export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
 
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
   echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
