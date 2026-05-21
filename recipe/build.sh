@@ -3,15 +3,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
-  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
-  else
-    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
-    exit 1
-  fi
-fi
-
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # --- Functions ---
@@ -127,8 +118,12 @@ EXTRA_ZIG_ARGS=(
 
 # --- Platform Configuration ---
 
-# Patch 0007 adds -Ddoctest-target to build.zig (Linux only)
-is_linux && EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
+# Patch build.zig-02-doctest-forward-target adds -Ddoctest-target to build.zig.
+# Gated to linux/osx where the patch applies and where doctest target forwarding matters.
+if is_linux || is_osx; then
+  EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
+fi
+
 # ppc64le cross: skip docgen — qemu-ppc64le doesn't faithfully emulate traps,
 # and the ppc64le GCC linker has __tls_get_addr DSO ordering issues with doctests
 [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && EXTRA_ZIG_ARGS+=(-Dno-langref)
@@ -171,7 +166,7 @@ else
   # Reverted to the no-cap default for osx; the heavy link step
   # uses < 7 GB in practice on osx-arm64 native builds (proven by
   # repeated successes), and lets zig parallelize across cores.
-  EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
+  EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
 fi
 
 if is_not_unix; then
@@ -189,10 +184,15 @@ if is_linux && is_cross; then
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
-  # Enable qemu only if zig-qemu package is installed (provides qemu-<arch>
-  # binaries that zig expects). conda's qemu-user-<arch> uses different names.
-  if [[ -d "${PREFIX}/lib/zig-qemu" ]]; then
-    export PATH="${PREFIX}/lib/zig-qemu:${PATH}"
+  # TODO: drop once qemu-execve-ppc64le ships qemu-powerpc64le upstream.
+  if [[ "${target_platform}" == "linux-ppc64le" ]] \
+     && ! command -v qemu-powerpc64le &>/dev/null \
+     && command -v qemu-ppc64le &>/dev/null; then
+    ln -sf "$(command -v qemu-ppc64le)" "${BUILD_PREFIX}/bin/qemu-powerpc64le"
+  fi
+  # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
+  # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
+  if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
     EXTRA_ZIG_ARGS+=(-fqemu)
   fi
 fi
@@ -237,7 +237,7 @@ is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=
 
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
 
-if is_linux && is_cross; then
+if is_linux; then
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
   source "${RECIPE_DIR}/building/_sysroot_fix.sh"
@@ -252,11 +252,6 @@ if is_linux && is_cross; then
   create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 
-# Optional: build native zig from source when conda bootstrap can't compile new version.
-# Set BUILD_NATIVE_ZIG=1 to enable. Not needed since build 12 (ld script patch in package).
-if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
-  build_native_zig "${SRC_DIR}/native-zig-install"
-fi
 
 # --- Two-stage bootstrap for linux-ppc64le with upstream bootstrap ---
 #
@@ -283,19 +278,14 @@ if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
   echo "[build.sh] linux-ppc64le: two-stage bootstrap engaged — Stage 1 native build complete, using patched native zig as bootstrap: ${BUILD_ZIG}"
 fi
 
-is_debug && echo "=== Building with ZIG ===" || true
-_bwz_rc=0
-build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}" || _bwz_rc=$?
-
-if [[ ${_bwz_rc} -eq 0 ]]; then
-  # NB: `|| true` — in non-debug is_debug returns 1 and that becomes the
-  # branch's last-executed exit status, which trips `set -e` in build.sh.
-  is_debug && echo "SUCCESS: zig build completed successfully" || true
-elif [[ "${CMAKE_FALLBACK:-1}" == "1" ]]; then
-  source "${RECIPE_DIR}/building/_cmake.sh"  # cmake_fallback_build
-  cmake_fallback_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
+if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
+  is_debug && echo "=== ZIG BUILD: CMAKE_BUILD=1, forcing cmake build (bypass zig-with-zig) ===" || true
+  source "${RECIPE_DIR}/building/_cmake.sh"
+  cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
+elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+  is_debug && echo "=== ZIG BUILD: SUCCESS ===" || true
 else
-  echo "Build zig with zig failed and CMake fallback disabled"
+  echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
   exit 1
 fi
 
@@ -303,12 +293,74 @@ fi
 # Odd random occurence of zig.pdb
 rm -f ${PREFIX}/bin/zig.pdb
 
-is_debug && echo "Post-install implementation package: ${PKG_NAME}"
+# macOS: --search-prefix adds a library search but does not embed LC_RPATH in the Mach-O binary.
+if is_osx; then
+  install_name_tool -add_rpath "${PREFIX}/lib" "${PREFIX}/bin/zig"
+fi
+
+if is_linux; then
+  patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
+fi
+
+# --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
+_can_run_stage3() {
+  if ! is_unix; then return 1; fi
+  # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
+  # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
+  if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
+  if ! is_cross; then return 0; fi
+  if is_linux; then
+    command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
+  fi
+  return 1
+}
+
+if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
+  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
+elif _can_run_stage3; then
+  is_debug && echo "=== PHASE 2: building langref via stage3 zig ===" || true
+  _stage3_runner=()
+  if is_cross && is_linux; then
+    _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
+  fi
+
+  # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
+  _qemu_shadow_dir=""
+  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+    _qemu_shadow_dir=$(mktemp -d)
+    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
+    export PATH="${_qemu_shadow_dir}:${PATH}"
+    is_debug && echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}" || true
+  fi
+
+  (
+    cd "${cmake_source_dir}" &&
+    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+      --prefix "${PREFIX}" \
+      -Dversion-string="${PKG_VERSION}" \
+      -Ddoctest-target="${ZIG_TRIPLET}"
+  ) || {
+    if ! is_cross; then
+      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
+      exit 1
+    fi
+    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
+  }
+
+  if [ -n "${_qemu_shadow_dir:-}" ]; then
+    rm -rf "${_qemu_shadow_dir}"
+    unset _qemu_shadow_dir
+  fi
+else
+  echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
+fi
+
+is_debug && echo "Post-install implementation package: ${PKG_NAME}" || true
 mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
 
 # Non-unix conda convention: artifacts go under Library/
 if is_not_unix; then
-  is_debug && echo "Relocating to Library/ for non-unix conda convention"
+  is_debug && echo "Relocating to Library/ for non-unix conda convention" || true
   mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
@@ -318,12 +370,28 @@ fi
 source "${RECIPE_DIR}/building/_mingw.sh"
 generate_mingw_import_libs
 
-is_debug && echo "=== Build installed for package: ${PKG_NAME} ==="
+# Strip Python bytecode caches from anywhere under PREFIX (was previously
+# scoped to lib/zig but rattler-build's strict-mode check fired on
+# lib/zig/lldb/__pycache__/pretty_printers.cpython-312.pyc even after a
+# narrower find ran — widening to ${PREFIX} as belt-and-braces, and adding
+# visible echo + -print output so we can confirm the find actually executes
+# on the next iteration. .pyc files are Python-version-locked
+# (cpython-312 tag), auto-regenerate on first import, and serve no purpose
+# in a shipped conda package.
+echo "[build.sh] Stripping __pycache__ dirs from ${PREFIX}..."
+if [[ -d "${PREFIX}" ]]; then
+    find "${PREFIX}" -type d -name __pycache__ -print -exec rm -rf {} + 2>&1 || true
+    echo "[build.sh] __pycache__ strip done"
+else
+    echo "[build.sh] WARNING: ${PREFIX} does not exist — find skipped"
+fi
+
+is_debug && echo "=== Build installed for package: ${PKG_NAME} ===" || true
 
 # Cache successful build (saves before rattler-build cleanup)
 if [[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]; then
   # stub_cache.sh already sourced at the top if ZIG_USE_CACHE=1
   [[ "$(type -t stub_cache_save)" != "function" ]] && source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
   stub_cache_save
-  is_debug && echo "=== Build cached for future restoration ==="
+  is_debug && echo "=== Build cached for future restoration ===" || true
 fi

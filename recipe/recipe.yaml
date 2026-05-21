@@ -129,10 +129,10 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/Elf-eh_frame-skip-dwarf64.patch
+      - patches/build.zig-02-doctest-forward-target.patch
       - if: linux
         then:
           - patches/build.zig-maxrss.patch
-          - patches/linux/build.zig-02-doctest-forward-target.patch
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
@@ -244,6 +244,9 @@ outputs:
 
           CMAKE_BUILD: ${{ "1" if riscv64 else "0" }}
           LLVM_VERSION: ${{ llvm_version }}
+      python:
+        skip_pyc_compilation:
+          - lib/zig/lldb/pretty_printers.py
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -270,6 +273,9 @@ outputs:
         - if: (build_platform != target_platform)
           then:
             - llvmdev ${{ llvm_version }}.*  # llvm-config
+            - if: linux
+              then:
+                - qemu-execve-${{ target_platform | replace("linux-", "") }}
             - if: osx
               then:
                 - libxml2-devel
@@ -497,20 +503,19 @@ outputs:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
             
-            - ${{ library }}share/zig/wrappers/zig-cc${{ exe }}
-            - ${{ library }}share/zig/wrappers/zig-cxx${{ exe }}
-            
-            - ${{ library }}share/zig/wrappers/zig-ar${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-ranlib${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-asm${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-rc${{ bat }}
-            - ${{ library }}share/zig/wrappers/zig-lld${{ bat }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cc${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cxx${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ar${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ranlib${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-asm${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-rc${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-lld${{ exe }}
             - if: unix
               then:
-                - share/zig/wrappers/_zig-cc-common.sh
-                - share/zig/wrappers/_zig-force-load-common.sh
-                - share/zig/wrappers/zig-force-load-cc
-                - share/zig/wrappers/zig-force-load-cxx
+                - share/zig/wrappers/${{ conda_triplet }}-_zig-cc-common.sh
+                - share/zig/wrappers/${{ conda_triplet }}-_zig-force-load-common.sh
+                - share/zig/wrappers/${{ conda_triplet }}-zig-force-load-cc
+                - share/zig/wrappers/${{ conda_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
