@@ -1,10 +1,10 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -751,6 +751,7 @@
+@@ -745,6 +745,7 @@
+
+   -Denable-llvm
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
- 
-   -Dno-langref
 +  --maxrss 7000000000
  )
- 
+
  set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")

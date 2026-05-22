@@ -254,9 +254,36 @@ if is_linux && [[ "${BUILD_NATIVE_ZIG:-0}" == "1" ]]; then
   build_native_zig "${SRC_DIR}/native-zig-install"
 fi
 
+# --- Two-stage bootstrap for linux-ppc64le with upstream bootstrap ---
+#
+# When bootstrap_via_upstream=true (proxied by zig-bootstrap/ dir presence),
+# the upstream linux-64 zig bootstrap binary lacks our ppc64le LdScript support
+# and DWARF64 eh_frame skip patches.  Those missing patches cause panics during
+# the ppc64le cross-compile of zig itself.
+#
+# Fix: build a native linux-64 zig from our PATCHED source first (Stage 1),
+# using the upstream bootstrap which works fine for x86_64-linux-gnu.  Then
+# use THAT patched-native zig as the bootstrap for the ppc64le cross-compile
+# (Stage 2).
+#
+# Detection: target_platform==linux-ppc64le + is_cross + zig-bootstrap/ present.
+if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
+   [[ -d "${SRC_DIR}/zig-bootstrap" ]]; then
+  echo "[build.sh] linux-ppc64le + upstream bootstrap detected — engaging two-stage bootstrap"
+  # build_native_zig_bootstrap needs create_glibc217_syscall_stubs; source it if
+  # not already sourced (it's normally sourced later in build.sh only when needed).
+  source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
+  export LLVM_VERSION="${LLVM_VERSION:-22}"
+  build_native_zig_bootstrap
+  BUILD_ZIG="${ZIG_TWO_STAGE_BOOTSTRAP_ZIG}"
+  echo "[build.sh] linux-ppc64le: two-stage bootstrap engaged — Stage 1 native build complete, using patched native zig as bootstrap: ${BUILD_ZIG}"
+fi
 
 is_debug && echo "=== Building with ZIG ===" || true
-if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+_bwz_rc=0
+build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}" || _bwz_rc=$?
+
+if [[ ${_bwz_rc} -eq 0 ]]; then
   # NB: `|| true` — in non-debug is_debug returns 1 and that becomes the
   # branch's last-executed exit status, which trips `set -e` in build.sh.
   is_debug && echo "SUCCESS: zig build completed successfully" || true

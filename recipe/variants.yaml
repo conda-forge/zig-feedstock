@@ -31,16 +31,16 @@ cxx_compiler:
 c_compiler_version:
   - if: osx
     then:
-      - "21"
+      - "22"
 cxx_compiler_version:
   - if: osx
     then:
-      - "21"
+      - "22"
 
 zig_compiler:
   - zig
 zig_compiler_version:
-  - "0.16.0"
+  - "0.17.0"
 
 cross_target_platform_:
   - linux-64

@@ -46,40 +46,62 @@ fi
 echo "[build_native] Using: ${CONDA_CMD}"
 
 # 1. Create temporary env with build tools (pin LLVM to match zig source)
+#    When BUILD_NATIVE_STAGE1_ONLY=1, we use the upstream bootstrap tarball at
+#    $SRC_DIR/zig-bootstrap/ instead of conda-installing zig_impl (which may
+#    not yet be published for a new major version).
 ENV_DIR="${WORK_DIR}/build-env"
-${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
-    cmake ninja gcc gxx patchelf \
-    "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
-    libxml2-devel zlib zstd perl python \
-    "sysroot_linux-64=2.17" \
-    "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
-
-eval "$(${CONDA_CMD} shell activate -p ${ENV_DIR} 2>/dev/null || conda shell.bash activate ${ENV_DIR})"
-
-# 2. Fix libc/libm linker scripts for zig (same as main build's modify_libc_libm_for_zig)
-#    zig's lld can't handle relative paths in linker scripts → replace with symlinks
-SYSROOT=$(ls -d "${ENV_DIR}"/*-conda-linux-gnu/sysroot 2>/dev/null | head -1)
-if [[ -n "${SYSROOT}" ]]; then
-    for lib in libc libm; do
-        so="${SYSROOT}/usr/lib64/${lib}.so"
-        if [[ -f "$so" ]] && file "$so" | grep -q "text"; then
-            echo "  - Replacing ${lib}.so linker script with symlink"
-            rm -f "$so"
-            ln -sf "../../lib64/${lib}.so.6" "$so"
-        fi
-    done
+if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
+    echo "[build_native] BUILD_NATIVE_STAGE1_ONLY=1 — using upstream bootstrap (skipping zig_impl conda dep)"
+    ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
+        cmake ninja gcc gxx patchelf \
+        "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
+        libxml2-devel zlib zstd perl python \
+        "sysroot_linux-64=2.17"
+else
+    ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
+        cmake ninja gcc gxx patchelf \
+        "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
+        libxml2-devel zlib zstd perl python \
+        "sysroot_linux-64=2.17" \
+        "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
 fi
-# Fix sysroot libc.so linker scripts 2.17 to use relative paths
-source ${RECIPE_DIR}/building/_sysroot_fix.sh
+
+set +e
+eval "$(${CONDA_CMD} shell activate -p "${ENV_DIR}" 2>/dev/null || conda shell.bash activate "${ENV_DIR}")"
+_act_rc=$?
+set -e
+if [[ ${_act_rc} -ne 0 ]]; then
+    echo "[build_native] mamba/conda activate returned ${_act_rc}; continuing (deactivate hooks may be noisy)" >&2
+fi
+
+# 2. Fix libc/libm linker scripts for zig (zig's lld can't handle relative paths
+#    in linker scripts — fix_sysroot_libc_scripts rewrites them to relative paths)
+source "${RECIPE_DIR}/building/_common.sh"
+source "${RECIPE_DIR}/building/_sysroot_fix.sh"
 fix_sysroot_libc_scripts "${ENV_DIR}"
 
-# 3. Find the zig binary from zig_impl (conda bootstrap)
-ZIG_BIN=$(ls "${ENV_DIR}"/bin/*-zig 2>/dev/null | head -1)
-if [[ -z "${ZIG_BIN}" ]]; then
-    echo "ERROR: No zig binary found in ${ENV_DIR}/bin/"
-    exit 1
+# 3. Find the zig binary to use as bootstrap
+if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
+    # Upstream bootstrap tarball at $SRC_DIR/zig-bootstrap/ — binary is named
+    # <arch-triple>-zig (e.g. x86_64-linux-musl-zig). Search up to 2 levels.
+    ZIG_BIN="$(find "${SRC_DIR}/zig-bootstrap" -maxdepth 2 -name '*-zig' -type f 2>/dev/null | head -1)"
+    if [[ -z "${ZIG_BIN}" || ! -x "${ZIG_BIN}" ]]; then
+        echo "ERROR: No upstream bootstrap zig found in ${SRC_DIR}/zig-bootstrap/" >&2
+        exit 1
+    fi
+    ZIG_LIB_DIR_ARGS=(--zig-lib-dir "${SRC_DIR}/zig-bootstrap/lib")
+    echo "[build_native] Bootstrap zig (upstream tarball): ${ZIG_BIN}"
+    echo "[build_native] Using zig-lib-dir: ${SRC_DIR}/zig-bootstrap/lib"
+else
+    # Conda-installed zig_impl provides the bootstrap binary
+    ZIG_BIN=$(ls "${ENV_DIR}"/bin/*-zig 2>/dev/null | head -1)
+    if [[ -z "${ZIG_BIN}" ]]; then
+        echo "ERROR: No zig binary found in ${ENV_DIR}/bin/"
+        exit 1
+    fi
+    ZIG_LIB_DIR_ARGS=()
+    echo "[build_native] Bootstrap zig (conda): ${ZIG_BIN}"
 fi
-echo "[build_native] Bootstrap zig (conda): ${ZIG_BIN}"
 
 # 4. CMake configure + build zigcpp only (generates config.h needed by zig build)
 CMAKE_BUILD="${WORK_DIR}/cmake-build"
@@ -129,13 +151,13 @@ ZIG_BUILD_ARGS=(
 
 # ==========================================================================
 # STAGE 1: Build zig with ZSTD patch, SKIP docgen
-#   Bootstrap = conda zig_impl (no ZSTD, no debug info)
+#   Bootstrap = conda zig_impl OR upstream tarball (see BUILD_NATIVE_STAGE1_ONLY)
 #   Output = zig binary WITH ZSTD decompression + debug info
 # ==========================================================================
 echo ""
 echo "================================================================"
 echo "  STAGE 1: Building zig (skip docgen, ZSTD patch applied)"
-echo "  Bootstrap: ${ZIG_BIN} (conda zig_impl)"
+echo "  Bootstrap: ${ZIG_BIN}"
 echo "================================================================"
 
 STAGE1_DIR="${WORK_DIR}/stage1-install"
@@ -144,6 +166,7 @@ mkdir -p "${STAGE1_DIR}"
 cd "${SRC_DIR}/zig-source"
 "${ZIG_BIN}" build \
     --prefix "${STAGE1_DIR}" \
+    "${ZIG_LIB_DIR_ARGS[@]}" \
     "${ZIG_BUILD_ARGS[@]}" \
     -Dno-langref
 
@@ -157,6 +180,18 @@ patchelf --set-rpath "${ENV_DIR}/lib" "${STAGE1_ZIG}"
 echo "[Stage 1] SUCCESS: ${STAGE1_ZIG}"
 echo "[Stage 1] Verify ZSTD support:"
 "${STAGE1_ZIG}" version
+
+# When BUILD_NATIVE_STAGE1_ONLY=1 (e.g., ppc64le bootstrap use-case), skip
+# Stage 2 doctest run and stash Stage 1 as the deliverable directly.
+if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
+    echo "[build_native] BUILD_NATIVE_STAGE1_ONLY=1 — skipping Stage 2 doctest run"
+    mkdir -p "${TARGET_DIR}"
+    cp "${STAGE1_ZIG}" "${TARGET_DIR}/zig_native_patched"
+    chmod +x "${TARGET_DIR}/zig_native_patched"
+    patchelf --set-rpath '$ORIGIN/../lib' "${TARGET_DIR}/zig_native_patched"
+    echo "[build_native] Stashed Stage 1 zig to ${TARGET_DIR}/zig_native_patched (RPATH fixed)"
+    exit 0
+fi
 
 # ==========================================================================
 # STAGE 2: Rebuild WITH docgen using Stage 1 zig as bootstrap

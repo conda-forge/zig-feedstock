@@ -1,14 +1,15 @@
 schema_version: 1
 
 context:
-  build_number: 7
+  build_number: 0
   name: zig
-  version: "0.16.0"
+  version: "0.17.0"
+  snapshot: "315+5b647b792"
   
-  llvm_src_version: "21.1.8"
+  llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: false
+  bootstrap_via_upstream: true
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -116,8 +117,8 @@ recipe:
   version: ${{ version }}
 
 source:
-  - url: https://ziglang.org/download/${{ version }}/zig-${{ version }}.tar.xz
-    sha256: 43186959edc87d5c7a1be7b7d2a25efffd22ce5807c7af99067f86f99641bfdf
+  - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
+    sha256: f3dfccfb7e8a54b59e04369436fc94da807c2f760fb4c0e4f155bfeec2c091d3
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -127,11 +128,11 @@ source:
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
+      - patches/Elf-eh_frame-skip-dwarf64.patch
       - if: linux
         then:
           - patches/build.zig-maxrss.patch
           - patches/linux/build.zig-02-doctest-forward-target.patch
-          - patches/linux/llvm.zig-triple-no-glibc-version.patch
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
@@ -179,33 +180,33 @@ source:
     then:
       - if: build_platform == "osx-arm64"
         then:
-          - url: https://ziglang.org/download/${{ version }}/zig-aarch64-macos-${{ version }}.tar.xz
-            sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
+          - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
+            sha256: 8874e12bfc3e541ed74f6a5c7b223592a4d7428162567055f6109153395d30ae
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
-          - url: https://ziglang.org/download/${{ version }}/zig-x86_64-macos-${{ version }}.tar.xz
-            sha256: 0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7
+          - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
+            sha256: a8bc26077f06579b5a315597239beaf2df16a3bba5422cdfa6cfc5830fc8627c
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
-          - url: https://ziglang.org/download/${{ version }}/zig-x86_64-windows-${{ version }}.zip
-            sha256: 68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e
+          - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
+            sha256: 8069c021cac1009adf58647592714489c5e338c1bbdf95709cff8a87889f752f
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
-          - url: https://ziglang.org/download/${{ version }}/zig-x86_64-linux-${{ version }}.tar.xz
-            sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+          - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
+            sha256: 29581043bf739f894eb49d7741b563dcbcd964ad4bb2391f202de9291e2fcab4
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
-          - url: https://ziglang.org/download/${{ version }}/zig-aarch64-linux-${{ version }}.tar.xz
-            sha256: ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17
+          - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
+            sha256: 394543b4bfe6e9e2cda97c2c1424c031cfa2e7bf20e8bf3b425cfb80e6c7eaa1
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
-          - url: https://ziglang.org/download/${{ version }}/zig-powerpc64le-linux-${{ version }}.tar.xz
-            sha256: 18800b45c08bf40b335ca5ab79aea70aca287ca969036e938155772becaeebeb
+          - url: https://ziglang.org/builds/zig-powerpc64le-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
+            sha256: 70724959ee135f1043b7b9e40f68ae0d41507df1fff42609ba888412f7f3813b
             target_directory: zig-bootstrap
 
 build:
@@ -242,6 +243,7 @@ outputs:
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
           CMAKE_BUILD: ${{ "1" if riscv64 else "0" }}
+          LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -275,7 +277,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} >=${{ version }}
+            - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -329,6 +331,7 @@ outputs:
             - ${{ library }}lib/zig/libcxxabi/*
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
+            - ${{ library }}lib/zig/lldb/pretty_printers.py
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*

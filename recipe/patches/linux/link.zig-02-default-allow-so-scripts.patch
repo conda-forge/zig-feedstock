@@ -6,6 +6,6 @@
          hidden: bool = false,
 -        allow_so_scripts: bool = false,
 +        allow_so_scripts: bool = true,
-         preferred_mode: std.builtin.LinkMode,
+         preferred_mode: std.lang.LinkMode,
          search_strategy: SearchStrategy,
  
