@@ -1,30 +1,30 @@
---- a/src/zig_llvm.h	2026-04-13 20:19:17
-+++ b/src/zig_llvm.h	2026-04-22 15:04:45
+--- a/src/zig_llvm.h
++++ b/src/zig_llvm.h
 @@ -120,6 +120,7 @@
  ZIG_EXTERN_C bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output);
  ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
  ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
 +ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
- 
+
  ZIG_EXTERN_C bool ZigLLVMWriteArchive(const char *archive_name, const char **file_names, size_t file_name_count,
      ZigLLVMArchiveKind archive_kind);
---- a/src/zig_llvm.cpp	2026-04-13 20:19:17
-+++ b/src/zig_llvm.cpp	2026-04-22 15:04:51
-@@ -502,6 +502,10 @@
-                 llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
-     }
-     namespace wasm {
-+        bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
-+                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
-+    }
-+    namespace macho {
+--- a/src/zig_llvm.cpp
++++ b/src/zig_llvm.cpp
+@@ -505,6 +505,10 @@
          bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
                  llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
      }
++    namespace macho {
++        bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
++                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
++    }
+ }
+
+ bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
 @@ -522,6 +526,11 @@
      return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
  }
- 
+
 +bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output) {
 +    std::vector<const char *> args(argv, argv + argc);
 +    return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
@@ -33,39 +33,20 @@
  static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Default == FloatABI::ABIType::Default, "");
  static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Soft == FloatABI::ABIType::Soft, "");
  static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Hard == FloatABI::ABIType::Hard, "");
---- a/src/codegen/llvm/bindings.zig	2026-04-13 20:19:17
-+++ b/src/codegen/llvm/bindings.zig	2026-04-22 15:05:03
-@@ -312,10 +312,12 @@
- extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
- extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
- extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
-+extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
- 
- pub const LinkCOFF = ZigLLDLinkCOFF;
- pub const LinkELF = ZigLLDLinkELF;
- pub const LinkWasm = ZigLLDLinkWasm;
-+pub const LinkMachO = ZigLLDLinkMachO;
- 
- pub const ArchiveKind = enum(c_int) {
-     GNU,
---- a/src/link/Lld.zig	2026-04-13 20:19:17
-+++ b/src/link/Lld.zig	2026-04-22 15:05:46
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
 @@ -3,6 +3,7 @@
      elf: Elf,
      coff: Coff,
      wasm: Wasm,
 +    macho: MachO,
  },
- 
+
  const Coff = struct {
-@@ -193,6 +194,31 @@
-             .global_base = options.global_base,
-             .export_symbol_names = options.export_symbol_names,
-             .import_symbols = options.import_symbols,
-+        };
-+    }
-+};
-+
+@@ -197,6 +198,31 @@
+     }
+ };
+
 +const MachO = struct {
 +    pagezero_size: ?u64,
 +    headerpad_size: ?u32,
@@ -87,11 +68,15 @@
 +            .install_name = options.install_name,
 +            .lib_directories = options.lib_directories,
 +            .rpath_list = options.rpath_list,
-         };
-     }
- };
++        };
++    }
++};
++
+ pub fn createEmpty(
+     arena: Allocator,
+     comp: *Compilation,
 @@ -209,12 +235,13 @@
- 
+
      const obj_file_ext: []const u8 = switch (target.ofmt) {
          .coff => "obj",
 -        .elf, .wasm => "o",
@@ -121,11 +106,10 @@
      };
      result catch |err| switch (err) {
          error.OutOfMemory, error.LinkFailure => |e| return e,
-@@ -1608,7 +1637,179 @@
-         }
+@@ -1609,6 +1638,178 @@
      }
  }
-+
+
 +fn machoLink(lld: *Lld, arena: Allocator) !void {
 +    const comp = lld.base.comp;
 +    const gpa = comp.gpa;
@@ -135,7 +119,7 @@
 +
 +    const directory = base.emit.root_dir;
 +    const full_out_path = try directory.join(arena, &[_][]const u8{base.emit.sub_path});
- 
++
 +    const zcu_obj_path: ?Cache.Path = if (comp.zcu != null) p: {
 +        break :p try comp.resolveEmitPathFlush(arena, .temp, base.zcu_object_basename.?);
 +    } else null;
@@ -301,8 +285,8 @@
  fn spawnLld(comp: *Compilation, arena: Allocator, argv: []const []const u8) !void {
      const io = comp.io;
      const gpa = comp.gpa;
---- a/src/target.zig	2026-04-13 20:19:17
-+++ b/src/target.zig	2026-04-22 15:05:04
+--- a/src/target.zig
++++ b/src/target.zig
 @@ -256,7 +256,7 @@
  /// The set of targets that Zig supports using LLD to link for.
  pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
@@ -312,3 +296,15 @@
          else => false,
      };
  }
+--- a/src/codegen/llvm/bindings.zig
++++ b/src/codegen/llvm/bindings.zig
+@@ -312,7 +312,9 @@
+ extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
++extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+
+ pub const LinkCOFF = ZigLLDLinkCOFF;
+ pub const LinkELF = ZigLLDLinkELF;
+ pub const LinkWasm = ZigLLDLinkWasm;
++pub const LinkMachO = ZigLLDLinkMachO;

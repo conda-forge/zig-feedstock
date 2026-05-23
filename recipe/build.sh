@@ -3,6 +3,18 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
+  echo "Attempting to re-exec with conda bash..."
+  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
+    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
+  elif [[ -x "${BUILD_PREFIX}/Library/bin/bash" ]]; then
+    exec "${BUILD_PREFIX}/Library/bin/bash" "$0" "$@"
+  else
+    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
+    exit 1
+  fi
+fi
+
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # --- Functions ---
@@ -177,6 +189,14 @@ if is_not_unix; then
   )
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
+fi
+
+# Embed PREFIX/lib RPATH at install time so binaries resolve libclang/libLLVM at runtime
+if is_unix; then
+  EXTRA_CMAKE_ARGS+=(
+    -DCMAKE_INSTALL_RPATH="${PREFIX}/lib"
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+  )
 fi
 
 if is_linux && is_cross; then
