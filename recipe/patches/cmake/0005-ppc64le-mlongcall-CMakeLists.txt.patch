@@ -26,7 +26,7 @@
  target_include_directories(zigcpp PUBLIC
      ${CLANG_INCLUDE_DIRS}
      ${LLVM_INCLUDE_DIRS}
-@@ -716,6 +729,19 @@
+@@ -716,6 +716,19 @@
  target_include_directories(zig2 PUBLIC stage1)
  target_link_libraries(zig2 LINK_PUBLIC zigcpp)
 
@@ -43,6 +43,6 @@
 +  )
 +endif()
 +
- # Link pthread_atfork stub if it exists (needed for glibc 2.28)
- set(PTHREAD_STUB "$ENV{ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
- if(EXISTS "${PTHREAD_STUB}")
+ if(MSVC)
+   target_link_libraries(zig2 LINK_PUBLIC ntdll.lib ws2_32.lib)
+ elseif(MINGW)

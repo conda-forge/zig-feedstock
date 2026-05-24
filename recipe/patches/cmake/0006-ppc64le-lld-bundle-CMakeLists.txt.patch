@@ -1,0 +1,16 @@
+# Purpose: Override LLD_LIBRARIES with a shared .so bundle on ppc64le to avoid R_PPC64_REL24 overflow
+# Affects: CMakeLists.txt (LLD_LIBRARIES override block)
+# Upstream: TBD
+# Drop-when: conda-forge ppc64le liblld*.a archives compiled with -mlongcall or dynamic linker layout changes
+# Last-verified: 2026-05-23
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -138,1 +138,7 @@ find_package(clang 21)
+ find_package(lld 21)
++
++if(DEFINED ZIG_LLD_BUNDLE_SO AND EXISTS "${ZIG_LLD_BUNDLE_SO}")
++    set(LLD_LIBRARIES "${ZIG_LLD_BUNDLE_SO}")
++    message(STATUS "ZIG: overriding LLD_LIBRARIES with bundle: ${ZIG_LLD_BUNDLE_SO}")
++endif()
++
