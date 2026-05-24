@@ -170,6 +170,10 @@ SYNCHRONIZATION_DEF
         for _supp_in in "${_supp_defs}"/*.def.in; do
           [[ -f "${_supp_in}" ]] || continue
           _supp_stem="$(basename "${_supp_in%.def.in}")"
+          # Skip pure include helpers (not standalone DLL definitions)
+          case "${_supp_stem}" in
+            func|ucrtbase-common|crt-aliases) continue ;;
+          esac
           _supp_lib="${_mingw_common}/lib${_supp_stem}.a"
           [[ -f "${_supp_lib}" ]] && continue
           _supp_def="${_mingw_common}/${_supp_stem}.def"
@@ -278,6 +282,45 @@ SYNCHRONIZATION_DEF
       else
         dbg echo "=== MinGW CRT sources not found at ${_mingw_crt} ==="
       fi
+
+      # Step 6: empty stub archives for libs external consumers expect by convention
+      # but zig folds elsewhere (winpthread -> mingw32), uses compiler-rt for
+      # (gcc, gcc_eh, ssp), or doesn't provide (stdc++).  These satisfy -lXXX
+      # filename checks without symbols; any actual symbol references must be
+      # satisfied by other libs the consumer links.
+      #
+      # Helper: compile a one-symbol weak C stub and archive it.
+      # Args: out_dir  target_triple  lib_name
+      _create_stub_lib_archive() {
+        local out_dir="$1"
+        local target_triple="$2"
+        local lib_name="$3"
+        local lib_path="${out_dir}/lib${lib_name}.a"
+        [[ -f "${lib_path}" ]] && return 0
+        # Sanitize lib_name to a valid C identifier (replace +, -, . with _)
+        local sym_name
+        sym_name="$(printf '%s' "${lib_name}" | tr -c 'a-zA-Z0-9_' '_')"
+        local stub_c="${out_dir}/.zig_${sym_name}_stub.c"
+        local stub_o="${out_dir}/.zig_${sym_name}_stub.o"
+        printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
+        if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>/dev/null; then
+          rm -f "${stub_c}" "${stub_o}"
+          return 1
+        fi
+        if ! "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" 2>/dev/null; then
+          rm -f "${stub_c}" "${stub_o}"
+          return 1
+        fi
+        rm -f "${stub_c}" "${stub_o}"
+        dbg echo "[_mingw] stub archive: ${lib_path}"
+      }
+
+      dbg echo "=== Generating stub archives for ${_win_target} in ${_crt_outdir} ==="
+      local _stub_libs=(mingw32 gcc gcc_eh stdc++ ssp winpthread)
+      for _stub_lib in "${_stub_libs[@]}"; do
+        _create_stub_lib_archive "${_crt_outdir}" "${_win_target}" "${_stub_lib}"
+      done
+      dbg echo "=== Stub archive generation done ==="
 
     else
       dbg echo "=== llvm-dlltool or zig not found; skipping import lib pre-generation ==="

@@ -3,18 +3,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
-  echo "Attempting to re-exec with conda bash..."
-  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
-  elif [[ -x "${BUILD_PREFIX}/Library/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/Library/bin/bash" "$0" "$@"
-  else
-    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
-    exit 1
-  fi
-fi
-
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # Local-only debug overrides — file is gitignored; create from recipe/local-scripts/debug-env.sh.example
@@ -153,7 +141,7 @@ if is_cross; then
   sanitize_and_export_cross_flags
 fi
 
-# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref because zig2
+# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref
 EXTRA_ZIG_ARGS+=(-Dno-langref)
 EXTRA_CMAKE_ARGS+=(-DZIG_NO_LANGREF=ON)
 
@@ -223,7 +211,7 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
   create_gcc14_glibc28_compat_lib
 
-  is_cross && { rm -f "${PREFIX}/bin/llvm-config"; cp "${BUILD_PREFIX}/bin/llvm-config" "${PREFIX}/bin/llvm-config"; }
+  is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
 fi
 
 # LLVM_LIBRARIES from llvm-config which omits zstd/xml2/z. LLD's
@@ -247,10 +235,7 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-# --- ppc64le: build + install LLD and zigcpp bundles (path-independent) ---
-# Must run AFTER configure_cmake_zigcpp (which produces build-release/zigcpp/libzigcpp.a)
-# and BEFORE the build-path fork so both cmake_build and build_zig_with_zig
-# paths ship the bundles in ${PREFIX}/lib.
+# --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   dbg echo "=== ppc64le: build + install bundles (path-independent) ==="
   mkdir -p "${PREFIX}/lib"
