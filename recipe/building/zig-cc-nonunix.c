@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <process.h>
 #include <windows.h>
 
@@ -93,6 +94,25 @@ static int is_drop_flag(const char *arg) {
            str_eq(arg, "-fno-plt") ||
            starts_with(arg, "-fdebug-prefix-map=") ||
            starts_with(arg, "-stdlib=");
+}
+
+/* MSVC/LLD manifest flags to drop (/MANIFEST*, -MANIFEST*).
+ * CMake injects /MANIFEST:NO, /MANIFESTUAC:NO, /MANIFESTINPUT:..., etc.
+ * These are PE/COFF linker flags; zig cc forwards them to lld-link which
+ * may reject or misparse them when the cc wrapper re-invokes zig cc. */
+static int is_manifest_flag(const char *arg) {
+    if (arg[0] != '/' && arg[0] != '-')
+        return 0;
+    const char *body = arg + 1;
+    if (tolower((unsigned char)body[0]) != 'm') return 0;
+    if (tolower((unsigned char)body[1]) != 'a') return 0;
+    if (tolower((unsigned char)body[2]) != 'n') return 0;
+    if (tolower((unsigned char)body[3]) != 'i') return 0;
+    if (tolower((unsigned char)body[4]) != 'f') return 0;
+    if (tolower((unsigned char)body[5]) != 'e') return 0;
+    if (tolower((unsigned char)body[6]) != 's') return 0;
+    if (tolower((unsigned char)body[7]) != 't') return 0;
+    return 1;
 }
 
 /* Flags that trigger auto-promotion to LLD (unsupported by self-hosted linker) */
@@ -299,6 +319,11 @@ int main(int argc, char *argv[]) {
 
         /* Standalone drops */
         if (is_drop_flag(arg))
+            continue;
+
+        /* MSVC manifest flags -- drop silently (PE/COFF linker flags that
+         * lld-link does not accept when forwarded through zig cc) */
+        if (is_manifest_flag(arg))
             continue;
 
         /* -nostdlib++: downgrade mode from c++ to cc */

@@ -282,7 +282,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} >=${{ version }}
+            - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -326,7 +326,7 @@ outputs:
                 - zig-zigcpp-bundle
           files:
             # qemu-ppc64le doesn't faithfully emulate traps
-            - if: not cross_target_platform_ == "linux-ppc64le"
+            - if: not xc_ppc64le
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -348,24 +348,20 @@ outputs:
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*
-
-      # Shared libc++ discovery tests
-      - if: not osx
-        then:
-          - script:
-              - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }}
-            requirements:
-              run:
-                - python >=3.10
-                - libcxx
-            files:
-              recipe:
-                - testing/_test_utils.py
-                - testing/test_libcxx_shared.py
-
+      # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
+      - script:
+          - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+        requirements:
+          run:
+            - python >=3.10
+            - libcxx
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: linux or build_platform == target_platform
+          - if: linux or is_native
             then:
               - if: unix
                 then:
@@ -397,7 +393,7 @@ outputs:
             then:
               - for %%L in (kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
               - echo PASS MinGW import libs present (Windows)
-          - if: unix and (win-64 in cross_target_platform_ or win-arm64 in cross_target_platform_)
+          - if: unix and xc_nlo
             then:
               - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
               - echo "PASS MinGW import libs present (cross-compiled)"
@@ -431,7 +427,7 @@ outputs:
               - echo "PASS i386 MinGW stub archives present in lib32"
 
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
-      # unrecognized linker args to LLD instead of rejecting them.
+      # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
           - if: unix
             then:
@@ -453,7 +449,7 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx and build_platform == target_platform
+          - if: osx and is_native
             then:
               # macOS: test with Mach-O -exported_symbols_list via LLD
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
@@ -465,6 +461,17 @@ outputs:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+
+      # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
+      # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
+      # the cc wrapper must filter them before forwarding to zig cc.
+      - script:
+          - if: not unix
+            then:
+              - echo void f(void){} > %TEMP%\test_manifest.c
+              - ${{ conda_triplet }}-zig cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o %TEMP%\test_manifest.dll %TEMP%\test_manifest.c
+              - if not exist %TEMP%\test_manifest.dll exit /b 1
+              - echo PASS zig cc /MANIFEST* filter
 
   # ==========================================================================
   # ACTIVATION: zig_$cross_target_platform_ (scripts)
@@ -492,19 +499,10 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
-        # Need zig to compile .exe shims on non-Unix (cross-compiler shim).
-        # NB: lower bound is the previous conda-forge release (>=0.15.2),
-        # not ${{ version }}. A strict ==0.16.0 pin during the first 0.16
-        # CI run is unsatisfiable because the matching zig_impl isn't
-        # published in conda-forge yet, and a sibling variant's just-built
-        # impl isn't visible in the cross variant's test environment.
-        # run_exports still enforce proper ABI compat for end users.
+        # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
             - zig_impl_${{ xc_build_platform }} >=0.15.2
-        # On Windows the wrappers compile to .exe; declare the MSVC compiler
-        # so vs2022_*'s run_exports auto-pin ucrt and vc14_runtime as run
-        # deps of the wrappers package (fixes overlinking on api-ms-win-crt-*).
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -515,14 +513,13 @@ outputs:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
         # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
-        # For cross-compiler: depend on zig_impl for BUILD platform (external package).
-        # See note above re: >=0.15.2 lower bound during 0.16 CI.
+        # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2
+            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
-        - if: cross_target_platform_ == "linux-ppc64le"
+        - if: xc_ppc64le
           then:
             # ppc64le patches redirect zig linking to gcc/ld.bfd
             # (LLD lacks PowerPC64 relocation support)
@@ -555,11 +552,11 @@ outputs:
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
-          - if: arm64 not in cross_target_platform_
+          - if: linux or is_native
             then:
               - ${{ conda_triplet }}-zig version
             else:
-              - echo "Skip functional tests on arm64"
+              - echo "Skip functional tests on non-native or non-emulated"
           # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
           - if: unix
             then:
@@ -591,8 +588,8 @@ outputs:
                 - libclang-cpp ${{ llvm_version }}.*
         files:
           recipe:
-            - testing/test-cross-shim.bat
             - testing/_test_utils.py
+            - testing/test-cross-shim.bat
             - testing/test_zig_toolchain.py
 
   # ==========================================================================

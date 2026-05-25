@@ -11,7 +11,7 @@
  )
  target_include_directories(zig2 PUBLIC stage1)
 -target_link_libraries(zig2 LINK_PUBLIC zigcpp)
-+if(DEFINED ZIG_ZIGCPP_BUNDLE_SO AND EXISTS "${ZIG_ZIGCPP_BUNDLE_SO}")
++if(DEFINED ZIG_ZIGCPP_BUNDLE_SO)
 +    message(STATUS "ZIG: overriding zigcpp link target with bundle: ${ZIG_ZIGCPP_BUNDLE_SO}")
 +    target_link_libraries(zig2 LINK_PUBLIC "${ZIG_ZIGCPP_BUNDLE_SO}")
 +    target_link_libraries(zig2 LINK_PUBLIC ${CLANG_LIBRARIES} ${LLD_LIBRARIES} ${LLVM_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})

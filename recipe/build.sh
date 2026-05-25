@@ -121,9 +121,13 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
     -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
   )
+  # Use PREFIX/lib here (not ZIG_LOCAL_CACHE_DIR): these paths are baked into
+  # the zig binary's DT_NEEDED at link time. conda-build's patchelf/prefix
+  # replacement then rewrites PREFIX to the install location correctly.
+  # The bundles are installed to PREFIX/lib/ at lines 213/216 (before zig2 link).
   EXTRA_CMAKE_ARGS+=(
-    -DZIG_LLD_BUNDLE_SO="${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so"
-    -DZIG_ZIGCPP_BUNDLE_SO="${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so"
+    -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
+    -DZIG_ZIGCPP_BUNDLE_SO="${PREFIX}/lib/libzig-zigcpp-bundle.so"
   )
 fi
 
@@ -134,6 +138,11 @@ fi
 if is_cross; then
   sanitize_and_export_cross_flags
 fi
+
+# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
+# Phase 2 (zig build langref) handles it separately when stage3 is runnable.
+EXTRA_ZIG_ARGS+=(-Dno-langref)
+EXTRA_CMAKE_ARGS+=(-DZIG_NO_LANGREF=ON)
 
 if is_osx; then
   EXTRA_CMAKE_ARGS+=(
