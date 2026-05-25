@@ -266,10 +266,6 @@ if is_linux && is_cross; then
   dbg echo "=== POST-CMAKE: linux cross-build setup ==="
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
-  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
-
-  dbg echo "=== POST-CMAKE: fix_sysroot_libc_scripts ==="
-  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
 
   dbg echo "=== POST-CMAKE: create_zig_linux_libc_file ==="
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
@@ -289,9 +285,87 @@ if is_linux && is_cross; then
   dbg echo "=== POST-CMAKE: cross-build setup DONE ==="
 fi
 
+# Always-linux: sysroot ld-script rewrite (needed by wrapper compile and any zig cc
+# invocation that lacks --sysroot flags). On native linux-64 the sysroot's
+# libpthread.so contains absolute /usr/lib64/... paths that LLD can't resolve.
+if is_linux; then
+  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
+  dbg echo "=== POST-CMAKE: fix_sysroot_libc_scripts ==="
+  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
+fi
+
 if is_linux && is_cross; then
   export QEMU_LD_PREFIX="${BUILD_PREFIX}/${CONDA_TOOLCHAIN_HOST}/sysroot"
 fi
+
+# ============================================================
+# DEBUG: pre-zig-build environment dump (libpthread diagnostic)
+# ============================================================
+dbg echo "================ ZIG BUILD ENV DUMP ================"
+dbg echo "PWD: $(pwd)"
+dbg echo "PREFIX:               ${PREFIX:-unset}"
+dbg echo "BUILD_PREFIX:         ${BUILD_PREFIX:-unset}"
+dbg echo "CONDA_BUILD_SYSROOT:  ${CONDA_BUILD_SYSROOT:-unset}"
+dbg echo "CONDA_TOOLCHAIN_HOST: ${CONDA_TOOLCHAIN_HOST:-unset}"
+dbg echo "CONDA_TOOLCHAIN_BUILD:${CONDA_TOOLCHAIN_BUILD:-unset}"
+dbg echo "HOST:                 ${HOST:-unset}"
+dbg echo "BUILD:                ${BUILD:-unset}"
+dbg echo "ZIG_TRIPLET:          ${ZIG_TRIPLET:-unset}"
+dbg echo "EXTRA_ZIG_ARGS:       ${EXTRA_ZIG_ARGS:-unset}"
+dbg echo "--- compiler vars ---"
+dbg echo "CC=${CC:-unset}"
+dbg echo "CXX=${CXX:-unset}"
+dbg echo "LD=${LD:-unset}"
+dbg echo "AR=${AR:-unset}"
+dbg echo "RANLIB=${RANLIB:-unset}"
+dbg echo "--- flag vars ---"
+dbg echo "CFLAGS=${CFLAGS:-unset}"
+dbg echo "CXXFLAGS=${CXXFLAGS:-unset}"
+dbg echo "CPPFLAGS=${CPPFLAGS:-unset}"
+dbg echo "LDFLAGS=${LDFLAGS:-unset}"
+dbg echo "--- bootstrap zig info ---"
+dbg echo "BUILD_ZIG: ${BUILD_ZIG:-unset}"
+ZIG_PROBE=""
+for cand in "${BUILD_ZIG:-}" "x86_64-conda-linux-gnu-zig" "${CONDA_TOOLCHAIN_HOST:-}-zig" "zig"; do
+  if [[ -n "$cand" ]] && command -v "$cand" >/dev/null 2>&1; then
+    ZIG_PROBE="$cand"
+    break
+  fi
+done
+if [[ -n "$ZIG_PROBE" ]]; then
+  dbg echo "Found zig: $ZIG_PROBE -> $(command -v "$ZIG_PROBE")"
+  dbg "$ZIG_PROBE" version
+  dbg "$ZIG_PROBE" env
+else
+  dbg echo "no zig found in PATH (tried: BUILD_ZIG, x86_64-conda-linux-gnu-zig, ${CONDA_TOOLCHAIN_HOST:-}-zig, zig)"
+fi
+dbg echo "--- sysroot ld scripts (text) ---"
+if [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
+  for script in "${CONDA_BUILD_SYSROOT}/usr/lib64/libpthread.so" "${CONDA_BUILD_SYSROOT}/usr/lib64/libc.so"; do
+    if [[ -f "$script" ]]; then
+      # ld scripts are ASCII; safe to head. Guard anyway.
+      if file -b "$script" 2>/dev/null | grep -qiE 'text|ASCII|script'; then
+        dbg echo "--- $script ---"
+        dbg head -5 "$script"
+      else
+        dbg echo "--- $script: NON-TEXT (skipped head) ---"
+        dbg ls -la "$script"
+      fi
+    else
+      dbg echo "--- $script: MISSING ---"
+    fi
+  done
+  dbg echo "--- sysroot ld binaries (existence only) ---"
+  dbg ls -la "${CONDA_BUILD_SYSROOT}/lib64/libpthread.so.0"
+  dbg echo "  libpthread.so.0: MISSING"
+  dbg ls -la "${CONDA_BUILD_SYSROOT}/lib64/libc.so.6"
+  dbg echo "  libc.so.6: MISSING"
+  dbg echo "--- libpthread_nonshared.a locations under sysroot ---"
+  dbg find "${CONDA_BUILD_SYSROOT}" -name "libpthread_nonshared.a"
+fi
+dbg echo "--- /usr/lib64 libpthread* (should NOT exist in conda env) ---"
+dbg ls -la /usr/lib64/libpthread*
+dbg echo "================ END ENV DUMP ================"
 
 dbg echo "=== ZIG BUILD: starting zig build ==="
 dbg echo "=== ZIG BUILD: zig=${BUILD_ZIG} dir=${zig_build_dir} ==="
@@ -369,15 +443,113 @@ else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
 fi
 
-dbg echo "=== POST-INSTALL: mv zig to ${CONDA_TRIPLET}-zig ==="
-mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
-dbg echo "=== POST-INSTALL: mv done ==="
+# === Phase 2: Unified wrapper install ===
+WRAPPER_SRC="${RECIPE_DIR}/building/zig-wrapper.c"
+WRAPPER_OBJDIR="${SRC_DIR}/_wrapper_build"
+mkdir -p "${WRAPPER_OBJDIR}"
+
+# Determine platform-specific directories first
+if is_not_unix; then
+    WRAPPER_BIN_DIR="${PREFIX}/Library/bin"
+    REAL_ZIG_DIR="${PREFIX}/Library/share/zig"
+    REAL_ZIG_NAME="zig-real.exe"
+    EXE_EXT=".exe"
+else
+    WRAPPER_BIN_DIR="${PREFIX}/bin"
+    REAL_ZIG_DIR="${PREFIX}/share/zig"
+    REAL_ZIG_NAME="zig-real"
+    EXE_EXT=""
+fi
+
+WRAPPER_C="${WRAPPER_OBJDIR}/zig-wrapper-built.c"
+
+# Wrapper's baked default -target. On Windows the wrapper is named
+# <arch>-w64-mingw32-zig and the feedstock ships MinGW (.dll.a) import libs, so
+# default to the GNU/MinGW ABI; users can still select MSVC explicitly with
+# -target <arch>-windows-msvc (the wrapper suppresses its default when the user
+# passes -target). This is independent of ZIG_TRIPLET, which still controls how
+# the zig binary itself is built (zig is multi-target).
+case "${target_platform}" in
+    win-64)    WRAPPER_DEFAULT_TARGET="x86_64-windows-gnu" ;;
+    win-arm64) WRAPPER_DEFAULT_TARGET="aarch64-windows-gnu" ;;
+    win-32)    WRAPPER_DEFAULT_TARGET="x86-windows-gnu" ;;
+    *)         WRAPPER_DEFAULT_TARGET="${ZIG_TRIPLET%%.[0-9]*}" ;;
+esac
+
+# Substitute compile-time placeholders. Substitute @ZIG_REAL_PATH@ with the
+# absolute zig-real path; conda's binary prefix-replacement handles relocation at install time.
+sed -e "s|@ZIG_TARGET@|${WRAPPER_DEFAULT_TARGET}|g" \
+    -e "s|@ZIG_REAL_PATH@|${REAL_ZIG_DIR//\\//}/${REAL_ZIG_NAME}|g" \
+    "${WRAPPER_SRC}" > "${WRAPPER_C}"
+
+mkdir -p "${WRAPPER_BIN_DIR}" "${REAL_ZIG_DIR}"
+
+# macOS Mach-O needs header padding for conda's install_name_tool relinking
+if [[ "${target_platform}" == osx-* ]]; then
+    WRAPPER_LDFLAGS="-Wl,-headerpad_max_install_names"
+else
+    WRAPPER_LDFLAGS=""
+fi
+
+dbg echo "================ PRE-WRAPPER-COMPILE STATE ================"
+dbg echo "Bin dir contents before wrapper install:"
+dbg sh -c 'ls -la "${PREFIX}/bin/" 2>&1 | head -40'
+dbg echo "Wrapper source check:"
+dbg ls -la recipe/building/zig-wrapper.c
+dbg echo "Just-built zig check:"
+dbg ls -la "${PREFIX}/bin/zig"
+dbg "${PREFIX}/bin/zig" version
+dbg echo "================ END PRE-WRAPPER STATE ================"
+
+# Per-target wrapper compile flags:
+# - linux-ppc64le: pass explicit --target= so zig resolves the ppc64le dynamic
+#   linker (/lib64/ld64.so.2) instead of the build-host's x86_64 one, and
+#   selects ppc64le's 128-bit-long-double ABI so glibc's bits/stdio-ldbl.h skips
+#   the __LDBL_REDIR_DECL asm-label redirect (clang rejects it, gcc accepts).
+#   Do NOT add -mlong-double-128: zig 0.15's cc driver folds it into the target
+#   query string, producing an InvalidAbiVersion parse error.
+# - win-*: compile with -g0 (no debug info) so zig's PE/COFF link does not emit
+#   a CodeView .pdb sidecar, which trips package_contents strict checks. A
+#   defensive *.pdb removal after the build catches any sidecar that slips through.
+_WRAPPER_CC_EXTRA=""
+case "${target_platform}" in
+    linux-ppc64le) _WRAPPER_CC_EXTRA="--target=${ZIG_TRIPLET}" ;;
+    win-*)         _WRAPPER_CC_EXTRA="-g0" ;;
+esac
+
+# Compile wrapper using the just-built zig
+PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
+"${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
+
+# Install ergonomic-name copies
+for suffix in zig-cc zig-cxx zig-ar zig-ranlib zig-lld zig-rc zig-asm; do
+    cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-${suffix}${EXE_EXT}"
+done
+
+# zig's PE/COFF link can still emit a .pdb sidecar named after the output;
+# it is not needed for the wrapper and trips package_contents strict checks.
+case "${target_platform}" in
+    win-*) rm -f "${WRAPPER_BIN_DIR}"/*.pdb ;;
+esac
+
+# Move raw zig out of PATH
+mv "${PREFIX}/bin/zig" "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}"
+
+echo "=== Phase 2 install verification ==="
+echo "WRAPPER_BIN_DIR contents:"
+ls -la "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig"* 2>&1 || echo "EMPTY or missing"
+echo "REAL_ZIG_DIR contents:"
+ls -la "${REAL_ZIG_DIR}/" 2>&1 || echo "MISSING"
+echo "Real zig file:"
+ls -la "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}" 2>&1 || echo "MISSING"
+file "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}" 2>&1 || true
+echo "=== end Phase 2 install verification ==="
+# === end Phase 2 ===
 
 # Non-unix conda convention: artifacts go under Library/
 if is_not_unix; then
   dbg echo "Relocating to Library/ for non-unix conda convention"
-  mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
-  mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
+  mkdir -p "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
   [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
 fi

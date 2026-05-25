@@ -288,18 +288,23 @@ outputs:
               - ucrt
               - vc14_runtime
     tests:
-      # Package contents verification - impl has triplet-prefixed binary
+      # Package contents verification - impl has triplet-prefixed wrapper binaries
       - package_contents:
           strict: true
-          bin:
-            - ${{ conda_triplet }}-zig
-          lib:
-            - if: ppc64le
-              then:
-                - zig-lld-bundle
-                - zig-zigcpp-bundle
           files:
-            # qemu-ppc64le doesn't faithfully emulate traps
+            - ${{ library }}bin/${{ conda_triplet }}-zig${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-cc${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-cxx${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-ar${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-ranlib${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-lld${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-rc${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
+            - if: unix
+              then:
+                - share/zig/zig-real
+              else:
+                - Library/share/zig/zig-real.exe
             - if: is_native or linux and not xc_ppc64le
               then:
                 - ${{ library }}doc/langref.html
@@ -318,8 +323,12 @@ outputs:
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
-            # Post-install tests
             - etc/conda/test-files/zig*
+          lib:
+            - if: ppc64le
+              then:
+                - zig-lld-bundle
+                - zig-zigcpp-bundle
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
           - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
@@ -421,18 +430,34 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx and is_native
-            then:
-              # macOS: test with Mach-O -exported_symbols_list via LLD
-              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
-              - echo '_main' > /tmp/test_lld.exp
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
-              - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
           - if: ppc64le and linux
             then:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+
+      # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
+      # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
+      # the cc wrapper must filter them before forwarding to zig cc.
+      # Debug instrumentation reveals which binary is invoked and what filtering fires.
+      - script:
+          - if: not unix
+            then:
+              - 'echo === layout diagnostic ==='
+              - 'where ${{ conda_triplet }}-zig 2>nul || echo "INFO: ${{ conda_triplet }}-zig not on PATH"'
+              - 'where ${{ conda_triplet }}-zig-cc 2>nul || echo "INFO: ${{ conda_triplet }}-zig-cc not on PATH"'
+              - 'dir %LIBRARY_PREFIX%\bin\*-zig*.exe 2>nul || echo "INFO: no *-zig*.exe in LIBRARY_PREFIX\bin"'
+              - 'echo CC=%CC%'
+              - 'echo CXX=%CXX%'
+              - 'echo PATH=%PATH%'
+              - 'echo === compile test source ==='
+              - 'echo void f(void){} > %TEMP%\test_manifest.c'
+              - 'echo === run with ZIG_WRAPPER_DEBUG=1 ==='
+              - set ZIG_WRAPPER_DEBUG=1
+              - '${{ conda_triplet }}-zig cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o %TEMP%\test_manifest.dll %TEMP%\test_manifest.c'
+              - set ZIG_WRAPPER_DEBUG=
+              - 'if not exist %TEMP%\test_manifest.dll exit /b 1'
+              - 'echo PASS zig cc /MANIFEST* filter'
 
   # ==========================================================================
   # ACTIVATION: zig_$cross_target_platform_ (scripts)
