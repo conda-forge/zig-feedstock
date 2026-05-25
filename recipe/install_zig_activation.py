@@ -250,7 +250,7 @@ def install_zig_cc_wrappers(
     }
 
     if is_nonunix:
-        wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
+        wrapper_dir = prefix / "Library" / "bin"
 
         # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
         cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
@@ -281,7 +281,7 @@ def install_zig_cc_wrappers(
                 _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
 
     else:
-        wrapper_dir = prefix / "share" / "zig" / "wrappers"
+        wrapper_dir = prefix / "bin"
         # Install shared helpers (sourced by wrapper scripts, not executed directly)
         for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
             src = scripts_dir / helper

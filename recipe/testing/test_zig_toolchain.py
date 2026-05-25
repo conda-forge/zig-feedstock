@@ -77,9 +77,9 @@ _is_cross_compiler = _build_zig != _host and _build_zig != "" and _host != ""
 
 _prefix = Path(os.environ.get("CONDA_PREFIX", ""))
 if _build_is_win:
-    _wrapper_dir = _prefix / "Library" / "share" / "zig" / "wrappers"
+    _wrapper_dir = _prefix / "Library" / "bin"
 else:
-    _wrapper_dir = _prefix / "share" / "zig" / "wrappers"
+    _wrapper_dir = _prefix / "bin"
 
 def _env_var(name: str) -> str:
     """Return env var value or empty string."""

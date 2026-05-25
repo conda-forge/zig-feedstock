@@ -5,7 +5,7 @@ IFS=$'\n\t'
 
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
-build_platform="${build_platform:-${target_platform}}"
+export build_platform="${build_platform:-${target_platform}}"
 
 # --- Functions ---
 
@@ -291,11 +291,11 @@ fi
 
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 _can_run_stage3() {
+  if ! is_cross; then return 0; fi
   if ! is_unix; then return 1; fi
   # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
   # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
   if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
-  if ! is_cross; then return 0; fi
   if is_linux; then
     command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
   fi

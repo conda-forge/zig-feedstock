@@ -3,7 +3,7 @@
 # Installed to: $PREFIX/etc/conda/activate.d/zig_activate.sh
 #
 # Exports ZIG_CC, ZIG_CXX, etc. pointing to pre-installed wrapper scripts
-# in $CONDA_PREFIX/share/zig/wrappers/
+# in $CONDA_PREFIX/bin/
 
 # === Configuration (substituted at install time) ===
 _CONDA_TRIPLET="@CONDA_TRIPLET@"
@@ -22,7 +22,7 @@ if [[ -n "${_CROSS_TARGET_TRIPLET}" ]]; then
 fi
 
 # === Wrapper directory (pre-installed at build time) ===
-_wrapper_dir="${CONDA_PREFIX}/share/zig/wrappers"
+_wrapper_dir="${CONDA_PREFIX}/bin"
 
 if [[ ! -d "${_wrapper_dir}" ]]; then
     echo "WARNING: zig-cc activation: wrapper directory not found: ${_wrapper_dir}" >&2
