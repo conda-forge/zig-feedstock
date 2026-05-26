@@ -43,8 +43,6 @@ static int str_eq(const char *a, const char *b) {
 static const char *conda_to_zig_target(const char *triplet) {
     if (starts_with(triplet, "x86_64-w64-mingw32"))  return "x86_64-windows-gnu";
     if (starts_with(triplet, "aarch64-w64-mingw32")) return "aarch64-windows-gnu";
-    if (starts_with(triplet, "x86_64-apple-darwin"))  return "x86_64-macos-none";
-    if (starts_with(triplet, "arm64-apple-darwin"))   return "aarch64-macos-none";
     /* *-conda-linux-gnu* -> *-linux-gnu (strip -conda-) */
     if (strstr(triplet, "-conda-linux-gnu")) {
         static char buf[256];
@@ -137,8 +135,6 @@ static int is_xlinker_lld_trigger(const char *arg) {
     if (str_eq(arg, "--gc-sections") || str_eq(arg, "--no-gc-sections")) return 1;
     if (starts_with(arg, "--build-id")) return 1;
     if (str_eq(arg, "--allow-shlib-undefined") || str_eq(arg, "--no-allow-shlib-undefined")) return 1;
-    if (starts_with(arg, "-exported_symbols_list") || starts_with(arg, "-unexported_symbols_list")) return 1;
-    if (str_eq(arg, "-all_load") || starts_with(arg, "-force_load")) return 1;
     return 0;
 }
 

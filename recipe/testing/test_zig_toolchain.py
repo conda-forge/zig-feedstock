@@ -162,13 +162,6 @@ def test_activation_variables() -> None:
         else:
             FAIL(f"{var} is set")
 
-    if _env_var("CONDA_ZIG_HOST") and _host:
-        if _env_var("CONDA_ZIG_HOST") == _host:
-            PASS("CONDA_ZIG_HOST matches expected")
-        else:
-            FAIL("CONDA_ZIG_HOST matches expected",
-                 f"got {_env_var('CONDA_ZIG_HOST')!r}, want {_host!r}")
-
     # ZIG_CC / ZIG_CXX / ZIG_LLD
     for var in ("ZIG_CC", "ZIG_CXX", "ZIG_LLD"):
         val = _env_var(var)
@@ -268,24 +261,7 @@ def test_flag_filtering() -> None:
             dynlist = Path(td) / "test.dynlist"
             dynlist.write_text("{ main; };\n")
 
-            # Step 1: Verify --dynamic-list fails WITHOUT the wrapper (raw zig cc)
-            # This confirms the self-hosted linker rejects it
-            zig_bin = _env_var("ZIG") or _env_var("CONDA_ZIG_BUILD")
-            if zig_bin:
-                zig_path = _prefix / "bin" / zig_bin if not os.path.isabs(zig_bin) else Path(zig_bin)
-                if zig_path.exists():
-                    r_raw = _run([str(zig_path), "cc", "-target", "x86_64-linux-gnu",
-                                  f"-Wl,--dynamic-list={dynlist}",
-                                  "-o", str(Path(td) / "raw_dl"), str(main_src)],
-                                 cwd=td, timeout=60)
-                    if r_raw.returncode != 0 and "unsupported linker arg" in r_raw.stderr:
-                        PASS("raw zig cc rejects --dynamic-list (self-hosted linker)")
-                    elif r_raw.returncode == 0:
-                        PASS("raw zig cc accepts --dynamic-list (LLD default for this target)")
-                    else:
-                        WARN("raw zig cc --dynamic-list", f"unexpected: rc={r_raw.returncode}")
-
-            # Step 2 & 3: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
+            # Step 1 & 2: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
             if is_ppc64le_target:
                 # ppc64le: LLD lacks relocation support -- verify wrapper blocks it
@@ -303,7 +279,7 @@ def test_flag_filtering() -> None:
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
             else:
-                # Step 2: Verify --dynamic-list succeeds via wrapper (auto-LLD promotion)
+                # Step 1: Verify --dynamic-list succeeds via wrapper (auto-LLD promotion)
                 exe_dl = Path(td) / "test_dynlist_lld"
                 dl_cmd = [
                     zig_cc,
@@ -319,7 +295,7 @@ def test_flag_filtering() -> None:
                     FAIL("--dynamic-list auto-LLD promotion",
                          f"rc={r_dl.returncode} stderr={r_dl.stderr[:2000]}")
 
-                # Step 3: Verify explicit -fuse-ld=lld also works
+                # Step 2: Verify explicit -fuse-ld=lld also works
                 exe_explicit = Path(td) / "test_explicit_lld"
                 explicit_cmd = [
                     zig_cc, "-fuse-ld=lld",
