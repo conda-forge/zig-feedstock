@@ -203,7 +203,18 @@ function cmake_build() {
       export ZIG_CROSS_TARGET_MCPU="baseline"
     fi
     if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-      CMAKE_PATCHES+=(0005-ppc64le-mlongcall-CMakeLists.txt.patch)
+      CMAKE_PATCHES+=(
+        0005-ppc64le-mlongcall-CMakeLists.txt.patch
+        # 0006/0007 are conditionally activated via -DZIG_LLD_BUNDLE_SO=...
+        # / -DZIG_ZIGCPP_BUNDLE_SO=... cmake variables. Without those defined,
+        # the patches are no-ops (their CMake `if(DEFINED ...)` guards skip
+        # the override blocks). Bundle build/install orchestration (sourcing
+        # _lld_bundle.sh / _zigcpp_bundle.sh and producing the .so files) is
+        # not yet wired in 0.17 — the patches are registered ahead of that
+        # work so the cmake-build path can opt in once orchestration lands.
+        0006-ppc64le-lld-bundle-CMakeLists.txt.patch
+        0007-ppc64le-zigcpp-bundle-CMakeLists.txt.patch
+      )
     fi
   fi
 
