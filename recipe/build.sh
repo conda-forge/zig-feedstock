@@ -101,7 +101,7 @@ EXTRA_ZIG_ARGS=(
 
 # Patch build.zig-02-doctest-forward-target adds -Ddoctest-target to build.zig.
 # Gated to linux/osx where the patch applies and where doctest target forwarding matters.
-if is_linux || is_osx; then
+if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
@@ -152,7 +152,7 @@ if is_osx; then
   EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
-  EXTRA_ZIG_ARGS+=(--maxrss 7500000000)
+  EXTRA_ZIG_ARGS+=(--maxrss 7800000000)
 fi
 
 if is_not_unix; then

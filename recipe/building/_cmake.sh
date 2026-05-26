@@ -319,7 +319,7 @@ function cmake_build() {
     # GHA runners zig auto-budgets --maxrss to ~7 GiB based on system RAM, tripping
     # `assert(memory_blocked_steps.items.len == 0)` in build_runner.zig:679. Pin
     # to 8 GiB here too so cross builds (e.g. osx-arm64 -> osx-64) clear the gate.
-    # Linux uses 7500000000 in EXTRA_ZIG_ARGS; this Phase 3 path is osx-only.
+    # Linux uses 7800000000 in EXTRA_ZIG_ARGS; this Phase 3 path is osx-only.
     dbg echo "Phase 3: cross-compiling stage3 via ${host_zig2} -> ${install_prefix}"
     (
       cd "${source_dir}" &&

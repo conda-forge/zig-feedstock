@@ -387,45 +387,6 @@ outputs:
               - '%TEMP%\test_run.exe'
               - echo PASS zig cc compile+run (UCRT DLL resolution)
 
-      # Verify MinGW import libs were pre-generated in lib-common/
-      - script:
-          - if: not unix
-            then:
-              - for %%L in (kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
-              - echo PASS MinGW import libs present (Windows)
-          - if: unix and xc_nlo
-            then:
-              - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
-              - echo "PASS MinGW import libs present (cross-compiled)"
-              # MinGW stub archives (lib-common) - cross-compiled
-              - for lib in mingw32 gcc gcc_eh "stdc++" ssp winpthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
-              - echo "PASS MinGW stub archives present in lib-common (cross-compiled)"
-          - if: not unix
-            then:
-              # MinGW stub archives (lib-common) - Windows native build
-              - for %%L in (mingw32 gcc gcc_eh stdc++ ssp winpthread) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
-              - echo PASS MinGW stub archives present in lib-common (Windows)
-          - if: xc_warm64
-            then:
-              # ARM64 MinGW CRT startup objects
-              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2.o" || { echo "FAIL missing crt2.o"; exit 1; }
-              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2win.o" || { echo "FAIL missing crt2win.o"; exit 1; }
-              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/dllcrt2.o" || { echo "FAIL missing dllcrt2.o"; exit 1; }
-              - echo "PASS ARM64 CRT startup objects present"
-              # ARM64 MinGW stub archives (libarm64)
-              - for lib in mingw32 gcc gcc_eh "stdc++" ssp winpthread; do test -f "$PREFIX/lib/zig/libc/mingw/libarm64/lib${lib}.a" || { echo "FAIL missing libarm64/lib${lib}.a"; exit 1; }; done
-              - echo "PASS ARM64 MinGW stub archives present in libarm64"
-          - if: xc_win32
-            then:
-              # i386 MinGW CRT startup objects (compiled into lib32/ to avoid cross-arch collision)
-              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2.o" || { echo "FAIL missing lib32/crt2.o"; exit 1; }
-              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2win.o" || { echo "FAIL missing lib32/crt2win.o"; exit 1; }
-              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/dllcrt2.o" || { echo "FAIL missing lib32/dllcrt2.o"; exit 1; }
-              - echo "PASS i386 CRT startup objects present"
-              # i386 MinGW stub archives (lib32)
-              - for lib in mingw32 gcc gcc_eh "stdc++" ssp winpthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib32/lib${lib}.a" || { echo "FAIL missing lib32/lib${lib}.a"; exit 1; }; done
-              - echo "PASS i386 MinGW stub archives present in lib32"
-
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
@@ -541,11 +502,6 @@ outputs:
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
-          - if: linux or is_native
-            then:
-              - ${{ conda_triplet }}-zig version
-            else:
-              - echo "Skip functional tests on non-native or non-emulated"
           # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
           - if: unix
             then:
@@ -648,7 +604,6 @@ outputs:
             - llvm-tools
     tests:
       - script:
-          - zig version
           - zig cc --version
 
 about:

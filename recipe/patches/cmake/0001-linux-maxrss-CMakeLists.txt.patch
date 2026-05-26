@@ -4,7 +4,7 @@
    "-Dconfig_h=${ZIG_CONFIG_H_OUT}"
  
    -Dno-langref
-+  --maxrss 7000000000
++  --maxrss 7800000000
  )
  
  set(ZIG_EXTRA_BUILD_ARGS "" CACHE STRING "Extra zig build args")

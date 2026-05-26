@@ -18,6 +18,7 @@
  * Compiled during package build with zig cc (same as zig-cc-nonunix.c).
  */
 
+#include "nonunix_common.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,27 +42,7 @@ static int find_zig(char *out, size_t out_size) {
 }
 
 int main(int argc, char *argv[]) {
-    /* Ensure ZIG_GLOBAL_CACHE_DIR is set (mirrors zig-cc-nonunix.c). */
-    if (!getenv("ZIG_GLOBAL_CACHE_DIR")) {
-        char base[MAX_PATH];
-        const char *appdata = getenv("APPDATA");
-        const char *userprofile = getenv("USERPROFILE");
-        if (appdata) {
-            snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
-        } else if (userprofile) {
-            snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
-        } else {
-            DWORD tmp_len = GetTempPathA(MAX_PATH, base);
-            if (tmp_len > 0)
-                snprintf(base + tmp_len - 1, MAX_PATH - tmp_len, "\\zig-cache");
-        }
-        char *env_val = malloc(strlen("ZIG_GLOBAL_CACHE_DIR=") + strlen(base) + 2);
-        if (env_val) {
-            sprintf(env_val, "ZIG_GLOBAL_CACHE_DIR=%s", base);
-            _putenv(env_val);
-            free(env_val);
-        }
-    }
+    init_zig_global_cache_dir();
 
     /* Find zig binary. */
     char zig_path[MAX_PATH];
@@ -88,19 +69,7 @@ int main(int argc, char *argv[]) {
         new_argv[ni++] = argv[i];
     new_argv[ni] = NULL;
 
-    /* MSYS2 strips System32 from PATH; restore it so UCRT DLLs resolve. */
-    if (getenv("MSYSTEM") != NULL) {
-        const char *path = getenv("PATH");
-        const char *sys32 = "C:\\Windows\\System32";
-        if (path && !strstr(path, sys32)) {
-            char *new_path = malloc(strlen(path) + strlen(sys32) + 7);
-            if (new_path) {
-                sprintf(new_path, "PATH=%s;%s", sys32, path);
-                _putenv(new_path);
-                free(new_path);
-            }
-        }
-    }
+    restore_msys2_system32_path();
 
     /* Execute zig. */
     int ret = (int)_spawnv(_P_WAIT, zig_path, new_argv);
