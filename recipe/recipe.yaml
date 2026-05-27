@@ -6,7 +6,7 @@ context:
   version: "0.17.0"
   # Passed: snapshot: "315+5b647b792"
   snapshot: "387+31f157d80"
-  
+
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
@@ -31,14 +31,14 @@ context:
   xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-arm64', 'win-32'] }}
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
 
+  # Silly shortcuts
+  exe: ${{ ".exe" if not unix else "" }}
   library: ${{ "Library/" if not unix else "" }}
   m2: ${{ "m2-" if not unix else "" }}
   sh: ${{ ".bat" if not unix else ".sh" }}
-  bat: ${{ ".bat" if not unix else "" }}
-  exe: ${{ ".exe" if not unix else "" }}
 
   # Zig target mapping https://github.com/ziglang/zig-bootstrap
-  _c_v: ${{ c_stdlib_version | default("") }}
+  _c_v: ${{ c_stdlib_version | default("") }}  # Must be maj.min for osx, update variants.yaml
   zig_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ _c_v        if xc_l64                              else
@@ -311,6 +311,10 @@ outputs:
           - if: linux
             then:
               - libxml2-16
+          - if: not unix
+            then:
+              - ucrt
+              - vc14_runtime
     tests:
       # Package contents verification - impl has triplet-prefixed binary
       - package_contents:
@@ -354,6 +358,7 @@ outputs:
                 - libcxx
             files:
               recipe:
+                - testing/_test_utils.py
                 - testing/test_libcxx_shared.py
 
       # Functional test using triplet-prefixed binary
@@ -394,6 +399,20 @@ outputs:
             then:
               - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
               - echo "PASS MinGW import libs present (cross-compiled)"
+          - if: xc_warm64
+            then:
+              # ARM64 MinGW CRT startup objects
+              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2.o" || { echo "FAIL missing crt2.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2win.o" || { echo "FAIL missing crt2win.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/dllcrt2.o" || { echo "FAIL missing dllcrt2.o"; exit 1; }
+              - echo "PASS ARM64 CRT startup objects present"
+          - if: xc_win32
+            then:
+              # i386 MinGW CRT startup objects (compiled into lib32/ to avoid cross-arch collision)
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2.o" || { echo "FAIL missing lib32/crt2.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2win.o" || { echo "FAIL missing lib32/crt2win.o"; exit 1; }
+              - test -f "$PREFIX/lib/zig/libc/mingw/lib32/dllcrt2.o" || { echo "FAIL missing lib32/dllcrt2.o"; exit 1; }
+              - echo "PASS i386 CRT startup objects present"
 
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them.
@@ -503,7 +522,7 @@ outputs:
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-            
+
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cc${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cxx${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ar${{ exe }}
@@ -556,8 +575,9 @@ outputs:
                 - libclang-cpp ${{ llvm_version }}.*
         files:
           recipe:
-            - testing/test_zig_toolchain.py
             - testing/test-cross-shim.bat
+            - testing/_test_utils.py
+            - testing/test_zig_toolchain.py
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
@@ -602,7 +622,6 @@ outputs:
   - package:
       name: zig-compiler
     build:
-      noarch: generic
       skip: cross_target_platform_ != target_platform
       script: echo "zig-compiler metapackage"
     requirements:

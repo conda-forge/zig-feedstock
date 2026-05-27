@@ -24,8 +24,6 @@ import json
 import os
 import platform
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 
@@ -37,60 +35,32 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
-# --------------------------------------------------------------------------
-# Result tracking (same pattern as test_zig_toolchain.py)
-# --------------------------------------------------------------------------
-_results: dict[str, list[str]] = {"PASS": [], "FAIL": [], "WARN": [], "SKIP": []}
-
-
-def _record(status: str, name: str, detail: str = "") -> None:
-    tag = f"  {status}: {name}"
-    if detail:
-        tag += f" ({detail})"
-    print(tag)
-    _results[status].append(name)
-
-
-def PASS(name: str, detail: str = "") -> None:
-    _record("PASS", name, detail)
-
-
-def FAIL(name: str, detail: str = "") -> None:
-    _record("FAIL", name, detail)
-
-
-def WARN(name: str, detail: str = "") -> None:
-    _record("WARN", name, detail)
-
-
-def SKIP(name: str, detail: str = "") -> None:
-    _record("SKIP", name, detail)
-
+from _test_utils import (
+    _build_is_win,
+    _build_is_mac,
+    _is_emulated,
+    _native_machine,
+    _record,
+    _results,
+    _run,
+    PASS,
+    FAIL,
+    WARN,
+    SKIP,
+    setup_zig_global_cache_dir,
+)
 
 # --------------------------------------------------------------------------
 # Platform detection
 # --------------------------------------------------------------------------
 _prefix = Path(os.environ.get("CONDA_PREFIX", ""))
 _conda_triplet = sys.argv[1] if len(sys.argv) > 1 else ""
-_build_is_win = sys.platform == "win32"
 
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
 # if neither is set it panics with AppDataDirUnavailable.  ZIG_GLOBAL_CACHE_DIR
 # overrides the lookup entirely.
-if "ZIG_GLOBAL_CACHE_DIR" not in os.environ:
-    _xdg_data = os.environ.get("XDG_DATA_HOME", "")
-    _home = os.environ.get("HOME", "")
-    if _xdg_data:
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_xdg_data}/zig/zig-cache"
-    elif _home:
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_home}/.local/share/zig/zig-cache"
-    else:
-        _uid = str(os.getuid()) if hasattr(os, "getuid") else "0"
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.path.join(
-            tempfile.gettempdir(), f"zig-cache-{_uid}"
-        )
-_build_is_mac = sys.platform == "darwin"
+setup_zig_global_cache_dir()
 
 # The zig binary in zig_impl_ is triplet-prefixed
 _zig_bin_name = f"{_conda_triplet}-zig" if _conda_triplet else ""
@@ -103,60 +73,7 @@ _arch = _conda_triplet.split("-")[0] if _conda_triplet else platform.machine()
 is_arm64 = _arch in ("aarch64", "arm64")
 is_ppc64le = _arch == "powerpc64le"
 
-# Emulation detection
-_native_machine = platform.machine()
-_is_emulated = (
-    sys.platform == "linux"
-    and _native_machine not in ("x86_64", "i686")
-    and os.environ.get("CI", "") != ""
-)
-
-
-def _run(
-    cmd: list[str],
-    *,
-    timeout: int = 30,
-    cwd: str | Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    """Run a command, return CompletedProcess. Never raises on non-zero rc."""
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cwd,
-        )
-    except FileNotFoundError:
-        return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="NOTFOUND")
-    try:
-        stdout_b, stderr_b = proc.communicate(timeout=timeout)
-        return subprocess.CompletedProcess(
-            cmd,
-            returncode=proc.returncode,
-            stdout=stdout_b.decode("utf-8", errors="replace"),
-            stderr=stderr_b.decode("utf-8", errors="replace"),
-        )
-    except subprocess.TimeoutExpired:
-        try:
-            if _build_is_win:
-                subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                    capture_output=True, timeout=5,
-                )
-            else:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except Exception:
-            proc.kill()
-        try:
-            proc.communicate(timeout=5)
-        except (subprocess.TimeoutExpired, OSError):
-            for pipe in (proc.stdout, proc.stderr):
-                if pipe:
-                    try:
-                        pipe.close()
-                    except OSError:
-                        pass
-        return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
+# Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
 
 
 # --------------------------------------------------------------------------

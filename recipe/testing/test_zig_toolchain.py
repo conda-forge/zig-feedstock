@@ -16,8 +16,6 @@ from __future__ import annotations
 import os
 import platform
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 
@@ -29,35 +27,20 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Result tracking
-# ---------------------------------------------------------------------------
-_results: dict[str, list[str]] = {"PASS": [], "FAIL": [], "WARN": [], "SKIP": []}
-
-
-def _record(status: str, name: str, detail: str = "") -> None:
-    tag = f"  {status}: {name}"
-    if detail:
-        tag += f" ({detail})"
-    print(tag)
-    _results[status].append(name)
-
-
-def PASS(name: str, detail: str = "") -> None:
-    _record("PASS", name, detail)
-
-
-def FAIL(name: str, detail: str = "") -> None:
-    _record("FAIL", name, detail)
-
-
-def WARN(name: str, detail: str = "") -> None:
-    _record("WARN", name, detail)
-
-
-def SKIP(name: str, detail: str = "") -> None:
-    _record("SKIP", name, detail)
-
+from _test_utils import (
+    _build_is_win,
+    _build_is_mac,
+    _is_emulated,
+    _native_machine,
+    _record,
+    _results,
+    _run,
+    PASS,
+    FAIL,
+    WARN,
+    SKIP,
+    setup_zig_global_cache_dir,
+)
 
 # ---------------------------------------------------------------------------
 # Platform detection from CONDA_ZIG_HOST
@@ -76,35 +59,15 @@ is_aarch64_win = is_win_target and _arch == "aarch64"
 if _arch == "arm64":
     _arch = "aarch64"
 
-# Build-machine OS (where the test actually runs)
-_build_is_win = sys.platform == "win32"
-_build_is_mac = sys.platform == "darwin"
-
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
 # ZIG_GLOBAL_CACHE_DIR overrides the lookup entirely.  Set it here so direct
 # zig invocations (e.g. raw zig cc, zig lld) work in CI envs without HOME.
-if "ZIG_GLOBAL_CACHE_DIR" not in os.environ:
-    _xdg_data = os.environ.get("XDG_DATA_HOME", "")
-    _home = os.environ.get("HOME", "")
-    if _xdg_data:
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_xdg_data}/zig/zig-cache"
-    elif _home:
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = f"{_home}/.local/share/zig/zig-cache"
-    else:
-        _uid = str(os.getuid()) if hasattr(os, "getuid") else "0"
-        os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.path.join(
-            tempfile.gettempdir(), f"zig-cache-{_uid}"
-        )
+setup_zig_global_cache_dir()
 
 # Emulation detection: on CI, non-x86_64 Linux typically runs under QEMU.
 # zig's linker is too memory-hungry for emulated environments (OOM → exit 137).
-_native_machine = platform.machine()
-_is_emulated = (
-    sys.platform == "linux"
-    and _native_machine not in ("x86_64", "i686")
-    and os.environ.get("CI", "") != ""
-)
+# (_native_machine and _is_emulated imported from _test_utils)
 
 # Cross-compiler detection: build != host means the zig binary targets a
 # different platform.  Cross-compilers use the *prior published* zig_impl,
@@ -121,53 +84,6 @@ else:
 def _env_var(name: str) -> str:
     """Return env var value or empty string."""
     return os.environ.get(name, "")
-
-
-def _run(
-    cmd: list[str],
-    *,
-    timeout: int = 30,
-    cwd: str | Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    """Run a command, return CompletedProcess. Never raises on non-zero rc."""
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=cwd,
-    )
-    try:
-        stdout_b, stderr_b = proc.communicate(timeout=timeout)
-        stdout = stdout_b.decode("utf-8", errors="replace")
-        stderr = stderr_b.decode("utf-8", errors="replace")
-        return subprocess.CompletedProcess(cmd, returncode=proc.returncode,
-                                           stdout=stdout, stderr=stderr)
-    except subprocess.TimeoutExpired:
-        # Kill the process tree to prevent zombie processes producing
-        # non-UTF-8 output that can crash the caller (e.g. rattler-build on non-unix).
-        try:
-            if _build_is_win:
-                # taskkill /T kills the entire process tree (zig-cc.exe + child zig)
-                # Plain proc.kill() only kills the wrapper, leaving zig alive on pipes
-                subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                    capture_output=True, timeout=5,
-                )
-            else:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except Exception:
-            proc.kill()
-        try:
-            proc.communicate(timeout=5)  # Drain pipes — may hang if children survive
-        except (subprocess.TimeoutExpired, OSError):
-            # Children still alive: force-close pipes so we don't block forever
-            for pipe in (proc.stdout, proc.stderr):
-                if pipe:
-                    try:
-                        pipe.close()
-                    except OSError:
-                        pass
-        return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
 
 
 # ---------------------------------------------------------------------------
