@@ -10,8 +10,7 @@ function build_zig_with_zig() {
   local current_dir
   current_dir=$(pwd)
 
-  dbg echo "[build_zig_with_zig] zig=${zig} build_dir=${build_dir} install_dir=${install_dir}"
-  dbg echo "[build_zig_with_zig] EXTRA_ZIG_ARGS: ${EXTRA_ZIG_ARGS[*]+"${EXTRA_ZIG_ARGS[*]}"}"
+  dbg echo "=== build_zig_with_zig ==="
 
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1

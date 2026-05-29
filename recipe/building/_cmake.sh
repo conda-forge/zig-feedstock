@@ -23,11 +23,10 @@ function apply_cmake_patches() {
 
   # Check if CMAKE_PATCHES array exists and has elements
   if [[ -z "${CMAKE_PATCHES+x}" ]] || [[ ${#CMAKE_PATCHES[@]} -eq 0 ]]; then
-    dbg echo "No CMAKE_PATCHES defined, skipping patch application"
     return 0
   fi
 
-  dbg echo "Applying ${#CMAKE_PATCHES[@]} cmake patches to ${source_dir}"
+  dbg echo "=== apply cmake patches ==="
 
   local patch_dir="${RECIPE_DIR}/patches/cmake"
   if [[ ! -d "${patch_dir}" ]]; then
@@ -44,9 +43,8 @@ function apply_cmake_patches() {
         return 1
       fi
 
-      dbg echo "  Applying patch: ${patch_file}"
       if patch -p1 < "${patch_path}"; then
-        dbg echo "    ${patch_file} applied successfully"
+        :
       else
         echo "ERROR: Failed to apply patch ${patch_file}" >&2
         popd > /dev/null
@@ -55,7 +53,6 @@ function apply_cmake_patches() {
     done
   popd > /dev/null
 
-  dbg echo "All cmake patches applied successfully"
   return 0
 }
 
@@ -105,7 +102,7 @@ function cmake_host_build() {
   local host_triple
   host_triple="$(_zig_compute_triple_from_uname)"
 
-  dbg echo "Phase 1: host cmake build in ${host_build_dir} (target=${host_triple})"
+  dbg echo "=== cmake host build ==="
 
   (
     cd "${host_build_dir}" &&
@@ -132,7 +129,6 @@ function cmake_host_build() {
   # Build only zig2 — that's all Phase 2 needs
   cmake --build "${host_build_dir}" --target zig2 -- -j"${CPU_COUNT}" ${NINJA_FLAGS:-} || return 1
 
-  dbg echo "Phase 1 complete: ${host_build_dir}/zig2 ready for cross-compile"
   return 0
 }
 
@@ -212,7 +208,7 @@ function cmake_build() {
     need_host_build=1
   fi
 
-  dbg echo "Applying CMake patches..."
+  dbg echo "=== cmake build ==="
   apply_cmake_patches "${source_dir}"
 
   # ppc64le: 0005 patch adds target_compile_options(zigcpp PRIVATE -mlongcall)
@@ -235,12 +231,10 @@ function cmake_build() {
     if is_linux && is_cross; then
       if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
         export CROSSCOMPILING_EMULATOR="qemu-${ZIG_QEMU_ARCH}"
-        dbg echo "Set CROSSCOMPILING_EMULATOR=${CROSSCOMPILING_EMULATOR} for cross-cmake reconfigure"
       else
         echo "WARNING: linux-cross cmake path requires qemu-${ZIG_QEMU_ARCH}; build will likely fail" >&2
       fi
     fi
-    dbg echo "Re-configuring cmake with patched CMakeLists.txt..."
     if ! configure_cmake "${build_dir}" "${install_prefix}"; then
       echo "ERROR: cmake re-configure after patch application failed" >&2
       return 1
@@ -302,7 +296,6 @@ function cmake_build() {
     # `assert(memory_blocked_steps.items.len == 0)` in build_runner.zig:679. Pin
     # to 8 GiB here too so cross builds (e.g. osx-arm64 -> osx-64) clear the gate.
     # Linux uses 7500000000 in EXTRA_ZIG_ARGS; this Phase 3 path is osx-only.
-    dbg echo "Phase 3: cross-compiling stage3 via ${host_zig2} -> ${install_prefix}"
     (
       cd "${source_dir}" &&
       "${host_zig2}" build \
@@ -323,12 +316,11 @@ function cmake_build() {
         return 1
       }
 
-    dbg echo "SUCCESS: two-phase cmake cross-build completed"
     return 0
   fi
 
   if cmake_build_install "${build_dir}" "${install_prefix}"; then
-    dbg echo "SUCCESS: cmake build completed successfully"
+    :
   else
     echo "ERROR: Both zig build and cmake build failed" >&2
     return 1

@@ -237,37 +237,29 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
 # --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  dbg echo "=== ppc64le: build + install bundles (path-independent) ==="
+  dbg echo "=== ppc64le lld bundle ==="
   mkdir -p "${PREFIX}/lib"
   source "${RECIPE_DIR}/building/_lld_bundle.sh"
-  dbg echo "=== ppc64le: build_lld_bundle_ppc64le ==="
   build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
   install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
   source "${RECIPE_DIR}/building/_zigcpp_bundle.sh"
-  dbg echo "=== ppc64le: build_zigcpp_bundle_ppc64le ==="
   build_zigcpp_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" "${cmake_build_dir}" || exit 1
   install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so" "${PREFIX}/lib/" || exit 1
 fi
 
 # --- Post CMake Configuration ---
-dbg echo "=== POST-CMAKE: starting post-cmake configuration ==="
 
 # Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
-dbg echo "=== POST-CMAKE: perl config.h edits ==="
 is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
 
-dbg echo "=== DEBUG ===" && dbg cat "${cmake_build_dir}"/config.h && dbg echo "=== DEBUG ==="
-
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
 
 if is_linux && is_cross; then
-  dbg echo "=== POST-CMAKE: linux cross-build setup ==="
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
 
-  dbg echo "=== POST-CMAKE: create_zig_linux_libc_file ==="
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
 
   # pthread_atfork stub + --wrap mechanism is cmake-path-only. zig-build path
@@ -275,14 +267,11 @@ if is_linux && is_cross; then
   # bundles will address that separately).
   if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
     perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
-    dbg echo "=== POST-CMAKE: create_pthread_atfork_stub ==="
     create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   fi
 
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/libc_single_threaded_stub.o\"|g" "${cmake_build_dir}/config.h"
-  dbg echo "=== POST-CMAKE: create_libc_single_threaded_stub ==="
   create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
-  dbg echo "=== POST-CMAKE: cross-build setup DONE ==="
 fi
 
 # Always-linux: sysroot ld-script rewrite (needed by wrapper compile and any zig cc
@@ -290,7 +279,6 @@ fi
 # libpthread.so contains absolute /usr/lib64/... paths that LLD can't resolve.
 if is_linux; then
   source "${RECIPE_DIR}/building/_sysroot_fix.sh"
-  dbg echo "=== POST-CMAKE: fix_sysroot_libc_scripts ==="
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
 fi
 
@@ -298,83 +286,12 @@ if is_linux && is_cross; then
   export QEMU_LD_PREFIX="${BUILD_PREFIX}/${CONDA_TOOLCHAIN_HOST}/sysroot"
 fi
 
-# ============================================================
-# DEBUG: pre-zig-build environment dump (libpthread diagnostic)
-# ============================================================
-dbg echo "================ ZIG BUILD ENV DUMP ================"
-dbg echo "PWD: $(pwd)"
-dbg echo "PREFIX:               ${PREFIX:-unset}"
-dbg echo "BUILD_PREFIX:         ${BUILD_PREFIX:-unset}"
-dbg echo "CONDA_BUILD_SYSROOT:  ${CONDA_BUILD_SYSROOT:-unset}"
-dbg echo "CONDA_TOOLCHAIN_HOST: ${CONDA_TOOLCHAIN_HOST:-unset}"
-dbg echo "CONDA_TOOLCHAIN_BUILD:${CONDA_TOOLCHAIN_BUILD:-unset}"
-dbg echo "HOST:                 ${HOST:-unset}"
-dbg echo "BUILD:                ${BUILD:-unset}"
-dbg echo "ZIG_TRIPLET:          ${ZIG_TRIPLET:-unset}"
-dbg echo "EXTRA_ZIG_ARGS:       ${EXTRA_ZIG_ARGS:-unset}"
-dbg echo "--- compiler vars ---"
-dbg echo "CC=${CC:-unset}"
-dbg echo "CXX=${CXX:-unset}"
-dbg echo "LD=${LD:-unset}"
-dbg echo "AR=${AR:-unset}"
-dbg echo "RANLIB=${RANLIB:-unset}"
-dbg echo "--- flag vars ---"
-dbg echo "CFLAGS=${CFLAGS:-unset}"
-dbg echo "CXXFLAGS=${CXXFLAGS:-unset}"
-dbg echo "CPPFLAGS=${CPPFLAGS:-unset}"
-dbg echo "LDFLAGS=${LDFLAGS:-unset}"
-dbg echo "--- bootstrap zig info ---"
-dbg echo "BUILD_ZIG: ${BUILD_ZIG:-unset}"
-ZIG_PROBE=""
-for cand in "${BUILD_ZIG:-}" "x86_64-conda-linux-gnu-zig" "${CONDA_TOOLCHAIN_HOST:-}-zig" "zig"; do
-  if [[ -n "$cand" ]] && command -v "$cand" >/dev/null 2>&1; then
-    ZIG_PROBE="$cand"
-    break
-  fi
-done
-if [[ -n "$ZIG_PROBE" ]]; then
-  dbg echo "Found zig: $ZIG_PROBE -> $(command -v "$ZIG_PROBE")"
-  dbg "$ZIG_PROBE" version
-  dbg "$ZIG_PROBE" env
-else
-  dbg echo "no zig found in PATH (tried: BUILD_ZIG, x86_64-conda-linux-gnu-zig, ${CONDA_TOOLCHAIN_HOST:-}-zig, zig)"
-fi
-dbg echo "--- sysroot ld scripts (text) ---"
-if [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
-  for script in "${CONDA_BUILD_SYSROOT}/usr/lib64/libpthread.so" "${CONDA_BUILD_SYSROOT}/usr/lib64/libc.so"; do
-    if [[ -f "$script" ]]; then
-      # ld scripts are ASCII; safe to head. Guard anyway.
-      if file -b "$script" 2>/dev/null | grep -qiE 'text|ASCII|script'; then
-        dbg echo "--- $script ---"
-        dbg head -5 "$script"
-      else
-        dbg echo "--- $script: NON-TEXT (skipped head) ---"
-        dbg ls -la "$script"
-      fi
-    else
-      dbg echo "--- $script: MISSING ---"
-    fi
-  done
-  dbg echo "--- sysroot ld binaries (existence only) ---"
-  dbg ls -la "${CONDA_BUILD_SYSROOT}/lib64/libpthread.so.0"
-  dbg echo "  libpthread.so.0: MISSING"
-  dbg ls -la "${CONDA_BUILD_SYSROOT}/lib64/libc.so.6"
-  dbg echo "  libc.so.6: MISSING"
-  dbg echo "--- libpthread_nonshared.a locations under sysroot ---"
-  dbg find "${CONDA_BUILD_SYSROOT}" -name "libpthread_nonshared.a"
-fi
-dbg echo "--- /usr/lib64 libpthread* (should NOT exist in conda env) ---"
-dbg ls -la /usr/lib64/libpthread*
-dbg echo "================ END ENV DUMP ================"
-
-dbg echo "=== ZIG BUILD: starting zig build ==="
-dbg echo "=== ZIG BUILD: zig=${BUILD_ZIG} dir=${zig_build_dir} ==="
+dbg echo "=== zig build env ==="
 if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
-  dbg echo "=== ZIG BUILD: CMAKE_BUILD=1, forcing cmake build (bypass zig-with-zig) ==="
   source "${RECIPE_DIR}/building/_cmake.sh"
   cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
 elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
-  dbg echo "=== ZIG BUILD: SUCCESS ==="
+  :
 else
   echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
   exit 1
@@ -406,7 +323,7 @@ _can_run_stage3() {
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
 elif _can_run_stage3; then
-  dbg echo "=== PHASE 2: building langref via stage3 zig ==="
+  dbg echo "=== phase 2 langref ==="
   _stage3_runner=()
   if is_cross && is_linux; then
     _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
@@ -418,7 +335,6 @@ elif _can_run_stage3; then
     _qemu_shadow_dir=$(mktemp -d)
     ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
   fi
 
   (
@@ -491,15 +407,7 @@ else
     WRAPPER_LDFLAGS=""
 fi
 
-dbg echo "================ PRE-WRAPPER-COMPILE STATE ================"
-dbg echo "Bin dir contents before wrapper install:"
-dbg sh -c 'ls -la "${PREFIX}/bin/" 2>&1 | head -40'
-dbg echo "Wrapper source check:"
-dbg ls -la recipe/building/zig-wrapper.c
-dbg echo "Just-built zig check:"
-dbg ls -la "${PREFIX}/bin/zig"
-dbg "${PREFIX}/bin/zig" version
-dbg echo "================ END PRE-WRAPPER STATE ================"
+dbg echo "=== pre-wrapper compile ==="
 
 # Per-target wrapper compile flags:
 # - linux-ppc64le: pass explicit --target= so zig resolves the ppc64le dynamic
@@ -535,20 +443,10 @@ esac
 # Move raw zig out of PATH
 mv "${PREFIX}/bin/zig" "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}"
 
-echo "=== Phase 2 install verification ==="
-echo "WRAPPER_BIN_DIR contents:"
-ls -la "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig"* 2>&1 || echo "EMPTY or missing"
-echo "REAL_ZIG_DIR contents:"
-ls -la "${REAL_ZIG_DIR}/" 2>&1 || echo "MISSING"
-echo "Real zig file:"
-ls -la "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}" 2>&1 || echo "MISSING"
-file "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}" 2>&1 || true
-echo "=== end Phase 2 install verification ==="
 # === end Phase 2 ===
 
 # Non-unix conda convention: artifacts go under Library/
 if is_not_unix; then
-  dbg echo "Relocating to Library/ for non-unix conda convention"
   mkdir -p "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
   [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/

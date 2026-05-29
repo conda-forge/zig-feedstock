@@ -443,19 +443,8 @@ outputs:
       - script:
           - if: not unix
             then:
-              - 'echo === layout diagnostic ==='
-              - 'where ${{ conda_triplet }}-zig 2>nul || echo "INFO: ${{ conda_triplet }}-zig not on PATH"'
-              - 'where ${{ conda_triplet }}-zig-cc 2>nul || echo "INFO: ${{ conda_triplet }}-zig-cc not on PATH"'
-              - 'dir %LIBRARY_PREFIX%\bin\*-zig*.exe 2>nul || echo "INFO: no *-zig*.exe in LIBRARY_PREFIX\bin"'
-              - 'echo CC=%CC%'
-              - 'echo CXX=%CXX%'
-              - 'echo PATH=%PATH%'
-              - 'echo === compile test source ==='
               - 'echo void f(void){} > %TEMP%\test_manifest.c'
-              - 'echo === run with ZIG_WRAPPER_DEBUG=1 ==='
-              - set ZIG_WRAPPER_DEBUG=1
               - '${{ conda_triplet }}-zig cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o %TEMP%\test_manifest.dll %TEMP%\test_manifest.c'
-              - set ZIG_WRAPPER_DEBUG=
               - 'if not exist %TEMP%\test_manifest.dll exit /b 1'
               - 'echo PASS zig cc /MANIFEST* filter'
 
@@ -548,14 +537,10 @@ outputs:
             then:
               - test -n "$CONDA_ZIG_BUILD"
               - test -n "$CONDA_ZIG_HOST"
-              - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
-              - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
               - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
             else:
               - if not defined CONDA_ZIG_BUILD exit /b 1
               - if not defined CONDA_ZIG_HOST exit /b 1
-              - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
-              - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper + functional validation tests (Python, cross-platform)
           - if: unix
             then: PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py

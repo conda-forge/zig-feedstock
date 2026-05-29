@@ -24,8 +24,8 @@ function build_zigcpp_bundle_ppc64le() {
 
   # Idempotency guard: skip rebuild if output .so already exists
   # (build.sh and cmake_build both call this; second call no-ops)
+  dbg echo "=== zigcpp bundle ppc64le ==="
   if [[ -f "${output_so}" ]]; then
-    dbg echo "build_zigcpp_bundle_ppc64le: skipping rebuild — ${output_so} already present"
     return 0
   fi
 

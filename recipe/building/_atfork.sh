@@ -28,7 +28,7 @@ function create_pthread_atfork_stub() {
   local cc_compiler="${2}"
   local output_dir="${3:-${SRC_DIR}}"
 
-  dbg echo "Creating pthread_atfork stub for glibc 2.28 ${arch_name}"
+  dbg echo "=== atfork stubs ==="
 
   cat > "${output_dir}/pthread_atfork_stub.c" << 'EOF'
 // Strong __wrap_pthread_atfork for --wrap=pthread_atfork linker redirect.
@@ -52,7 +52,6 @@ EOF
 
   _compile_stub_object "${cc_compiler}" "${output_dir}/pthread_atfork_stub.c" "${output_dir}/pthread_atfork_stub.o" "pthread_atfork" || return 1
 
-  dbg echo "pthread_atfork stub created: ${output_dir}/pthread_atfork_stub.o"
   return 0
 }
 
@@ -68,8 +67,6 @@ function create_libc_single_threaded_stub() {
   local cc_compiler="${2}"
   local output_dir="${3:-${SRC_DIR}}"
 
-  dbg echo "Creating __libc_single_threaded stub for ${arch_name}"
-
   cat > "${output_dir}/libc_single_threaded_stub.c" << 'EOF'
 // Weak stub for __libc_single_threaded when targeting glibc < 2.32
 // glibc 2.32 introduced this symbol; GCC 15 libstdc++ references it.
@@ -80,6 +77,5 @@ EOF
 
   _compile_stub_object "${cc_compiler}" "${output_dir}/libc_single_threaded_stub.c" "${output_dir}/libc_single_threaded_stub.o" "libc_single_threaded" || return 1
 
-  dbg echo "__libc_single_threaded stub created: ${output_dir}/libc_single_threaded_stub.o"
   return 0
 }
