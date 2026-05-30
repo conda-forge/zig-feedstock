@@ -6,6 +6,10 @@ azure:
     swapfile_size: 10GiB
     variables:
       SET_PAGEFILE: "True"
+workflow_settings:
+  build_workspace_dir:
+    - os: win
+      value: "C:/bld"
 build_platform:
   linux_ppc64le: linux_64
   # No LLVM linux_s390x: linux_64
