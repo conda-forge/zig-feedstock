@@ -214,7 +214,12 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 # when this was gated on `is_cross`.
 is_linux && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
-is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
+# Note: do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS.
+# build.zig sets mod.link_libcpp = true for darwin targets, which (via patches/
+# Lld.zig-prefer-shared-libcxx.patch) already resolves to ${PREFIX}/lib/libc++.1.dylib.
+# Injecting libc++.dylib here would add a second LC_LOAD_DYLIB to the same dylib;
+# macOS SDK >= 26 dyld aborts on duplicate linked dylibs ("duplicate linked dylib
+# '@rpath/libc++.1.dylib'" — Abort trap: 6).
 
 # zig2.c (the pre-generated C bootstrap from 0.16) calls getrandom,
 # copy_file_range, and statx — all absent from conda-forge's glibc 2.17
