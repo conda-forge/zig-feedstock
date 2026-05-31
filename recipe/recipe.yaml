@@ -147,6 +147,10 @@ source:
           # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
           # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
+          # Bracket bundled glibc .so files with --no-as-needed/--as-needed so they
+          # appear in DT_NEEDED even when users pass -Wl,--no-as-needed -lm.
+          # Drop-when: upstream adds DT_NEEDED emission for bundled glibc libs.
+          - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
           # LLVM backend: downgrade .shr_exact → .shr when safety checks are on.
           # LLVM InstCombine folds shl(lshr_exact(x,N),N) → x, making the runtime
           # back-shift comparison trivially true and silently dropping the panic.
@@ -329,6 +333,24 @@ outputs:
               then:
                 - zig-lld-bundle
                 - zig-zigcpp-bundle
+
+      # Regression test: -Wl,--no-as-needed -lm must put libm in DT_NEEDED.
+      - script:
+          - if: linux
+            then:
+              - python testing/test_dtneeded.py ${{ conda_triplet }}
+            else:
+              - echo "SKIP DT_NEEDED test (non-linux)"
+        requirements:
+          run:
+            - if: linux
+              then:
+                - python >=3.10
+                - binutils_impl_${{ target_platform }}
+        files:
+          recipe:
+            - testing/test_dtneeded.py
+
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
           - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}

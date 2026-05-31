@@ -118,9 +118,7 @@ static int is_wl_drop(const char *arg) {
         || starts_with(arg, "-Wl,-O")
         || str_eq(arg, "-Wl,--gc-sections")
         || str_eq(arg, "-Wl,--no-gc-sections")
-        || starts_with(arg, "-Wl,--build-id")
-        || str_eq(arg, "-Wl,--as-needed")
-        || str_eq(arg, "-Wl,--no-as-needed");
+        || starts_with(arg, "-Wl,--build-id");
 }
 
 /* MSVC/LLD manifest flags to drop (/MANIFEST*, -MANIFEST*).
@@ -476,7 +474,8 @@ int main(int argc, char *argv[]) {
         /* --- CC/CXX mode: pre-scan + filter, then assemble new_argv --- */
 
         /* Pre-scan: detect LLD-triggering flags, user target overrides, -mcpu */
-        int use_lld = 0;
+        /* zig cc defaults to LLD on Linux/ELF and Windows/COFF; macOS guard below clears for ld64 */
+        int use_lld = 1;
         int has_target = user_has_target(argc, argv, user_args_start);
         int has_mcpu = 0;
 
