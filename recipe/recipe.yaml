@@ -140,6 +140,11 @@ source:
           # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
           # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
+          # Honour -Wl,--no-as-needed for bundled glibc libs (e.g. -lm).
+          # Without this patch, zig drops -lm from DT_NEEDED even when the caller
+          # explicitly requested --no-as-needed, breaking dlsym(sin) at runtime.
+          # Three-part fix: Config.zig flag + main.zig recorder + Lld.zig bracket.
+          - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
       # can also `zig cc -target powerpc64le-linux-gnu`.
@@ -359,6 +364,22 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_libcxx_shared.py
+      # Regression test: -Wl,--no-as-needed -lm must put libm in DT_NEEDED.
+      - script:
+          - if: linux
+            then:
+              - python testing/test_dtneeded.py ${{ conda_triplet }}
+            else:
+              - echo "SKIP DT_NEEDED test (non-linux)"
+        requirements:
+          run:
+            - if: linux
+              then:
+                - python >=3.10
+                - binutils_impl_${{ target_platform }}
+        files:
+          recipe:
+            - testing/test_dtneeded.py
       # Functional test using triplet-prefixed binary
       - script:
           - if: linux or is_native
