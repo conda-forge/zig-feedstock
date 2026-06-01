@@ -42,6 +42,16 @@ static int needs_zig_target(const char *cmd) {
 }
 
 int main(int argc, char *argv[]) {
+    /* Debug tracing: activated by ZIG_WRAPPER_DEBUG=1 (or any non-empty value) */
+    const char *dbg_env = getenv("ZIG_WRAPPER_DEBUG");
+    int dbg = (dbg_env != NULL && dbg_env[0] != '\0');
+    if (dbg) {
+        fprintf(stderr, "[cross-zig-shim] binary: %s\n", argv[0]);
+        fprintf(stderr, "[cross-zig-shim] argc: %d\n", argc);
+        for (int i = 0; i < argc; i++)
+            fprintf(stderr, "[cross-zig-shim] argv[%d] = %s\n", i, argv[i]);
+    }
+
     /* Find native zig relative to this exe's directory */
     char self_path[MAX_PATH];
     DWORD len = GetModuleFileNameA(NULL, self_path, MAX_PATH);
@@ -99,6 +109,13 @@ int main(int argc, char *argv[]) {
         }
     }
     new_argv[ni] = NULL;
+
+    /* Debug: dump final exec args */
+    if (dbg) {
+        fprintf(stderr, "[cross-zig-shim] exec: %s\n", zig_path);
+        for (int i = 0; new_argv[i] != NULL; i++)
+            fprintf(stderr, "[cross-zig-shim] new_argv[%d] = %s\n", i, new_argv[i]);
+    }
 
     /* _spawnv replaces this process, returns exit code */
     int ret = (int)_spawnv(_P_WAIT, zig_path, new_argv);

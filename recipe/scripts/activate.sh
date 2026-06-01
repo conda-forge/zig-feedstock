@@ -40,7 +40,7 @@ _zig_bin="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig"
 [[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ranlib" ]]     && export ZIG_RANLIB="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ranlib"
 [[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-asm" ]]        && export ZIG_ASM="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-asm"
 [[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-rc" ]]         && export ZIG_RC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-rc"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ld" ]]         && export ZIG_LLD="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ld"
+[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-lld" ]]        && export ZIG_LLD="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-lld"
 [[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cc" ]]  && export ZIG_FORCE_LOAD_CC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cc"
 [[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cxx"
 

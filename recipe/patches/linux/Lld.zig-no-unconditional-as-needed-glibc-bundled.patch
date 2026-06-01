@@ -1,0 +1,35 @@
+# Purpose: Bracket bundled glibc .so files with --no-as-needed/--as-needed so they
+#          appear in DT_NEEDED even when users pass -Wl,--no-as-needed -lm.
+# Problem: elfLink unconditionally enters --as-needed mode before emitting user DSOs
+#          (line ~1144 in pristine src/link/Lld.zig).  The bundled glibc .so paths
+#          appended in the isGnuLibC() branch are emitted while that flag is still
+#          active, so ld.lld marks them as "not needed" and omits them from DT_NEEDED.
+#          Any downstream binary that dlopen()s libm or libc by SONAME then fails at
+#          runtime on hosts where those libraries are not already loaded.
+# Fix:     Wrap ONLY the bundled glibc lib appends with --no-as-needed/--as-needed.
+#          User DSO handling is unchanged; the user's own --as-needed/--no-as-needed
+#          flags continue to work through the dso loop state machine above.
+# Single-file: touches only src/link/Lld.zig, no Config.zig/main.zig schema changes.
+# Stage1/2 safety: no serialised fields touched; Config.zig schema is unmodified.
+# Upstream: not filed (user is banned from ziglang upstream)
+# Drop-when: upstream adds DT_NEEDED emission for bundled glibc libs
+# Applies-after: Lld.zig-macho-lld-support.patch, Lld.zig-prefer-shared-libcxx.patch
+# Last-verified: 2026-05-31 (zig 0.16.0)
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -1231,13 +1231,15 @@
+                } else if (target.isGnuLibC()) {
++                    try argv.append("--no-as-needed");
+                    for (glibc.libs) |lib| {
+                        if (lib.removed_in) |rem_in| {
+                            if (target.os.versionRange().gnuLibCVersion().?.order(rem_in) != .lt) continue;
+                        }
+
+                        const lib_path = try std.fmt.allocPrint(arena, "{f}{c}lib{s}.so.{d}", .{
+                            comp.glibc_so_files.?.dir_path, fs.path.sep, lib.name, lib.sover,
+                        });
+                        try argv.append(lib_path);
+                    }
+                    try argv.append(try comp.crtFileAsString(arena, "libc_nonshared.a"));
++                    try argv.append("--as-needed");
+                } else if (target.isMuslLibC()) {

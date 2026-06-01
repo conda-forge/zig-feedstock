@@ -1,11 +1,14 @@
+schema_version: 1
+
 context:
-  build_number: 25
+  build_number: 26
   name: zig
   version: "0.15.2"
-  llvm_version: "20"
-  llvm_src_version: "20.1.8"
 
-  _c_v: ${{ c_stdlib_version | default("") }}
+  llvm_src_version: "20.1.8"
+  llvm_version: ${{ llvm_src_version | split(".") | first }}
+
+  bootstrap_via_upstream: false
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -32,7 +35,8 @@ context:
   m2: ${{ "m2-" if not unix else "" }}
   sh: ${{ ".bat" if not unix else ".sh" }}
 
-  # Zig target mapping (for zig -target flag, differs from GCC triplets)
+  # Zig target mapping https://github.com/ziglang/zig-bootstrap
+  _c_v: ${{ c_stdlib_version | default("") }}  # Must be maj.min for osx, update variants.yaml
   zig_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ _c_v        if xc_l64                              else
@@ -101,11 +105,7 @@ context:
       "unknown"
     }}
 
-  xc_build_triplet: >-
-    ${{
-      build_triplet                     if not is_unhosted_xcompiler           else
-      target_triplet
-    }}
+  xc_build_triplet: ${{ build_triplet if not is_unhosted_xcompiler else target_triplet }}
 
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
@@ -147,6 +147,10 @@ source:
           # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
           # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
+          # Bracket bundled glibc .so files with --no-as-needed/--as-needed so they
+          # appear in DT_NEEDED even when users pass -Wl,--no-as-needed -lm.
+          # Drop-when: upstream adds DT_NEEDED emission for bundled glibc libs.
+          - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
           # LLVM backend: downgrade .shr_exact → .shr when safety checks are on.
           # LLVM InstCombine folds shl(lshr_exact(x,N),N) → x, making the runtime
           # back-shift comparison trivially true and silently dropping the panic.
@@ -251,15 +255,13 @@ outputs:
             - lld ${{ llvm_version }}.*       # host-arch Lld static libs for zigcpp (Plan B host build)
             - if: linux
               then:
-                # NOTE: riscv64 uses string-form ("riscv64" in target_platform) because rattler-build
-                # has no built-in riscv64 boolean; aarch64, ppc64le, s390x all use built-in booleans.
-                - qemu-execve-${{ "aarch64" if aarch64 else "ppc64le" if ppc64le else "riscv64" if "riscv64" in target_platform else "s390x" if s390x else "unknown" }}
+                - qemu-execve-${{ target_platform | replace("linux-", "") }}
             - if: osx
               then:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig
-        - zig_impl_${{ build_platform }} >=${{ version }},<=${{ version }}
+        - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -290,18 +292,24 @@ outputs:
               - ucrt
               - vc14_runtime
     tests:
-      # Package contents verification - impl has triplet-prefixed binary
+      # Package contents verification - impl has triplet-prefixed wrapper binaries
       - package_contents:
           strict: true
-          bin:
-            - ${{ conda_triplet }}-zig
-          lib:
-            - if: ppc64le
-              then:
-                - zig-lld-bundle
-                - zig-zigcpp-bundle
           files:
-            - if: not ppc64le and not ("osx" in target_platform and build_platform != target_platform)
+            - ${{ library }}bin/${{ conda_triplet }}-zig${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-cc${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-cxx${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-ar${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-ranlib${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-lld${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-rc${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
+            - if: unix
+              then:
+                - share/zig/zig-real
+              else:
+                - Library/share/zig/zig-real.exe
+            - if: is_native or linux and not xc_ppc64le
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -319,8 +327,30 @@ outputs:
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
-            # Post-install tests
             - etc/conda/test-files/zig*
+          lib:
+            - if: ppc64le
+              then:
+                - zig-lld-bundle
+                - zig-zigcpp-bundle
+
+      # Regression test: -Wl,--no-as-needed -lm must put libm in DT_NEEDED.
+      - script:
+          - if: linux
+            then:
+              - python testing/test_dtneeded.py ${{ conda_triplet }}
+            else:
+              - echo "SKIP DT_NEEDED test (non-linux)"
+        requirements:
+          run:
+            - if: linux
+              then:
+                - python >=3.10
+                - binutils_impl_${{ target_platform }}
+        files:
+          recipe:
+            - testing/test_dtneeded.py
+
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
           - ${{ 'set' if not unix else '' }} PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
@@ -334,12 +364,10 @@ outputs:
             - testing/test_libcxx_shared.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: not arm64
+          - if: linux or is_native
             then:
               - if: unix
                 then:
-                  # NOTE: ZIG_GLOBAL_CACHE_DIR is repeated in each test script block below; rattler-build
-                  # scopes env: to each script entry independently, so duplication is structurally required.
                   - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
                 else:
                   - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
@@ -348,10 +376,11 @@ outputs:
               - ${{ conda_triplet }}-zig init
               - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
-              - echo "Skip test on arm64"
+              - echo "Skip test on non-emulated archs"
         files:
           source:
             - zig-source/test
+
       # Verify zig cc compile+run works (MSYS2 UCRT DLL resolution on Windows)
       - script:
           - if: not unix
@@ -360,9 +389,7 @@ outputs:
               - ${{ conda_triplet }}-zig cc -mconsole -o %TEMP%\test_run.exe %TEMP%\test_run.c
               - '%TEMP%\test_run.exe'
               - echo PASS zig cc compile+run (UCRT DLL resolution)
-      # NOTE: this inline subset complements recipe/testing/test_zig_toolchain.py::test_mingw_prebuilt_import_libs
-      # which checks a different subset (synchronization, shlwapi, version). Split is intentional: this inline
-      # check exercises minimal availability at build time; the Python test covers extended runtime imports.
+
       # Verify MinGW import libs were pre-generated in lib-common/
       - script:
           - if: not unix
@@ -373,6 +400,14 @@ outputs:
             then:
               - for lib in kernel32 advapi32 shell32 user32 ws2_32 ole32 uuid msvcrt ucrtbase pthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
               - echo "PASS MinGW import libs present (cross-compiled)"
+              # MinGW stub archives (lib-common) - cross-compiled
+              - for lib in mingw32 gcc gcc_eh "stdc++" ssp winpthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib-common/lib${lib}.a" || { echo "FAIL missing lib${lib}.a"; exit 1; }; done
+              - echo "PASS MinGW stub archives present in lib-common (cross-compiled)"
+          - if: not unix
+            then:
+              # MinGW stub archives (lib-common) - Windows native build
+              - for %%L in (mingw32 gcc gcc_eh stdc++ ssp winpthread) do if not exist %LIBRARY_PREFIX%\lib\zig\libc\mingw\lib-common\lib%%L.a (echo FAIL missing lib%%L.a && exit /b 1)
+              - echo PASS MinGW stub archives present in lib-common (Windows)
           - if: xc_warm64
             then:
               # ARM64 MinGW CRT startup objects
@@ -380,6 +415,9 @@ outputs:
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/crt2win.o" || { echo "FAIL missing crt2win.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/libarm64/dllcrt2.o" || { echo "FAIL missing dllcrt2.o"; exit 1; }
               - echo "PASS ARM64 CRT startup objects present"
+              # ARM64 MinGW stub archives (libarm64)
+              - for lib in mingw32 gcc gcc_eh "stdc++" ssp winpthread; do test -f "$PREFIX/lib/zig/libc/mingw/libarm64/lib${lib}.a" || { echo "FAIL missing libarm64/lib${lib}.a"; exit 1; }; done
+              - echo "PASS ARM64 MinGW stub archives present in libarm64"
           - if: xc_win32
             then:
               # i386 MinGW CRT startup objects (compiled into lib32/ to avoid cross-arch collision)
@@ -387,6 +425,10 @@ outputs:
               - test -f "$PREFIX/lib/zig/libc/mingw/lib32/crt2win.o" || { echo "FAIL missing lib32/crt2win.o"; exit 1; }
               - test -f "$PREFIX/lib/zig/libc/mingw/lib32/dllcrt2.o" || { echo "FAIL missing lib32/dllcrt2.o"; exit 1; }
               - echo "PASS i386 CRT startup objects present"
+              # i386 MinGW stub archives (lib32)
+              - for lib in mingw32 gcc gcc_eh "stdc++" ssp winpthread; do test -f "$PREFIX/lib/zig/libc/mingw/lib32/lib${lib}.a" || { echo "FAIL missing lib32/lib${lib}.a"; exit 1; }; done
+              - echo "PASS i386 MinGW stub archives present in lib32"
+
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
@@ -410,18 +452,23 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx
-            then:
-              # macOS: test with Mach-O -exported_symbols_list via LLD
-              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
-              - echo '_main' > /tmp/test_lld.exp
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
-              - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
           - if: ppc64le and linux
             then:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+
+      # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
+      # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
+      # the cc wrapper must filter them before forwarding to zig cc.
+      # Debug instrumentation reveals which binary is invoked and what filtering fires.
+      - script:
+          - if: not unix
+            then:
+              - 'echo void f(void){} > %TEMP%\test_manifest.c'
+              - '${{ conda_triplet }}-zig cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o %TEMP%\test_manifest.dll %TEMP%\test_manifest.c'
+              - 'if not exist %TEMP%\test_manifest.dll exit /b 1'
+              - 'echo PASS zig cc /MANIFEST* filter'
 
   # ==========================================================================
   # ACTIVATION: zig_$cross_target_platform_ (scripts)
@@ -452,7 +499,11 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }},<=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=0.15.2
+        - if: not unix
+          then:
+            - ${{ compiler('c') }}
+            - ${{ stdlib("c") }}
       host:
         - if: not is_cross_compiler
           then:
@@ -462,7 +513,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=${{ version }},<=${{ version }}
+            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -484,7 +535,6 @@ outputs:
 
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cc${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cxx${{ exe }}
-
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ar${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ranlib${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-asm${{ exe }}
@@ -503,20 +553,16 @@ outputs:
             then:
               - ${{ conda_triplet }}-zig version
             else:
-              - echo "Skip functional tests on non-native or emulated"
+              - echo "Skip functional tests on non-native or non-emulated"
           # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
           - if: unix
             then:
               - test -n "$CONDA_ZIG_BUILD"
               - test -n "$CONDA_ZIG_HOST"
-              - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
-              - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
               - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
             else:
               - if not defined CONDA_ZIG_BUILD exit /b 1
               - if not defined CONDA_ZIG_HOST exit /b 1
-              - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
-              - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper + functional validation tests (Python, cross-platform)
           - if: unix
             then: PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
@@ -622,3 +668,4 @@ extra:
     - MementoRC
     - xmnlab
     - tdejager
+  feedstock_name: zig

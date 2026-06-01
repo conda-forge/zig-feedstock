@@ -2,13 +2,13 @@
 # Affects: src/link/Lld.zig
 # Upstream: TBD
 # Drop-when: Upstream LLD gains full PowerPC64 ELF relocation support (R_PPC64_REL24, TOC, etc.)
-# Last-verified: 2026-05-12
+# Last-verified: 2026-05-31
 
 diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 index 18682705..1fe344a7 100644
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -862,6 +862,385 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -862,6 +862,401 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
              .{},
          );
      } else {
@@ -342,6 +342,22 @@ index 18682705..1fe344a7 100644
 +                        }
 +                    }
 +                }
++
++                // Mirror upstream Lld.zig isGnuLibC() emission; emit -Wl,-l<name> because
++                // zig's bundled .so stubs have @GLIBC_PRIVATE refs ld.bfd rejects.
++                if (!use_zig_crt and comp.config.link_libc and target.isGnuLibC()) {
++                    try argv.append("-Wl,--no-as-needed");
++                    for (glibc.libs) |lib| {
++                        if (lib.removed_in) |rem_in| {
++                            if (target.os.versionRange().gnuLibCVersion().?.order(rem_in) != .lt) continue;
++                        }
++                        // "ld" is the dynamic linker; loaded via --dynamic-linker, not -l.
++                        if (std.mem.eql(u8, lib.name, "ld")) continue;
++                        try argv.append(try std.fmt.allocPrint(arena, "-Wl,-l{s}", .{lib.name}));
++                    }
++                    try argv.append("-Wl,--as-needed");
++                }
++
 +            }
 +
 +            // Compiler-rt

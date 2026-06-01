@@ -1,0 +1,644 @@
+/* zig-wrapper.c - unified wrapper for zig-feedstock
+ *
+ * Replaces cross-zig-shim.c and zig-cc-nonunix.c with single source.
+ * Mode determined by basename(argv[0]):
+ *   ${triplet}-zig         -> DISPATCH (argv[1] is subcommand)
+ *   ${triplet}-zig-cc      -> CC mode  (force argv[1]="cc", filter + inject -target)
+ *   ${triplet}-zig-cxx     -> CXX mode
+ *   ${triplet}-zig-c++     -> CXX mode (alternate name)
+ *   ${triplet}-zig-ar      -> AR
+ *   ${triplet}-zig-ranlib  -> RANLIB
+ *   ${triplet}-zig-lld     -> LLD (lld-link on Windows, ld.lld on Unix)
+ *   ${triplet}-zig-rc      -> RC
+ *   ${triplet}-zig-asm     -> ASM (force "as")
+ *
+ * Compile-time substitutions (placeholder strings replaced at install time):
+ *   @ZIG_TARGET@      target triplet for -target injection
+ *   @ZIG_REAL_PATH@   absolute path to the real zig binary (e.g. PREFIX/Library/share/zig/zig-real.exe)
+ *                     -- if this is "" at runtime, fall back to relative-to-self lookup
+ *
+ * Runtime env:
+ *   ZIG_WRAPPER_DEBUG=1   emit [zig-wrapper] trace lines to stderr
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+
+#ifdef _WIN32
+#  include <process.h>
+#  include <windows.h>
+#  define PATH_SEP '\\'
+#  define MAX_PATH_LEN MAX_PATH
+#  define LLD_SUBCOMMAND "lld-link"
+#  define ASM_SUBCOMMAND "as"
+#  define ZIG_REAL_DEFAULT "zig-real.exe"
+#else
+#  include <unistd.h>
+#  include <limits.h>
+#  ifndef PATH_MAX
+#    define PATH_MAX 4096
+#  endif
+#  define PATH_SEP '/'
+#  define MAX_PATH_LEN PATH_MAX
+#  define LLD_SUBCOMMAND "ld.lld"
+#  define ASM_SUBCOMMAND "as"
+#  define ZIG_REAL_DEFAULT "zig-real"
+#endif
+
+#ifdef __APPLE__
+#  include <mach-o/dyld.h>
+#endif
+
+#define ZIG_TARGET      "@ZIG_TARGET@"
+#define ZIG_REAL_PATH   "@ZIG_REAL_PATH@"
+
+typedef enum {
+    MODE_DISPATCH,
+    MODE_CC,
+    MODE_CXX,
+    MODE_AR,
+    MODE_RANLIB,
+    MODE_LLD,
+    MODE_RC,
+    MODE_ASM,
+    MODE_UNKNOWN
+} wrapper_mode_t;
+
+static int debug_enabled = 0;
+
+#define DBG(...) do { if (debug_enabled) { fprintf(stderr, "[zig-wrapper] " __VA_ARGS__); } } while (0)
+
+/* --- string helpers --- */
+static int str_eq(const char *a, const char *b) { return strcmp(a, b) == 0; }
+static int starts_with(const char *s, const char *p) { return strncmp(s, p, strlen(p)) == 0; }
+static int ends_with(const char *s, const char *suffix) {
+    size_t sl = strlen(s), pl = strlen(suffix);
+    return sl >= pl && strcmp(s + sl - pl, suffix) == 0;
+}
+
+/* --- filter helpers (CC/CXX modes only) --- */
+static int is_drop_flag(const char *arg) {
+    return starts_with(arg, "-march=")
+        || starts_with(arg, "-mtune=")
+        || starts_with(arg, "-mcpu=")
+        || str_eq(arg, "-ftree-vectorize")
+        || starts_with(arg, "-fstack-protector")
+        || str_eq(arg, "-fno-plt")
+        || starts_with(arg, "-fdebug-prefix-map=")
+        || starts_with(arg, "-stdlib=")
+        || str_eq(arg, "-lgcc_eh")
+        || str_eq(arg, "-lgcc_s");
+}
+
+/* -Xlinker passthrough flags to drop (bare, passed after -Xlinker <arg>) */
+static int is_xlinker_drop(const char *arg) {
+    return str_eq(arg, "-Bsymbolic-functions")
+        || str_eq(arg, "-Bsymbolic")
+        || str_eq(arg, "--color-diagnostics")
+        || starts_with(arg, "--dependency-file=");
+}
+
+/* -Wl,* flags to drop (entire arg, when not using LLD) */
+static int is_wl_drop(const char *arg) {
+    if (!starts_with(arg, "-Wl,"))
+        return 0;
+    return starts_with(arg, "-Wl,-rpath-link")
+        || str_eq(arg, "-Wl,--disable-new-dtags")
+        || str_eq(arg, "-Wl,--allow-shlib-undefined")
+        || str_eq(arg, "-Wl,--no-allow-shlib-undefined")
+        || str_eq(arg, "-Wl,-Bsymbolic-functions")
+        || str_eq(arg, "-Wl,-Bsymbolic")
+        || str_eq(arg, "-Wl,--color-diagnostics")
+        || starts_with(arg, "-Wl,--version-script")
+        || starts_with(arg, "-Wl,-soname")
+        || starts_with(arg, "-Wl,-z,")
+        || starts_with(arg, "-Wl,-O")
+        || str_eq(arg, "-Wl,--gc-sections")
+        || str_eq(arg, "-Wl,--no-gc-sections")
+        || starts_with(arg, "-Wl,--build-id");
+}
+
+/* MSVC/LLD manifest flags to drop (/MANIFEST*, -MANIFEST*).
+ * CMake injects /MANIFEST:NO, /MANIFESTUAC:NO, /MANIFESTINPUT:..., etc.
+ * These are PE/COFF linker flags; zig cc forwards them to lld-link which
+ * may reject or misparse them when the cc wrapper re-invokes zig cc. */
+static int is_manifest_flag(const char *arg) {
+    if (arg[0] != '/' && arg[0] != '-') return 0;
+    const char *body = arg + 1;
+    if (tolower((unsigned char)body[0]) != 'm') return 0;
+    if (tolower((unsigned char)body[1]) != 'a') return 0;
+    if (tolower((unsigned char)body[2]) != 'n') return 0;
+    if (tolower((unsigned char)body[3]) != 'i') return 0;
+    if (tolower((unsigned char)body[4]) != 'f') return 0;
+    if (tolower((unsigned char)body[5]) != 'e') return 0;
+    if (tolower((unsigned char)body[6]) != 's') return 0;
+    if (tolower((unsigned char)body[7]) != 't') return 0;
+    return 1;
+}
+
+/* Flags that trigger auto-promotion to LLD (unsupported by self-hosted linker).
+ * These are -Wl,* and bare flags; if detected we inject -fuse-ld=lld so that
+ * LLD receives them instead of the self-hosted linker. */
+static int is_lld_trigger(const char *arg) {
+    if (str_eq(arg, "-fuse-ld=lld")) return 1;
+    /* ELF flags unsupported by self-hosted linker */
+    if (starts_with(arg, "-Wl,--version-script")) return 1;
+    if (starts_with(arg, "-Wl,--dynamic-list")) return 1;
+    if (starts_with(arg, "-Wl,-z,defs") || starts_with(arg, "-Wl,-z,nodelete")) return 1;
+    if (str_eq(arg, "-Wl,--gc-sections") || str_eq(arg, "-Wl,--no-gc-sections")) return 1;
+    if (starts_with(arg, "-Wl,--build-id")) return 1;
+    if (str_eq(arg, "-Wl,--allow-shlib-undefined") || str_eq(arg, "-Wl,--no-allow-shlib-undefined")) return 1;
+    if (str_eq(arg, "-Wl,-Bsymbolic-functions") || str_eq(arg, "-Wl,-Bsymbolic")) return 1;
+    if (str_eq(arg, "-Bsymbolic-functions") || str_eq(arg, "-Bsymbolic")) return 1;
+    if (starts_with(arg, "-Wl,-O")) return 1;
+    /* macOS Mach-O flags */
+    if (starts_with(arg, "-Wl,-exported_symbols_list")) return 1;
+    if (starts_with(arg, "-Wl,-unexported_symbols_list")) return 1;
+    if (starts_with(arg, "-Wl,-reexported_symbols_list")) return 1;
+    if (starts_with(arg, "-Wl,-force_symbols_not_weak_list")) return 1;
+    if (starts_with(arg, "-Wl,-force_symbols_weak_list")) return 1;
+    if (starts_with(arg, "-Wl,-all_load") || starts_with(arg, "-Wl,-force_load,")) return 1;
+    if (str_eq(arg, "-all_load") || str_eq(arg, "-force_load")) return 1;
+    if (starts_with(arg, "-Wl,-syslibroot")) return 1;
+    return 0;
+}
+
+/* Bare linker args that trigger LLD (passed via -Xlinker <arg>) */
+static int is_xlinker_lld_trigger(const char *arg) {
+    if (starts_with(arg, "--dynamic-list") || starts_with(arg, "--version-script")) return 1;
+    if (str_eq(arg, "--gc-sections") || str_eq(arg, "--no-gc-sections")) return 1;
+    if (starts_with(arg, "--build-id")) return 1;
+    if (str_eq(arg, "--allow-shlib-undefined") || str_eq(arg, "--no-allow-shlib-undefined")) return 1;
+    if (starts_with(arg, "-exported_symbols_list") || starts_with(arg, "-unexported_symbols_list")) return 1;
+    if (str_eq(arg, "-all_load") || starts_with(arg, "-force_load")) return 1;
+    return 0;
+}
+
+/* --- subcommand whitelist for -target injection (DISPATCH mode) --- */
+static int subcommand_accepts_target(const char *cmd) {
+    if (!cmd) return 0;
+    return str_eq(cmd, "cc") || str_eq(cmd, "c++")
+        || str_eq(cmd, "build-exe") || str_eq(cmd, "build-lib") || str_eq(cmd, "build-obj")
+        || str_eq(cmd, "test") || str_eq(cmd, "run") || str_eq(cmd, "translate-c");
+}
+
+/* --- check if user already supplied -target or --target= --- */
+static int user_has_target(int argc, char *argv[], int start) {
+    for (int i = start; i < argc; i++) {
+        if (str_eq(argv[i], "-target")) return 1;
+        if (starts_with(argv[i], "--target=")) return 1;
+    }
+    return 0;
+}
+
+/* --- mode detection from basename(argv[0]) --- */
+static const char *basename_of(const char *path) {
+    const char *slash = strrchr(path, PATH_SEP);
+#ifdef _WIN32
+    /* Windows: also accept forward slashes */
+    const char *fwd = strrchr(path, '/');
+    if (fwd > slash) slash = fwd;
+#endif
+    return slash ? slash + 1 : path;
+}
+
+static wrapper_mode_t detect_mode(const char *arg0) {
+    const char *bn = basename_of(arg0);
+    /* Copy basename, strip .exe suffix on Windows */
+    static char buf[256];
+    snprintf(buf, sizeof(buf), "%s", bn);
+    size_t len = strlen(buf);
+#ifdef _WIN32
+    if (len > 4 && (str_eq(buf + len - 4, ".exe") || str_eq(buf + len - 4, ".EXE"))) {
+        buf[len - 4] = '\0';
+        len -= 4;
+    }
+#endif
+    /* Match longest suffix first */
+    if (ends_with(buf, "-zig-ranlib")) return MODE_RANLIB;
+    if (ends_with(buf, "-zig-cxx") || ends_with(buf, "-zig-c++")) return MODE_CXX;
+    if (ends_with(buf, "-zig-asm")) return MODE_ASM;
+    if (ends_with(buf, "-zig-lld")) return MODE_LLD;
+    if (ends_with(buf, "-zig-cc")) return MODE_CC;
+    if (ends_with(buf, "-zig-ar")) return MODE_AR;
+    if (ends_with(buf, "-zig-rc")) return MODE_RC;
+    if (ends_with(buf, "-zig")) return MODE_DISPATCH;
+    if (str_eq(buf, "zig") || str_eq(buf, "zig.exe")) return MODE_DISPATCH;
+    return MODE_UNKNOWN;
+}
+
+/* --- resolve path to real zig binary --- */
+static int resolve_real_zig(char *out, size_t out_size) {
+    /* First: if @ZIG_REAL_PATH@ substituted to a non-empty value AND the file
+     * exists there, use it. On Windows conda's PE prefix replacement does not
+     * reliably rewrite this baked-in absolute path, so verify existence before
+     * trusting it; otherwise fall through to runtime-relative resolution. */
+    if (ZIG_REAL_PATH[0] != '\0' && ZIG_REAL_PATH[0] != '@') {
+        FILE *probe = fopen(ZIG_REAL_PATH, "rb");
+        if (probe) {
+            fclose(probe);
+            snprintf(out, out_size, "%s", ZIG_REAL_PATH);
+            return 0;
+        }
+    }
+
+    /* Fallback: resolve ../share/zig/zig-real(.exe) relative to this exe's own
+     * directory. The wrapper lives in <prefix>/bin (or <prefix>/Library/bin on
+     * Windows) and the real zig in <prefix>/share/zig (or
+     * <prefix>/Library/share/zig), so the navigation is relocation-independent. */
+    char self_path[MAX_PATH_LEN];
+#ifdef _WIN32
+    DWORD n = GetModuleFileNameA(NULL, self_path, (DWORD)sizeof(self_path));
+    if (n == 0 || n >= sizeof(self_path)) return -1;
+#elif defined(__APPLE__)
+    uint32_t size = (uint32_t)sizeof(self_path);
+    if (_NSGetExecutablePath(self_path, &size) != 0) return -1;
+#else
+    ssize_t n = readlink("/proc/self/exe", self_path, sizeof(self_path) - 1);
+    if (n < 0) return -1;
+    self_path[n] = '\0';
+#endif
+    char *slash = strrchr(self_path, PATH_SEP);
+#ifdef _WIN32
+    {
+        char *fwd = strrchr(self_path, '/');
+        if (fwd > slash) slash = fwd;
+    }
+#endif
+    if (!slash) return -1;
+    *(slash + 1) = '\0';  /* directory including trailing separator */
+    snprintf(out, out_size, "%s..%cshare%czig%c%s",
+             self_path, PATH_SEP, PATH_SEP, PATH_SEP, ZIG_REAL_DEFAULT);
+    return 0;
+}
+
+/* --- Windows: set ZIG_GLOBAL_CACHE_DIR if unset ---
+ * Mirrors zig's own resolution: APPDATA > USERPROFILE > GetTempPath.
+ * Prevents AppDataDirUnavailable panic even when APPDATA is set but
+ * zig's internal resolution fails. */
+#ifdef _WIN32
+static void ensure_zig_cache_dir(void) {
+    if (getenv("ZIG_GLOBAL_CACHE_DIR")) return;
+    char base[MAX_PATH];
+    const char *appdata = getenv("APPDATA");
+    const char *userprofile = getenv("USERPROFILE");
+    if (appdata && appdata[0]) {
+        snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
+    } else if (userprofile && userprofile[0]) {
+        snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
+    } else {
+        DWORD tmp_len = GetTempPathA(MAX_PATH, base);
+        if (tmp_len > 0)
+            snprintf(base + tmp_len - 1, MAX_PATH - (int)tmp_len, "\\zig-cache");
+    }
+    char *env_val = malloc(strlen("ZIG_GLOBAL_CACHE_DIR=") + strlen(base) + 2);
+    if (env_val) {
+        sprintf(env_val, "ZIG_GLOBAL_CACHE_DIR=%s", base);
+        _putenv(env_val);
+        free(env_val);
+    }
+}
+
+/* Windows: ensure C:\Windows\System32 is in PATH so UCRT DLLs are found.
+ * MSYS2 strips System32 from PATH, breaking zig-compiled binaries that
+ * link against UCRT (api-ms-win-crt-*.dll). */
+static void ensure_system32_in_path(void) {
+    if (!getenv("MSYSTEM")) return;
+    const char *path = getenv("PATH");
+    const char *sys32 = "C:\\Windows\\System32";
+    if (!path || strstr(path, sys32)) return;
+    char *new_path = malloc(strlen(path) + strlen(sys32) + 7);
+    if (!new_path) return;
+    sprintf(new_path, "PATH=%s;%s", sys32, path);
+    _putenv(new_path);
+    free(new_path);
+}
+
+/* --- Handle -print-search-dirs (Windows, GCC compat for flexlink/mingw_libs) ---
+ * zig doesn't implement this flag. flexlink calls it to discover library
+ * search paths before resolving -lXXX arguments. Without a response,
+ * flexlink has no search paths and treats -lws2_32 as a literal filename.
+ * We return paths to zig's pre-generated MinGW import libraries. */
+static int handle_print_search_dirs(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (!str_eq(argv[i], "-print-search-dirs")) continue;
+        const char *conda = getenv("CONDA_PREFIX");
+        if (conda && conda[0]) {
+            printf("install: %s\\Library\\lib\\zig\\\n", conda);
+            printf("programs: =%s\\Library\\bin\\\n", conda);
+            printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;"
+                   "%s\\Library\\lib\\zig\\libc\\mingw\\lib-x86_64;"
+                   "%s\\Library\\lib\\zig\n",
+                   conda, conda, conda);
+        } else {
+            printf("install: \nprograms: =\nlibraries: =\n");
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* --- Handle -print-file-name=<name> (Windows, GCC/Clang compat) ---
+ * zig doesn't support this flag. Probe known lib dirs and echo back
+ * the path if found, or the name unchanged if not (GCC behaviour). */
+static int handle_print_file_name(int argc, char *argv[]) {
+    const char *prefix = "-print-file-name=";
+    size_t plen = strlen(prefix);
+    for (int i = 1; i < argc; i++) {
+        if (strncmp(argv[i], prefix, plen) != 0) continue;
+        const char *name = argv[i] + plen;
+        const char *conda = getenv("CONDA_PREFIX");
+        if (conda && conda[0]) {
+            char probe[MAX_PATH];
+            const char *dirs[] = {
+                "Library\\lib\\zig-llvm\\lib",
+                "Library\\lib"
+            };
+            for (int d = 0; d < 2; d++) {
+                snprintf(probe, MAX_PATH, "%s\\%s\\%s", conda, dirs[d], name);
+                if (GetFileAttributesA(probe) != INVALID_FILE_ATTRIBUTES) {
+                    printf("%s\n", probe);
+                    return 1;
+                }
+            }
+        }
+        printf("%s\n", name);
+        return 1;
+    }
+    return 0;
+}
+#endif /* _WIN32 */
+
+/* --- main --- */
+int main(int argc, char *argv[]) {
+    const char *dbg_env = getenv("ZIG_WRAPPER_DEBUG");
+    debug_enabled = (dbg_env && dbg_env[0] != '\0');
+
+    wrapper_mode_t mode = detect_mode(argv[0]);
+
+    DBG("argv[0]=%s mode=%d\n", argv[0], (int)mode);
+    for (int i = 1; i < argc; i++) DBG("  in argv[%d]=%s\n", i, argv[i]);
+
+    if (mode == MODE_UNKNOWN) {
+        fprintf(stderr, "zig-wrapper: cannot determine mode from basename(%s)\n", argv[0]);
+        return 1;
+    }
+
+#ifdef _WIN32
+    ensure_zig_cache_dir();
+    ensure_system32_in_path();
+
+    /* GCC compat queries: answer and exit before any zig invocation */
+    if (handle_print_search_dirs(argc, argv)) return 0;
+    if (handle_print_file_name(argc, argv)) return 0;
+#endif
+
+    char zig_path[MAX_PATH_LEN];
+    if (resolve_real_zig(zig_path, sizeof(zig_path)) != 0) {
+        fprintf(stderr, "zig-wrapper: cannot resolve real zig binary\n");
+        return 1;
+    }
+    DBG("real zig: %s\n", zig_path);
+
+    /* Verify real zig exists before attempting exec; better error than execv ENOENT */
+    {
+        FILE *fp = fopen(zig_path, "rb");
+        if (!fp) {
+            fprintf(stderr, "zig-wrapper: real zig not found at '%s' (errno=%d)\n", zig_path, errno);
+            perror("zig-wrapper: fopen");
+            return 1;
+        }
+        fclose(fp);
+    }
+
+    /* Allocate generously: original args + up to ~10 injected args + NULL */
+    char **new_argv = (char **)calloc((size_t)(argc + 12), sizeof(char *));
+    if (!new_argv) {
+        fprintf(stderr, "zig-wrapper: malloc failed\n");
+        return 1;
+    }
+
+    /* Filtered arg staging buffer (CC/CXX pre-filter) */
+    const char **filtered = (const char **)malloc(sizeof(char *) * (size_t)(argc + 1));
+    if (!filtered) {
+        fprintf(stderr, "zig-wrapper: malloc failed\n");
+        free(new_argv);
+        return 1;
+    }
+
+    int ni = 0;
+    new_argv[ni++] = zig_path;
+
+    const char *subcommand = NULL;
+    int user_args_start = 1;
+    int do_filter = 0;
+    int allow_target = 0;
+
+    switch (mode) {
+        case MODE_DISPATCH:
+            if (argc >= 2) {
+                subcommand = argv[1];
+                new_argv[ni++] = argv[1];
+                user_args_start = 2;
+                allow_target = subcommand_accepts_target(subcommand);
+                /* dispatch "zig cc"/"zig c++" must filter MSVC-only flags (e.g. /MANIFEST*)
+                   exactly like the -zig-cc/-zig-cxx entrypoints; only tool/passthrough
+                   subcommands skip filtering. */
+                if (str_eq(subcommand, "cc") || str_eq(subcommand, "c++"))
+                    do_filter = 1;
+            }
+            break;
+        case MODE_CC:
+            subcommand = "cc";  new_argv[ni++] = "cc";  do_filter = 1; allow_target = 1; break;
+        case MODE_CXX:
+            subcommand = "c++"; new_argv[ni++] = "c++"; do_filter = 1; allow_target = 1; break;
+        case MODE_AR:
+            subcommand = "ar"; new_argv[ni++] = "ar"; break;
+        case MODE_RANLIB:
+            subcommand = "ranlib"; new_argv[ni++] = "ranlib"; break;
+        case MODE_LLD:
+            subcommand = LLD_SUBCOMMAND; new_argv[ni++] = (char *)LLD_SUBCOMMAND; break;
+        case MODE_RC:
+            subcommand = "rc"; new_argv[ni++] = "rc"; break;
+        case MODE_ASM:
+            subcommand = ASM_SUBCOMMAND; new_argv[ni++] = (char *)ASM_SUBCOMMAND; break;
+        case MODE_UNKNOWN:
+            break; /* unreachable: checked above */
+    }
+    (void)subcommand; /* used only for DBG */
+
+    if (do_filter) {
+        /* --- CC/CXX mode: pre-scan + filter, then assemble new_argv --- */
+
+        /* Pre-scan: detect LLD-triggering flags, user target overrides, -mcpu */
+        /* zig cc defaults to LLD on Linux/ELF and Windows/COFF; macOS guard below clears for ld64 */
+        int use_lld = 1;
+        int has_target = user_has_target(argc, argv, user_args_start);
+        int has_mcpu = 0;
+
+        for (int i = user_args_start; i < argc; i++) {
+            if (is_lld_trigger(argv[i])) use_lld = 1;
+            if (str_eq(argv[i], "-Xlinker") && i + 1 < argc) {
+                if (is_xlinker_lld_trigger(argv[i + 1])) use_lld = 1;
+            }
+            if (starts_with(argv[i], "-mcpu=")) has_mcpu = 1;
+        }
+
+        DBG("CC/CXX prescan: use_lld=%d has_target=%d has_mcpu=%d\n",
+            use_lld, has_target, has_mcpu);
+
+        /* macOS: ld64.lld cannot resolve -lSystem in conda envs (no SDK shipped).
+         * Match recipe/scripts/_zig-cc-common.sh:160-162 by clearing use_lld for
+         * Mach-O targets — zig's self-hosted Mach-O linker handles common flags
+         * (-exported_symbols_list, -Wl,-rpath, etc.) and finds libSystem via
+         * bundled stubs. */
+        if (strstr(ZIG_TARGET, "-macos") || strstr(ZIG_TARGET, "-darwin")) {
+            use_lld = 0;
+            DBG("macOS target detected; cleared use_lld\n");
+        }
+
+        /* Filter args into staging buffer */
+        int fi = 0;
+        int grab_next = 0;
+        int saw_nostdlibxx = 0;
+
+        for (int i = user_args_start; i < argc; i++) {
+            const char *a = argv[i];
+
+            /* -Xlinker <arg>: grab next arg for individual inspection */
+            if (grab_next) {
+                grab_next = 0;
+                if (!is_xlinker_drop(a)) {
+                    filtered[fi++] = "-Xlinker";
+                    filtered[fi++] = a;
+                } else {
+                    DBG("DROPPED (xlinker_drop): %s\n", a);
+                }
+                continue;
+            }
+            if (str_eq(a, "-Xlinker")) {
+                grab_next = 1;
+                continue;
+            }
+
+            /* /clang:* prefix: strip and forward bare flag */
+            if (starts_with(a, "/clang:")) {
+                DBG("REWROTE (/clang:): %s -> %s\n", a, a + 7);
+                filtered[fi++] = a + 7;
+                continue;
+            }
+
+            /* /Xclang <flag>: two-arg clang-cl form; forward bare flag */
+            if (str_eq(a, "/Xclang")) {
+                if (i + 1 < argc) {
+                    filtered[fi++] = argv[++i];
+                }
+                continue;
+            }
+
+            /* -Wl,* drops: only when not using LLD (LLD handles them natively) */
+            if (!use_lld && is_wl_drop(a)) {
+                DBG("DROPPED (wl_drop): %s\n", a);
+                continue;
+            }
+
+            /* Standalone drops */
+            if (is_drop_flag(a)) {
+                DBG("DROPPED (drop_flag): %s\n", a);
+                continue;
+            }
+
+            /* MSVC manifest flags */
+            if (is_manifest_flag(a)) {
+                DBG("DROPPED (manifest): %s\n", a);
+                continue;
+            }
+
+            /* -nostdlib++: downgrade c++ -> cc */
+            if (str_eq(a, "-nostdlib++")) {
+                saw_nostdlibxx = 1;
+                continue;
+            }
+
+            /* -fuse-ld=lld: strip from user args; re-inject below if use_lld */
+            if (str_eq(a, "-fuse-ld=lld")) {
+                DBG("STRIPPED (fuse-ld): will re-inject if use_lld\n");
+                continue;
+            }
+
+            filtered[fi++] = a;
+        }
+
+        /* Downgrade mode when -nostdlib++ seen */
+        if (saw_nostdlibxx && mode == MODE_CXX) {
+            /* Overwrite the subcommand we already pushed */
+            new_argv[ni - 1] = "cc";
+        }
+
+        /* Inject -fuse-ld=lld if LLD-triggering flags were found */
+        if (use_lld) {
+            new_argv[ni++] = "-fuse-ld=lld";
+            DBG("injected -fuse-ld=lld\n");
+        }
+
+        /* Inject -target if not supplied by user */
+        if (!has_target && ZIG_TARGET[0] != '\0' && ZIG_TARGET[0] != '@') {
+            new_argv[ni++] = "-target";
+            new_argv[ni++] = ZIG_TARGET;
+            DBG("injected -target %s\n", ZIG_TARGET);
+        }
+
+        /* Inject -mcpu=baseline if not overridden */
+        if (!has_mcpu) {
+            new_argv[ni++] = "-mcpu=baseline";
+            DBG("injected -mcpu=baseline\n");
+        }
+
+        /* Append filtered args */
+        for (int i = 0; i < fi; i++) {
+            new_argv[ni++] = (char *)filtered[i];
+        }
+
+    } else {
+        /* --- DISPATCH / tool modes: inject -target if applicable, pass args through --- */
+
+        if (allow_target && !user_has_target(argc, argv, user_args_start)
+                && ZIG_TARGET[0] != '\0' && ZIG_TARGET[0] != '@') {
+            new_argv[ni++] = "-target";
+            new_argv[ni++] = ZIG_TARGET;
+            DBG("injected -target %s\n", ZIG_TARGET);
+        }
+
+        for (int i = user_args_start; i < argc; i++) {
+            new_argv[ni++] = argv[i];
+        }
+    }
+
+    new_argv[ni] = NULL;
+    free(filtered);
+
+    if (debug_enabled) {
+        DBG("exec: %s\n", zig_path);
+        for (int i = 0; i < ni; i++) DBG("  out argv[%d]=%s\n", i, new_argv[i]);
+    }
+
+#ifdef _WIN32
+    int rc = (int)_spawnv(_P_WAIT, zig_path, (const char *const *)new_argv);
+    free(new_argv);
+    if (rc < 0) {
+        fprintf(stderr, "zig-wrapper: failed to spawn '%s' (errno=%d)\n", zig_path, errno);
+        perror("zig-wrapper: _spawnv");
+        return 1;
+    }
+    return rc;
+#else
+    execv(zig_path, new_argv);
+    fprintf(stderr, "zig-wrapper: failed to exec '%s' (errno=%d)\n", zig_path, errno);
+    perror("zig-wrapper: execv");
+    free(new_argv);
+    return 1;
+#endif
+}

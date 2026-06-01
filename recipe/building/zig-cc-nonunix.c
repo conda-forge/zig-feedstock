@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <process.h>
 #include <windows.h>
 
@@ -93,6 +94,25 @@ static int is_drop_flag(const char *arg) {
            str_eq(arg, "-fno-plt") ||
            starts_with(arg, "-fdebug-prefix-map=") ||
            starts_with(arg, "-stdlib=");
+}
+
+/* MSVC/LLD manifest flags to drop (/MANIFEST*, -MANIFEST*).
+ * CMake injects /MANIFEST:NO, /MANIFESTUAC:NO, /MANIFESTINPUT:..., etc.
+ * These are PE/COFF linker flags; zig cc forwards them to lld-link which
+ * may reject or misparse them when the cc wrapper re-invokes zig cc. */
+static int is_manifest_flag(const char *arg) {
+    if (arg[0] != '/' && arg[0] != '-')
+        return 0;
+    const char *body = arg + 1;
+    if (tolower((unsigned char)body[0]) != 'm') return 0;
+    if (tolower((unsigned char)body[1]) != 'a') return 0;
+    if (tolower((unsigned char)body[2]) != 'n') return 0;
+    if (tolower((unsigned char)body[3]) != 'i') return 0;
+    if (tolower((unsigned char)body[4]) != 'f') return 0;
+    if (tolower((unsigned char)body[5]) != 'e') return 0;
+    if (tolower((unsigned char)body[6]) != 's') return 0;
+    if (tolower((unsigned char)body[7]) != 't') return 0;
+    return 1;
 }
 
 /* Flags that trigger auto-promotion to LLD (unsupported by self-hosted linker) */
@@ -190,6 +210,16 @@ static int handle_print_file_name(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    /* Debug tracing: activated by ZIG_WRAPPER_DEBUG=1 (or any non-empty value) */
+    const char *dbg_env = getenv("ZIG_WRAPPER_DEBUG");
+    int dbg = (dbg_env != NULL && dbg_env[0] != '\0');
+    if (dbg) {
+        fprintf(stderr, "[zig-cc-nonunix] binary: %s\n", argv[0]);
+        fprintf(stderr, "[zig-cc-nonunix] argc: %d\n", argc);
+        for (int i = 0; i < argc; i++)
+            fprintf(stderr, "[zig-cc-nonunix] argv[%d] = %s\n", i, argv[i]);
+    }
+
     /* Ensure zig can resolve its cache directory.
      * ZIG_GLOBAL_CACHE_DIR overrides zig's getAppDataDir() lookup entirely.
      * Always set it if unset: mirrors zig's resolution (APPDATA > USERPROFILE
@@ -294,12 +324,23 @@ int main(int argc, char *argv[]) {
         }
 
         /* -Wl,* drops -- skip if LLD promoted (LLD handles these) */
-        if (!use_lld && is_wl_drop(arg))
+        if (!use_lld && is_wl_drop(arg)) {
+            if (dbg) fprintf(stderr, "[zig-cc-nonunix] DROPPED (wl_drop): %s\n", arg);
             continue;
+        }
 
         /* Standalone drops */
-        if (is_drop_flag(arg))
+        if (is_drop_flag(arg)) {
+            if (dbg) fprintf(stderr, "[zig-cc-nonunix] DROPPED (drop_flag): %s\n", arg);
             continue;
+        }
+
+        /* MSVC manifest flags -- drop silently (PE/COFF linker flags that
+         * lld-link does not accept when forwarded through zig cc) */
+        if (is_manifest_flag(arg)) {
+            if (dbg) fprintf(stderr, "[zig-cc-nonunix] DROPPED (manifest): %s\n", arg);
+            continue;
+        }
 
         /* -nostdlib++: downgrade mode from c++ to cc */
         if (str_eq(arg, "-nostdlib++")) {
@@ -359,6 +400,13 @@ int main(int argc, char *argv[]) {
                 free(new_path);
             }
         }
+    }
+
+    /* Debug: dump final exec args after filtering */
+    if (dbg) {
+        fprintf(stderr, "[zig-cc-nonunix] exec: %s\n", zig_path);
+        for (int i = 0; new_argv[i] != NULL; i++)
+            fprintf(stderr, "[zig-cc-nonunix] new_argv[%d] = %s\n", i, new_argv[i]);
     }
 
     /* Execute zig */

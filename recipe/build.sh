@@ -3,18 +3,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
-  echo "Attempting to re-exec with conda bash..."
-  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
-  elif [[ -x "${BUILD_PREFIX}/Library/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/Library/bin/bash" "$0" "$@"
-  else
-    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
-    exit 1
-  fi
-fi
-
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # Local-only debug overrides — file is gitignored; create from recipe/local-scripts/debug-env.sh.example
@@ -153,7 +141,7 @@ if is_cross; then
   sanitize_and_export_cross_flags
 fi
 
-# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref because zig2
+# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref
 EXTRA_ZIG_ARGS+=(-Dno-langref)
 EXTRA_CMAKE_ARGS+=(-DZIG_NO_LANGREF=ON)
 
@@ -223,7 +211,7 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
   create_gcc14_glibc28_compat_lib
 
-  is_cross && { rm -f "${PREFIX}/bin/llvm-config"; cp "${BUILD_PREFIX}/bin/llvm-config" "${PREFIX}/bin/llvm-config"; }
+  is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
 fi
 
 # LLVM_LIBRARIES from llvm-config which omits zstd/xml2/z. LLD's
@@ -247,46 +235,31 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-# --- ppc64le: build + install LLD and zigcpp bundles (path-independent) ---
-# Must run AFTER configure_cmake_zigcpp (which produces build-release/zigcpp/libzigcpp.a)
-# and BEFORE the build-path fork so both cmake_build and build_zig_with_zig
-# paths ship the bundles in ${PREFIX}/lib.
+# --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  dbg echo "=== ppc64le: build + install bundles (path-independent) ==="
+  dbg echo "=== ppc64le lld bundle ==="
   mkdir -p "${PREFIX}/lib"
   source "${RECIPE_DIR}/building/_lld_bundle.sh"
-  dbg echo "=== ppc64le: build_lld_bundle_ppc64le ==="
   build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
   install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
   source "${RECIPE_DIR}/building/_zigcpp_bundle.sh"
-  dbg echo "=== ppc64le: build_zigcpp_bundle_ppc64le ==="
   build_zigcpp_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" "${cmake_build_dir}" || exit 1
   install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so" "${PREFIX}/lib/" || exit 1
 fi
 
 # --- Post CMake Configuration ---
-dbg echo "=== POST-CMAKE: starting post-cmake configuration ==="
 
 # Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
-dbg echo "=== POST-CMAKE: perl config.h edits ==="
 is_linux && is_cross && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
 is_osx &&               perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;${PREFIX}/lib/libc++.dylib\"@" "${cmake_build_dir}"/config.h
 
-dbg echo "=== DEBUG ===" && dbg cat "${cmake_build_dir}"/config.h && dbg echo "=== DEBUG ==="
-
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
 
 if is_linux && is_cross; then
-  dbg echo "=== POST-CMAKE: linux cross-build setup ==="
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
-  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
 
-  dbg echo "=== POST-CMAKE: fix_sysroot_libc_scripts ==="
-  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
-
-  dbg echo "=== POST-CMAKE: create_zig_linux_libc_file ==="
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
 
   # pthread_atfork stub + --wrap mechanism is cmake-path-only. zig-build path
@@ -294,28 +267,31 @@ if is_linux && is_cross; then
   # bundles will address that separately).
   if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
     perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
-    dbg echo "=== POST-CMAKE: create_pthread_atfork_stub ==="
     create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   fi
 
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/libc_single_threaded_stub.o\"|g" "${cmake_build_dir}/config.h"
-  dbg echo "=== POST-CMAKE: create_libc_single_threaded_stub ==="
   create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
-  dbg echo "=== POST-CMAKE: cross-build setup DONE ==="
+fi
+
+# Always-linux: sysroot ld-script rewrite (needed by wrapper compile and any zig cc
+# invocation that lacks --sysroot flags). On native linux-64 the sysroot's
+# libpthread.so contains absolute /usr/lib64/... paths that LLD can't resolve.
+if is_linux; then
+  source "${RECIPE_DIR}/building/_sysroot_fix.sh"
+  fix_sysroot_libc_scripts "${BUILD_PREFIX}"
 fi
 
 if is_linux && is_cross; then
   export QEMU_LD_PREFIX="${BUILD_PREFIX}/${CONDA_TOOLCHAIN_HOST}/sysroot"
 fi
 
-dbg echo "=== ZIG BUILD: starting zig build ==="
-dbg echo "=== ZIG BUILD: zig=${BUILD_ZIG} dir=${zig_build_dir} ==="
+dbg echo "=== zig build env ==="
 if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
-  dbg echo "=== ZIG BUILD: CMAKE_BUILD=1, forcing cmake build (bypass zig-with-zig) ==="
   source "${RECIPE_DIR}/building/_cmake.sh"
   cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
 elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
-  dbg echo "=== ZIG BUILD: SUCCESS ==="
+  :
 else
   echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
   exit 1
@@ -347,7 +323,7 @@ _can_run_stage3() {
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
 elif _can_run_stage3; then
-  dbg echo "=== PHASE 2: building langref via stage3 zig ==="
+  dbg echo "=== phase 2 langref ==="
   _stage3_runner=()
   if is_cross && is_linux; then
     _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
@@ -359,7 +335,6 @@ elif _can_run_stage3; then
     _qemu_shadow_dir=$(mktemp -d)
     ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
   fi
 
   (
@@ -384,15 +359,95 @@ else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
 fi
 
-dbg echo "=== POST-INSTALL: mv zig to ${CONDA_TRIPLET}-zig ==="
-mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
-dbg echo "=== POST-INSTALL: mv done ==="
+# === Phase 2: Unified wrapper install ===
+WRAPPER_SRC="${RECIPE_DIR}/building/zig-wrapper.c"
+WRAPPER_OBJDIR="${SRC_DIR}/_wrapper_build"
+mkdir -p "${WRAPPER_OBJDIR}"
+
+# Determine platform-specific directories first
+if is_not_unix; then
+    WRAPPER_BIN_DIR="${PREFIX}/Library/bin"
+    REAL_ZIG_DIR="${PREFIX}/Library/share/zig"
+    REAL_ZIG_NAME="zig-real.exe"
+    EXE_EXT=".exe"
+else
+    WRAPPER_BIN_DIR="${PREFIX}/bin"
+    REAL_ZIG_DIR="${PREFIX}/share/zig"
+    REAL_ZIG_NAME="zig-real"
+    EXE_EXT=""
+fi
+
+WRAPPER_C="${WRAPPER_OBJDIR}/zig-wrapper-built.c"
+
+# Wrapper's baked default -target. On Windows the wrapper is named
+# <arch>-w64-mingw32-zig and the feedstock ships MinGW (.dll.a) import libs, so
+# default to the GNU/MinGW ABI; users can still select MSVC explicitly with
+# -target <arch>-windows-msvc (the wrapper suppresses its default when the user
+# passes -target). This is independent of ZIG_TRIPLET, which still controls how
+# the zig binary itself is built (zig is multi-target).
+case "${target_platform}" in
+    win-64)    WRAPPER_DEFAULT_TARGET="x86_64-windows-gnu" ;;
+    win-arm64) WRAPPER_DEFAULT_TARGET="aarch64-windows-gnu" ;;
+    win-32)    WRAPPER_DEFAULT_TARGET="x86-windows-gnu" ;;
+    *)         WRAPPER_DEFAULT_TARGET="${ZIG_TRIPLET%%.[0-9]*}" ;;
+esac
+
+# Substitute compile-time placeholders. Substitute @ZIG_REAL_PATH@ with the
+# absolute zig-real path; conda's binary prefix-replacement handles relocation at install time.
+sed -e "s|@ZIG_TARGET@|${WRAPPER_DEFAULT_TARGET}|g" \
+    -e "s|@ZIG_REAL_PATH@|${REAL_ZIG_DIR//\\//}/${REAL_ZIG_NAME}|g" \
+    "${WRAPPER_SRC}" > "${WRAPPER_C}"
+
+mkdir -p "${WRAPPER_BIN_DIR}" "${REAL_ZIG_DIR}"
+
+# macOS Mach-O needs header padding for conda's install_name_tool relinking
+if [[ "${target_platform}" == osx-* ]]; then
+    WRAPPER_LDFLAGS="-Wl,-headerpad_max_install_names"
+else
+    WRAPPER_LDFLAGS=""
+fi
+
+dbg echo "=== pre-wrapper compile ==="
+
+# Per-target wrapper compile flags:
+# - linux-ppc64le: pass explicit --target= so zig resolves the ppc64le dynamic
+#   linker (/lib64/ld64.so.2) instead of the build-host's x86_64 one, and
+#   selects ppc64le's 128-bit-long-double ABI so glibc's bits/stdio-ldbl.h skips
+#   the __LDBL_REDIR_DECL asm-label redirect (clang rejects it, gcc accepts).
+#   Do NOT add -mlong-double-128: zig 0.15's cc driver folds it into the target
+#   query string, producing an InvalidAbiVersion parse error.
+# - win-*: compile with -g0 (no debug info) so zig's PE/COFF link does not emit
+#   a CodeView .pdb sidecar, which trips package_contents strict checks. A
+#   defensive *.pdb removal after the build catches any sidecar that slips through.
+_WRAPPER_CC_EXTRA=""
+case "${target_platform}" in
+    linux-ppc64le) _WRAPPER_CC_EXTRA="--target=${ZIG_TRIPLET}" ;;
+    win-*)         _WRAPPER_CC_EXTRA="-g0" ;;
+esac
+
+# Compile wrapper using the just-built zig
+PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
+"${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
+
+# Install ergonomic-name copies
+for suffix in zig-cc zig-cxx zig-ar zig-ranlib zig-lld zig-rc zig-asm; do
+    cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-${suffix}${EXE_EXT}"
+done
+
+# zig's PE/COFF link can still emit a .pdb sidecar named after the output;
+# it is not needed for the wrapper and trips package_contents strict checks.
+case "${target_platform}" in
+    win-*) rm -f "${WRAPPER_BIN_DIR}"/*.pdb ;;
+esac
+
+# Move raw zig out of PATH
+mv "${PREFIX}/bin/zig" "${REAL_ZIG_DIR}/${REAL_ZIG_NAME}"
+
+# === end Phase 2 ===
 
 # Non-unix conda convention: artifacts go under Library/
 if is_not_unix; then
-  dbg echo "Relocating to Library/ for non-unix conda convention"
-  mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
-  mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
+  mkdir -p "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
   [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
 fi
