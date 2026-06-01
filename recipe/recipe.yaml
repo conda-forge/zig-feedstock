@@ -302,6 +302,8 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-ar${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-ranlib${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-lld${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-rc${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
             - if: unix
@@ -496,14 +498,17 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
-        # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
-        - if: is_cross_compiler and not unix
-          then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2
+        - zig_impl_${{ build_platform }} >=0.15.2
         - if: not unix
           then:
             - ${{ compiler('c') }}
             - ${{ stdlib("c") }}
+        - if: xc_ppc64le
+          then:
+            # ppc64le wrapper compiled with --target=powerpc64le-linux-gnu.*
+            # zig invokes powerpc64le-conda-linux-gnu-gcc as the system linker
+            - gcc_linux-ppc64le
+            - binutils_linux-ppc64le
       host:
         - if: not is_cross_compiler
           then:
@@ -513,7 +518,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
+            - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -529,6 +534,15 @@ outputs:
             - if: is_cross_compiler
               then:
                 - ${{ conda_triplet }}-zig
+                - ${{ conda_triplet }}-zig-cc
+                - ${{ conda_triplet }}-zig-cxx
+                - ${{ conda_triplet }}-zig-ar
+                - ${{ conda_triplet }}-zig-ranlib
+                - ${{ conda_triplet }}-zig-lld
+                - ${{ conda_triplet }}-zig-rc
+                - ${{ conda_triplet }}-zig-asm
+                - ${{ conda_triplet }}-zig-force-load-cc
+                - ${{ conda_triplet }}-zig-force-load-cxx
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}

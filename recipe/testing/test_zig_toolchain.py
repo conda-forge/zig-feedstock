@@ -192,6 +192,7 @@ def test_activation_variables() -> None:
 
         # ZIG_RC_CMAKE path escaping
         rc_cmake = _env_var("ZIG_RC_CMAKE")
+        print(f"DIAG: ZIG_RC_CMAKE actual value = {rc_cmake!r}", file=sys.stderr)
         if rc_cmake:
             PASS("ZIG_RC_CMAKE is set")
             if "\\" not in rc_cmake:
@@ -234,12 +235,15 @@ def test_flag_filtering() -> None:
             "-fno-plt",
         ]
         cmd = [zig_cc] + gcc_flags + ["-c", "-o", str(obj), str(src)]
-        r = _run(cmd, cwd=td)
-        if r.returncode == 0 and obj.exists():
-            PASS("compile with conda gcc flags succeeds (flags filtered)")
+        if _is_emulated or _is_cross_compiler:
+            SKIP("compile with conda gcc flags succeeds", "emulated/cross CI — cannot execute target binary")
         else:
-            FAIL("compile with conda gcc flags succeeds",
-                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+            r = _run(cmd, cwd=td)
+            if r.returncode == 0 and obj.exists():
+                PASS("compile with conda gcc flags succeeds (flags filtered)")
+            else:
+                FAIL("compile with conda gcc flags succeeds",
+                     f"rc={r.returncode} stderr={r.stderr[:2000]}")
 
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.

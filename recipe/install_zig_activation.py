@@ -74,6 +74,8 @@ def main():
         else:
             install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
 
+        install_target_triplet_wrappers(prefix, recipe_dir, target_triplet, zig_triplet, is_nonunix)
+
     print("=== Zig Activation Package Installation Complete ===")
 
 
@@ -268,6 +270,146 @@ def install_nonunix_cross_wrappers(
         bin_dir / f"{target_triplet}-zig.exe",
         replacements,
     )
+
+
+def install_target_triplet_wrappers(
+    prefix: Path, recipe_dir: Path,
+    target_triplet: str, zig_triplet: str,
+    is_nonunix: bool,
+):
+    """Compile and install target-triplet-prefixed zig-cc/cxx/ar/... wrappers.
+
+    Mirrors build.sh Phase 2 for cross-compiler packages: compiles zig-wrapper.c
+    with @ZIG_TARGET@ and @ZIG_REAL_PATH@ substituted, then copies the resulting
+    binary to bin/{target_triplet}-zig-{suffix} for all 9 tool suffixes.
+
+    This is separate from install_unix_cross_wrappers / install_nonunix_cross_wrappers
+    which install the bare {target_triplet}-zig dispatcher script/shim.
+    """
+    wrapper_src = recipe_dir / "building" / "zig-wrapper.c"
+    if not wrapper_src.exists():
+        raise FileNotFoundError(f"zig-wrapper.c not found at {wrapper_src}")
+
+    # bin directory mirrors build.sh WRAPPER_BIN_DIR
+    if is_nonunix:
+        bin_dir = prefix / "Library" / "bin"
+        real_zig_path = str(prefix / "Library" / "share" / "zig" / "zig-real.exe")
+        exe_ext = ".exe"
+    else:
+        bin_dir = prefix / "bin"
+        real_zig_path = str(prefix / "share" / "zig" / "zig-real")
+        exe_ext = ""
+
+    # @ZIG_TARGET@: strip glibc version suffix (build.sh: ${ZIG_TRIPLET%%.[0-9]*})
+    zig_target = re.sub(r'\.[0-9]+\.[0-9]+$', '', zig_triplet)
+
+    replacements = {
+        "@ZIG_TARGET@": zig_target,
+        "@ZIG_REAL_PATH@": real_zig_path,
+    }
+
+    # Substitute source and compile in a temp dir
+    content = wrapper_src.read_text()
+    for placeholder, value in replacements.items():
+        content = content.replace(placeholder, value)
+
+    # zig_impl is a BUILD dep, installed into BUILD_PREFIX during build.
+    # Use the build-host's zig binary directly — bypass the cross-compiler
+    # dispatcher (which won't work at install time before activation).
+    build_zig = os.environ.get("CONDA_ZIG_BUILD", "")  # e.g. "x86_64-conda-linux-gnu-zig"
+    build_prefix = Path(os.environ["BUILD_PREFIX"])
+
+    if is_nonunix:
+        candidates = [
+            # zig_impl is a BUILD dep, installed into ${BUILD_PREFIX} during build
+            build_prefix / "Library" / "bin" / f"{build_zig}.exe",
+            # _27 layout fallback
+            build_prefix / "Library" / "share" / "zig" / "zig-real.exe",
+        ]
+    else:
+        candidates = [
+            # zig_impl is a BUILD dep, installed into ${BUILD_PREFIX} during build
+            build_prefix / "bin" / build_zig,
+            # _27 layout fallback
+            build_prefix / "share" / "zig" / "zig-real",
+        ]
+
+    zig_bin = next((p for p in candidates if p.is_file()), None)
+
+    # Cross-platform builds: CONDA_ZIG_BUILD may reference the cross-build's "native"
+    # triplet (e.g., osx-64 for osx-arm64 cross) while BUILD machine uses a different
+    # zig wrapper name (e.g., linux-64). Probe for any -zig binary in BUILD_PREFIX/bin.
+    if zig_bin is None:
+        if is_nonunix:
+            bin_dir = build_prefix / "Library" / "bin"
+            glob_pattern = "*-zig.exe"
+        else:
+            bin_dir = build_prefix / "bin"
+            glob_pattern = "*-zig"
+        matches = sorted(bin_dir.glob(glob_pattern))
+        # Filter out our own newly-installed cross-compiler dispatcher if it ended up here
+        # (it shouldn't be in build_prefix, but defensive). Match anything matching the pattern.
+        for match in matches:
+            if match.is_file():
+                zig_bin = match
+                break
+
+    if zig_bin is None:
+        if is_nonunix:
+            bin_dir = build_prefix / "Library" / "bin"
+            glob_pattern = "*-zig.exe"
+        else:
+            bin_dir = build_prefix / "bin"
+            glob_pattern = "*-zig"
+        raise FileNotFoundError(
+            f"No working zig found in BUILD_PREFIX. Tried:\n  "
+            + "\n  ".join(str(p) for p in candidates)
+            + f"\n  glob: {bin_dir}/{glob_pattern}"
+            + f"\nCONDA_ZIG_BUILD={build_zig!r}; is a zig_impl_* package listed as a build dep?"
+        )
+
+    # Wrapper binary is compiled NATIVE (runs on BUILD machine).
+    # It does NOT need cross-compilation; the target arch is baked into
+    # @ZIG_TARGET@ constant which the wrapper passes to zig at runtime.
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_src = Path(tmpdir) / "zig-wrapper-built.c"
+        tmp_src.write_text(content)
+
+        primary_wrapper = Path(tmpdir) / f"{target_triplet}-zig{exe_ext}"
+
+        extra_flags = []
+        if "powerpc64le" in zig_triplet or "ppc64le" in zig_triplet:
+            extra_flags.append(f"--target={zig_triplet}")
+        if "macos" in zig_triplet or "darwin" in target_triplet:
+            extra_flags.append("-Wl,-headerpad_max_install_names")
+
+        subprocess.check_call([
+            str(zig_bin), "cc", "-O2",
+            *extra_flags,
+            str(tmp_src),
+            "-o", str(primary_wrapper),
+        ])
+        print(f"  Compiled wrapper: {primary_wrapper.name}")
+
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        suffixes = [
+            "zig-cc", "zig-cxx", "zig-ar", "zig-ranlib",
+            "zig-lld", "zig-rc", "zig-asm",
+            "zig-force-load-cc", "zig-force-load-cxx",
+        ]
+        for suffix in suffixes:
+            dst = bin_dir / f"{target_triplet}-{suffix}{exe_ext}"
+            shutil.copy2(str(primary_wrapper), str(dst))
+            if not is_nonunix:
+                dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            print(f"  Installed: {dst}")
+
+        # Remove any stray .pdb sidecar emitted by zig's PE/COFF link (Windows)
+        if is_nonunix:
+            for pdb in Path(tmpdir).glob("*.pdb"):
+                pdb.unlink()
 
 
 if __name__ == "__main__":

@@ -30,9 +30,11 @@ if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-ar.exe"     set "ZIG_A
 if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-ranlib.exe" set "ZIG_RANLIB=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-ranlib.exe"
 if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-asm.exe"    set "ZIG_ASM=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-asm.exe"
 if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-rc.exe" (
+    setlocal enabledelayedexpansion
     set "ZIG_RC=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-rc.exe"
     set "_rc_path=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-rc.exe"
-    set "ZIG_RC_CMAKE=%_rc_path:\=/%"
+    set "ZIG_RC_CMAKE=!_rc_path:\=/!"
+    endlocal & set "ZIG_RC_CMAKE=%ZIG_RC_CMAKE%"
 )
 if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-lld.exe" set "ZIG_LLD=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-lld.exe"
 
