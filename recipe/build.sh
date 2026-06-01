@@ -430,7 +430,7 @@ PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
 "${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
 
 # Install ergonomic-name copies
-for suffix in zig-cc zig-cxx zig-ar zig-ranlib zig-lld zig-rc zig-asm; do
+for suffix in zig-cc zig-cxx zig-ar zig-ranlib zig-lld zig-rc zig-asm zig-force-load-cc zig-force-load-cxx; do
     cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-${suffix}${EXE_EXT}"
 done
 

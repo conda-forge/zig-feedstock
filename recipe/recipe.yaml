@@ -532,20 +532,6 @@ outputs:
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cc${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cxx${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ar${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ranlib${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-asm${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-rc${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-lld${{ exe }}
-            - if: unix
-              then:
-                - share/zig/wrappers/${{ conda_triplet }}-_zig-cc-common.sh
-                - share/zig/wrappers/${{ conda_triplet }}-_zig-force-load-common.sh
-                - share/zig/wrappers/${{ conda_triplet }}-zig-force-load-cc
-                - share/zig/wrappers/${{ conda_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:

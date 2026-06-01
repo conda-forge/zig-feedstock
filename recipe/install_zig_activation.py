@@ -4,11 +4,11 @@ Build script for zig_$cross_target_platform_ activation package.
 
 Installs:
 1. Activation/deactivation scripts (all builds)
-2. zig-cc wrapper scripts from templates (all Unix builds)
-3. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
+2. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
 
-All wrapper content lives in recipe/scripts/ as templates with @PLACEHOLDER@
-substitution — no script content is generated inline.
+zig-cc/cxx/ar/ranlib/asm/rc/lld/force-load-cc/force-load-cxx wrappers are
+compiled from recipe/building/zig-wrapper.c by build.sh and installed
+directly into bin/ (Unix) or Library/bin/ (Windows) — not installed here.
 """
 
 import os
@@ -62,15 +62,7 @@ def main():
         is_nonunix=is_nonunix,
     )
 
-    # 2. Install zig-cc wrapper scripts
-    install_zig_cc_wrappers(
-        prefix, recipe_dir,
-        zig_triplet=zig_triplet,
-        conda_triplet=conda_triplet,
-        is_nonunix=is_nonunix,
-    )
-
-    # 3. Cross-compiler: install triplet-prefixed wrappers
+    # 2. Cross-compiler: install triplet-prefixed wrappers (cross builds only)
     if cross_compiler == "true":
         native_triplet = os.environ.get("NATIVE_TRIPLET", "x86_64-conda-linux-gnu")
 
@@ -186,21 +178,6 @@ def _normalize_cc_target(triplet: str) -> str:
     return triplet
 
 
-def _find_zig_bin(conda_triplet: str, is_nonunix: bool = False) -> str:
-    """Return the zig binary reference for wrappers.
-
-    Uses %CONDA_PREFIX% (NonUnix) or $CONDA_PREFIX (Unix) relative path
-    so wrappers work after installation.
-    """
-    if is_nonunix:
-        if conda_triplet:
-            return f"%CONDA_PREFIX%\\Library\\bin\\{conda_triplet}-zig.exe"
-        return "%CONDA_PREFIX%\\Library\\bin\\zig.exe"
-    if conda_triplet:
-        return f"${{CONDA_PREFIX}}/bin/{conda_triplet}-zig"
-    return "${CONDA_PREFIX}/bin/zig"
-
-
 def install_activation_scripts(
     prefix: Path,
     recipe_dir: Path,
@@ -236,82 +213,6 @@ def install_activation_scripts(
     else:
         _install_template(scripts_dir / "activate.sh", activate_dir / "zig_activate.sh", replacements)
         _install_template(scripts_dir / "deactivate.sh", deactivate_dir / "zig_deactivate.sh", replacements)
-
-
-def install_zig_cc_wrappers(
-    prefix: Path,
-    recipe_dir: Path,
-    zig_triplet: str,
-    conda_triplet: str,
-    is_nonunix: bool = False,
-):
-    """Install zig-cc/cxx/ar/ranlib/asm/rc wrapper scripts from templates."""
-    scripts_dir = recipe_dir / "scripts"
-
-    # Strip glibc version for cc/c++ target (clang rejects ".2.17" suffix)
-    cc_target = _normalize_cc_target(zig_triplet)
-    zig_bin = _find_zig_bin(conda_triplet, is_nonunix=is_nonunix)
-
-    # Wrapper filenames use the short triplet (no '-conda-') to match ZIG_TARGET_HOST
-    # e.g. x86_64-conda-linux-gnu → x86_64-linux-gnu
-    zig_short_triplet = conda_triplet.replace("-conda-", "-") if conda_triplet else conda_triplet
-
-    # Architecture prefix for sysroot detection (e.g. x86_64 from x86_64-linux-gnu.2.17)
-    target_arch = zig_triplet.split("-")[0] if "-" in zig_triplet else ""
-
-    replacements = {
-        "@ZIG_BIN@": zig_bin,
-        "@ZIG_TARGET@": cc_target,
-        "@ZIG_TARGET_ARCH@": target_arch,
-        "@WRAPPER_PREFIX@": f"{conda_triplet}-",
-    }
-
-    if is_nonunix:
-        wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
-
-        # Extract zig binary filename from full %CONDA_PREFIX%\... path (used by both shims)
-        zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
-
-        # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
-        cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
-        if cc_src.exists():
-            for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
-                mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name}
-                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
-
-        # Compile zig-ar/ranlib/rc/lld/asm as .exe shims so they match the
-        # extension-less paths exported by _zig_wrappers.sh (bash's -x test
-        # auto-resolves .exe but not .bat under MSYS2).
-        tool_src = recipe_dir / "building" / "zig-tool-nonunix.c"
-        if tool_src.exists():
-            zig_target_for_asm = replacements.get("@ZIG_TARGET@", "native")
-            tool_prefix_args = {
-                "zig-ar":     '"ar"',
-                "zig-ranlib": '"ranlib"',
-                "zig-rc":     '"rc"',
-                "zig-lld":    '"lld-link"',
-                "zig-asm":    f'"cc", "-target", "{zig_target_for_asm}", "-mcpu=baseline"',
-            }
-            for name, prefix_args in tool_prefix_args.items():
-                tool_replacements = {
-                    **replacements,
-                    "@ZIG_BIN_NAME@": zig_bin_name,
-                    "@ZIG_PREFIX_ARGS@": prefix_args,
-                }
-                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
-
-    else:
-        wrapper_dir = prefix / "share" / "zig" / "wrappers"
-        # Install shared helpers (sourced by wrapper scripts, not executed directly)
-        for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
-            src = scripts_dir / helper
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-force-load-cc", "zig-force-load-cxx"]
-        for name in wrappers:
-            src = scripts_dir / f"{name}.sh"
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
 
 
 def install_unix_cross_wrappers(

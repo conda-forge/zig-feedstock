@@ -67,9 +67,9 @@ _is_cross_compiler = _build_zig != _host and _build_zig != "" and _host != ""
 
 _prefix = Path(os.environ.get("CONDA_PREFIX", ""))
 if _build_is_win:
-    _wrapper_dir = _prefix / "Library" / "share" / "zig" / "wrappers"
+    _wrapper_dir = _prefix / "Library" / "bin"
 else:
-    _wrapper_dir = _prefix / "share" / "zig" / "wrappers"
+    _wrapper_dir = _prefix / "bin"
 
 
 def _env_var(name: str) -> str:
@@ -122,7 +122,6 @@ def test_wrapper_existence() -> None:
             f"{_pfx}zig-asm",
             f"{_pfx}zig-rc",
             f"{_pfx}zig-lld",
-            f"{_pfx}_zig-cc-common.sh",
         ]
 
     for w in expected:
@@ -131,8 +130,8 @@ def test_wrapper_existence() -> None:
             FAIL(f"{w} exists")
             continue
         PASS(f"{w} exists")
-        # Executability (Unix only, skip .sh helper)
-        if not _build_is_win and not w.endswith(".sh"):
+        # Executability (Unix only)
+        if not _build_is_win:
             if os.access(p, os.X_OK):
                 PASS(f"{w} is executable")
             else:
@@ -963,123 +962,6 @@ def test_lld_dispatch() -> None:
 
 
 # ===================================================================
-# Section 7 — Unix-only: flag filter content checks (from old .sh)
-# ===================================================================
-def test_flag_filter_content() -> None:
-    """Check that _zig-cc-common.sh contains expected filter patterns."""
-    print("--- Flag filter content (Unix) ---")
-
-    if _build_is_win:
-        SKIP("flag filter content", "Unix-only")
-        return
-
-    common = _wrapper_dir / f"{_triplet}-_zig-cc-common.sh"
-    if not common.exists():
-        FAIL("_zig-cc-common.sh exists for content check")
-        return
-
-    text = common.read_text()
-
-    checks = [
-        ("-mcpu=* in filter list", "-mcpu="),
-        ("-march=* in filter list", "-march="),
-        ("-mtune=* in filter list", "-mtune="),
-        ("exported_symbols_list filtered", "exported_symbols_list"),
-        ("unexported_symbols_list filtered", "unexported_symbols_list"),
-        ("force_symbols_not_weak_list filtered", "force_symbols_not_weak_list"),
-        ("force_symbols_weak_list filtered", "force_symbols_weak_list"),
-        ("reexported_symbols_list filtered", "reexported_symbols_list"),
-        ("-Wl,-all_load filtered", "all_load"),
-        ("-Wl,-force_load filtered", "force_load"),
-        ("-mcpu=baseline in exec args", "mcpu=baseline"),
-        ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
-        ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
-        ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
-        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
-    ]
-    for label, needle in checks:
-        if needle in text:
-            PASS(label)
-        else:
-            FAIL(label)
-
-    # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
-    if "_use_lld" in text and "-fuse-ld=lld" in text:
-        PASS("auto-LLD promotion logic present")
-    else:
-        FAIL("auto-LLD promotion logic present")
-
-    lld_triggers = ["version-script", "dynamic-list", "gc-sections", "build-id"]
-    for flag in lld_triggers:
-        if f"--{flag}" in text:
-            PASS(f"--{flag} triggers LLD promotion")
-        else:
-            FAIL(f"--{flag} should trigger LLD promotion")
-
-
-# ===================================================================
-# Section 8 — Unix-only: force-load wrapper content (from old .sh)
-# ===================================================================
-def test_force_load_wrappers() -> None:
-    """Check force-load wrapper scripts contain expected patterns."""
-    print("--- Force-load wrappers (Unix) ---")
-
-    if _build_is_win:
-        SKIP("force-load wrappers", "Unix-only")
-        return
-
-    fl_cc = _wrapper_dir / f"{_triplet}-zig-force-load-cc"
-    if not fl_cc.exists():
-        FAIL("zig-force-load-cc exists")
-        return
-
-    text_cc = fl_cc.read_text()
-    for label, needle in [
-        ("force-load-cc sources common", "_zig-force-load-common.sh"),
-        ('force-load-cc uses cc mode', '_ZIG_MODE="cc"'),
-    ]:
-        if needle in text_cc:
-            PASS(label)
-        else:
-            FAIL(label)
-
-    fl_cxx = _wrapper_dir / f"{_triplet}-zig-force-load-cxx"
-    if not fl_cxx.exists():
-        FAIL("zig-force-load-cxx exists")
-        return
-
-    text_cxx = fl_cxx.read_text()
-    for label, needle in [
-        ("force-load-cxx sources common", "_zig-force-load-common.sh"),
-        ('force-load-cxx uses c++ mode', '_ZIG_MODE="c++"'),
-    ]:
-        if needle in text_cxx:
-            PASS(label)
-        else:
-            FAIL(label)
-
-    # Check the shared helper for implementation details
-    fl_common = _wrapper_dir / f"{_triplet}-_zig-force-load-common.sh"
-    if not fl_common.exists():
-        FAIL("_zig-force-load-common.sh exists")
-        return
-
-    text_common = fl_common.read_text()
-    for label, needle in [
-        ("force-load-common sources _zig-cc-common.sh", "_zig-cc-common.sh"),
-        ("force-load-common uses ar x", "ar x"),
-        ("force-load-common creates tmpdir", "mktemp -d"),
-        ("force-load-common has cleanup trap", "trap"),
-        ("force-load-common handles -Wl,-force_load", "Wl,-force_load"),
-        ("force-load-common handles -Wl,-all_load", "Wl,-all_load"),
-    ]:
-        if needle in text_common:
-            PASS(label)
-        else:
-            FAIL(label)
-
-
-# ===================================================================
 # Main
 # ===================================================================
 def main() -> int:
@@ -1090,7 +972,7 @@ def main() -> int:
     print(f"  arch            = {_arch!r}")
     print(f"  cross-compiler  = {_is_cross_compiler}")
     print(f"  build OS        = {sys.platform}")
-    print(f"  wrapper dir     = {_wrapper_dir}")
+    print(f"  bin dir         = {_wrapper_dir}")
     print()
 
     # Overlay patched native zig if stashed by build (BUILD_NATIVE_ZIG=true)
@@ -1105,8 +987,6 @@ def main() -> int:
 
     test_wrapper_existence()
     test_activation_variables()
-    test_flag_filter_content()
-    test_force_load_wrappers()
     test_flag_filtering()
     test_target_override()
     test_shared_lib()
