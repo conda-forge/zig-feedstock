@@ -341,12 +341,12 @@ def install_target_triplet_wrappers(
     # zig wrapper name (e.g., linux-64). Probe for any -zig binary in BUILD_PREFIX/bin.
     if zig_bin is None:
         if is_nonunix:
-            bin_dir = build_prefix / "Library" / "bin"
+            search_dir = build_prefix / "Library" / "bin"
             glob_pattern = "*-zig.exe"
         else:
-            bin_dir = build_prefix / "bin"
+            search_dir = build_prefix / "bin"
             glob_pattern = "*-zig"
-        matches = sorted(bin_dir.glob(glob_pattern))
+        matches = sorted(search_dir.glob(glob_pattern))
         # Filter out our own newly-installed cross-compiler dispatcher if it ended up here
         # (it shouldn't be in build_prefix, but defensive). Match anything matching the pattern.
         for match in matches:
@@ -356,15 +356,15 @@ def install_target_triplet_wrappers(
 
     if zig_bin is None:
         if is_nonunix:
-            bin_dir = build_prefix / "Library" / "bin"
+            search_dir = build_prefix / "Library" / "bin"
             glob_pattern = "*-zig.exe"
         else:
-            bin_dir = build_prefix / "bin"
+            search_dir = build_prefix / "bin"
             glob_pattern = "*-zig"
         raise FileNotFoundError(
             f"No working zig found in BUILD_PREFIX. Tried:\n  "
             + "\n  ".join(str(p) for p in candidates)
-            + f"\n  glob: {bin_dir}/{glob_pattern}"
+            + f"\n  glob: {search_dir}/{glob_pattern}"
             + f"\nCONDA_ZIG_BUILD={build_zig!r}; is a zig_impl_* package listed as a build dep?"
         )
 
