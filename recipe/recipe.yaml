@@ -444,6 +444,42 @@ outputs:
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
 
+      # Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common
+      - script:
+          - if: xc_w64 and unix
+            then:
+              - |
+                set -e
+                _dir="${PREFIX}/Library/lib/zig/libc/mingw/lib-common"
+                for _lib in libmingw32.lib libmingw32.a libucrt.lib libucrt.a libmingwex.lib libmingwex.a libwinpthread.lib libwinpthread.a; do
+                  _f="${_dir}/${_lib}"
+                  [[ -f "${_f}" ]] || { echo "FAIL: missing ${_f}"; exit 1; }
+                  _size=$(wc -c < "${_f}")
+                  if [[ "${_size}" -lt 1000000 ]]; then
+                    echo "FAIL: ${_f} is ${_size} bytes (expected >1MB real archive)"
+                    exit 1
+                  fi
+                done
+                _pthread="${_dir}/libpthread.a"
+                [[ -f "${_pthread}" ]] || { echo "FAIL: missing import lib ${_pthread}"; exit 1; }
+                _psize=$(wc -c < "${_pthread}")
+                if [[ "${_psize}" -gt 5000 ]]; then
+                  echo "FAIL: libpthread.a is ${_psize} bytes (import lib should be <5KB, was it overwritten?)"
+                  exit 1
+                fi
+                _members=$("${PREFIX}/bin/${{ conda_triplet }}-zig" ar t "${_dir}/libmingw32.lib")
+                for _member in ucrt_snprintf ucrt_vsnprintf thread mutex; do
+                  if ! echo "${_members}" | awk -v m="${_member}" "/${_member}\.o/{f=1} END{exit !f}"; then
+                    echo "FAIL: libmingw32.lib missing source member ${_member}.o"
+                    echo "--- ar t output ---"
+                    echo "${_members}"
+                    exit 1
+                  fi
+                done
+                echo "x86_64-windows-gnu CRT bootstrap: OK"
+            else:
+              - echo "SKIP x86_64-windows-gnu CRT test (non-Windows)"
+
   # ==========================================================================
   # ACTIVATION: zig_$cross_target_platform_ (scripts)
   # Contains activation scripts, depends on zig_impl_$cross_target_platform_

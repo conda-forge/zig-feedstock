@@ -363,4 +363,3 @@ source "${RECIPE_DIR}/building/_mingw.sh"
 generate_mingw_import_libs
 
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="
-
