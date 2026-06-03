@@ -345,7 +345,7 @@ WARM_EOF
           "x86-windows-gnu:${_warm_target_x86}"; do
           _warm_tgt="${_warm_pair%%:*}"
           _warm_stage_name="${_warm_pair##*:}"
-          _warm_stage="${PREFIX}/lib/zig/libc/mingw/${_warm_stage_name}"
+          _warm_stage="${_zig_lib}/libc/mingw/${_warm_stage_name}"
           _warm_cache="${_warm_dir}/cache-${_warm_tgt}"
           rm -rf "${_warm_cache}"
           mkdir -p "${_warm_cache}"
