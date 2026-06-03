@@ -309,6 +309,75 @@ SYNCHRONIZATION_DEF
         _create_stub_lib_archive "${_crt_outdir}" "${_win_target}" "${_stub_lib}"
       done
 
+      # Step 7: cache-warm + stage libmingw32 for each Windows target.
+      # zig compiles its full lib/libc/mingw/ source set into a single
+      # libmingw32.lib per target at link time, cached under
+      # ${ZIG_GLOBAL_CACHE_DIR}/o/<hash>/. Trigger materialization via a real
+      # link of a tiny source referencing snprintf + pthread_self, then copy
+      # the cached artifact into the shipped tree under conventional library
+      # names so non-zig linkers (flexlink, mingw-gcc, cmake-with-mingw) can
+      # resolve `-lucrt -lmingwex -lwinpthread -lmingw32` against it.
+      #
+      # The single archive holds ALL mingw symbols (snprintf/vsnprintf from
+      # ucrt_snprintf.c, pthread_* from winpthreads/, _fpreset/_chkstk_ms
+      # from arch-specific stubs). Multiple -l<NAME> resolutions against the
+      # same archive work because it's internally non-conflicting.
+      _warm_dir="$(mktemp -d 2>/dev/null || echo "${TMPDIR:-/tmp}/zig-warm-$$")"
+      mkdir -p "${_warm_dir}"
+      cat > "${_warm_dir}/warm.c" <<'WARM_EOF'
+#include <stdio.h>
+#include <pthread.h>
+int main(void) {
+    char b[8]; (void)snprintf(b, 8, "%d", 0);
+    pthread_t t = pthread_self(); (void)t;
+    return 0;
+}
+WARM_EOF
+
+      # Map: zig target triple -> staging dir name under lib/libc/mingw/
+      _warm_target_x86_64="lib-common"
+      _warm_target_aarch64="libarm64"
+      _warm_target_x86="lib32"
+
+      for _warm_pair in \
+          "x86_64-windows-gnu:${_warm_target_x86_64}" \
+          "aarch64-windows-gnu:${_warm_target_aarch64}" \
+          "x86-windows-gnu:${_warm_target_x86}"; do
+          _warm_tgt="${_warm_pair%%:*}"
+          _warm_stage_name="${_warm_pair##*:}"
+          _warm_stage="${PREFIX}/lib/zig/libc/mingw/${_warm_stage_name}"
+          _warm_cache="${_warm_dir}/cache-${_warm_tgt}"
+          rm -rf "${_warm_cache}"
+          mkdir -p "${_warm_cache}"
+
+          # Real link (NOT -c compile-only) to force libmingw32 materialization.
+          if ! ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
+                  "${_zig_bin}" cc -target "${_warm_tgt}" -pthread \
+                  "${_warm_dir}/warm.c" \
+                  -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err"; then
+              echo "WARN: cache-warm failed for ${_warm_tgt}; skipping stage. Errors:" >&2
+              tail -5 "${_warm_cache}/warm.err" >&2 || true
+              continue
+          fi
+
+          _warm_lib=$(find "${_warm_cache}" -name 'libmingw32.lib' -print -quit 2>/dev/null)
+          if [[ -z "${_warm_lib}" || ! -f "${_warm_lib}" ]]; then
+              echo "WARN: libmingw32.lib not found in cache for ${_warm_tgt}; skipping stage" >&2
+              continue
+          fi
+
+          mkdir -p "${_warm_stage}"
+          # Ship under both .lib (Windows convention) and .a (Unix convention)
+          # for linker-agnostic consumption.
+          for _alias in libmingw32 libucrt libmingwex libwinpthread; do
+              cp -f "${_warm_lib}" "${_warm_stage}/${_alias}.lib"
+              cp -f "${_warm_lib}" "${_warm_stage}/${_alias}.a"
+          done
+          echo "Step 7: staged libmingw32+aliases for ${_warm_tgt} under ${_warm_stage_name}/"
+      done
+
+      rm -rf "${_warm_dir}"
+
     else
       dbg echo "=== llvm-dlltool or zig not found; skipping import lib pre-generation ==="
     fi

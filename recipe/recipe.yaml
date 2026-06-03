@@ -132,6 +132,8 @@ source:
       - patches/zig_llvm.cpp-mingw-def-dll-suffix.patch
       # All platforms: forward target to langref doctests via -Ddoctest-target
       - patches/build.zig-doctest-forward-target.patch
+      # All platforms: add misc/setjmp.S to mingw32_x86_32_src (cross-compile TARGET fix)
+      - patches/non_unix/mingw-include-setjmp-s.patch
       - if: linux
         then:
           - patches/linux/build.zig-01-maxrss.patch
@@ -182,7 +184,6 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
-          - patches/non_unix/mingw-include-setjmp-s.patch
           - patches/non_unix/mingw-arm64-stubs.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
