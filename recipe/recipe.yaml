@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 26
+  build_number: 27
   name: zig
   version: "0.15.2"
 
@@ -132,6 +132,12 @@ source:
       - patches/zig_llvm.cpp-mingw-def-dll-suffix.patch
       # All platforms: forward target to langref doctests via -Ddoctest-target
       - patches/build.zig-doctest-forward-target.patch
+      # All platforms: mingw TARGET patches (modify zig's bundled mingw libc source
+      # for Windows cross-compile output; not build-host-specific)
+      - patches/non_unix/mingw-include-setjmp-s.patch
+      - patches/non_unix/mingw-arm64-stubs.patch
+      - patches/non_unix/mingw-crtexe-no-atexit.patch
+      - patches/non_unix/ucrtbase-export-atexit-alias.patch
       - if: linux
         then:
           - patches/linux/build.zig-01-maxrss.patch
@@ -177,15 +183,12 @@ source:
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
       - if: not unix
         then:
+          # Windows BUILD HOST only: cmake/build.zig settings + MSVC linker interop
           - patches/non_unix/build.zig-01-maxrss.patch
           - patches/non_unix/build.zig-02-llvm-lib-multipath.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
-          - patches/non_unix/mingw-include-setjmp-s.patch
-          - patches/non_unix/mingw-arm64-stubs.patch
-          - patches/non_unix/mingw-crtexe-no-atexit.patch
-          - patches/non_unix/ucrtbase-export-atexit-alias.patch
       # Note: patches under recipe/patches/cmake/ are applied programmatically by recipe/building/_cmake.sh::cmake_build (only when CMAKE_BUILD=1).
     target_directory: zig-source
 
@@ -302,6 +305,8 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-ar${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-ranlib${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-lld${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-rc${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
             - if: unix
@@ -496,14 +501,17 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
-        # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
-        - if: is_cross_compiler and not unix
-          then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2
+        - zig_impl_${{ build_platform }} >=0.15.2
         - if: not unix
           then:
             - ${{ compiler('c') }}
             - ${{ stdlib("c") }}
+        - if: xc_ppc64le
+          then:
+            # ppc64le wrapper compiled with --target=powerpc64le-linux-gnu.*
+            # zig invokes powerpc64le-conda-linux-gnu-gcc as the system linker
+            - gcc_linux-ppc64le
+            - binutils_linux-ppc64le
       host:
         - if: not is_cross_compiler
           then:
@@ -513,7 +521,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
+            - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -529,23 +537,18 @@ outputs:
             - if: is_cross_compiler
               then:
                 - ${{ conda_triplet }}-zig
+                - ${{ conda_triplet }}-zig-cc
+                - ${{ conda_triplet }}-zig-cxx
+                - ${{ conda_triplet }}-zig-ar
+                - ${{ conda_triplet }}-zig-ranlib
+                - ${{ conda_triplet }}-zig-lld
+                - ${{ conda_triplet }}-zig-rc
+                - ${{ conda_triplet }}-zig-asm
+                - ${{ conda_triplet }}-zig-force-load-cc
+                - ${{ conda_triplet }}-zig-force-load-cxx
           files:
             - etc/conda/activate.d/zig_activate${{ sh }}
             - etc/conda/deactivate.d/zig_deactivate${{ sh }}
-
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cc${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-cxx${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ar${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ranlib${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-asm${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-rc${{ exe }}
-            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-lld${{ exe }}
-            - if: unix
-              then:
-                - share/zig/wrappers/${{ conda_triplet }}-_zig-cc-common.sh
-                - share/zig/wrappers/${{ conda_triplet }}-_zig-force-load-common.sh
-                - share/zig/wrappers/${{ conda_triplet }}-zig-force-load-cc
-                - share/zig/wrappers/${{ conda_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:

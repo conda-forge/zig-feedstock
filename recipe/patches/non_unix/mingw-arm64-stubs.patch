@@ -1,6 +1,11 @@
 # Purpose: Add aarch64 stub sources to mingw32_arm64_src so libmingw32.lib resolves _fpreset,
 #          __intrinsic_setjmp/setjmpex, and ___chkstk_ms natively without wrapper injection.
-# Affects: src/libs/mingw.zig, lib/libc/mingw/crt/fpreset_arm64.c, lib/libc/mingw/crt/chkstk_arm64.S
+#          Guard _fpreset F_LD80(DATA) with #ifndef __aarch64__ in the two CRT .def.in files:
+#          on aarch64, F_LD80(DATA) expands to empty, so the symbol would be emitted as a
+#          plain (non-DATA) export, causing BRANCH26 auto-import collisions at link time.
+# Affects: src/libs/mingw.zig, lib/libc/mingw/crt/fpreset_arm64.c, lib/libc/mingw/crt/chkstk_arm64.S,
+#          lib/libc/mingw/lib-common/ucrtbase-common.def.in,
+#          lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
 # Upstream: TBD
 # drop-when: zig upstream includes these sources in mingw32_arm64_src
 # Last-verified: 2026-05-18
@@ -58,3 +63,29 @@ drop-when: zig upstream includes these sources in mingw32_arm64_src
 +    .text
 +___chkstk_ms:
 +    ret
+
+--- a/lib/libc/mingw/lib-common/ucrtbase-common.def.in
++++ b/lib/libc/mingw/lib-common/ucrtbase-common.def.in
+@@ -388,7 +388,9 @@
+ _fpclass
+ F_X64(_fpclassf)
+ _fpieee_flt
++#ifndef __aarch64__
+ _fpreset F_LD80(DATA) ; DATA added manually
++#endif
+ _fputc_nolock
+ _fputchar
+ _fputwc_nolock
+
+--- a/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
++++ b/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
+@@ -44,7 +44,9 @@
+ _execute_onexit_table
+ _exit
+ _fpieee_flt
++#ifndef __aarch64__
+ _fpreset F_LD80(DATA) ; DATA added manually
++#endif
+ _get_doserrno
+ _get_errno
+ _get_initial_narrow_environment

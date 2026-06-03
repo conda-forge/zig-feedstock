@@ -2,8 +2,8 @@
 # Zig compiler activation script
 # Installed to: $PREFIX/etc/conda/activate.d/zig_activate.sh
 #
-# Exports ZIG_CC, ZIG_CXX, etc. pointing to pre-installed wrapper scripts
-# in $CONDA_PREFIX/share/zig/wrappers/
+# Exports ZIG_CC, ZIG_CXX, etc. pointing to compiled wrappers
+# in $CONDA_PREFIX/bin/
 
 # === Configuration (substituted at install time) ===
 _CONDA_TRIPLET="@CONDA_TRIPLET@"
@@ -21,28 +21,19 @@ if [[ -n "${_CROSS_TARGET_TRIPLET}" ]]; then
     export ZIG_TARGET_TRIPLET="${_CROSS_TARGET_TRIPLET}"
 fi
 
-# === Wrapper directory (pre-installed at build time) ===
-_wrapper_dir="${CONDA_PREFIX}/share/zig/wrappers"
-
-if [[ ! -d "${_wrapper_dir}" ]]; then
-    echo "WARNING: zig-cc activation: wrapper directory not found: ${_wrapper_dir}" >&2
-    unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir
-    return 0 2>/dev/null || exit 0
-fi
-
 # === Export variables ===
 _zig_bin="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig"
 [[ -x "${_zig_bin}" ]] && export ZIG="${_zig_bin}"
 
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cc" ]]         && export ZIG_CC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cc"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cxx" ]]        && export ZIG_CXX="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-cxx"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ar" ]]         && export ZIG_AR="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ar"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ranlib" ]]     && export ZIG_RANLIB="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-ranlib"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-asm" ]]        && export ZIG_ASM="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-asm"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-rc" ]]         && export ZIG_RC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-rc"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-lld" ]]        && export ZIG_LLD="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-lld"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cc" ]]  && export ZIG_FORCE_LOAD_CC="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cc"
-[[ -x "${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${_wrapper_dir}/${_CONDA_TRIPLET}-zig-force-load-cxx"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-cc" ]]             && export ZIG_CC="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-cc"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-cxx" ]]            && export ZIG_CXX="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-cxx"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-ar" ]]             && export ZIG_AR="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-ar"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-ranlib" ]]         && export ZIG_RANLIB="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-ranlib"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-asm" ]]            && export ZIG_ASM="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-asm"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-rc" ]]             && export ZIG_RC="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-rc"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-lld" ]]            && export ZIG_LLD="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-lld"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-force-load-cc" ]]  && export ZIG_FORCE_LOAD_CC="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-force-load-cc"
+[[ -x "${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-force-load-cxx" ]] && export ZIG_FORCE_LOAD_CXX="${CONDA_PREFIX}/bin/${_CONDA_TRIPLET}-zig-force-load-cxx"
 
 # === Ensure zig can resolve its cache directory ===
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
@@ -62,4 +53,4 @@ if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
 fi
 
 # === Cleanup temporaries ===
-unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir _zig_bin
+unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _zig_bin
