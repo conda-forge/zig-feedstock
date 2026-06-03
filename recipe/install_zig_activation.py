@@ -355,12 +355,6 @@ def install_target_triplet_wrappers(
                 break
 
     if zig_bin is None:
-        if is_nonunix:
-            search_dir = build_prefix / "Library" / "bin"
-            glob_pattern = "*-zig.exe"
-        else:
-            search_dir = build_prefix / "bin"
-            glob_pattern = "*-zig"
         raise FileNotFoundError(
             f"No working zig found in BUILD_PREFIX. Tried:\n  "
             + "\n  ".join(str(p) for p in candidates)

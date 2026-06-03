@@ -304,7 +304,8 @@ SYNCHRONIZATION_DEF
         rm -f "${stub_c}" "${stub_o}"
       }
 
-      local _stub_libs=(mingw32 gcc gcc_eh stdc++ ssp winpthread)
+      # mingw32 and winpthread removed: Step 7 stages real archives via cache-warm
+      local _stub_libs=(gcc gcc_eh stdc++ ssp)
       for _stub_lib in "${_stub_libs[@]}"; do
         _create_stub_lib_archive "${_crt_outdir}" "${_win_target}" "${_stub_lib}"
       done
@@ -335,14 +336,10 @@ int main(void) {
 WARM_EOF
 
       # Map: zig target triple -> staging dir name under lib/libc/mingw/
-      _warm_target_x86_64="lib-common"
-      _warm_target_aarch64="libarm64"
-      _warm_target_x86="lib32"
-
       for _warm_pair in \
-          "x86_64-windows-gnu:${_warm_target_x86_64}" \
-          "aarch64-windows-gnu:${_warm_target_aarch64}" \
-          "x86-windows-gnu:${_warm_target_x86}"; do
+          "x86_64-windows-gnu:lib-common" \
+          "aarch64-windows-gnu:libarm64" \
+          "x86-windows-gnu:lib32"; do
           _warm_tgt="${_warm_pair%%:*}"
           _warm_stage_name="${_warm_pair##*:}"
           _warm_stage="${_zig_lib}/libc/mingw/${_warm_stage_name}"

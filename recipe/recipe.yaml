@@ -132,8 +132,12 @@ source:
       - patches/zig_llvm.cpp-mingw-def-dll-suffix.patch
       # All platforms: forward target to langref doctests via -Ddoctest-target
       - patches/build.zig-doctest-forward-target.patch
-      # All platforms: add misc/setjmp.S to mingw32_x86_32_src (cross-compile TARGET fix)
+      # All platforms: mingw TARGET patches (modify zig's bundled mingw libc source
+      # for Windows cross-compile output; not build-host-specific)
       - patches/non_unix/mingw-include-setjmp-s.patch
+      - patches/non_unix/mingw-arm64-stubs.patch
+      - patches/non_unix/mingw-crtexe-no-atexit.patch
+      - patches/non_unix/ucrtbase-export-atexit-alias.patch
       - if: linux
         then:
           - patches/linux/build.zig-01-maxrss.patch
@@ -179,14 +183,12 @@ source:
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
       - if: not unix
         then:
+          # Windows BUILD HOST only: cmake/build.zig settings + MSVC linker interop
           - patches/non_unix/build.zig-01-maxrss.patch
           - patches/non_unix/build.zig-02-llvm-lib-multipath.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
-          - patches/non_unix/mingw-arm64-stubs.patch
-          - patches/non_unix/mingw-crtexe-no-atexit.patch
-          - patches/non_unix/ucrtbase-export-atexit-alias.patch
       # Note: patches under recipe/patches/cmake/ are applied programmatically by recipe/building/_cmake.sh::cmake_build (only when CMAKE_BUILD=1).
     target_directory: zig-source
 
