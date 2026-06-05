@@ -28,6 +28,7 @@
 #define ZIG_CC_MODE "@ZIG_CC_MODE@"
 #define ZIG_BIN_NAME "@ZIG_BIN_NAME@"
 #define ZIG_TARGET "@ZIG_TARGET@"
+#define IS_MINGW_TARGET @IS_MINGW_TARGET@
 
 /* --- Flag classification helpers --- */
 static int starts_with(const char *s, const char *prefix) {
@@ -52,6 +53,36 @@ static const char *conda_to_zig_target(const char *triplet) {
         return buf;
     }
     return triplet;  /* pass through as-is */
+}
+
+/*
+ * Translate -Wl,-e<sym> and -Wl,-e,<sym> to -Wl,--entry,<sym> on mingw targets.
+ * GNU long form (--entry,SYM) works on mingw via clang's GNU-emulation driver;
+ * /ENTRY: (MSVC) does not. zig cc forwards -Wl,-e<sym> verbatim which clang's
+ * GNU-ld arg parser rejects as "Unknown Clang option: '-eSYM'".
+ *
+ * Returns:
+ *   NULL if the arg is not -Wl,-e<sym> or -Wl,-e,<sym>, or if not on mingw.
+ *   Heap-allocated translated string (caller must NOT free; ownership transferred to argv) otherwise.
+ *
+ * Forms handled:
+ *   -Wl,-eSYM   (concat, 7+ chars)
+ *   -Wl,-e,SYM  (comma form, 8+ chars)
+ * Split form (-Wl,-e in one arg, -Wl,SYM in next) is NOT handled; deferred.
+ */
+static char *translate_wl_entry(const char *arg)
+{
+    if (!IS_MINGW_TARGET) return NULL;
+    if (strncmp(arg, "-Wl,-e", 6) != 0) return NULL;
+    const char *sym = NULL;
+    if (arg[6] == ',' && arg[7] != '\0') sym = arg + 7;
+    else if (arg[6] != '\0' && arg[6] != ',') sym = arg + 6;
+    else return NULL;
+    size_t len = strlen("-Wl,--entry,") + strlen(sym) + 1;
+    char *out = (char *)malloc(len);
+    if (!out) return NULL;
+    snprintf(out, len, "-Wl,--entry,%s", sym);
+    return out;
 }
 
 /* -Xlinker passthrough flags to drop */
@@ -283,6 +314,15 @@ int main(int argc, char *argv[]) {
         if (str_eq(arg, "-Xlinker")) {
             grab_next = 1;
             continue;
+        }
+
+        /* -Wl,-e<sym> translation: rewrite to -Wl,/ENTRY:<sym> on mingw */
+        {
+            char *translated = translate_wl_entry(arg);
+            if (translated) {
+                filtered[fi++] = translated;
+                continue;
+            }
         }
 
         /* -Wl,* drops -- skip if LLD promoted (LLD handles these) */

@@ -252,14 +252,20 @@ def install_zig_cc_wrappers(
 
     if is_nonunix:
         wrapper_dir = prefix / "Library" / "bin"
+        # Extract zig binary filename from full %CONDA_PREFIX%\... path once
+        zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
 
         # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
         cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
         if cc_src.exists():
-            # Extract zig binary filename from full %CONDA_PREFIX%\... path
-            zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
+            is_mingw = "mingw32" in conda_triplet
             for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
-                mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name}
+                mode_replacements = {
+                    **replacements,
+                    "@ZIG_CC_MODE@": mode,
+                    "@ZIG_BIN_NAME@": zig_bin_name,
+                    "@IS_MINGW_TARGET@": "1" if is_mingw else "0",
+                }
                 _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
 
         # Compile .exe shims for simple pass-through tools
@@ -281,6 +287,15 @@ def install_zig_cc_wrappers(
                 }
                 _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
 
+        # Compile zig-windres.exe (dedicated shim with -o -> -fo translation)
+        windres_src = recipe_dir / "building" / "zig-windres-nonunix.c"
+        if windres_src.exists():
+            windres_replacements = {
+                **replacements,
+                "@ZIG_BIN_NAME@": zig_bin_name,
+            }
+            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements)
+
     else:
         wrapper_dir = prefix / "bin"
         # Install shared helpers (sourced by wrapper scripts, not executed directly)
@@ -288,7 +303,7 @@ def install_zig_cc_wrappers(
             src = scripts_dir / helper
             if src.exists():
                 _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-force-load-cc", "zig-force-load-cxx"]
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-windres", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():

@@ -534,6 +534,7 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-rc${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-lld${{ exe }}
+            - ${{ library }}bin/${{ conda_triplet }}-zig-windres${{ exe }}
             - if: unix
               then:
                 - bin/${{ conda_triplet }}-_zig-cc-common.sh
@@ -586,6 +587,38 @@ outputs:
             - testing/_test_utils.py
             - testing/test-cross-shim.bat
             - testing/test_zig_toolchain.py
+      # Verify <triplet>-zig-windres wrapper: -o flag translation works
+      - script:
+          - if: xc_w64
+            then:
+              - if: unix
+                then: python testing/test_windres.py
+              - if: not unix
+                then: python testing\test_windres.py
+            else:
+              - echo "SKIP windres wrapper test (non-Windows target)"
+        files:
+          recipe:
+            - testing/test_windres.py
+        requirements:
+          run:
+            - python >=3.10
+      # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
+      - script:
+          - if: xc_w64
+            then:
+              - if: unix
+                then: python testing/test_wl_entry_translation.py
+              - if: not unix
+                then: python testing\test_wl_entry_translation.py
+            else:
+              - echo "SKIP zig-cc entry point translation test (non-Windows target)"
+        files:
+          recipe:
+            - testing/test_wl_entry_translation.py
+        requirements:
+          run:
+            - python >=3.10
 
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
