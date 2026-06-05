@@ -177,6 +177,11 @@ static int is_xlinker_lld_trigger(const char *arg) {
     return 0;
 }
 
+/* Returns 1 if the target triple names a Windows target. */
+static int is_windows_triple(const char *t) {
+    return t != NULL && strstr(t, "windows") != NULL;
+}
+
 /* --- subcommand whitelist for -target injection (DISPATCH mode) --- */
 static int subcommand_accepts_target(const char *cmd) {
     if (!cmd) return 0;
@@ -500,6 +505,21 @@ int main(int argc, char *argv[]) {
             DBG("macOS target detected; cleared use_lld\n");
         }
 
+        /* P-3: determine effective Windows target for -Wl,-e translation.
+         * Compile-time default from ZIG_TARGET; runtime -target overrides it. */
+        int is_windows_target = is_windows_triple(ZIG_TARGET);
+        for (int i = user_args_start; i < argc; i++) {
+            if (str_eq(argv[i], "-target") && i + 1 < argc) {
+                is_windows_target = is_windows_triple(argv[i + 1]);
+                break;
+            }
+            if (starts_with(argv[i], "-target=")) {
+                is_windows_target = is_windows_triple(argv[i] + 8);
+                break;
+            }
+        }
+        DBG("CC/CXX prescan: is_windows_target=%d\n", is_windows_target);
+
         /* Filter args into staging buffer */
         int fi = 0;
         int grab_next = 0;
@@ -537,6 +557,27 @@ int main(int argc, char *argv[]) {
                     filtered[fi++] = argv[++i];
                 }
                 continue;
+            }
+
+            /* P-3: translate -Wl,-e<sym> -> -Wl,/ENTRY:<sym> on Windows targets.
+             * lld-link rejects unix-style -e<sym>; consumers (flexlink, etc.) emit
+             * -Wl,-e and expect zig cc to handle it. zig cc passes through verbatim,
+             * so we translate at the wrapper. Concatenated form only; long form
+             * (-Wl,--entry=<sym>) and separated form (-Wl,-e,<sym>) not handled. */
+            if (is_windows_target && starts_with(a, "-Wl,-e")) {
+                const char *sym = a + 6;  /* skip "-Wl,-e" */
+                if (sym[0] != '\0') {
+                    size_t sym_len = strlen(sym);
+                    /* Build "-Wl,/ENTRY:" + sym + NUL = 11 + sym_len + 1 bytes */
+                    char *rewritten = (char *)malloc(sym_len + 12);
+                    if (!rewritten) { perror("zig-wrapper: malloc"); exit(1); }
+                    memcpy(rewritten, "-Wl,/ENTRY:", 11);
+                    memcpy(rewritten + 11, sym, sym_len + 1);
+                    DBG("REWROTE (-Wl,-e): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+                /* "-Wl,-e" with no symbol — fall through; clang will reject */
             }
 
             /* -Wl,* drops: only when not using LLD (LLD handles them natively) */
