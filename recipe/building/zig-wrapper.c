@@ -613,7 +613,27 @@ int main(int argc, char *argv[]) {
         }
 
         for (int i = user_args_start; i < argc; i++) {
-            new_argv[ni++] = argv[i];
+            const char *a = argv[i];
+
+            /* P-1: windres compat: zig rc requires -fo, not -o */
+            if (mode == MODE_RC) {
+                if (strcmp(a, "-o") == 0) {
+                    new_argv[ni++] = (char *)"-fo";
+                    continue;
+                }
+                if (a[0] == '-' && a[1] == 'o' && a[2] != '\0') {
+                    /* -o<path> form: rewrite to -fo<path> */
+                    size_t rest_len = strlen(a + 2);
+                    char *rewritten = (char *)malloc(rest_len + 4);
+                    if (!rewritten) { perror("malloc"); exit(1); }
+                    memcpy(rewritten, "-fo", 3);
+                    memcpy(rewritten + 3, a + 2, rest_len + 1);
+                    new_argv[ni++] = rewritten;
+                    continue;
+                }
+            }
+
+            new_argv[ni++] = (char *)a;
         }
     }
 
