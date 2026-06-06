@@ -3,6 +3,63 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# === Master dispatch: build.sh is called for both the LLVM/zig staging output
+# and for zig_impl_* consumer outputs. PKG_NAME distinguishes the two paths.
+if [[ -z "${PKG_NAME:-}" || "${PKG_NAME:-}" == "llvm-zig-stage-build" ]]; then
+
+# =============================================================================
+# PATH A: Staging build — build LLVM + zig (and mini-libs for riscv64/s390x)
+# =============================================================================
+
+# === Bug 2 diagnostic (PR #109 LLVM_TRIPLET trace) ====================
+# On win-64 CI, LLVM_TRIPLET was observed as aarch64-w64-windows-gnu
+# even though target_platform=win-64. Source of mis-evaluation unknown.
+# These echoes capture the values conda/rattler-build set at script entry
+# so the next CI run reveals whether recipe.yaml's Jinja chain or a
+# downstream override is responsible. Remove once Bug 2 is resolved.
+echo "=== Bug 2 diagnostic: env at build.sh entry ==="
+echo "  target_platform                = ${target_platform:-<unset>}"
+echo "  build_platform                 = ${build_platform:-<unset>}"
+echo "  cross_target_platform          = ${cross_target_platform:-<unset>}"
+echo "  cross_target_platform_         = ${cross_target_platform_:-<unset>}"
+echo "  CONDA_BUILD_CROSS_COMPILATION  = ${CONDA_BUILD_CROSS_COMPILATION:-<unset>}"
+echo "  LLVM_TRIPLET                   = ${LLVM_TRIPLET:-<unset>}"
+echo "  ZIG_TRIPLET                    = ${ZIG_TRIPLET:-<unset>}"
+echo "  ZIG_TARGET_BUILD               = ${ZIG_TARGET_BUILD:-<unset>}"
+echo "  CONDA_BUILD_SYSROOT            = ${CONDA_BUILD_SYSROOT:-<unset>}"
+echo "  MACOSX_DEPLOYMENT_TARGET       = ${MACOSX_DEPLOYMENT_TARGET:-<unset>}"
+echo "==============================================="
+
+if [[ "${target_platform}" == "linux-riscv64" || "${target_platform}" == "linux-s390x" ]]; then
+  # Bootstrap zig wrappers (installs $BUILD_PREFIX/share/zig/wrappers/<triplet>-zig-*)
+  # zig_impl_* build dep has no activation; we must run this manually.
+  source "${RECIPE_DIR}/llvm/building/_zig_wrappers.sh"
+
+  # Override ZIG_* to point at the TARGET (riscv64) wrappers — the mini-builds
+  # below produce libraries that will RUN on riscv64, so they need to be compiled
+  # with the riscv64-targeting wrapper, not the BUILD-host wrapper that
+  # _zig_wrappers.sh exports by default (alphabetically-first from BUILD_PREFIX/bin/*-zig).
+  _target_triplet="riscv64-conda-linux-gnu"
+  export ZIG_CC="${BUILD_PREFIX}/share/zig/wrappers/${_target_triplet}-zig-cc"
+  export ZIG_CXX="${BUILD_PREFIX}/share/zig/wrappers/${_target_triplet}-zig-cxx"
+  export ZIG_AR="${BUILD_PREFIX}/share/zig/wrappers/${_target_triplet}-zig-ar"
+  export ZIG_RANLIB="${BUILD_PREFIX}/share/zig/wrappers/${_target_triplet}-zig-ranlib"
+  echo "DBG riscv64 mini-builds: ZIG_CC=${ZIG_CC}"
+
+  ( cd "${SRC_DIR}/libxml2-source" && "${RECIPE_DIR}"/building/libxml2_build.sh )
+  ( cd "${SRC_DIR}/zlib-source"    && "${RECIPE_DIR}"/building/zlib_build.sh    )
+  ( cd "${SRC_DIR}/zstd-source"    && "${RECIPE_DIR}"/building/zstd_build.sh    )
+fi
+
+"${RECIPE_DIR}"/building/llvm_build.sh
+"${RECIPE_DIR}"/building/zig_build.sh
+
+elif [[ "${PKG_NAME:-}" == "zig_impl_"* ]]; then
+
+# =============================================================================
+# PATH B: zig_impl_* consumer — install zig for a specific target
+# =============================================================================
+
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # Local-only debug overrides — file is gitignored; create from recipe/local-scripts/debug-env.sh.example
@@ -34,11 +91,6 @@ if is_osx; then
   fi
 fi
 export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
-
-if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
-  echo "ERROR: Unknown package name: >${PKG_NAME:-}< - Verify recipe.yaml script:"
-  exit 1
-fi
 
 # === Build caching for quick recipe iteration ===
 # Set ZIG_USE_CACHE=1 to enable build caching:
@@ -471,3 +523,7 @@ if [[ "${ZIG_USE_CACHE:-}" == "0" || "${ZIG_USE_CACHE:-}" == "1" ]] && [[ -f "${
   dbg echo "=== Build cached for future restoration ==="
 fi
 
+else
+  echo "ERROR: Unknown package name: >${PKG_NAME:-}< - Verify recipe.yaml script:" >&2
+  exit 1
+fi

@@ -24,9 +24,8 @@ function create_pthread_atfork_stub() {
   # glibc 2.28 for these architectures doesn't export pthread_atfork symbol
   # (x86_64 glibc 2.28 has it, but PowerPC64LE and aarch64 don't)
 
-  local arch_name="${1}"
-  local cc_compiler="${2}"
-  local output_dir="${3:-${SRC_DIR}}"
+  local cc_compiler="${1}"
+  local output_dir="${2:-${SRC_DIR}}"
 
   dbg echo "=== atfork stubs ==="
 
@@ -63,9 +62,8 @@ function create_libc_single_threaded_stub() {
   # Declared as 'char' in <sys/single_threaded.h> (not bool).
   # Value 0 = multi-threaded (conservative/safe default for a stub).
 
-  local arch_name="${1}"
-  local cc_compiler="${2}"
-  local output_dir="${3:-${SRC_DIR}}"
+  local cc_compiler="${1}"
+  local output_dir="${2:-${SRC_DIR}}"
 
   cat > "${output_dir}/libc_single_threaded_stub.c" << 'EOF'
 // Weak stub for __libc_single_threaded when targeting glibc < 2.32

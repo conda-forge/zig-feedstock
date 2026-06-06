@@ -21,15 +21,12 @@
 #include <string.h>
 #include <process.h>
 #include <windows.h>
+#include "wrapper_utils.h"
 
 /* These are replaced by the install script */
 #define NATIVE_ZIG_EXE "@NATIVE_ZIG_EXE@"
 #define CC_TRIPLET "@CC_TRIPLET@"
 #define ZIG_TRIPLET "@ZIG_TRIPLET@"
-
-static int str_eq(const char *a, const char *b) {
-    return strcmp(a, b) == 0;
-}
 
 static int needs_cc_target(const char *cmd) {
     return str_eq(cmd, "cc") || str_eq(cmd, "c++");

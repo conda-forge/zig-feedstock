@@ -10,9 +10,6 @@ function fix_sysroot_libc_scripts() {
   for sysroot_dir in "${sysroot_base}"/*-conda-linux-gnu/sysroot; do
     [[ -d "${sysroot_dir}" ]] || continue
 
-    local arch_name
-    arch_name=$(basename "$(dirname "${sysroot_dir}")")
-
     # Fix libc.so, libpthread.so, libm.so, etc. in usr/lib and usr/lib64
     for lib_dir in "${sysroot_dir}"/usr/lib "${sysroot_dir}"/usr/lib64; do
       [[ -d "${lib_dir}" ]] || continue

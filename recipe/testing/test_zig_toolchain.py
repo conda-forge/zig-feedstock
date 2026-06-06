@@ -14,17 +14,10 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import shutil
 import sys
 import tempfile
 
-# Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
-# rattler-build's UTF-8 stream reader even when tests pass).
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 from _test_utils import (
@@ -32,30 +25,26 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
     _build_is_mac,
     _build_is_win,
+    _host,
     _is_emulated,
     _results,
     _run,
+    _triplet,
+    print_results,
     setup_zig_global_cache_dir,
 )
 
 # ---------------------------------------------------------------------------
 # Platform detection from CONDA_ZIG_HOST
 # ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")  # e.g. "x86_64-w64-mingw32-zig"
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-
 is_win_target = "mingw32" in _triplet
 is_macos_target = "apple" in _triplet or "darwin" in _triplet
 is_linux_target = "linux" in _triplet
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
 is_ppc64le_target = "powerpc64le" in _triplet or _arch == "powerpc64le"
 is_aarch64_win = is_win_target and _arch == "aarch64"
-
-# Normalise: arm64 == aarch64
-if _arch == "arm64":
-    _arch = "aarch64"
 
 setup_zig_global_cache_dir()
 
@@ -105,6 +94,8 @@ def test_wrapper_existence() -> None:
         expected = [
             f"{_pfx}zig-cc.exe",
             f"{_pfx}zig-cxx.exe",
+            f"{_pfx}zig-force-load-cc.exe",
+            f"{_pfx}zig-force-load-cxx.exe",
             f"{_pfx}zig-ar.exe",
             f"{_pfx}zig-ranlib.exe",
             f"{_pfx}zig-asm.exe",
@@ -966,6 +957,123 @@ def test_lld_dispatch() -> None:
 
 
 # ===================================================================
+# Section 7 — Force-load wrapper invocation tests (Linux only)
+# ===================================================================
+def test_force_load_cc_basic_invocation() -> None:
+    """Force-load wrapper executes successfully (MODE_UNKNOWN regression test).
+
+    Prior to build-28's force-load fix, detect_mode() in zig-wrapper.c had
+    no case for *-zig-force-load-cc, returning MODE_UNKNOWN -> exit 1. This
+    test invokes the wrapper on a trivial program to verify it now runs.
+    """
+    print("--- Force-load wrapper basic invocation ---")
+
+    if _is_emulated or _is_cross_compiler:
+        SKIP("force-load basic invocation", "emulated/cross runners")
+        return
+
+    _exe_suffix = ".exe" if _build_is_win else ""
+    fl_cc = _env_var("ZIG_FORCE_LOAD_CC") or str(
+        _wrapper_dir / f"{_triplet}-zig-force-load-cc{_exe_suffix}"
+    )
+    if not os.path.exists(fl_cc):
+        FAIL("force-load-cc exists", fl_cc)
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, "main.c")
+        with open(src, "w") as f:
+            f.write("int main(void){return 0;}\n")
+        out = os.path.join(td, "out")
+        r = _run([fl_cc, "-o", out, src])
+        if r.returncode != 0:
+            FAIL(f"force-load-cc exit {r.returncode}", r.stderr[:2000])
+            return
+        if "cannot determine mode" in r.stderr.lower():
+            FAIL("MODE_UNKNOWN regression", r.stderr[:2000])
+            return
+        if not os.path.exists(out):
+            FAIL("force-load-cc output binary created", "binary not found")
+            return
+    PASS("force-load-cc basic invocation")
+
+
+def test_force_load_cc_archive_extraction() -> None:
+    """Force-load wrapper extracts archive members under -Wl,-all_load.
+
+    Tests actual force-load semantics: builds a libfoo.a with one
+    referenced and one unreferenced object, links via force-load wrapper
+    with -Wl,-all_load, and verifies via `nm` that the unreferenced symbol
+    is in the final binary (proves force-load extracted both objects).
+    """
+    print("--- Force-load wrapper archive extraction ---")
+
+    if _build_is_win:
+        SKIP("force-load archive extraction",
+             "force-load extraction is Unix-only (#ifndef _WIN32 in wrapper)")
+        return
+
+    if _is_emulated or _is_cross_compiler:
+        SKIP("force-load archive extraction", "emulated/cross runners")
+        return
+
+    _exe_suffix = ".exe" if _build_is_win else ""
+    fl_cc = _env_var("ZIG_FORCE_LOAD_CC") or str(
+        _wrapper_dir / f"{_triplet}-zig-force-load-cc{_exe_suffix}"
+    )
+    plain_cc = _env_var("ZIG_CC") or str(_wrapper_dir / f"{_triplet}-zig-cc{_exe_suffix}")
+    plain_ar = _env_var("ZIG_AR") or str(_wrapper_dir / f"{_triplet}-zig-ar{_exe_suffix}")
+    for tool in (fl_cc, plain_cc, plain_ar):
+        if not os.path.exists(tool):
+            FAIL(f"missing tool: {tool}", tool)
+            return
+
+    with tempfile.TemporaryDirectory() as td:
+        sources = [
+            ("referenced.c", "int referenced_func(void){return 1;}\n"),
+            ("unreferenced.c", "int unreferenced_func(void){return 2;}\n"),
+            ("main.c", "int referenced_func(void);\nint main(void){return referenced_func()-1;}\n"),
+        ]
+        for name, body in sources:
+            with open(os.path.join(td, name), "w") as f:
+                f.write(body)
+
+        for src in ("referenced.c", "unreferenced.c"):
+            obj = src.replace(".c", ".o")
+            r = _run([plain_cc, "-c", "-o", os.path.join(td, obj), os.path.join(td, src)])
+            if r.returncode != 0:
+                FAIL(f"force-load compile {src}", r.stderr[:500])
+                return
+
+        r = _run([plain_ar, "rcs", "libfoo.a", "referenced.o", "unreferenced.o"], cwd=td)
+        if r.returncode != 0:
+            FAIL("force-load ar rcs", r.stderr[:500])
+            return
+
+        out = os.path.join(td, "out")
+        r = _run([fl_cc, "-o", out, os.path.join(td, "main.c"),
+                  "-Wl,-all_load", os.path.join(td, "libfoo.a")])
+        if r.returncode != 0:
+            FAIL("force-load link with -Wl,-all_load", r.stderr[:2000])
+            return
+
+        nm = shutil.which("nm")
+        if not nm:
+            PASS("force-load link succeeded (nm unavailable for symbol check)")
+            return
+
+        r2 = _run([nm, out])
+        if r2.returncode != 0:
+            FAIL("nm on force-load output", f"rc={r2.returncode}")
+            return
+        if "unreferenced_func" not in r2.stdout:
+            FAIL("force-load extracted unreferenced object",
+                 f"unreferenced_func absent from nm output:\n{r2.stdout[:1000]}")
+            return
+    PASS("force-load archive extraction (unreferenced symbol present)")
+
+
+# ===================================================================
 # Main
 # ===================================================================
 def main() -> int:
@@ -1002,26 +1110,11 @@ def main() -> int:
     test_winpthread_static_link_probe()
     test_visibility()
     test_lld_dispatch()
+    test_force_load_cc_basic_invocation()
+    test_force_load_cc_archive_extraction()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(f"=== Results: {n_pass} passed, {n_fail} failed, "
-          f"{n_warn} warnings, {n_skip} skipped ===")
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    if n_warn > 0:
-        print("\nWarnings (known issues):")
-        for name in _results["WARN"]:
-            print(f"  - {name}")
-
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(_results, warn_header="Warnings (known issues):") else 1
 
 
 if __name__ == "__main__":

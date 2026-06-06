@@ -36,6 +36,14 @@ if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-rc.exe" (
     for /f "tokens=* delims=" %%F in ("!_rc_path:\=/!") do endlocal & set "ZIG_RC_CMAKE=%%F"
 )
 if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-lld.exe" set "ZIG_LLD=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-lld.exe"
+if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-force-load-cc.exe"  set "ZIG_FORCE_LOAD_CC=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-force-load-cc.exe"
+if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-force-load-cxx.exe" set "ZIG_FORCE_LOAD_CXX=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-force-load-cxx.exe"
+
+REM === Ensure zig can resolve a writable cache directory ===
+REM Short %TEMP% path also avoids a cold-compile integer-overflow panic seen
+REM with long cache paths when cross-compiling *-windows-gnu (PR #120).
+REM Mirrors the recipe build (ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache).
+if not defined ZIG_GLOBAL_CACHE_DIR set "ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache"
 
 :cleanup
 set "_CONDA_TRIPLET="

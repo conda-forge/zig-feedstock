@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MementoRC <MementoRC@users.noreply.github.com>
+Date: Mon, 28 Apr 2026 00:00:00 +0000
+Subject: [PATCH] Fix CMAKE_CFG_INTDIR quote-stripping on Windows
+
+On Windows, cmd.exe strips backslash-escaped quotes from the compiler
+command line before the compiler sees them.  This means the CMake
+generator expression -DCMAKE_CFG_INTDIR="$<CONFIG>" (e.g.
+-DCMAKE_CFG_INTDIR="Release") arrives at zig-cxx as
+-DCMAKE_CFG_INTDIR=Release with no surrounding quotes, so the
+preprocessor receives an unquoted token rather than a string literal.
+At llvm-config.cpp:299 the code uses CMAKE_CFG_INTDIR as a string
+(CMAKE_CFG_INTDIR[0]), which fails with:
+
+  error: use of undeclared identifier 'Release'
+
+Fix with two complementary changes:
+1. CMakeLists.txt: guard add_compile_definitions with if(NOT WIN32) so
+   the broken definition is never emitted on Windows.
+2. llvm-config.cpp: add a #ifndef CMAKE_CFG_INTDIR fallback that
+   defines the macro as "." (matching single-config / Ninja behaviour)
+   for any build where the definition was not injected.
+
+---
+ llvm/tools/llvm-config/CMakeLists.txt  |  9 ++++++++-
+ llvm/tools/llvm-config/llvm-config.cpp |  8 ++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+--- a/llvm/tools/llvm-config/CMakeLists.txt
++++ b/llvm/tools/llvm-config/CMakeLists.txt
+@@ -80,7 +80,15 @@
+ configure_file(${BUILDVARIABLES_SRCPATH} ${BUILDVARIABLES_OBJPATH} @ONLY)
+
+ # Set build-time environment(s).
+-add_compile_definitions(CMAKE_CFG_INTDIR="$<CONFIG>")
++# On Windows (MSVC/MinGW), the cmd.exe command line strips backslash-escaped
++# quotes before the compiler sees them, so -DCMAKE_CFG_INTDIR="Release" arrives
++# as -DCMAKE_CFG_INTDIR=Release (no string literal, just an identifier), causing
++# "use of undeclared identifier 'Release'" at line 299 of llvm-config.cpp.
++# Skip the definition on Windows; the #ifndef fallback in llvm-config.cpp
++# provides "." as a safe default (matches single-config generator behaviour).
++if(NOT WIN32)
++  add_compile_definitions(CMAKE_CFG_INTDIR="$<CONFIG>")
++endif()
+
+ if(LLVM_ENABLE_MODULES)
+   target_compile_options(llvm-config PUBLIC
+--- a/llvm/tools/llvm-config/llvm-config.cpp
++++ b/llvm/tools/llvm-config/llvm-config.cpp
+@@ -32,6 +32,14 @@
+ #include <unordered_set>
+ #include <vector>
+
++// On Windows the cmd.exe command line strips backslash-escaped quotes before
++// the compiler sees argv, so -DCMAKE_CFG_INTDIR="Release" arrives without the
++// surrounding quotes and the macro is left undefined.  Provide a safe fallback
++// that matches single-config generator behaviour (e.g. Ninja on Windows).
++#ifndef CMAKE_CFG_INTDIR
++#define CMAKE_CFG_INTDIR "."
++#endif
++
+ using namespace llvm;
+
+ // Include the build time variables we can report to the user. This is generated
