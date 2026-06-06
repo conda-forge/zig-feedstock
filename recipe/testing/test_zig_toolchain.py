@@ -105,6 +105,8 @@ def test_wrapper_existence() -> None:
         expected = [
             f"{_pfx}zig-cc.exe",
             f"{_pfx}zig-cxx.exe",
+            f"{_pfx}zig-force-load-cc.exe",
+            f"{_pfx}zig-force-load-cxx.exe",
             f"{_pfx}zig-ar.exe",
             f"{_pfx}zig-ranlib.exe",
             f"{_pfx}zig-asm.exe",
@@ -981,7 +983,10 @@ def test_force_load_cc_basic_invocation() -> None:
         SKIP("force-load basic invocation", "emulated/cross runners")
         return
 
-    fl_cc = _env_var("ZIG_FORCE_LOAD_CC") or str(_wrapper_dir / f"{_triplet}-zig-force-load-cc")
+    _exe_suffix = ".exe" if _build_is_win else ""
+    fl_cc = _env_var("ZIG_FORCE_LOAD_CC") or str(
+        _wrapper_dir / f"{_triplet}-zig-force-load-cc{_exe_suffix}"
+    )
     if not os.path.exists(fl_cc):
         FAIL("force-load-cc exists", fl_cc)
         return
@@ -1014,13 +1019,21 @@ def test_force_load_cc_archive_extraction() -> None:
     """
     print("--- Force-load wrapper archive extraction ---")
 
+    if _build_is_win:
+        SKIP("force-load archive extraction",
+             "force-load extraction is Unix-only (#ifndef _WIN32 in wrapper)")
+        return
+
     if _is_emulated or _is_cross_compiler:
         SKIP("force-load archive extraction", "emulated/cross runners")
         return
 
-    fl_cc = _env_var("ZIG_FORCE_LOAD_CC") or str(_wrapper_dir / f"{_triplet}-zig-force-load-cc")
-    plain_cc = _env_var("ZIG_CC") or str(_wrapper_dir / f"{_triplet}-zig-cc")
-    plain_ar = _env_var("ZIG_AR") or str(_wrapper_dir / f"{_triplet}-zig-ar")
+    _exe_suffix = ".exe" if _build_is_win else ""
+    fl_cc = _env_var("ZIG_FORCE_LOAD_CC") or str(
+        _wrapper_dir / f"{_triplet}-zig-force-load-cc{_exe_suffix}"
+    )
+    plain_cc = _env_var("ZIG_CC") or str(_wrapper_dir / f"{_triplet}-zig-cc{_exe_suffix}")
+    plain_ar = _env_var("ZIG_AR") or str(_wrapper_dir / f"{_triplet}-zig-ar{_exe_suffix}")
     for tool in (fl_cc, plain_cc, plain_ar):
         if not os.path.exists(tool):
             FAIL(f"missing tool: {tool}", tool)
