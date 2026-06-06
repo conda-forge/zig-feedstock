@@ -2,15 +2,17 @@
  *
  * Replaces cross-zig-shim.c and zig-cc-nonunix.c with single source.
  * Mode determined by basename(argv[0]):
- *   ${triplet}-zig         -> DISPATCH (argv[1] is subcommand)
- *   ${triplet}-zig-cc      -> CC mode  (force argv[1]="cc", filter + inject -target)
- *   ${triplet}-zig-cxx     -> CXX mode
- *   ${triplet}-zig-c++     -> CXX mode (alternate name)
- *   ${triplet}-zig-ar      -> AR
- *   ${triplet}-zig-ranlib  -> RANLIB
- *   ${triplet}-zig-lld     -> LLD (lld-link on Windows, ld.lld on Unix)
- *   ${triplet}-zig-rc      -> RC
- *   ${triplet}-zig-asm     -> ASM (force "as")
+ *   ${triplet}-zig              -> DISPATCH (argv[1] is subcommand)
+ *   ${triplet}-zig-cc           -> CC mode  (force argv[1]="cc", filter + inject -target)
+ *   ${triplet}-zig-cxx          -> CXX mode
+ *   ${triplet}-zig-c++          -> CXX mode (alternate name)
+ *   ${triplet}-zig-force-load-cc  -> CC mode + archive extraction for -all_load/-force_load
+ *   ${triplet}-zig-force-load-cxx -> CXX mode + archive extraction for -all_load/-force_load
+ *   ${triplet}-zig-ar           -> AR
+ *   ${triplet}-zig-ranlib       -> RANLIB
+ *   ${triplet}-zig-lld          -> LLD (lld-link on Windows, ld.lld on Unix)
+ *   ${triplet}-zig-rc           -> RC
+ *   ${triplet}-zig-asm          -> ASM (force "as")
  *
  * Compile-time substitutions (placeholder strings replaced at install time):
  *   @ZIG_TARGET@      target triplet for -target injection
@@ -38,6 +40,10 @@
 #else
 #  include <unistd.h>
 #  include <limits.h>
+#  include <sys/stat.h>
+#  include <sys/types.h>
+#  include <sys/wait.h>
+#  include <dirent.h>
 #  ifndef PATH_MAX
 #    define PATH_MAX 4096
 #  endif
@@ -59,6 +65,8 @@ typedef enum {
     MODE_DISPATCH,
     MODE_CC,
     MODE_CXX,
+    MODE_FORCE_LOAD_CC,
+    MODE_FORCE_LOAD_CXX,
     MODE_AR,
     MODE_RANLIB,
     MODE_LLD,
@@ -224,6 +232,8 @@ static wrapper_mode_t detect_mode(const char *arg0) {
 #endif
     /* Match longest suffix first */
     if (ends_with(buf, "-zig-ranlib")) return MODE_RANLIB;
+    if (ends_with(buf, "-zig-force-load-cxx")) return MODE_FORCE_LOAD_CXX;
+    if (ends_with(buf, "-zig-force-load-cc"))  return MODE_FORCE_LOAD_CC;
     if (ends_with(buf, "-zig-cxx") || ends_with(buf, "-zig-c++")) return MODE_CXX;
     if (ends_with(buf, "-zig-asm")) return MODE_ASM;
     if (ends_with(buf, "-zig-lld")) return MODE_LLD;
@@ -441,6 +451,7 @@ int main(int argc, char *argv[]) {
     int user_args_start = 1;
     int do_filter = 0;
     int allow_target = 0;
+    int is_force_load_mode = 0;
 
     switch (mode) {
         case MODE_DISPATCH:
@@ -460,6 +471,12 @@ int main(int argc, char *argv[]) {
             subcommand = "cc";  new_argv[ni++] = "cc";  do_filter = 1; allow_target = 1; break;
         case MODE_CXX:
             subcommand = "c++"; new_argv[ni++] = "c++"; do_filter = 1; allow_target = 1; break;
+        case MODE_FORCE_LOAD_CC:
+            subcommand = "cc";  new_argv[ni++] = "cc";  do_filter = 1; allow_target = 1;
+            is_force_load_mode = 1; break;
+        case MODE_FORCE_LOAD_CXX:
+            subcommand = "c++"; new_argv[ni++] = "c++"; do_filter = 1; allow_target = 1;
+            is_force_load_mode = 1; break;
         case MODE_AR:
             subcommand = "ar"; new_argv[ni++] = "ar"; break;
         case MODE_RANLIB:
@@ -474,6 +491,166 @@ int main(int argc, char *argv[]) {
             break; /* unreachable: checked above */
     }
     (void)subcommand; /* used only for DBG */
+
+    /* P-Force-Load: scan argv for force-load triggers and extract archives.
+     * Ports zig-gcc's _zig-force-load-common.sh to C (Unix-only; on Windows
+     * force-load modes fall through to plain CC/CXX behaviour because macOS
+     * Mach-O force-load is not a conda-forge Windows concern). */
+    char **extracted_objects = NULL;
+    int n_extracted = 0;
+    int extracted_cap = 0;
+
+#ifndef _WIN32
+    if (is_force_load_mode) {
+        /* First pass: identify force-load triggers */
+        int all_load_mode = 0;
+        const char **force_archives = NULL;
+        int n_force_archives = 0;
+        int force_archives_cap = 0;
+
+        for (int i = user_args_start; i < argc; i++) {
+            const char *a = argv[i];
+            if (str_eq(a, "-Wl,-all_load") || str_eq(a, "-all_load")) {
+                all_load_mode = 1;
+            } else if (starts_with(a, "-Wl,-force_load,")) {
+                const char *path = a + 16; /* skip "-Wl,-force_load," */
+                if (path[0] != '\0') {
+                    if (n_force_archives >= force_archives_cap) {
+                        force_archives_cap = force_archives_cap ? force_archives_cap * 2 : 8;
+                        force_archives = (const char **)realloc(force_archives,
+                            force_archives_cap * sizeof(char *));
+                        if (!force_archives) { perror("zig-wrapper: realloc"); exit(1); }
+                    }
+                    force_archives[n_force_archives++] = path;
+                }
+            } else if (str_eq(a, "-force_load") && i + 1 < argc) {
+                const char *path = argv[i + 1];
+                if (n_force_archives >= force_archives_cap) {
+                    force_archives_cap = force_archives_cap ? force_archives_cap * 2 : 8;
+                    force_archives = (const char **)realloc(force_archives,
+                        force_archives_cap * sizeof(char *));
+                    if (!force_archives) { perror("zig-wrapper: realloc"); exit(1); }
+                }
+                force_archives[n_force_archives++] = path;
+                i++; /* consume the path arg */
+            }
+        }
+
+        if (all_load_mode || n_force_archives > 0) {
+            /* Collect archives to extract */
+            const char **to_extract = NULL;
+            int n_to_extract = 0;
+            int to_extract_cap = 0;
+
+            if (all_load_mode) {
+                /* Every existing .a file in argv */
+                for (int i = user_args_start; i < argc; i++) {
+                    const char *a = argv[i];
+                    size_t alen = strlen(a);
+                    if (alen > 2 && a[alen - 2] == '.' && a[alen - 1] == 'a') {
+                        struct stat st;
+                        if (stat(a, &st) == 0 && S_ISREG(st.st_mode)) {
+                            if (n_to_extract >= to_extract_cap) {
+                                to_extract_cap = to_extract_cap ? to_extract_cap * 2 : 8;
+                                to_extract = (const char **)realloc(to_extract,
+                                    to_extract_cap * sizeof(char *));
+                                if (!to_extract) { perror("zig-wrapper: realloc"); exit(1); }
+                            }
+                            to_extract[n_to_extract++] = a;
+                        }
+                    }
+                }
+            }
+            /* Always add explicitly requested force_archives */
+            for (int i = 0; i < n_force_archives; i++) {
+                struct stat st;
+                if (stat(force_archives[i], &st) == 0 && S_ISREG(st.st_mode)) {
+                    if (n_to_extract >= to_extract_cap) {
+                        to_extract_cap = to_extract_cap ? to_extract_cap * 2 : 8;
+                        to_extract = (const char **)realloc(to_extract,
+                            to_extract_cap * sizeof(char *));
+                        if (!to_extract) { perror("zig-wrapper: realloc"); exit(1); }
+                    }
+                    to_extract[n_to_extract++] = force_archives[i];
+                } else {
+                    fprintf(stderr, "zig-wrapper: force-load: archive not found: %s\n",
+                            force_archives[i]);
+                }
+            }
+
+            if (n_to_extract > 0) {
+                /* Create master tmpdir (leaked on exit — matches bash behaviour) */
+                char tmpl[PATH_MAX];
+                const char *tmpdir_env = getenv("TMPDIR");
+                if (!tmpdir_env || !tmpdir_env[0]) tmpdir_env = "/tmp";
+                snprintf(tmpl, sizeof(tmpl), "%s/zig-force-load-XXXXXX", tmpdir_env);
+                char *master_tmp = mkdtemp(tmpl);
+                if (!master_tmp) { perror("zig-wrapper: mkdtemp"); exit(1); }
+                /* TODO: rm -rf master_tmp after zig exits; for now leak (see Step 7 rationale) */
+
+                DBG("force-load: master_tmp=%s n_to_extract=%d\n", master_tmp, n_to_extract);
+
+                for (int i = 0; i < n_to_extract; i++) {
+                    /* Resolve archive to absolute path before chdir */
+                    char abs_archive[PATH_MAX];
+                    if (realpath(to_extract[i], abs_archive) == NULL)
+                        snprintf(abs_archive, sizeof(abs_archive), "%s", to_extract[i]);
+
+                    /* Per-archive subdir prevents object-basename collisions */
+                    char subdir[PATH_MAX];
+                    snprintf(subdir, sizeof(subdir), "%s/%d", master_tmp, i);
+                    if (mkdir(subdir, 0700) != 0) { perror("zig-wrapper: mkdir"); exit(1); }
+
+                    DBG("force-load: extracting %s -> %s\n", abs_archive, subdir);
+
+                    pid_t pid = fork();
+                    if (pid < 0) { perror("zig-wrapper: fork"); exit(1); }
+                    if (pid == 0) {
+                        if (chdir(subdir) != 0) { perror("zig-wrapper: chdir"); _exit(1); }
+                        char *ar_argv[] = { zig_path, "ar", "x", abs_archive, NULL };
+                        execv(zig_path, ar_argv);
+                        perror("zig-wrapper: execv ar");
+                        _exit(127);
+                    }
+                    int ar_status;
+                    if (waitpid(pid, &ar_status, 0) < 0) { perror("zig-wrapper: waitpid"); exit(1); }
+                    if (!WIFEXITED(ar_status) || WEXITSTATUS(ar_status) != 0) {
+                        fprintf(stderr, "zig-wrapper: ar x failed on %s\n", to_extract[i]);
+                        exit(1);
+                    }
+
+                    /* Collect *.o files from subdir */
+                    DIR *d = opendir(subdir);
+                    if (!d) { perror("zig-wrapper: opendir"); exit(1); }
+                    struct dirent *de;
+                    while ((de = readdir(d)) != NULL) {
+                        const char *name = de->d_name;
+                        size_t nlen = strlen(name);
+                        if (nlen > 2 && name[nlen - 2] == '.' && name[nlen - 1] == 'o') {
+                            size_t plen = strlen(subdir) + 1 + nlen + 1;
+                            char *full = (char *)malloc(plen);
+                            if (!full) { perror("zig-wrapper: malloc"); exit(1); }
+                            snprintf(full, plen, "%s/%s", subdir, name);
+                            if (n_extracted >= extracted_cap) {
+                                extracted_cap = extracted_cap ? extracted_cap * 2 : 16;
+                                extracted_objects = (char **)realloc(extracted_objects,
+                                    extracted_cap * sizeof(char *));
+                                if (!extracted_objects) {
+                                    perror("zig-wrapper: realloc"); exit(1);
+                                }
+                            }
+                            extracted_objects[n_extracted++] = full;
+                            DBG("force-load: extracted .o: %s\n", full);
+                        }
+                    }
+                    closedir(d);
+                }
+            }
+            free(to_extract);
+        }
+        free(force_archives);
+    }
+#endif /* !_WIN32 */
 
     if (do_filter) {
         /* --- CC/CXX mode: pre-scan + filter, then assemble new_argv --- */
@@ -610,6 +787,40 @@ int main(int argc, char *argv[]) {
                 continue;
             }
 
+            /* P-Force-Load: strip force-load flags (archives already extracted above).
+             * Flag stripping compiles on all platforms; stat-based .a dropping is
+             * Unix-only (S_ISREG not available on MSVC). On Windows is_force_load_mode
+             * is always 0 so this whole block is dead code anyway. */
+            if (is_force_load_mode) {
+                if (str_eq(a, "-Wl,-all_load") || str_eq(a, "-all_load")) {
+                    DBG("DROPPED (force-load flag): %s\n", a);
+                    continue;
+                }
+                if (starts_with(a, "-Wl,-force_load,")) {
+                    DBG("DROPPED (force-load flag): %s\n", a);
+                    continue;
+                }
+                if (str_eq(a, "-force_load")) {
+                    /* Two-arg form: skip this arg and the following path */
+                    DBG("DROPPED (force-load flag): %s\n", a);
+                    if (i + 1 < argc) i++; /* consume path arg */
+                    continue;
+                }
+#ifndef _WIN32
+                /* In all_load mode, drop bare .a positional args that were extracted */
+                if (n_extracted > 0) {
+                    size_t alen = strlen(a);
+                    if (alen > 2 && a[alen - 2] == '.' && a[alen - 1] == 'a') {
+                        struct stat st;
+                        if (stat(a, &st) == 0 && S_ISREG(st.st_mode)) {
+                            DBG("DROPPED (all_load .a): %s\n", a);
+                            continue;
+                        }
+                    }
+                }
+#endif /* !_WIN32 */
+            }
+
             filtered[fi++] = a;
         }
 
@@ -641,6 +852,19 @@ int main(int argc, char *argv[]) {
         /* Append filtered args */
         for (int i = 0; i < fi; i++) {
             new_argv[ni++] = (char *)filtered[i];
+        }
+
+        /* Append extracted .o files from force-load (Unix only) */
+        if (n_extracted > 0) {
+            /* Grow new_argv to accommodate extracted objects + NULL sentinel */
+            char **bigger = (char **)realloc(new_argv,
+                (size_t)(ni + n_extracted + 1) * sizeof(char *));
+            if (!bigger) { perror("zig-wrapper: realloc"); exit(1); }
+            new_argv = bigger;
+            for (int i = 0; i < n_extracted; i++) {
+                new_argv[ni++] = extracted_objects[i];
+                DBG("appended extracted: %s\n", extracted_objects[i]);
+            }
         }
 
     } else {
@@ -680,6 +904,7 @@ int main(int argc, char *argv[]) {
 
     new_argv[ni] = NULL;
     free(filtered);
+    free(extracted_objects); /* strings themselves are owned by new_argv / exec */
 
     if (debug_enabled) {
         DBG("exec: %s\n", zig_path);
