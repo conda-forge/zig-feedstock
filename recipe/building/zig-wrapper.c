@@ -230,6 +230,10 @@ static wrapper_mode_t detect_mode(const char *arg0) {
         len -= 4;
     }
 #endif
+    /* Suffix dispatch. Canonical list at recipe/building/wrapper_modes.txt
+     * is consumed by build.sh + install_zig_activation.py. detect_mode here
+     * is hand-maintained; A2 (MODE_UNKNOWN fall-through) ensures missing
+     * entries here degrade gracefully instead of exit 1. */
     /* Match longest suffix first */
     if (ends_with(buf, "-zig-ranlib")) return MODE_RANLIB;
     if (ends_with(buf, "-zig-force-load-cxx")) return MODE_FORCE_LOAD_CXX;

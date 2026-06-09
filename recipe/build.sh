@@ -443,10 +443,15 @@ PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
 #   (b) actually invoking the wrapper and checking exit status / output
 # See P-5 in zig_cc_consumer_pain_points.md.
 
-# Install ergonomic-name copies
-for suffix in zig-cc zig-cxx zig-ar zig-ranlib zig-lld zig-rc zig-asm zig-force-load-cc zig-force-load-cxx; do
-    cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-${suffix}${EXE_EXT}"
+# Install ergonomic-name copies (canonical suffix list at
+# ${RECIPE_DIR}/building/wrapper_modes.txt)
+mapfile -t _wrapper_suffixes < <(
+  grep -v '^#' "${RECIPE_DIR}/building/wrapper_modes.txt" | grep -v '^[[:space:]]*$'
+)
+for suffix in "${_wrapper_suffixes[@]}"; do
+    cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig-${suffix}${EXE_EXT}"
 done
+unset _wrapper_suffixes
 
 # zig's PE/COFF link can still emit a .pdb sidecar named after the output;
 # it is not needed for the wrapper and trips package_contents strict checks.
