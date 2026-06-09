@@ -402,8 +402,30 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) DBG("  in argv[%d]=%s\n", i, argv[i]);
 
     if (mode == MODE_UNKNOWN) {
-        fprintf(stderr, "zig-wrapper: cannot determine mode from basename(%s)\n", argv[0]);
-        return 1;
+        /* A2: warn and fall through to zig-real with original argv intact.
+         * This prevents build aborts when a new wrapper variant is installed
+         * but detect_mode() hasn't been updated yet (or a typo in CC=/CXX=).
+         * Add new variants to recipe/building/wrapper_modes.txt and update
+         * detect_mode() above to promote them to a proper mode. */
+        fprintf(stderr,
+            "zig-wrapper: WARNING: unknown basename '%s' — falling through to zig-real.\n"
+            "  If this is a new wrapper variant, add it to recipe/building/wrapper_modes.txt\n"
+            "  and recipe/building/zig-wrapper.c detect_mode().\n",
+            argv[0]);
+        char zig_path_fb[MAX_PATH_LEN];
+        if (resolve_real_zig(zig_path_fb, sizeof(zig_path_fb)) != 0) {
+            fprintf(stderr, "zig-wrapper: cannot resolve real zig binary\n");
+            return 1;
+        }
+#ifdef _WIN32
+        int rc = (int)_spawnv(_P_WAIT, zig_path_fb, (const char *const *)argv);
+        if (rc < 0) { perror("zig-wrapper: spawn zig-real"); return 127; }
+        return rc;
+#else
+        execv(zig_path_fb, argv);
+        perror("zig-wrapper: exec zig-real");
+        return 127;
+#endif
     }
 
 #ifdef _WIN32
