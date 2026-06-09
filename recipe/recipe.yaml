@@ -217,7 +217,7 @@ outputs:
           - if: not unix
             then: "*/VERSION.dll"
       script:
-        file: build${{ sh }}
+        file: build.sh
         env:
           BUILD_NUMBER: ${{ build_number }}
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -241,9 +241,9 @@ outputs:
         - python 3.12.*
         - if: not unix
           then:
-            - ${{ m2 }}gawk
             - ${{ m2 }}coreutils
             - ${{ m2 }}findutils
+            - ${{ m2 }}gawk
             - ${{ m2 }}which
         - if: linux
           then:

@@ -444,14 +444,17 @@ PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
 # See P-5 in zig_cc_consumer_pain_points.md.
 
 # Install ergonomic-name copies (canonical suffix list at
-# ${RECIPE_DIR}/building/wrapper_modes.txt)
-mapfile -t _wrapper_suffixes < <(
-  grep -v '^#' "${RECIPE_DIR}/building/wrapper_modes.txt" | grep -v '^[[:space:]]*$'
-)
-for suffix in "${_wrapper_suffixes[@]}"; do
+# ${RECIPE_DIR}/building/wrapper_modes.txt).
+# Portable: simple file redirect, inline filter, CRLF strip — works in
+# m2-bash 3.1 (no mapfile, no process substitution) and tolerates files
+# checked out with CRLF line endings on Windows.
+while IFS= read -r suffix || [ -n "${suffix}" ]; do
+    suffix="${suffix%$'\r'}"
+    case "${suffix}" in
+        ''|'#'*) continue ;;
+    esac
     cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig-${suffix}${EXE_EXT}"
-done
-unset _wrapper_suffixes
+done < "${RECIPE_DIR}/building/wrapper_modes.txt"
 
 # zig's PE/COFF link can still emit a .pdb sidecar named after the output;
 # it is not needed for the wrapper and trips package_contents strict checks.

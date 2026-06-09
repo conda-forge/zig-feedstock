@@ -20,22 +20,22 @@ import sys
 import tempfile
 from pathlib import Path
 
-_WRAPPER_MODES_FILE = Path(__file__).parent / "building" / "wrapper_modes.txt"
-
-
 def _read_wrapper_suffixes():
     """Read canonical wrapper suffix list (single source of truth).
 
     See recipe/building/wrapper_modes.txt for the canonical list and
     documentation of the contract with build.sh and zig-wrapper.c.
     """
+    recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
+    modes_file = recipe_dir / "building" / "wrapper_modes.txt"
     suffixes = []
-    with open(_WRAPPER_MODES_FILE) as f:
+    with open(modes_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
             suffixes.append(f"zig-{line}")
+    assert suffixes, f"wrapper_modes.txt produced no entries: {modes_file}"
     return suffixes
 
 
