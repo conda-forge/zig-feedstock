@@ -396,6 +396,43 @@ int main(int argc, char *argv[]) {
     const char *dbg_env = getenv("ZIG_WRAPPER_DEBUG");
     debug_enabled = (dbg_env && dbg_env[0] != '\0');
 
+    /* A3: Probe-flag short-circuit. Tooling probes (--version, --help, etc.)
+     * want the underlying compiler to identify itself; they don't care about
+     * wrapper mode dispatch. Short-circuit before detect_mode() so:
+     *   1. Unknown basenames can still respond to --version (composes with A2).
+     *   2. Probe latency is reduced (no filter-loop overhead).
+     *   3. Probe flags can't be mangled by mode-specific arg filtering.
+     *
+     * -v is intentionally excluded: lowercase -v is overloaded (clang verbose,
+     * zig treats it differently from --version). The unambiguous flags suffice.
+     *
+     * -dumpversion / -dumpmachine are GCC/clang compat probes; zig may not
+     * understand them, but the caller then gets a clear "unknown option" from
+     * zig itself rather than a silent wrapper failure. */
+    for (int i = 1; i < argc; i++) {
+        const char *a = argv[i];
+        if (strcmp(a, "--version") == 0
+         || strcmp(a, "-V") == 0
+         || strcmp(a, "--help") == 0
+         || strcmp(a, "-dumpversion") == 0
+         || strcmp(a, "-dumpmachine") == 0) {
+            char zig_path_probe[MAX_PATH_LEN];
+            if (resolve_real_zig(zig_path_probe, sizeof(zig_path_probe)) != 0) {
+                fprintf(stderr, "zig-wrapper: cannot resolve real zig binary\n");
+                return 1;
+            }
+#ifdef _WIN32
+            int rc = (int)_spawnv(_P_WAIT, zig_path_probe, (const char *const *)argv);
+            if (rc < 0) { perror("zig-wrapper: spawn zig-real"); return 127; }
+            return rc;
+#else
+            execv(zig_path_probe, argv);
+            perror("zig-wrapper: exec zig-real");
+            return 127;
+#endif
+        }
+    }
+
     wrapper_mode_t mode = detect_mode(argv[0]);
 
     DBG("argv[0]=%s mode=%d\n", argv[0], (int)mode);
