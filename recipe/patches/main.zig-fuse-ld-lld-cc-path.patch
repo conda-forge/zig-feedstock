@@ -1,28 +1,35 @@
 --- a/src/main.zig
 +++ b/src/main.zig
-@@ -312,6 +312,7 @@
-         dev.check(.clang_command);
-         return process.exit(try clangMain(arena, args));
-     } else if (mem.eql(u8, cmd, "ld.lld") or
-+        mem.eql(u8, cmd, "ld64.lld") or
-         mem.eql(u8, cmd, "lld-link") or
-         mem.eql(u8, cmd, "wasm-ld"))
-     {
-@@ -1940,7 +1941,12 @@
+@@ -250,6 +250,7 @@
+     @"-cc1as",
+
+     @"ld.lld",
++    @"ld64.lld",
+     @"lld-link",
+     @"wasm-ld",
+
+@@ -361,7 +362,7 @@
+             dev.check(.clang_command);
+             return process.exit(try clangMain(arena, args));
+         },
+-        .@"ld.lld", .@"lld-link", .@"wasm-ld" => {
++        .@"ld.lld", .@"ld64.lld", .@"lld-link", .@"wasm-ld" => {
+             dev.check(.lld_linker);
+             return process.exit(try lldMain(arena, args, true));
+         },
+@@ -1990,6 +1991,11 @@
                          }
                      },
                      .other => {
--                        try cc_argv.appendSlice(arena, it.other_args);
-+                        // Intercept -fuse-ld=lld in zig cc path
-+                        if (it.other_args.len > 0 and mem.eql(u8, it.other_args[0], "-fuse-ld=lld")) {
++                        if (mem.eql(u8, it.only_arg, "lld") or
++                            mem.eql(u8, it.only_arg, "ld.lld"))
++                        {
 +                            create_module.opts.use_lld = true;
-+                        } else {
-+                            try cc_argv.appendSlice(arena, it.other_args);
 +                        }
+                         try cc_argv.appendSlice(arena, it.other_args);
                      },
                      .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
-                         .assembly, .assembly_with_cpp, .c, .cpp, .ll, .bc, .h, .hpp, .hm, .hmm, .m, .mm => {
-@@ -2925,7 +2931,13 @@
+@@ -2965,7 +2971,13 @@
                      try Io.File.stdout().writeStreamingAll(io, "zig ld " ++ build_options.version ++ "\n");
                      process.exit(0);
                  } else {
@@ -37,7 +44,15 @@
                  }
              }
 
-@@ -6057,6 +6069,8 @@
+@@ -6331,6 +6343,7 @@
+
+ /// The first argument determines which backend is invoked. The options are:
+ /// * `ld.lld` - ELF
++/// * `ld64.lld` - Mach-O
+ /// * `lld-link` - COFF
+ /// * `wasm-ld` - WebAssembly
+ pub fn lldMain(
+@@ -6369,6 +6382,8 @@
              break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
          } else if (mem.eql(u8, args[1], "wasm-ld")) {
              break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
