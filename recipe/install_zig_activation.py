@@ -20,6 +20,24 @@ import sys
 import tempfile
 from pathlib import Path
 
+def _read_wrapper_suffixes():
+    """Read canonical wrapper suffix list (single source of truth).
+
+    See recipe/building/wrapper_modes.txt for the canonical list and
+    documentation of the contract with build.sh and zig-wrapper.c.
+    """
+    recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
+    modes_file = recipe_dir / "building" / "wrapper_modes.txt"
+    suffixes = []
+    with open(modes_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            suffixes.append(f"zig-{line}")
+    assert suffixes, f"wrapper_modes.txt produced no entries: {modes_file}"
+    return suffixes
+
 
 def main():
     print("=== Installing Zig Activation Package ===")
@@ -388,12 +406,7 @@ def install_target_triplet_wrappers(
 
         bin_dir.mkdir(parents=True, exist_ok=True)
 
-        suffixes = [
-            "zig-cc", "zig-cxx", "zig-ar", "zig-ranlib",
-            "zig-lld", "zig-rc", "zig-asm",
-            "zig-force-load-cc", "zig-force-load-cxx",
-        ]
-        for suffix in suffixes:
+        for suffix in _read_wrapper_suffixes():
             dst = bin_dir / f"{target_triplet}-{suffix}{exe_ext}"
             shutil.copy2(str(primary_wrapper), str(dst))
             if not is_nonunix:

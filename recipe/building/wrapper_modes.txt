@@ -1,0 +1,27 @@
+# Canonical zig wrapper suffix list.
+# Single source of truth for:
+#   - recipe/build.sh (install for-loop)
+#   - recipe/install_zig_activation.py (cross-compiler activation install)
+#   - recipe/building/zig-wrapper.c (detect_mode — uses hardcoded ends_with;
+#     A2 fall-through means missing suffix no longer aborts)
+#
+# Format: one suffix per line. Lines starting with # are comments. Blank lines ignored.
+# Each entry becomes a wrapper named ${CONDA_TRIPLET}-zig-<entry>(.exe).
+#
+# Adding a new wrapper variant requires:
+#   1. Add the suffix here.
+#   2. Add an ends_with() case in detect_mode() (else falls through via A2).
+#   3. Add appropriate filter/mode handling in main() if the new mode needs
+#      special argv treatment.
+#
+# Note: detect_mode() also recognises -zig-c++ as an alias for -zig-cxx, but
+# no wrapper is installed under the c++ name — omit it from this list.
+cc
+cxx
+ar
+ranlib
+lld
+rc
+asm
+force-load-cc
+force-load-cxx
