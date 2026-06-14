@@ -61,6 +61,33 @@
 #define ZIG_TARGET      "@ZIG_TARGET@"
 #define ZIG_REAL_PATH   "@ZIG_REAL_PATH@"
 
+/* build-29 item 1: -print-search-dirs arch dispatch */
+#if defined(__aarch64__) || defined(_M_ARM64)
+#  define HOST_DEFAULT_ARCH "aarch64"
+#elif defined(__x86_64__) || defined(_M_X64)
+#  define HOST_DEFAULT_ARCH "x86_64"
+#elif defined(__i386__) || defined(_M_IX86)
+#  define HOST_DEFAULT_ARCH "i386"
+#elif defined(__riscv) && (__riscv_xlen == 64)
+#  define HOST_DEFAULT_ARCH "riscv64"
+#else
+#  define HOST_DEFAULT_ARCH "x86_64"  /* conservative fallback */
+#endif
+
+static const struct {
+    const char *prefix;
+    const char *arch_dir;
+} TARGET_ARCH_MAP[] = {
+    {"aarch64-", "aarch64"},
+    {"arm64-",   "aarch64"},
+    {"x86_64-",  "x86_64"},
+    {"amd64-",   "x86_64"},
+    {"i386-",    "i386"},
+    {"i686-",    "i386"},
+    {"riscv64-", "riscv64"},
+    {NULL, NULL}
+};
+
 typedef enum {
     MODE_DISPATCH,
     MODE_CC,
@@ -336,6 +363,39 @@ static void ensure_system32_in_path(void) {
     free(new_path);
 }
 
+/* Scan argv for -target X / -target=X / --target=X (last-wins per zig convention).
+ * Returns the lib-<arch> suffix for the recognized arch, or NULL if no -target
+ * was found OR if the value is unrecognized (in which case a warning is
+ * emitted to stderr matching the A2 warn-and-fall-through philosophy).
+ * Caller falls back to HOST_DEFAULT_ARCH on NULL return.
+ */
+static const char *extract_target_arch_from_argv(int argc, char **argv) {
+    const char *last_target = NULL;
+    for (int i = 1; i < argc; i++) {
+        const char *val = NULL;
+        if (strcmp(argv[i], "-target") == 0 && i + 1 < argc) {
+            val = argv[i + 1];
+        } else if (strncmp(argv[i], "-target=", 8) == 0) {
+            val = argv[i] + 8;
+        } else if (strncmp(argv[i], "--target=", 9) == 0) {
+            val = argv[i] + 9;
+        }
+        if (val != NULL) last_target = val;
+    }
+    if (last_target == NULL) return NULL;
+    for (int j = 0; TARGET_ARCH_MAP[j].prefix != NULL; j++) {
+        size_t plen = strlen(TARGET_ARCH_MAP[j].prefix);
+        if (strncmp(last_target, TARGET_ARCH_MAP[j].prefix, plen) == 0) {
+            return TARGET_ARCH_MAP[j].arch_dir;
+        }
+    }
+    fprintf(stderr,
+            "zig-wrapper: unrecognized -target arch '%s' for -print-search-dirs, "
+            "falling back to host arch '%s'\n",
+            last_target, HOST_DEFAULT_ARCH);
+    return NULL;
+}
+
 /* --- Handle -print-search-dirs (Windows, GCC compat for flexlink/mingw_libs) ---
  * zig doesn't implement this flag. flexlink calls it to discover library
  * search paths before resolving -lXXX arguments. Without a response,
@@ -346,12 +406,14 @@ static int handle_print_search_dirs(int argc, char *argv[]) {
         if (!str_eq(argv[i], "-print-search-dirs")) continue;
         const char *conda = getenv("CONDA_PREFIX");
         if (conda && conda[0]) {
+            const char *arch = extract_target_arch_from_argv(argc, argv);
+            if (arch == NULL) arch = HOST_DEFAULT_ARCH;
             printf("install: %s\\Library\\lib\\zig\\\n", conda);
             printf("programs: =%s\\Library\\bin\\\n", conda);
             printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;"
-                   "%s\\Library\\lib\\zig\\libc\\mingw\\lib-x86_64;"
+                   "%s\\Library\\lib\\zig\\libc\\mingw\\lib-%s;"
                    "%s\\Library\\lib\\zig\n",
-                   conda, conda, conda);
+                   conda, conda, arch, conda);
         } else {
             printf("install: \nprograms: =\nlibraries: =\n");
         }
