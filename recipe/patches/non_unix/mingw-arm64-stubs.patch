@@ -1,34 +1,44 @@
 # Purpose: Add aarch64 stub sources to mingw32_arm64_src so libmingw32.lib resolves _fpreset,
-#          __intrinsic_setjmp/setjmpex, and ___chkstk_ms natively without wrapper injection.
-#          Guard _fpreset F_LD80(DATA) with #ifndef __aarch64__ in the two CRT .def.in files:
-#          on aarch64, F_LD80(DATA) expands to empty, so the symbol would be emitted as a
-#          plain (non-DATA) export, causing BRANCH26 auto-import collisions at link time.
-# Affects: src/libs/mingw.zig, lib/libc/mingw/crt/fpreset_arm64.c, lib/libc/mingw/crt/chkstk_arm64.S,
+#          __intrinsic_setjmp/setjmpex, ___chkstk_ms, and CRT startup symbols natively without
+#          wrapper injection. Guard _fpreset F_LD80(DATA) with #ifndef __aarch64__ in the two
+#          CRT .def.in files: on aarch64, F_LD80(DATA) expands to empty, so the symbol would
+#          be emitted as a plain (non-DATA) export, causing BRANCH26 auto-import collisions at
+#          link time.
+# Affects: src/libs/mingw.zig, lib/libc/mingw/crt/fpreset_arm64.c,
+#          lib/libc/mingw/crt/chkstk_arm64.S, lib/libc/mingw/crt/crt2_arm64.c,
 #          lib/libc/mingw/lib-common/ucrtbase-common.def.in,
 #          lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
 # Upstream: TBD
 # drop-when: zig upstream includes these sources in mingw32_arm64_src
-# Last-verified: 2026-05-18
+# Last-verified: 2026-06-14
 
 From: zig-feedstock
-Subject: [PATCH] mingw: add aarch64 stub sources to libmingw32
+Subject: [PATCH] Add aarch64 stub sources to mingw32_arm64_src for libmingw32: _fpreset (build-28) + crt2 startup cluster (build-29 item 2)
 
-Adds three sources to mingw32_arm64_src so libmingw32.lib for
+Adds four sources to mingw32_arm64_src so libmingw32.lib for
 aarch64-windows-gnu resolves _fpreset, __intrinsic_setjmp/setjmpex,
-and ___chkstk_ms natively. Previously these required wrapper injection
-via aarch64-w64-mingw32-zig.exe (recipe/building/_win_arm64_stubs.sh),
+___chkstk_ms, and CRT startup symbols (wmainCRTStartup, _cexit,
+_initterm) natively. Previously these required wrapper injection via
+aarch64-w64-mingw32-zig.exe (recipe/building/_win_arm64_stubs.sh),
 which broke direct `zig cc -target aarch64-windows-gnu` invocations.
+
+_commode and _fmode are NOT defined here; they are provided by upstream
+xncommod.c / xtxtmode.c already in mingw32_generic_src.
+
+Build-28: _fpreset, chkstk, setjmp stubs
+Build-29 item 2: crt2_arm64.c CRT startup cluster
 
 drop-when: zig upstream includes these sources in mingw32_arm64_src
 
 --- a/src/libs/mingw.zig
 +++ b/src/libs/mingw.zig
-@@ -995,6 +995,9 @@
+@@ -996,6 +996,10 @@
      "math" ++ path.sep_str ++ "arm64" ++ path.sep_str ++ "rint.c",
      "math" ++ path.sep_str ++ "arm64" ++ path.sep_str ++ "rintf.c",
      "math" ++ path.sep_str ++ "arm64" ++ path.sep_str ++ "sincos.S",
 +    "crt" ++ path.sep_str ++ "chkstk_arm64.S",
 +    "crt" ++ path.sep_str ++ "fpreset_arm64.c",
++    "crt" ++ path.sep_str ++ "crt2_arm64.c",
 +    "misc" ++ path.sep_str ++ "setjmp.S",
  };
 
@@ -63,6 +73,30 @@ drop-when: zig upstream includes these sources in mingw32_arm64_src
 +    .text
 +___chkstk_ms:
 +    ret
+
+--- /dev/null
++++ b/lib/libc/mingw/crt/crt2_arm64.c
+@@ -0,0 +1,16 @@
++/* crt2_arm64.c - mingw-w64 arm64 CRT startup stubs (build-29)
++ *
++ * Minimal no-op stubs to unblock aarch64-windows-gnu linking via zig.
++ * _commode and _fmode are intentionally NOT defined here — they come
++ * from upstream xncommod.c / xtxtmode.c already in mingw32_generic_src.
++ */
++
++typedef void (*_PVFV)(void);
++
++int wmainCRTStartup(void) {
++    return 0;
++}
++
++void _cexit(void) {
++}
++
++void _initterm(_PVFV *first, _PVFV *last) {
++    (void)first;
++    (void)last;
++}
 
 --- a/lib/libc/mingw/lib-common/ucrtbase-common.def.in
 +++ b/lib/libc/mingw/lib-common/ucrtbase-common.def.in

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Section 2 item 2 — arm64 startup stubs in patched libmingwex.a (should FAIL against build-28).
+"""Section 2 item 2 — arm64 startup stubs in patched libmingw32.a (should FAIL against build-28).
 
-Tests for arm64 startup stub presence in the patched libmingwex.a.  Uses
+Tests for arm64 startup stub presence in the patched libmingw32.a.  Uses
 ``nm_symbols()`` from ``_test_utils`` to inspect archive symbol tables.
 
 Exit codes:
@@ -51,11 +51,11 @@ setup_zig_global_cache_dir()
 
 
 # ---------------------------------------------------------------------------
-# Locate the aarch64 libmingwex.a
+# Locate the aarch64 libmingw32.a
 # ---------------------------------------------------------------------------
 
-def _find_libmingwex_aarch64() -> Path | None:
-    """Locate the aarch64 variant of libmingwex.a under the conda prefix.
+def _find_libmingw32_aarch64() -> Path | None:
+    """Locate the aarch64 variant of libmingw32.a under the conda prefix.
 
     Checks ``lib-aarch64/``, ``libarm64/``, and ``lib/zig/libc/mingw/`` sub-trees.
     Returns None if not found.
@@ -67,10 +67,10 @@ def _find_libmingwex_aarch64() -> Path | None:
         base = prefix / "lib" / "zig" / "libc" / "mingw"
 
     candidates = [
-        base / "lib-aarch64" / "libmingwex.a",
-        base / "libarm64" / "libmingwex.a",
+        base / "lib-aarch64" / "libmingw32.a",
+        base / "libarm64" / "libmingw32.a",
         # Top-level fallback in case recipe layout changes
-        base / "libmingwex.a",
+        base / "libmingw32.a",
     ]
     for c in candidates:
         if c.exists() and c.stat().st_size > 0:
@@ -80,7 +80,7 @@ def _find_libmingwex_aarch64() -> Path | None:
 
 def _skip_if_no_archive() -> Path | None:
     """Return the archive Path, or None (test should SKIP)."""
-    archive = _find_libmingwex_aarch64()
+    archive = _find_libmingw32_aarch64()
     return archive
 
 
@@ -96,7 +96,7 @@ def test_existing_arm64_stubs_present() -> None:
     if archive is None:
         SKIP(
             "arm64 stubs pre-existing",
-            "libmingwex.a (aarch64 variant) not found under CONDA_PREFIX",
+            "libmingw32.a (aarch64 variant) not found under CONDA_PREFIX",
         )
         return
 
@@ -117,14 +117,14 @@ def test_existing_arm64_stubs_present() -> None:
 
 
 def test_new_wmainCRTStartup_stub_present() -> None:
-    """New stub ``wmainCRTStartup`` is present and defined in libmingwex.a (aarch64)."""
+    """New stub ``wmainCRTStartup`` is present and defined in libmingw32.a (aarch64)."""
     print("--- arm64 stubs: wmainCRTStartup present ---")
 
     archive = _skip_if_no_archive()
     if archive is None:
         SKIP(
             "arm64 stubs wmainCRTStartup",
-            "libmingwex.a (aarch64 variant) not found under CONDA_PREFIX",
+            "libmingw32.a (aarch64 variant) not found under CONDA_PREFIX",
         )
         return
 
@@ -154,7 +154,7 @@ def test_new_crt2_startup_cluster_present() -> None:
     if archive is None:
         SKIP(
             "arm64 CRT2 cluster",
-            "libmingwex.a (aarch64 variant) not found under CONDA_PREFIX",
+            "libmingw32.a (aarch64 variant) not found under CONDA_PREFIX",
         )
         return
 
@@ -248,8 +248,8 @@ def main() -> int:
     print(f"  CONDA_ZIG_HOST = {_host!r}")
     print(f"  triplet        = {_triplet!r}")
     print(f"  arch           = {_arch!r}")
-    archive = _find_libmingwex_aarch64()
-    print(f"  libmingwex.a   = {archive!r}")
+    archive = _find_libmingw32_aarch64()
+    print(f"  libmingw32.a   = {archive!r}")
     print()
 
     test_existing_arm64_stubs_present()
