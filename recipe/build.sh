@@ -457,8 +457,12 @@ while IFS= read -r suffix || [ -n "${suffix}" ]; do
 done < "${RECIPE_DIR}/building/wrapper_modes.txt"
 
 # Install wrapper_modes.txt for runtime self-test (A4)
-mkdir -p "${PREFIX}/share/zig-wrapper"
-cp "${RECIPE_DIR}/building/wrapper_modes.txt" "${PREFIX}/share/zig-wrapper/wrapper_modes.txt"
+case "${target_platform}" in
+    win-*) SHARE_DIR="${PREFIX}/Library/share/zig-wrapper" ;;
+    *)     SHARE_DIR="${PREFIX}/share/zig-wrapper" ;;
+esac
+mkdir -p "${SHARE_DIR}"
+cp "${RECIPE_DIR}/building/wrapper_modes.txt" "${SHARE_DIR}/wrapper_modes.txt"
 
 # zig's PE/COFF link can still emit a .pdb sidecar named after the output;
 # it is not needed for the wrapper and trips package_contents strict checks.

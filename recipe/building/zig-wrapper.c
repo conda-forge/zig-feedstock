@@ -54,6 +54,14 @@
 #  define ZIG_REAL_DEFAULT "zig-real"
 #endif
 
+#ifdef _WIN32
+#  include <io.h>      /* _access */
+#  include <stdlib.h>  /* _fullpath */
+#  define access(p, m) _access((p), (m))
+#  define R_OK 4
+#  define realpath(p, r) _fullpath((r), (p), PATH_MAX)
+#endif
+
 #ifdef __APPLE__
 #  include <mach-o/dyld.h>
 #endif
@@ -335,16 +343,18 @@ static int find_modes_txt(const char *argv0, char *buf, size_t bufsize) {
     }
     char real[PATH_MAX];
     if (realpath(argv0, real)) {
-        char *slash = strrchr(real, '/');
+        char *slash = strrchr(real, PATH_SEP);
         if (slash) {
             *slash = 0;
-            snprintf(buf, bufsize, "%s/../share/zig-wrapper/wrapper_modes.txt", real);
+            snprintf(buf, bufsize, "%s%c..%cshare%czig-wrapper%cwrapper_modes.txt",
+                     real, PATH_SEP, PATH_SEP, PATH_SEP, PATH_SEP);
             if (access(buf, R_OK) == 0) return 0;
         }
     }
     const char *recipe_dir = getenv("RECIPE_DIR");
     if (recipe_dir && recipe_dir[0]) {
-        snprintf(buf, bufsize, "%s/building/wrapper_modes.txt", recipe_dir);
+        snprintf(buf, bufsize, "%s%cbuilding%cwrapper_modes.txt",
+                 recipe_dir, PATH_SEP, PATH_SEP);
         if (access(buf, R_OK) == 0) return 0;
     }
     return -1;

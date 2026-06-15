@@ -467,12 +467,13 @@ outputs:
 
       # A4: wrapper self-test — verify wrapper_modes.txt matches KNOWN list in binary.
       - script:
-          - python ${RECIPE_DIR}/testing/test_wrapper_self_test.py
+          - python testing/test_wrapper_self_test.py
         requirements:
           run:
             - python >=3.10
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_wrapper_self_test.py
 
       # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
