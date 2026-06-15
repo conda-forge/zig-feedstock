@@ -321,6 +321,118 @@ static int resolve_real_zig(char *out, size_t out_size) {
     return 0;
 }
 
+/* A4: --zig-wrapper-self-test flag for drift detection between wrapper_modes.txt
+ * and the canonical KNOWN list embedded in this binary. Self-test reads the
+ * modes file at runtime, parses suffix entries, and reports any missing/extra/
+ * duplicate suffixes vs the KNOWN list.
+ */
+
+static int find_modes_txt(const char *argv0, char *buf, size_t bufsize) {
+    const char *env = getenv("WRAPPER_MODES_TXT");
+    if (env && env[0]) {
+        snprintf(buf, bufsize, "%s", env);
+        return access(buf, R_OK) == 0 ? 0 : -1;
+    }
+    char real[PATH_MAX];
+    if (realpath(argv0, real)) {
+        char *slash = strrchr(real, '/');
+        if (slash) {
+            *slash = 0;
+            snprintf(buf, bufsize, "%s/../share/zig-wrapper/wrapper_modes.txt", real);
+            if (access(buf, R_OK) == 0) return 0;
+        }
+    }
+    const char *recipe_dir = getenv("RECIPE_DIR");
+    if (recipe_dir && recipe_dir[0]) {
+        snprintf(buf, bufsize, "%s/building/wrapper_modes.txt", recipe_dir);
+        if (access(buf, R_OK) == 0) return 0;
+    }
+    return -1;
+}
+
+static int run_self_test(const char *argv0, const char *explicit_path) {
+    char path_buf[PATH_MAX];
+    const char *modes_path;
+
+    if (explicit_path && explicit_path[0]) {
+        modes_path = explicit_path;
+        if (access(modes_path, R_OK) != 0) {
+            fprintf(stderr, "wrapper self-test FAIL: cannot read %s\n", modes_path);
+            return 1;
+        }
+    } else {
+        if (find_modes_txt(argv0, path_buf, sizeof(path_buf)) != 0) {
+            fprintf(stderr, "wrapper self-test FAIL: wrapper_modes.txt not found in default locations\n");
+            return 1;
+        }
+        modes_path = path_buf;
+    }
+
+    FILE *f = fopen(modes_path, "r");
+    if (!f) {
+        fprintf(stderr, "wrapper self-test FAIL: cannot open %s\n", modes_path);
+        return 1;
+    }
+
+    char line[256];
+    char *modes[64];
+    int n_modes = 0;
+    while (fgets(line, sizeof(line), f) && n_modes < 64) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || *p == '#' || *p == '\n' || *p == '\r') continue;
+        char *e = p + strlen(p);
+        while (e > p && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ' || e[-1] == '\t')) e--;
+        *e = 0;
+        if (!*p) continue;
+
+        for (int i = 0; i < n_modes; i++) {
+            if (str_eq(modes[i], p)) {
+                fprintf(stderr, "wrapper self-test FAIL: duplicate mode %s\n", p);
+                fclose(f);
+                for (int j = 0; j < n_modes; j++) free(modes[j]);
+                return 1;
+            }
+        }
+        modes[n_modes++] = strdup(p);
+    }
+    fclose(f);
+
+    static const char *KNOWN[] = {
+        "cc", "cxx", "ar", "ranlib", "lld", "rc", "asm",
+        "force-load-cc", "force-load-cxx"
+    };
+    const int N_KNOWN = (int)(sizeof(KNOWN) / sizeof(KNOWN[0]));
+
+    for (int i = 0; i < N_KNOWN; i++) {
+        int found = 0;
+        for (int j = 0; j < n_modes; j++) {
+            if (str_eq(modes[j], KNOWN[i])) { found = 1; break; }
+        }
+        if (!found) {
+            fprintf(stderr, "wrapper self-test FAIL: missing mode %s\n", KNOWN[i]);
+            for (int k = 0; k < n_modes; k++) free(modes[k]);
+            return 1;
+        }
+    }
+
+    for (int i = 0; i < n_modes; i++) {
+        int known = 0;
+        for (int j = 0; j < N_KNOWN; j++) {
+            if (str_eq(modes[i], KNOWN[j])) { known = 1; break; }
+        }
+        if (!known) {
+            fprintf(stderr, "wrapper self-test FAIL: extra mode %s\n", modes[i]);
+            for (int k = 0; k < n_modes; k++) free(modes[k]);
+            return 1;
+        }
+    }
+
+    printf("wrapper self-test OK: %d modes consistent\n", n_modes);
+    for (int k = 0; k < n_modes; k++) free(modes[k]);
+    return 0;
+}
+
 /* --- Windows: set ZIG_GLOBAL_CACHE_DIR if unset ---
  * Mirrors zig's own resolution: APPDATA > USERPROFILE > GetTempPath.
  * Prevents AppDataDirUnavailable panic even when APPDATA is set but
@@ -492,6 +604,17 @@ int main(int argc, char *argv[]) {
             perror("zig-wrapper: exec zig-real");
             return 127;
 #endif
+        }
+    }
+
+    /* A4: self-test early-exit before any mode dispatch */
+    for (int _i = 1; _i < argc; _i++) {
+        const char *_arg = argv[_i];
+        if (str_eq(_arg, "--zig-wrapper-self-test")) {
+            return run_self_test(argv[0], NULL);
+        }
+        if (starts_with(_arg, "--zig-wrapper-self-test=")) {
+            return run_self_test(argv[0], _arg + sizeof("--zig-wrapper-self-test=") - 1);
         }
     }
 

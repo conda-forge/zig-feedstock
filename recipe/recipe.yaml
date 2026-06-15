@@ -311,8 +311,10 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
             - if: unix
               then:
+                - share/zig-wrapper/wrapper_modes.txt
                 - share/zig/zig-real
               else:
+                - Library/share/zig-wrapper/wrapper_modes.txt
                 - Library/share/zig/zig-real.exe
             - if: is_native or linux and not xc_ppc64le
               then:
@@ -462,6 +464,16 @@ outputs:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+
+      # A4: wrapper self-test — verify wrapper_modes.txt matches KNOWN list in binary.
+      - script:
+          - python ${RECIPE_DIR}/testing/test_wrapper_self_test.py
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          recipe:
+            - testing/test_wrapper_self_test.py
 
       # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
       # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
