@@ -467,7 +467,11 @@ outputs:
 
       # A4: wrapper self-test — verify wrapper_modes.txt matches KNOWN list in binary.
       - script:
-          - python testing/test_wrapper_self_test.py
+          - if: unix
+            then: CONDA_ZIG_HOST=${{ conda_triplet }}-zig python testing/test_wrapper_self_test.py
+            else:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_wrapper_self_test.py
         requirements:
           run:
             - python >=3.10
@@ -475,6 +479,23 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_wrapper_self_test.py
+
+      # Item 4: __tsan_* filter regression gate — verify mingw target objects have no
+      # undefined __tsan_* refs from trivial `int main(){return 0;}` (build-29 baseline).
+      - script:
+          - if: unix
+            then: CONDA_ZIG_HOST=${{ conda_triplet }}-zig python testing/test_tsan_filter.py
+            else:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_tsan_filter.py
+        requirements:
+          run:
+            - python >=3.10
+            - llvm-tools
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_tsan_filter.py
 
       # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
       # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;

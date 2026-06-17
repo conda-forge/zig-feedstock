@@ -380,7 +380,12 @@ def main() -> int:
         for name in _results["FAIL"]:
             print(f"  - {name}")
 
-    return 1 if n_fail > 0 else 0
+    if n_fail > 0:
+        return 1
+    if n_pass == 0 and n_skip > 0:
+        print("\nFAIL: test environment not properly set up — all sub-tests skipped (likely CONDA_ZIG_HOST unset or wrapper binary not found)")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
