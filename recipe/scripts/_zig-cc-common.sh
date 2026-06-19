@@ -33,7 +33,13 @@ for _arg in "$@"; do
     if [[ "$_arg" == "-print-search-dirs" ]]; then
         _zig_lib="${CONDA_PREFIX}/lib/zig"
         _mingw_common="${_zig_lib}/libc/mingw/lib-common"
-        _mingw_arch="${_zig_lib}/libc/mingw/lib-x86_64"
+        # Select arch-specific mingw dir from the baked-in target arch.
+        # x86_64 -> lib-x86_64 (zig stdlib name); aarch64 -> libarm64.
+        # Fall back to lib-x86_64 for unknown arches so nothing regresses.
+        case "@ZIG_TARGET_ARCH@" in
+            aarch64) _mingw_arch="${_zig_lib}/libc/mingw/libarm64" ;;
+            *)       _mingw_arch="${_zig_lib}/libc/mingw/lib-x86_64" ;;
+        esac
         echo "install: ${_zig_lib}/"
         echo "programs: =${CONDA_PREFIX}/bin/"
         echo "libraries: =${_mingw_common}:${_mingw_arch}:${_zig_lib}"
@@ -165,6 +171,33 @@ while [[ $i -lt $argc ]]; do
         # For targets where zig provides pthreads natively (Windows, Linux via
         # libc), the static-pthread request is unnecessary and panics the linker.
         -l:libpthread.a|-l:libpthread.so*) ;;
+        # Bare -Map handling for mingw cross targets. Clang rejects bare -Map
+        # ("Unknown Clang option"); rewrite to -Wl,-Map,FILE so it reaches lld.
+        -Map)
+            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
+                next_i=$((i + 1))
+                if [[ $next_i -lt $argc ]]; then
+                    args+=("-Wl,-Map,${argv[$next_i]}")
+                    i=$next_i
+                fi
+            else
+                args+=("$arg")
+            fi
+            ;;
+        -Map=*)
+            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
+                args+=("-Wl,-Map,${arg#-Map=}")
+            else
+                args+=("$arg")
+            fi
+            ;;
+        -Map?*)
+            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
+                args+=("-Wl,-Map,${arg#-Map}")
+            else
+                args+=("$arg")
+            fi
+            ;;
         *) args+=("$arg") ;;
     esac
     ((i++))

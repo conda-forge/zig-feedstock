@@ -196,8 +196,12 @@ static int handle_print_search_dirs(int argc, char *argv[]) {
                  * lib: zig compiler runtime libs */
                 printf("install: %s\\Library\\lib\\zig\\\n", conda);
                 printf("programs: =%s\\Library\\bin\\\n", conda);
-                printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;%s\\Library\\lib\\zig\\libc\\mingw\\lib-x86_64;%s\\Library\\lib\\zig\n",
-                       conda, conda, conda);
+                const char *arch_dir =
+                    starts_with(ZIG_TARGET, "aarch64") ? "libarm64" : "lib-x86_64";
+                printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;"
+                       "%s\\Library\\lib\\zig\\libc\\mingw\\%s;"
+                       "%s\\Library\\lib\\zig\n",
+                       conda, conda, arch_dir, conda);
             } else {
                 printf("install: \nprograms: =\nlibraries: =\n");
             }
@@ -313,6 +317,42 @@ int main(int argc, char *argv[]) {
         /* -Xlinker: grab next arg for inspection */
         if (str_eq(arg, "-Xlinker")) {
             grab_next = 1;
+            continue;
+        }
+
+        /* Bare -Map handling on mingw targets. Clang's driver rejects bare
+         * -Map as "Unknown Clang option"; rewrite to -Wl,-Map,FILE so clang
+         * forwards it to lld. -Wl,-Map,FILE already passes through unchanged.
+         * Forms: -Map FILE (two-arg), -Map=FILE, -MapFILE. */
+        if (IS_MINGW_TARGET && str_eq(arg, "-Map") && i + 1 < argc) {
+            const char *mapfile = argv[i + 1];
+            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
+            char *out = (char *)malloc(len);
+            if (out) {
+                snprintf(out, len, "-Wl,-Map,%s", mapfile);
+                filtered[fi++] = out;
+            }
+            i++;  /* consume the FILE arg */
+            continue;
+        }
+        if (IS_MINGW_TARGET && starts_with(arg, "-Map=") && arg[5] != '\0') {
+            const char *mapfile = arg + 5;
+            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
+            char *out = (char *)malloc(len);
+            if (out) {
+                snprintf(out, len, "-Wl,-Map,%s", mapfile);
+                filtered[fi++] = out;
+            }
+            continue;
+        }
+        if (IS_MINGW_TARGET && starts_with(arg, "-Map") && arg[4] != '\0' && arg[4] != '=') {
+            const char *mapfile = arg + 4;
+            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
+            char *out = (char *)malloc(len);
+            if (out) {
+                snprintf(out, len, "-Wl,-Map,%s", mapfile);
+                filtered[fi++] = out;
+            }
             continue;
         }
 
