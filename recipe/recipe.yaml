@@ -497,6 +497,40 @@ outputs:
             - testing/_test_utils.py
             - testing/test_tsan_filter.py
 
+      # Build-29 items 1+2: -Wl,--stack and -Wl,-Map MSVC translation gate --
+      # verify the zig cc wrapper rewrites GNU-ld flags to lld-link /STACK: and
+      # /MAP: equivalents before exec (ZIG_WRAPPER_DEBUG argv dump check).
+      - script:
+          - if: unix
+            then: CONDA_ZIG_HOST=${{ conda_triplet }}-zig python testing/test_wl_msvc_translation.py
+            else:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_wl_msvc_translation.py
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_wl_msvc_translation.py
+
+      # Build-29 item 3/4 diagnostic: compile + run the stack-realloc probe on win-64
+      # to capture the exception class (0xC0000005 item4 / 0xC00000FD item6). Non-fatal;
+      # verdict appears in the CI test log. Also exercises wrapper P-4 (-Wl,--stack -> /STACK:).
+      - script:
+          - if: not unix
+            then:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_stack_probe.py
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          recipe:
+            - building/spike_realloc_probe.c
+            - testing/_test_utils.py
+            - testing/test_stack_probe.py
+
       # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
       # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
       # the cc wrapper must filter them before forwarding to zig cc.

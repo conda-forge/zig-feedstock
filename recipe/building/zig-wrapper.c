@@ -122,6 +122,19 @@ static int ends_with(const char *s, const char *suffix) {
     return sl >= pl && strcmp(s + sl - pl, suffix) == 0;
 }
 
+/* Build a "-Wl,<prefix><value>" string for MSVC/lld-link linker options
+   (e.g. prefix="/STACK:" value="0x100000" -> "-Wl,/STACK:0x100000").
+   Allocates process-lifetime memory; never freed (same idiom as P-3 -e->/ENTRY). */
+static char *make_wl_msvc(const char *prefix, const char *value) {
+    size_t pl = strlen(prefix), vl = strlen(value);
+    char *r = (char *)malloc(4 + pl + vl + 1); /* "-Wl," + prefix + value + NUL */
+    if (!r) { perror("zig-wrapper: malloc"); exit(1); }
+    memcpy(r, "-Wl,", 4);
+    memcpy(r + 4, prefix, pl);
+    memcpy(r + 4 + pl, value, vl + 1);
+    return r;
+}
+
 /* --- filter helpers (CC/CXX modes only) --- */
 static int is_drop_flag(const char *arg) {
     return starts_with(arg, "-march=")
@@ -1013,6 +1026,56 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
                 /* "-Wl,-e" with no symbol — fall through; clang will reject */
+            }
+
+            /* P-4: -Wl,--stack,SIZE (or =SIZE) -> -Wl,/STACK:SIZE.
+             * GNU ld comma form; mingw-ld honors --stack, lld-link needs /STACK:.
+             * Build-29+ wishlist item 1 (ocaml-feedstock PR #97 W5M). */
+            if (is_windows_target &&
+                (starts_with(a, "-Wl,--stack,") || starts_with(a, "-Wl,--stack="))) {
+                const char *size = a + 12; /* skip "-Wl,--stack," / "-Wl,--stack=" (both 12) */
+                if (size[0] != '\0') {
+                    char *rewritten = make_wl_msvc("/STACK:", size);
+                    DBG("REWROTE (-Wl,--stack): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+                /* "-Wl,--stack," with no size -- fall through */
+            }
+
+            /* P-5a: -Wl,-Map,FILE (or =FILE) -> -Wl,/MAP:FILE (lld-link COFF map).
+             * Build-29+ wishlist item 2. */
+            if (is_windows_target &&
+                (starts_with(a, "-Wl,-Map,") || starts_with(a, "-Wl,-Map="))) {
+                const char *file = a + 9; /* skip "-Wl,-Map," / "-Wl,-Map=" (both 9) */
+                if (file[0] != '\0') {
+                    char *rewritten = make_wl_msvc("/MAP:", file);
+                    DBG("REWROTE (-Wl,-Map): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+                /* "-Wl,-Map," with no file -- fall through */
+            }
+
+            /* P-5b: bare -Map=FILE (flexlink strips the -Wl, prefix) -> -Wl,/MAP:FILE.
+             * zig cc rejects bare -Map ("Unknown Clang option: '-Map'"). Build-29+ wishlist item 2. */
+            if (is_windows_target && starts_with(a, "-Map=")) {
+                const char *file = a + 5; /* skip "-Map=" */
+                if (file[0] != '\0') {
+                    char *rewritten = make_wl_msvc("/MAP:", file);
+                    DBG("REWROTE (bare -Map=): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+            }
+
+            /* P-5c: bare two-token "-Map FILE" (flexlink) -> -Wl,/MAP:FILE. Consume the next argv token. */
+            if (is_windows_target && str_eq(a, "-Map") && i + 1 < argc) {
+                const char *file = argv[++i]; /* consume FILE token */
+                char *rewritten = make_wl_msvc("/MAP:", file);
+                DBG("REWROTE (bare -Map): %s %s -> %s\n", a, file, rewritten);
+                filtered[fi++] = rewritten;
+                continue;
             }
 
             /* -Wl,* drops: only when not using LLD (LLD handles them natively) */
