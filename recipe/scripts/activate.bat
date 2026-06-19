@@ -37,6 +37,12 @@ if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-rc.exe" (
 )
 if exist "%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-lld.exe" set "ZIG_LLD=%CONDA_PREFIX%\Library\bin\%_CONDA_TRIPLET%-zig-lld.exe"
 
+REM === Ensure zig can resolve a writable cache directory ===
+REM Short %TEMP% path also avoids a cold-compile integer-overflow panic seen
+REM with long cache paths when cross-compiling *-windows-gnu (PR #120).
+REM Mirrors the recipe build (ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache).
+if not defined ZIG_GLOBAL_CACHE_DIR set "ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache"
+
 :cleanup
 set "_CONDA_TRIPLET="
 set "_CROSS_TARGET_TRIPLET="
