@@ -36,20 +36,25 @@ static LONG CALLBACK veh(PEXCEPTION_POINTERS ep) {
 }
 
 /* >4KB volatile frame, touched at both ends so it is materialized and probed */
+/* noinline + optnone keep the recursion genuine under -O2 (else the XOR accumulator is
+ * turned into a loop and the stack never grows). The >8KB volatile frame still forces the
+ * Win64 __chkstk probe. The post-call volatile reload keeps the frame live across the call. */
+__attribute__((noinline, optnone))
 static uintptr_t recurse(int depth) {
     volatile char buf[8192];
     buf[0] = (char)depth;
     buf[sizeof(buf) - 1] = (char)(depth >> 8);
     uintptr_t s = tls_domain_state + (uintptr_t)buf[0] + (uintptr_t)buf[sizeof(buf) - 1];
     if (depth <= 0) return s;
-    return s ^ recurse(depth - 1); /* non-tail: frames accumulate */
+    uintptr_t r = s ^ recurse(depth - 1); /* non-tail: frames accumulate */
+    return r ^ (uintptr_t)buf[0];
 }
 
 int main(int argc, char **argv) {
     ULONG guarantee = 65536;
     SetThreadStackGuarantee(&guarantee);
     AddVectoredExceptionHandler(1, veh);
-    int depth = (argc > 1) ? atoi(argv[1]) : 100000;
+    int depth = (argc > 1) ? atoi(argv[1]) : 2000;
     fprintf(stderr, "depth=%d frame~=%zu bytes\n", depth, (size_t)8192);
     fflush(stderr);
     uintptr_t r = recurse(depth);

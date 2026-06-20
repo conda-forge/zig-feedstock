@@ -87,14 +87,32 @@ def main():
         SKIP("stack-probe: run", "target arch %s not runnable on x86_64 host -- compile-only" % arch)
         return 0
 
+    results = {}
     for tag, e in (("default", exe), ("bigstack", exe_big)):
         if not os.path.exists(e):
             continue
-        rr = _run([e, "200000"], timeout=180)
+        rr = _run([e, "6000"], timeout=180)
         out = (rr.stderr or "") + (rr.stdout or "")
         v = _verdict(rr.returncode, out)
+        results[tag] = v
         print("[probe:%s] rc=%s verdict: %s" % (tag, rr.returncode, v))
         WARN("stack-probe:%s" % tag, v)
+
+    # Combined end-to-end interpretation (still non-gating per the diagnostic contract).
+    d = results.get("default", "")
+    b = results.get("bigstack", "")
+    if "ACCESS_VIOLATION" in d:
+        WARN("stack-probe:verdict",
+             "default faults 0xC0000005 -> __chkstk probe BYPASS (item 4 bug present)")
+    elif "STACK_OVERFLOW" in d and "SURVIVED" in b:
+        PASS("stack-probe:verdict: default overflows cleanly (0xC00000FD) and "
+             "-Wl,--stack,0x4000000 survives -> /STACK: reserve honored (item 6 fix works)")
+    elif "STACK_OVERFLOW" in d:
+        WARN("stack-probe:verdict",
+             "default overflows cleanly but bigstack did NOT survive -- --stack reserve not honored")
+    elif "SURVIVED" in d:
+        WARN("stack-probe:verdict",
+             "default SURVIVED depth=2000 (~16MB) -- recursion optimized away; probe not exercising stack")
 
     return 0  # diagnostic only: never fail the build
 
