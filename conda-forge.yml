@@ -1,11 +1,8 @@
 azure:
-  free_disk_space: True
   settings_linux:
     swapfile_size: 10GiB
   settings_win:
     swapfile_size: 10GiB
-    variables:
-      SET_PAGEFILE: "True"
 build_platform:
   linux_ppc64le: linux_64
   # No LLVM linux_s390x: linux_64
@@ -22,3 +19,8 @@ provider:
   osx_arm64: default
   linux_aarch64: default
 test: native_and_emulated
+workflow_settings:
+  build_workspace_dir:
+    - os: win
+      value: C:\bld
+  free_disk_space: quick

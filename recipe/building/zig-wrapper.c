@@ -54,12 +54,47 @@
 #  define ZIG_REAL_DEFAULT "zig-real"
 #endif
 
+#ifdef _WIN32
+#  include <io.h>      /* _access */
+#  include <stdlib.h>  /* _fullpath */
+#  define access(p, m) _access((p), (m))
+#  define R_OK 4
+#  define realpath(p, r) _fullpath((r), (p), PATH_MAX)
+#endif
+
 #ifdef __APPLE__
 #  include <mach-o/dyld.h>
 #endif
 
 #define ZIG_TARGET      "@ZIG_TARGET@"
 #define ZIG_REAL_PATH   "@ZIG_REAL_PATH@"
+
+/* build-29 item 1: -print-search-dirs arch dispatch */
+#if defined(__aarch64__) || defined(_M_ARM64)
+#  define HOST_DEFAULT_ARCH "aarch64"
+#elif defined(__x86_64__) || defined(_M_X64)
+#  define HOST_DEFAULT_ARCH "x86_64"
+#elif defined(__i386__) || defined(_M_IX86)
+#  define HOST_DEFAULT_ARCH "i386"
+#elif defined(__riscv) && (__riscv_xlen == 64)
+#  define HOST_DEFAULT_ARCH "riscv64"
+#else
+#  define HOST_DEFAULT_ARCH "x86_64"  /* conservative fallback */
+#endif
+
+static const struct {
+    const char *prefix;
+    const char *arch_dir;
+} TARGET_ARCH_MAP[] = {
+    {"aarch64-", "aarch64"},
+    {"arm64-",   "aarch64"},
+    {"x86_64-",  "x86_64"},
+    {"amd64-",   "x86_64"},
+    {"i386-",    "i386"},
+    {"i686-",    "i386"},
+    {"riscv64-", "riscv64"},
+    {NULL, NULL}
+};
 
 typedef enum {
     MODE_DISPATCH,
@@ -85,6 +120,19 @@ static int starts_with(const char *s, const char *p) { return strncmp(s, p, strl
 static int ends_with(const char *s, const char *suffix) {
     size_t sl = strlen(s), pl = strlen(suffix);
     return sl >= pl && strcmp(s + sl - pl, suffix) == 0;
+}
+
+/* Build a "-Wl,<prefix><value>" string for MSVC/lld-link linker options
+   (e.g. prefix="/STACK:" value="0x100000" -> "-Wl,/STACK:0x100000").
+   Allocates process-lifetime memory; never freed (same idiom as P-3 -e->/ENTRY). */
+static char *make_wl_msvc(const char *prefix, const char *value) {
+    size_t pl = strlen(prefix), vl = strlen(value);
+    char *r = (char *)malloc(4 + pl + vl + 1); /* "-Wl," + prefix + value + NUL */
+    if (!r) { perror("zig-wrapper: malloc"); exit(1); }
+    memcpy(r, "-Wl,", 4);
+    memcpy(r + 4, prefix, pl);
+    memcpy(r + 4 + pl, value, vl + 1);
+    return r;
 }
 
 /* --- filter helpers (CC/CXX modes only) --- */
@@ -294,6 +342,120 @@ static int resolve_real_zig(char *out, size_t out_size) {
     return 0;
 }
 
+/* A4: --zig-wrapper-self-test flag for drift detection between wrapper_modes.txt
+ * and the canonical KNOWN list embedded in this binary. Self-test reads the
+ * modes file at runtime, parses suffix entries, and reports any missing/extra/
+ * duplicate suffixes vs the KNOWN list.
+ */
+
+static int find_modes_txt(const char *argv0, char *buf, size_t bufsize) {
+    const char *env = getenv("WRAPPER_MODES_TXT");
+    if (env && env[0]) {
+        snprintf(buf, bufsize, "%s", env);
+        return access(buf, R_OK) == 0 ? 0 : -1;
+    }
+    char real[PATH_MAX];
+    if (realpath(argv0, real)) {
+        char *slash = strrchr(real, PATH_SEP);
+        if (slash) {
+            *slash = 0;
+            snprintf(buf, bufsize, "%s%c..%cshare%czig-wrapper%cwrapper_modes.txt",
+                     real, PATH_SEP, PATH_SEP, PATH_SEP, PATH_SEP);
+            if (access(buf, R_OK) == 0) return 0;
+        }
+    }
+    const char *recipe_dir = getenv("RECIPE_DIR");
+    if (recipe_dir && recipe_dir[0]) {
+        snprintf(buf, bufsize, "%s%cbuilding%cwrapper_modes.txt",
+                 recipe_dir, PATH_SEP, PATH_SEP);
+        if (access(buf, R_OK) == 0) return 0;
+    }
+    return -1;
+}
+
+static int run_self_test(const char *argv0, const char *explicit_path) {
+    char path_buf[PATH_MAX];
+    const char *modes_path;
+
+    if (explicit_path && explicit_path[0]) {
+        modes_path = explicit_path;
+        if (access(modes_path, R_OK) != 0) {
+            fprintf(stderr, "wrapper self-test FAIL: cannot read %s\n", modes_path);
+            return 1;
+        }
+    } else {
+        if (find_modes_txt(argv0, path_buf, sizeof(path_buf)) != 0) {
+            fprintf(stderr, "wrapper self-test FAIL: wrapper_modes.txt not found in default locations\n");
+            return 1;
+        }
+        modes_path = path_buf;
+    }
+
+    FILE *f = fopen(modes_path, "r");
+    if (!f) {
+        fprintf(stderr, "wrapper self-test FAIL: cannot open %s\n", modes_path);
+        return 1;
+    }
+
+    char line[256];
+    char *modes[64];
+    int n_modes = 0;
+    while (fgets(line, sizeof(line), f) && n_modes < 64) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || *p == '#' || *p == '\n' || *p == '\r') continue;
+        char *e = p + strlen(p);
+        while (e > p && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ' || e[-1] == '\t')) e--;
+        *e = 0;
+        if (!*p) continue;
+
+        for (int i = 0; i < n_modes; i++) {
+            if (str_eq(modes[i], p)) {
+                fprintf(stderr, "wrapper self-test FAIL: duplicate mode %s\n", p);
+                fclose(f);
+                for (int j = 0; j < n_modes; j++) free(modes[j]);
+                return 1;
+            }
+        }
+        modes[n_modes++] = strdup(p);
+    }
+    fclose(f);
+
+    static const char *KNOWN[] = {
+        "cc", "cxx", "ar", "ranlib", "lld", "rc", "asm",
+        "force-load-cc", "force-load-cxx"
+    };
+    const int N_KNOWN = (int)(sizeof(KNOWN) / sizeof(KNOWN[0]));
+
+    for (int i = 0; i < N_KNOWN; i++) {
+        int found = 0;
+        for (int j = 0; j < n_modes; j++) {
+            if (str_eq(modes[j], KNOWN[i])) { found = 1; break; }
+        }
+        if (!found) {
+            fprintf(stderr, "wrapper self-test FAIL: missing mode %s\n", KNOWN[i]);
+            for (int k = 0; k < n_modes; k++) free(modes[k]);
+            return 1;
+        }
+    }
+
+    for (int i = 0; i < n_modes; i++) {
+        int known = 0;
+        for (int j = 0; j < N_KNOWN; j++) {
+            if (str_eq(modes[i], KNOWN[j])) { known = 1; break; }
+        }
+        if (!known) {
+            fprintf(stderr, "wrapper self-test FAIL: extra mode %s\n", modes[i]);
+            for (int k = 0; k < n_modes; k++) free(modes[k]);
+            return 1;
+        }
+    }
+
+    printf("wrapper self-test OK: %d modes consistent\n", n_modes);
+    for (int k = 0; k < n_modes; k++) free(modes[k]);
+    return 0;
+}
+
 /* --- Windows: set ZIG_GLOBAL_CACHE_DIR if unset ---
  * Mirrors zig's own resolution: APPDATA > USERPROFILE > GetTempPath.
  * Prevents AppDataDirUnavailable panic even when APPDATA is set but
@@ -336,6 +498,39 @@ static void ensure_system32_in_path(void) {
     free(new_path);
 }
 
+/* Scan argv for -target X / -target=X / --target=X (last-wins per zig convention).
+ * Returns the lib-<arch> suffix for the recognized arch, or NULL if no -target
+ * was found OR if the value is unrecognized (in which case a warning is
+ * emitted to stderr matching the A2 warn-and-fall-through philosophy).
+ * Caller falls back to HOST_DEFAULT_ARCH on NULL return.
+ */
+static const char *extract_target_arch_from_argv(int argc, char **argv) {
+    const char *last_target = NULL;
+    for (int i = 1; i < argc; i++) {
+        const char *val = NULL;
+        if (strcmp(argv[i], "-target") == 0 && i + 1 < argc) {
+            val = argv[i + 1];
+        } else if (strncmp(argv[i], "-target=", 8) == 0) {
+            val = argv[i] + 8;
+        } else if (strncmp(argv[i], "--target=", 9) == 0) {
+            val = argv[i] + 9;
+        }
+        if (val != NULL) last_target = val;
+    }
+    if (last_target == NULL) return NULL;
+    for (int j = 0; TARGET_ARCH_MAP[j].prefix != NULL; j++) {
+        size_t plen = strlen(TARGET_ARCH_MAP[j].prefix);
+        if (strncmp(last_target, TARGET_ARCH_MAP[j].prefix, plen) == 0) {
+            return TARGET_ARCH_MAP[j].arch_dir;
+        }
+    }
+    fprintf(stderr,
+            "zig-wrapper: unrecognized -target arch '%s' for -print-search-dirs, "
+            "falling back to host arch '%s'\n",
+            last_target, HOST_DEFAULT_ARCH);
+    return NULL;
+}
+
 /* --- Handle -print-search-dirs (Windows, GCC compat for flexlink/mingw_libs) ---
  * zig doesn't implement this flag. flexlink calls it to discover library
  * search paths before resolving -lXXX arguments. Without a response,
@@ -346,12 +541,14 @@ static int handle_print_search_dirs(int argc, char *argv[]) {
         if (!str_eq(argv[i], "-print-search-dirs")) continue;
         const char *conda = getenv("CONDA_PREFIX");
         if (conda && conda[0]) {
+            const char *arch = extract_target_arch_from_argv(argc, argv);
+            if (arch == NULL) arch = HOST_DEFAULT_ARCH;
             printf("install: %s\\Library\\lib\\zig\\\n", conda);
             printf("programs: =%s\\Library\\bin\\\n", conda);
             printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;"
-                   "%s\\Library\\lib\\zig\\libc\\mingw\\lib-x86_64;"
+                   "%s\\Library\\lib\\zig\\libc\\mingw\\lib-%s;"
                    "%s\\Library\\lib\\zig\n",
-                   conda, conda, conda);
+                   conda, conda, arch, conda);
         } else {
             printf("install: \nprograms: =\nlibraries: =\n");
         }
@@ -430,6 +627,17 @@ int main(int argc, char *argv[]) {
             perror("zig-wrapper: exec zig-real");
             return 127;
 #endif
+        }
+    }
+
+    /* A4: self-test early-exit before any mode dispatch */
+    for (int _i = 1; _i < argc; _i++) {
+        const char *_arg = argv[_i];
+        if (str_eq(_arg, "--zig-wrapper-self-test")) {
+            return run_self_test(argv[0], NULL);
+        }
+        if (starts_with(_arg, "--zig-wrapper-self-test=")) {
+            return run_self_test(argv[0], _arg + sizeof("--zig-wrapper-self-test=") - 1);
         }
     }
 
@@ -818,6 +1026,56 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
                 /* "-Wl,-e" with no symbol — fall through; clang will reject */
+            }
+
+            /* P-4: -Wl,--stack,SIZE (or =SIZE) -> -Wl,/STACK:SIZE.
+             * GNU ld comma form; mingw-ld honors --stack, lld-link needs /STACK:.
+             * Build-29+ wishlist item 1 (ocaml-feedstock PR #97 W5M). */
+            if (is_windows_target &&
+                (starts_with(a, "-Wl,--stack,") || starts_with(a, "-Wl,--stack="))) {
+                const char *size = a + 12; /* skip "-Wl,--stack," / "-Wl,--stack=" (both 12) */
+                if (size[0] != '\0') {
+                    char *rewritten = make_wl_msvc("/STACK:", size);
+                    DBG("REWROTE (-Wl,--stack): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+                /* "-Wl,--stack," with no size -- fall through */
+            }
+
+            /* P-5a: -Wl,-Map,FILE (or =FILE) -> -Wl,/MAP:FILE (lld-link COFF map).
+             * Build-29+ wishlist item 2. */
+            if (is_windows_target &&
+                (starts_with(a, "-Wl,-Map,") || starts_with(a, "-Wl,-Map="))) {
+                const char *file = a + 9; /* skip "-Wl,-Map," / "-Wl,-Map=" (both 9) */
+                if (file[0] != '\0') {
+                    char *rewritten = make_wl_msvc("/MAP:", file);
+                    DBG("REWROTE (-Wl,-Map): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+                /* "-Wl,-Map," with no file -- fall through */
+            }
+
+            /* P-5b: bare -Map=FILE (flexlink strips the -Wl, prefix) -> -Wl,/MAP:FILE.
+             * zig cc rejects bare -Map ("Unknown Clang option: '-Map'"). Build-29+ wishlist item 2. */
+            if (is_windows_target && starts_with(a, "-Map=")) {
+                const char *file = a + 5; /* skip "-Map=" */
+                if (file[0] != '\0') {
+                    char *rewritten = make_wl_msvc("/MAP:", file);
+                    DBG("REWROTE (bare -Map=): %s -> %s\n", a, rewritten);
+                    filtered[fi++] = rewritten;
+                    continue;
+                }
+            }
+
+            /* P-5c: bare two-token "-Map FILE" (flexlink) -> -Wl,/MAP:FILE. Consume the next argv token. */
+            if (is_windows_target && str_eq(a, "-Map") && i + 1 < argc) {
+                const char *file = argv[++i]; /* consume FILE token */
+                char *rewritten = make_wl_msvc("/MAP:", file);
+                DBG("REWROTE (bare -Map): %s %s -> %s\n", a, file, rewritten);
+                filtered[fi++] = rewritten;
+                continue;
             }
 
             /* -Wl,* drops: only when not using LLD (LLD handles them natively) */

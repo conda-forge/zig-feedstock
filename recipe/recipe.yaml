@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 28
+  build_number: 29
   name: zig
   version: "0.15.2"
 
@@ -311,8 +311,10 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
             - if: unix
               then:
+                - share/zig-wrapper/wrapper_modes.txt
                 - share/zig/zig-real
               else:
+                - Library/share/zig-wrapper/wrapper_modes.txt
                 - Library/share/zig/zig-real.exe
             - if: is_native or linux and not xc_ppc64le
               then:
@@ -462,6 +464,72 @@ outputs:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+
+      # A4: wrapper self-test — verify wrapper_modes.txt matches KNOWN list in binary.
+      - script:
+          - if: unix
+            then: CONDA_ZIG_HOST=${{ conda_triplet }}-zig python testing/test_wrapper_self_test.py
+            else:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_wrapper_self_test.py
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_wrapper_self_test.py
+
+      # Item 4: __tsan_* filter regression gate — verify mingw target objects have no
+      # undefined __tsan_* refs from trivial `int main(){return 0;}` (build-29 baseline).
+      - script:
+          - if: unix
+            then: CONDA_ZIG_HOST=${{ conda_triplet }}-zig python testing/test_tsan_filter.py
+            else:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_tsan_filter.py
+        requirements:
+          run:
+            - python >=3.10
+            - llvm-tools
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_tsan_filter.py
+
+      # Build-29 items 1+2: -Wl,--stack and -Wl,-Map MSVC translation gate --
+      # verify the zig cc wrapper rewrites GNU-ld flags to lld-link /STACK: and
+      # /MAP: equivalents before exec (ZIG_WRAPPER_DEBUG argv dump check).
+      - script:
+          - if: unix
+            then: CONDA_ZIG_HOST=${{ conda_triplet }}-zig python testing/test_wl_msvc_translation.py
+            else:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_wl_msvc_translation.py
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_wl_msvc_translation.py
+
+      # Build-29 item 3/4 diagnostic: compile + run the stack-realloc probe on win-64
+      # to capture the exception class (0xC0000005 item4 / 0xC00000FD item6). Non-fatal;
+      # verdict appears in the CI test log. Also exercises wrapper P-4 (-Wl,--stack -> /STACK:).
+      - script:
+          - if: not unix
+            then:
+              - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
+              - python testing/test_stack_probe.py
+        requirements:
+          run:
+            - python >=3.10
+        files:
+          recipe:
+            - building/spike_realloc_probe.c
+            - testing/_test_utils.py
+            - testing/test_stack_probe.py
 
       # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
       # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;

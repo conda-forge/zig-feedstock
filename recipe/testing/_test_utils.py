@@ -138,3 +138,136 @@ def _run(
                     except OSError:
                         pass
         return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
+
+
+# ---------------------------------------------------------------------------
+# Build-29 helpers — COFF/PE inspection, RC sources, nm, wrapper probe
+# ---------------------------------------------------------------------------
+import shutil
+import struct
+
+COFF_MACHINE_X86_64 = 0x8664
+COFF_MACHINE_AARCH64 = 0xAA64
+COFF_MACHINE_I386 = 0x014C
+
+
+def get_zig_wrapper(suffix: str) -> Path:
+    """Return Path to the triplet-prefixed zig wrapper for *suffix*.
+
+    Resolves the triplet from CONDA_ZIG_HOST (same env var used by
+    test_zig_toolchain.py) and the wrapper directory from CONDA_PREFIX.
+    Returns the Path whether or not it exists — callers must check .exists().
+    """
+    host = os.environ.get("CONDA_ZIG_HOST", "")
+    triplet = host.removesuffix("-zig") if host.endswith("-zig") else host
+    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    if sys.platform == "win32":
+        wrapper_dir = prefix / "Library" / "bin"
+    else:
+        wrapper_dir = prefix / "bin"
+    name = f"{triplet}-zig-{suffix}{exe_suffix}"
+    return wrapper_dir / name
+
+
+def skip_if_no_wrapper(suffix: str) -> None:
+    """Skip (via pytest) if the wrapper binary for *suffix* is not installed.
+
+    Calls get_zig_wrapper(suffix); if the path does not exist, calls
+    pytest.skip() so the test is marked SKIP rather than FAIL.
+    """
+    import pytest  # only imported when needed — pytest must be available
+
+    wrapper = get_zig_wrapper(suffix)
+    if not wrapper.exists():
+        pytest.skip(f"wrapper {suffix} not found — needs build env")
+
+
+def compile_minimal_rc(tmpdir: Path) -> Path:
+    """Write a minimal .rc file (and a 1-byte dummy .ico) into *tmpdir*.
+
+    Returns the Path of the .rc file.  The .ico file is created alongside so
+    that RC compilers that open the referenced file do not error.
+    """
+    ico_path = Path(tmpdir) / "test.ico"
+    ico_path.write_bytes(b"\x00")
+    rc_path = Path(tmpdir) / "test.rc"
+    rc_path.write_text('1 ICON "test.ico"\n', encoding="utf-8")
+    return rc_path
+
+
+def compile_minimal_winmain_c(tmpdir: Path) -> Path:
+    """Write a minimal wmain C source file into *tmpdir*.
+
+    Returns the Path of the .c file.
+    """
+    src_path = Path(tmpdir) / "winmain.c"
+    src_path.write_text(
+        "int wmain(int argc, wchar_t **argv) { (void)argc; (void)argv; return 0; }\n",
+        encoding="utf-8",
+    )
+    return src_path
+
+
+def coff_machine_type(file_path: Path) -> int:
+    """Read the first 2 bytes of a COFF object file and return the machine type.
+
+    The machine type is a little-endian uint16 at offset 0 in a COFF header.
+    Returns 0 on any read failure.
+    """
+    try:
+        data = Path(file_path).read_bytes()
+        if len(data) < 2:
+            return 0
+        return struct.unpack("<H", data[:2])[0]
+    except OSError:
+        return 0
+
+
+def pe_machine_type(file_path: Path) -> int:
+    """Read a PE binary and return the machine type from the PE header.
+
+    Locates the PE header offset at bytes 60-64 (little-endian uint32),
+    seeks to offset+4 (skipping the "PE\\0\\0" signature), then reads
+    2 bytes as little-endian uint16 machine type.
+    Returns 0 on any parse failure.
+    """
+    try:
+        data = Path(file_path).read_bytes()
+        if len(data) < 64:
+            return 0
+        pe_offset = struct.unpack("<I", data[60:64])[0]
+        # Signature is 4 bytes ("PE\0\0"), machine type immediately follows
+        mtype_offset = pe_offset + 4
+        if len(data) < mtype_offset + 2:
+            return 0
+        return struct.unpack("<H", data[mtype_offset : mtype_offset + 2])[0]
+    except (OSError, struct.error):
+        return 0
+
+
+def nm_symbols(archive_or_obj: Path) -> dict[str, str]:
+    """Invoke ``llvm-nm`` on *archive_or_obj* and return a symbol→type mapping.
+
+    The returned dict maps symbol name to the single-letter type (e.g. ``"T"``
+    for defined text, ``"U"`` for undefined).  If ``llvm-nm`` is not on PATH
+    or the invocation fails, an empty dict is returned silently.
+    """
+    llvm_nm = shutil.which("llvm-nm")
+    if llvm_nm is None:
+        return {}
+    result = _run([llvm_nm, str(archive_or_obj)], timeout=30)
+    if result.returncode != 0 or not result.stdout:
+        return {}
+    symbols: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        # llvm-nm output: [address] <type> <name>  OR  <type> <name>
+        if len(parts) == 3:
+            _, type_letter, name = parts
+        elif len(parts) == 2:
+            type_letter, name = parts
+        else:
+            continue
+        symbols[name] = type_letter
+    return symbols
