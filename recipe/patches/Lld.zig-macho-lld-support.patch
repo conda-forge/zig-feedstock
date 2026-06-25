@@ -137,8 +137,8 @@
 +        // ld64.lld does not support -r, so do a simple file copy.
 +        const the_object_path = blk: {
 +            if (link.firstObjectInput(comp.link_inputs)) |obj| break :blk obj.path;
-+            if (comp.c_object_table.count() != 0)
-+                break :blk comp.c_object_table.keys()[0].status.success.object_path;
++            if (comp.c_objects.items.len != 0)
++                break :blk comp.c_objects.items[0].status.success.object_path;
 +            if (zcu_obj_path) |p| break :blk p;
 +            return error.NoObjectsToLink;
 +        };
@@ -232,8 +232,8 @@
 +            .res => unreachable,
 +        };
 +
-+        for (comp.c_object_table.keys()) |key| {
-+            try argv.append(try key.status.success.object_path.toString(arena));
++        for (comp.c_objects.items) |c_object| {
++            try argv.append(try c_object.status.success.object_path.toString(arena));
 +        }
 +        if (zcu_obj_path) |p| {
 +            try argv.append(try p.toString(arena));
