@@ -29,26 +29,24 @@ function patch_crt_object() {
   local file_output
   file_output=$(file "${crt_path}.backup")
 
-  local obj_arch linker_cmd stub_obj
+  local linker_cmd stub_obj
   case "${file_output}" in
     *x86-64*)
-      obj_arch="x86-64"
       linker_cmd="${BUILD_PREFIX}/bin/x86_64-conda-linux-gnu-ld"
       stub_obj="${stub_dir}/libc_csu_stubs_x86_64.o"
       ;;
     *PowerPC*|*ppc64*)
-      obj_arch="PowerPC64"
       linker_cmd="${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-ld"
       stub_obj="${stub_dir}/libc_csu_stubs_ppc64le.o"
       ;;
     *aarch64*|*ARM*64*)
-      obj_arch="aarch64"
       linker_cmd="${BUILD_PREFIX}/bin/aarch64-conda-linux-gnu-ld"
       stub_obj="${stub_dir}/libc_csu_stubs_aarch64.o"
       ;;
     *)
       # Unknown architecture - restore original and skip
       cp "${crt_path}.backup" "${crt_path}"
+      rm -f "${crt_path}.backup"
       return 1
       ;;
   esac
@@ -56,6 +54,7 @@ function patch_crt_object() {
   # Check if stub object exists for this architecture
   if [[ ! -f "${stub_obj}" ]]; then
     cp "${crt_path}.backup" "${crt_path}"
+    rm -f "${crt_path}.backup"
     return 1
   fi
 
@@ -63,11 +62,13 @@ function patch_crt_object() {
   if ! "${linker_cmd}" -r -o "${crt_path}.tmp" "${crt_path}.backup" "${stub_obj}" 2>/dev/null; then
     # Linking failed - restore original and skip
     cp "${crt_path}.backup" "${crt_path}"
+    rm -f "${crt_path}.backup"
     return 1
   fi
 
   # Replace original with combined version
   mv "${crt_path}.tmp" "${crt_path}"
+  rm -f "${crt_path}.backup"
   return 0
 }
 

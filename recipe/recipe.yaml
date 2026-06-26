@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 29
+  build_number: 30
   name: zig
   version: "0.15.2"
 
@@ -189,7 +189,6 @@ source:
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
-      # Note: patches under recipe/patches/cmake/ are applied programmatically by recipe/building/_cmake.sh::cmake_build (only when CMAKE_BUILD=1).
     target_directory: zig-source
 
 build:
@@ -309,13 +308,8 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-rc${{ exe }}
             - ${{ library }}bin/${{ conda_triplet }}-zig-asm${{ exe }}
-            - if: unix
-              then:
-                - share/zig-wrapper/wrapper_modes.txt
-                - share/zig/zig-real
-              else:
-                - Library/share/zig-wrapper/wrapper_modes.txt
-                - Library/share/zig/zig-real.exe
+            - ${{ library }}share/zig-wrapper/wrapper_modes.txt
+            - ${{ library }}share/zig/zig-real${{ exe }}
             - if: is_native or linux and not xc_ppc64le
               then:
                 - ${{ library }}doc/langref.html
