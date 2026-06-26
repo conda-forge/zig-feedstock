@@ -14,6 +14,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # ---------------------------------------------------------------------------
 # Result tracking
 # ---------------------------------------------------------------------------
@@ -168,6 +173,34 @@ def get_zig_wrapper(suffix: str) -> Path:
         wrapper_dir = prefix / "bin"
     name = f"{triplet}-zig-{suffix}{exe_suffix}"
     return wrapper_dir / name
+
+
+def get_bare_zig_wrapper(fallback_to_cc: bool = True) -> Path | None:
+    """Return Path to the bare ``<triplet>-zig[.exe]`` binary, or None if not found.
+
+    Resolves the triplet from CONDA_ZIG_HOST (stripping the trailing ``-zig``
+    suffix if present) and the wrapper directory from CONDA_PREFIX.
+
+    When *fallback_to_cc* is True (default) and the bare binary does not exist,
+    falls back to the ``<triplet>-zig-cc`` wrapper.  Returns None if neither
+    is found.
+    """
+    host = os.environ.get("CONDA_ZIG_HOST", "")
+    triplet = host.removesuffix("-zig") if host.endswith("-zig") else host
+    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    if sys.platform == "win32":
+        wrapper_dir = prefix / "Library" / "bin"
+    else:
+        wrapper_dir = prefix / "bin"
+    bare = wrapper_dir / f"{triplet}-zig{exe_suffix}"
+    if bare.exists():
+        return bare
+    if fallback_to_cc:
+        cc = wrapper_dir / f"{triplet}-zig-cc{exe_suffix}"
+        if cc.exists():
+            return cc
+    return None
 
 
 def skip_if_no_wrapper(suffix: str) -> None:

@@ -17,11 +17,6 @@ import platform
 import sys
 import tempfile
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
 from pathlib import Path
 
 from _test_utils import (

@@ -16,11 +16,6 @@ import platform
 import sys
 import tempfile
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
 from pathlib import Path
 
 from _test_utils import (
@@ -32,6 +27,7 @@ from _test_utils import (
     _results,
     _run,
     compile_minimal_winmain_c,
+    get_bare_zig_wrapper,
     get_zig_wrapper,
     nm_symbols,
     pe_machine_type,
@@ -193,14 +189,7 @@ def test_arm64_winmain_end_to_end_link() -> None:
         return
 
     # Use the bare <triplet>-zig if available, else <triplet>-zig-cc
-    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
-    exe_suffix = ".exe" if sys.platform == "win32" else ""
-    if sys.platform == "win32":
-        wrapper_dir = prefix / "Library" / "bin"
-    else:
-        wrapper_dir = prefix / "bin"
-    bare = wrapper_dir / f"{_triplet}-zig{exe_suffix}"
-    zig = str(bare) if bare.exists() else str(cc_wrapper)
+    zig = str(get_bare_zig_wrapper() or cc_wrapper)
 
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)

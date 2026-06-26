@@ -19,12 +19,6 @@ import shutil
 import sys
 import tempfile
 
-# Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
-# rattler-build's UTF-8 stream reader even when tests pass).
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 from _test_utils import (
