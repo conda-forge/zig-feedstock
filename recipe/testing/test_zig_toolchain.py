@@ -14,7 +14,6 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import shutil
 import sys
 import tempfile
@@ -26,30 +25,26 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
     _build_is_mac,
     _build_is_win,
+    _host,
     _is_emulated,
     _results,
     _run,
+    _triplet,
+    print_results,
     setup_zig_global_cache_dir,
 )
 
 # ---------------------------------------------------------------------------
 # Platform detection from CONDA_ZIG_HOST
 # ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")  # e.g. "x86_64-w64-mingw32-zig"
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-
 is_win_target = "mingw32" in _triplet
 is_macos_target = "apple" in _triplet or "darwin" in _triplet
 is_linux_target = "linux" in _triplet
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
 is_ppc64le_target = "powerpc64le" in _triplet or _arch == "powerpc64le"
 is_aarch64_win = is_win_target and _arch == "aarch64"
-
-# Normalise: arm64 == aarch64
-if _arch == "arm64":
-    _arch = "aarch64"
 
 setup_zig_global_cache_dir()
 
@@ -1119,24 +1114,7 @@ def main() -> int:
     test_force_load_cc_archive_extraction()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(f"=== Results: {n_pass} passed, {n_fail} failed, "
-          f"{n_warn} warnings, {n_skip} skipped ===")
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    if n_warn > 0:
-        print("\nWarnings (known issues):")
-        for name in _results["WARN"]:
-            print(f"  - {name}")
-
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(_results, warn_header="Warnings (known issues):") else 1
 
 
 if __name__ == "__main__":

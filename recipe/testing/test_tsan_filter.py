@@ -12,7 +12,6 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import sys
 import tempfile
 
@@ -23,21 +22,16 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
+    _host,
     _results,
     _run,
+    _triplet,
     get_bare_zig_wrapper,
     nm_symbols,
+    print_results,
     setup_zig_global_cache_dir,
 )
-
-# ---------------------------------------------------------------------------
-# Platform detection
-# ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
-if _arch == "arm64":
-    _arch = "aarch64"
 
 setup_zig_global_cache_dir()
 
@@ -160,26 +154,13 @@ def main() -> int:
     test_no_tsan_undefined_refs_in_windows_gnu_object("x86_64", "x86_64-windows-gnu")
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(
-        f"=== Results: {n_pass} passed, {n_fail} failed, "
-        f"{n_warn} warnings, {n_skip} skipped ==="
-    )
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    if n_fail > 0:
-        return 1
-    if n_pass == 0 and n_skip > 0:
-        print("\nFAIL: test environment not properly set up -- all sub-tests skipped (likely CONDA_ZIG_HOST unset or wrapper binary not found)")
-        return 1
-    return 0
+    return 0 if print_results(
+        _results,
+        all_skipped_message=(
+            "FAIL: test environment not properly set up -- all sub-tests skipped"
+            " (likely CONDA_ZIG_HOST unset or wrapper binary not found)"
+        ),
+    ) else 1
 
 
 if __name__ == "__main__":

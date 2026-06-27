@@ -56,9 +56,6 @@ fi
 
 # --- Main ---
 
-# Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
-BUILD_ZIG="${CONDA_ZIG_BUILD}"
-
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
 export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR_OVERRIDE:-${SRC_DIR}/zig-global-cache}"
@@ -106,7 +103,7 @@ fi
 # Patch build.zig-doctest-forward-target adds -Ddoctest-target to build.zig.
 # Applied universally; gated here to platforms that benefit from explicit
 # target forwarding to zig2 self-hosted backend (avoids comptime f16->f32 bug).
-if is_linux || is_osx; then
+if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
@@ -290,16 +287,13 @@ dbg echo "=== zig build env ==="
 if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
   source "${RECIPE_DIR}/building/_cmake.sh"
   cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
-elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+elif build_zig_with_zig "${zig_build_dir}" "${CONDA_ZIG_BUILD}" "${PREFIX}"; then
   :
 else
   echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
   exit 1
 fi
 
-
-# Odd random occurence of zig.pdb
-rm -f "${PREFIX}/bin/zig.pdb"
 
 # macOS: --search-prefix adds a library search but does not embed LC_RPATH in the Mach-O binary.
 if is_osx; then
@@ -401,11 +395,10 @@ sed -e "s|@ZIG_TARGET@|${WRAPPER_DEFAULT_TARGET}|g" \
 mkdir -p "${WRAPPER_BIN_DIR}" "${REAL_ZIG_DIR}"
 
 # macOS Mach-O needs header padding for conda's install_name_tool relinking
-if [[ "${target_platform}" == osx-* ]]; then
-    WRAPPER_LDFLAGS="-Wl,-headerpad_max_install_names"
-else
-    WRAPPER_LDFLAGS=""
-fi
+WRAPPER_LDFLAGS=""
+case "${target_platform}" in
+    osx-*) WRAPPER_LDFLAGS="-Wl,-headerpad_max_install_names" ;;
+esac
 
 dbg echo "=== pre-wrapper compile ==="
 
@@ -467,7 +460,7 @@ cp "${RECIPE_DIR}/building/wrapper_modes.txt" "${SHARE_DIR}/wrapper_modes.txt"
 # zig's PE/COFF link can still emit a .pdb sidecar named after the output;
 # it is not needed for the wrapper and trips package_contents strict checks.
 case "${target_platform}" in
-    win-*) rm -f "${WRAPPER_BIN_DIR}"/*.pdb ;;
+    win-*) rm -f "${WRAPPER_BIN_DIR}"/*.pdb "${PREFIX}/bin/zig.pdb" ;;
 esac
 
 # Move raw zig out of PATH

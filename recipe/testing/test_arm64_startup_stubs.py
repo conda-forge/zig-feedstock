@@ -12,7 +12,6 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import sys
 import tempfile
 
@@ -24,24 +23,19 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
+    _host,
     _results,
     _run,
+    _triplet,
     compile_minimal_winmain_c,
     get_bare_zig_wrapper,
     get_zig_wrapper,
     nm_symbols,
     pe_machine_type,
+    print_results,
     setup_zig_global_cache_dir,
 )
-
-# ---------------------------------------------------------------------------
-# Platform detection
-# ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
-if _arch == "arm64":
-    _arch = "aarch64"
 
 setup_zig_global_cache_dir()
 
@@ -247,21 +241,7 @@ def main() -> int:
     test_arm64_winmain_end_to_end_link()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(
-        f"=== Results: {n_pass} passed, {n_fail} failed, "
-        f"{n_warn} warnings, {n_skip} skipped ==="
-    )
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(_results) else 1
 
 
 if __name__ == "__main__":

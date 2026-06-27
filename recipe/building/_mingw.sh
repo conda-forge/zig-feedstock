@@ -1,6 +1,6 @@
 # MinGW import lib pre-generation helpers.
 # Source this file and call generate_mingw_import_libs().
-# Requires: PREFIX, BUILD_PREFIX, BUILD_ZIG, ZIG_TRIPLET, RECIPE_DIR
+# Requires: PREFIX, BUILD_PREFIX, CONDA_ZIG_BUILD, ZIG_TRIPLET, RECIPE_DIR
 # and the dbg() function defined in build.sh.
 
 source "${RECIPE_DIR}/building/_common.sh"
@@ -73,14 +73,14 @@ SYNCHRONIZATION_DEF
     # Use the BUILD machine's zig binary (CONDA_ZIG_BUILD) so this works even
     # for cross-compilation targets (e.g. win-arm64 built on win-64) where the
     # installed zig binary is for the wrong architecture and can't execute.
-    # BUILD_ZIG is the binary name (not a full path), so resolve via PATH first,
+    # CONDA_ZIG_BUILD is the binary name (not a full path), so resolve via PATH first,
     # then fall back to explicit BUILD_PREFIX locations.
-    _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
+    _zig_bin="$(command -v "${CONDA_ZIG_BUILD}" 2>/dev/null || true)"
     if [[ -z "${_zig_bin}" ]]; then
       if is_not_unix; then
-        _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
+        _zig_bin="${BUILD_PREFIX}/Library/bin/${CONDA_ZIG_BUILD}"
       else
-        _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+        _zig_bin="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"
       fi
     fi
     _def_include="${_mingw_common}/../def-include"
@@ -101,7 +101,6 @@ SYNCHRONIZATION_DEF
 
     dbg echo "=== mingw import libs ==="
     if [[ -n "${_dlltool}" ]] && [[ -x "${_zig_bin}" ]]; then
-      _gen_count=0
 
       # Helper: generate .a from a processed .def file
       function _gen_implib() {
@@ -112,7 +111,6 @@ SYNCHRONIZATION_DEF
         dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
         [[ -z "${dll}" ]] && dll="${stem}.dll"
         "${_dlltool}" -m "${_dlltool_machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null || true
-        _gen_count=$(( _gen_count + 1 ))
       }
 
       # Step 1: plain .def files (shlwapi.def, version.def, synchronization.def, etc.)
@@ -151,7 +149,6 @@ SYNCHRONIZATION_DEF
             -o "${_uuid_obj}" 2>/dev/null && \
           "${_zig_bin}" ar rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null || true
         rm -f "${_uuid_obj}"
-        _gen_count=$(( _gen_count + 1 ))
       fi
 
       # Step 4: Supplemental import libs from mingw-w64 .def.in templates.

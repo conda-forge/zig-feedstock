@@ -149,11 +149,13 @@ static int is_drop_flag(const char *arg) {
         || str_eq(arg, "-lgcc_s");
 }
 
-/* -Xlinker passthrough flags to drop (bare, passed after -Xlinker <arg>) */
+/* -Xlinker passthrough flags to drop (bare, passed after -Xlinker <arg>).
+ * NOTE: --color-diagnostics is NOT listed here; it is LLD-conditional (see
+ * grab_next handler in do_filter loop) to match the -Wl,--color-diagnostics
+ * behaviour in is_wl_drop (dropped only when !use_lld). */
 static int is_xlinker_drop(const char *arg) {
     return str_eq(arg, "-Bsymbolic-functions")
         || str_eq(arg, "-Bsymbolic")
-        || str_eq(arg, "--color-diagnostics")
         || starts_with(arg, "--dependency-file=");
 }
 
@@ -979,7 +981,12 @@ int main(int argc, char *argv[]) {
             /* -Xlinker <arg>: grab next arg for individual inspection */
             if (grab_next) {
                 grab_next = 0;
-                if (!is_xlinker_drop(a)) {
+                /* --color-diagnostics: drop when !use_lld, pass through when use_lld.
+                 * Mirrors -Wl,--color-diagnostics in is_wl_drop (LLD handles it natively;
+                 * self-hosted linker does not recognize it). */
+                if (!use_lld && str_eq(a, "--color-diagnostics")) {
+                    DBG("DROPPED (xlinker --color-diagnostics, !use_lld): %s\n", a);
+                } else if (!is_xlinker_drop(a)) {
                     filtered[fi++] = "-Xlinker";
                     filtered[fi++] = a;
                 } else {

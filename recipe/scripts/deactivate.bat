@@ -17,5 +17,8 @@ REM === Unset toolchain identification ===
 set "CONDA_ZIG_BUILD="
 set "CONDA_ZIG_HOST="
 
+REM === Unset cache directory ===
+set "ZIG_GLOBAL_CACHE_DIR="
+
 REM === Unset cross-compiler variables ===
 set "ZIG_TARGET_TRIPLET="
