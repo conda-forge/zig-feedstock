@@ -356,7 +356,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        /* -Wl,-e<sym> translation: rewrite to -Wl,/ENTRY:<sym> on mingw */
+        /* -Wl,-e<sym> translation: rewrite to -Wl,--entry,<sym> on mingw */
         {
             char *translated = translate_wl_entry(arg);
             if (translated) {

@@ -22,12 +22,26 @@
 static inline void init_zig_global_cache_dir(void) {
     if (!getenv("ZIG_GLOBAL_CACHE_DIR")) {
         char base[MAX_PATH];
+        char shortdir[MAX_PATH];
         const char *appdata = getenv("APPDATA");
         const char *userprofile = getenv("USERPROFILE");
+        /* zig panics with an integer overflow when ZIG_GLOBAL_CACHE_DIR is a
+         * long path (conda-forge zig-feedstock PR#120). The long component is
+         * always the user-profile dir (e.g. C:\Users\<long name>\AppData\
+         * Roaming). Convert that existing directory to its 8.3 short form with
+         * GetShortPathName (which only shortens path components that exist) and
+         * append the short cache suffix, keeping the exported path short. Fall
+         * back to the unshortened path if the API fails. */
         if (appdata) {
-            snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
+            if (GetShortPathNameA(appdata, shortdir, MAX_PATH) > 0)
+                snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", shortdir);
+            else
+                snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
         } else if (userprofile) {
-            snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
+            if (GetShortPathNameA(userprofile, shortdir, MAX_PATH) > 0)
+                snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", shortdir);
+            else
+                snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
         } else {
             DWORD tmp_len = GetTempPathA(MAX_PATH, base);
             if (tmp_len > 0)
