@@ -91,6 +91,7 @@ def _env_var(name: str) -> str:
 # ---------------------------------------------------------------------------
 _HELLO_C = 'int hello(void) { return 42; }\n'
 _MAIN_C = 'int main(void) { return 0; }\n'
+_WMAIN_C = '#include <wchar.h>\nint wmain(int argc, wchar_t **argv) { (void)argc; (void)argv; return 0; }\n'
 _VIS_C = '__attribute__((visibility("default"))) int vis_test_func(void) { return 1; }\n'
 _LIBC_C = """\
 #include <stdio.h>
@@ -667,6 +668,69 @@ def test_windows_import_libs() -> None:
 
 
 # ===================================================================
+# Section 4d2 — win-arm64 entry-point link probe (Q2)
+# ===================================================================
+def test_win_arm64_entry_point() -> None:
+    """Q2 link probe: aarch64-windows console entry symbols resolve.
+
+    win-arm64 was never verified to resolve the MinGW console entry points
+    against the 0.16.0 wrapper + arm64 stub set (ZIG_RECIPE_LLM_REFERENCE.md
+    sec 7.2). Cross-link a console exe (main -> mainCRTStartup) and a unicode
+    console exe (-municode wmain -> wmainCRTStartup) and assert each links with
+    no undefined-symbol error. Linking only -- the arm64 PE is never executed,
+    so this is safe under cross/emulated CI.
+
+    A FAIL whose stderr matches the known zig 0.16.0 SelfInfo/libubsan arm64
+    bug signature is downgraded to WARN below (mirroring test_windows_import_libs);
+    any other failure stays a hard FAIL.
+    """
+    print("--- win-arm64 entry-point link probe ---")
+    if not is_aarch64_win:
+        SKIP("win-arm64 entry-point probe", "aarch64-windows target only")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("win-arm64 entry-point probe", "ZIG_CC not set")
+        return
+
+    probes = (
+        ("mainCRTStartup", _MAIN_C, []),
+        ("wmainCRTStartup", _WMAIN_C, ["-municode"]),
+    )
+    for entry, source, extra in probes:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "entry_probe.c"
+            src.write_text(source)
+            out = Path(td) / "entry_probe.exe"
+            r = _run([zig_cc, *extra, "-o", str(out), str(src)], cwd=td, timeout=60)
+            if r.stderr == "TIMEOUT":
+                WARN(f"win-arm64 {entry} link", "timed out (60s)")
+                continue
+            if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
+                PASS(f"win-arm64 {entry} link")
+            elif (
+                "sub-compilation of libubsan failed" in r.stderr
+                and "SelfInfo" in r.stderr
+                and "increases pointer alignment" in r.stderr
+            ):
+                # Known upstream zig 0.16.0 stdlib bug (cf. test_windows_import_libs):
+                # SelfInfo/Windows.zig:670 does @ptrCast without @alignCast, tripped by
+                # libubsan's alignment check during sub-compilation for aarch64-windows.
+                # zig errors out before the link step, so entry-symbol resolution
+                # (mainCRTStartup/wmainCRTStartup) cannot be probed until upstream fixes it.
+                WARN(
+                    f"win-arm64 {entry} link",
+                    "suspected upstream zig 0.16.0 stdlib bug SelfInfo/Windows.zig:670 "
+                    "(@ptrCast without @alignCast) -- libubsan sub-compilation fails "
+                    "before link; entry resolution unprobed",
+                )
+            else:
+                FAIL(f"win-arm64 {entry} link",
+                     f"rc={r.returncode} stderr={r.stderr[:2000]}")
+
+
+# ===================================================================
 # Section 4e — -print-search-dirs and pre-generated MinGW import libs
 # ===================================================================
 def test_print_search_dirs() -> None:
@@ -1015,6 +1079,7 @@ def main() -> int:
     test_exe_linking()
     test_libc_linking()
     test_windows_import_libs()
+    test_win_arm64_entry_point()
     test_print_search_dirs()
     test_mingw_prebuilt_import_libs()
     test_visibility()
