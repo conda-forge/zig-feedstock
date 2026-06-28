@@ -182,6 +182,7 @@ source:
           - patches/non_unix/mingw-arm64-stubs.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
+          - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
       - if: not unix and cross_target_platform_ == "win-32"
         then:
           - patches/non_unix/mingw-include-setjmp-s.patch
