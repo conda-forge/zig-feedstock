@@ -28,6 +28,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include "wrapper_utils.h"
 
 #ifdef _WIN32
 #  include <process.h>
@@ -115,7 +116,6 @@ static int debug_enabled = 0;
 #define DBG(...) do { if (debug_enabled) { fprintf(stderr, "[zig-wrapper] " __VA_ARGS__); } } while (0)
 
 /* --- string helpers --- */
-static int str_eq(const char *a, const char *b) { return strcmp(a, b) == 0; }
 static int starts_with(const char *s, const char *p) { return strncmp(s, p, strlen(p)) == 0; }
 static int ends_with(const char *s, const char *suffix) {
     size_t sl = strlen(s), pl = strlen(suffix);

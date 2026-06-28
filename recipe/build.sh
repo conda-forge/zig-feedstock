@@ -324,6 +324,8 @@ elif _can_run_stage3; then
   fi
 
   # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
+  # ships the binary as qemu-ppc64le, but zig looks for qemu-powerpc64le,
+  # so a shadow directory with a correctly-named symlink is required.
   _qemu_shadow_dir=""
   if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
     _qemu_shadow_dir=$(mktemp -d)
@@ -420,7 +422,7 @@ esac
 
 # Compile wrapper using the just-built zig
 PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
-"${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
+"${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} -I"${RECIPE_DIR}/building" "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
 
 # Cross-arch wrapper detection note for downstream consumers:
 # All Windows variant wrappers (x86_64-w64-mingw32-zig.exe,
@@ -484,7 +486,7 @@ dbg echo "=== Build installed for package: ${PKG_NAME} ==="
 # ZIG_USE_CACHE trinary semantics (intentional):
 #   unset / empty → no cache action (CI default)
 #   "0"           → save current build artifacts into cache
-#   "1"           → restore cached artifacts from prior run
+#   "1"           → attempt restore from cache; build normally and save on miss
 #   any other     → no-op (filters garbage values silently)
 # Cache successful build (saves before rattler-build cleanup)
 if [[ "${ZIG_USE_CACHE:-}" == "0" || "${ZIG_USE_CACHE:-}" == "1" ]] && [[ -f "${RECIPE_DIR}/local-scripts/stub_cache.sh" ]]; then
