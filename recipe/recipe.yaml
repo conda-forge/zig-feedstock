@@ -528,6 +528,7 @@ outputs:
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-ranlib${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-asm${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-rc${{ exe }}
+            - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-windres${{ exe }}
             - ${{ library }}share/zig/wrappers/${{ conda_triplet }}-zig-lld${{ exe }}
             - if: unix
               then:

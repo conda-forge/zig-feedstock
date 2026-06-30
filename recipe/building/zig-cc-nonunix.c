@@ -26,6 +26,7 @@
 #define ZIG_CC_MODE "@ZIG_CC_MODE@"
 #define ZIG_BIN_NAME "@ZIG_BIN_NAME@"
 #define ZIG_TARGET "@ZIG_TARGET@"
+#define IS_MINGW_TARGET @IS_MINGW_TARGET@
 
 /* --- Flag classification helpers --- */
 static int starts_with(const char *s, const char *prefix) {
@@ -52,6 +53,36 @@ static const char *conda_to_zig_target(const char *triplet) {
         return buf;
     }
     return triplet;  /* pass through as-is */
+}
+
+/*
+ * Translate -Wl,-e<sym> and -Wl,-e,<sym> to -Wl,--entry,<sym> on mingw targets.
+ * GNU long form (--entry,SYM) works on mingw via clang's GNU-emulation driver;
+ * /ENTRY: (MSVC) does not. zig cc forwards -Wl,-e<sym> verbatim which clang's
+ * GNU-ld arg parser rejects as "Unknown Clang option: '-eSYM'".
+ *
+ * Returns:
+ *   NULL if the arg is not -Wl,-e<sym> or -Wl,-e,<sym>, or if not on mingw.
+ *   Heap-allocated translated string (caller must NOT free; ownership transferred to argv) otherwise.
+ *
+ * Forms handled:
+ *   -Wl,-eSYM   (concat, 7+ chars)
+ *   -Wl,-e,SYM  (comma form, 8+ chars)
+ * Split form (-Wl,-e in one arg, -Wl,SYM in next) is NOT handled; deferred.
+ */
+static char *translate_wl_entry(const char *arg)
+{
+    if (!IS_MINGW_TARGET) return NULL;
+    if (strncmp(arg, "-Wl,-e", 6) != 0) return NULL;
+    const char *sym = NULL;
+    if (arg[6] == ',' && arg[7] != '\0') sym = arg + 7;
+    else if (arg[6] != '\0' && arg[6] != ',') sym = arg + 6;
+    else return NULL;
+    size_t len = strlen("-Wl,--entry,") + strlen(sym) + 1;
+    char *out = (char *)malloc(len);
+    if (!out) return NULL;
+    snprintf(out, len, "-Wl,--entry,%s", sym);
+    return out;
 }
 
 /* -Xlinker passthrough flags to drop */
@@ -198,12 +229,26 @@ int main(int argc, char *argv[]) {
      * internal resolution fails for any reason. */
     if (!getenv("ZIG_GLOBAL_CACHE_DIR")) {
         char base[MAX_PATH];
+        char shortdir[MAX_PATH];
         const char *appdata = getenv("APPDATA");
         const char *userprofile = getenv("USERPROFILE");
+        /* zig panics with an integer overflow when ZIG_GLOBAL_CACHE_DIR is a
+         * long path (conda-forge zig-feedstock PR#120). The long component is
+         * always the user-profile dir (e.g. C:\Users\<long name>\AppData\
+         * Roaming). Convert that existing directory to its 8.3 short form with
+         * GetShortPathName (which only shortens path components that exist) and
+         * append the short cache suffix, keeping the exported path short. Fall
+         * back to the unshortened path if the API fails. */
         if (appdata) {
-            snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
+            if (GetShortPathNameA(appdata, shortdir, MAX_PATH) > 0)
+                snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", shortdir);
+            else
+                snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
         } else if (userprofile) {
-            snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
+            if (GetShortPathNameA(userprofile, shortdir, MAX_PATH) > 0)
+                snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", shortdir);
+            else
+                snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
         } else {
             DWORD tmp_len = GetTempPathA(MAX_PATH, base);
             if (tmp_len > 0)
@@ -291,6 +336,51 @@ int main(int argc, char *argv[]) {
         if (str_eq(arg, "-Xlinker")) {
             grab_next = 1;
             continue;
+        }
+
+        /* Bare -Map handling on mingw targets. Clang's driver rejects bare
+         * -Map as "Unknown Clang option"; rewrite to -Wl,-Map,FILE so clang
+         * forwards it to lld. -Wl,-Map,FILE already passes through unchanged.
+         * Forms: -Map FILE (two-arg), -Map=FILE, -MapFILE. */
+        if (IS_MINGW_TARGET && str_eq(arg, "-Map") && i + 1 < argc) {
+            const char *mapfile = argv[i + 1];
+            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
+            char *out = (char *)malloc(len);
+            if (out) {
+                snprintf(out, len, "-Wl,-Map,%s", mapfile);
+                filtered[fi++] = out;
+            }
+            i++;  /* consume the FILE arg */
+            continue;
+        }
+        if (IS_MINGW_TARGET && starts_with(arg, "-Map=") && arg[5] != '\0') {
+            const char *mapfile = arg + 5;
+            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
+            char *out = (char *)malloc(len);
+            if (out) {
+                snprintf(out, len, "-Wl,-Map,%s", mapfile);
+                filtered[fi++] = out;
+            }
+            continue;
+        }
+        if (IS_MINGW_TARGET && starts_with(arg, "-Map") && arg[4] != '\0' && arg[4] != '=') {
+            const char *mapfile = arg + 4;
+            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
+            char *out = (char *)malloc(len);
+            if (out) {
+                snprintf(out, len, "-Wl,-Map,%s", mapfile);
+                filtered[fi++] = out;
+            }
+            continue;
+        }
+
+        /* -Wl,-e<sym> translation: rewrite to -Wl,--entry,<sym> on mingw */
+        {
+            char *translated = translate_wl_entry(arg);
+            if (translated) {
+                filtered[fi++] = translated;
+                continue;
+            }
         }
 
         /* -Wl,* drops -- skip if LLD promoted (LLD handles these) */
