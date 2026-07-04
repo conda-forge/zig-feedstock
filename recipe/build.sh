@@ -142,7 +142,6 @@ fi
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
 # Phase 2 (zig build langref) handles it separately when stage3 is runnable.
 EXTRA_ZIG_ARGS+=(-Dno-langref)
-EXTRA_CMAKE_ARGS+=(-DZIG_NO_LANGREF=ON)
 
 if is_osx; then
   EXTRA_CMAKE_ARGS+=(

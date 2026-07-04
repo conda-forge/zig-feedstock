@@ -428,7 +428,7 @@ outputs:
               # Linux: test with ELF --dynamic-list
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
               - echo '{ main; };' > /tmp/test_lld.dyn
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+              - ${{ conda_triplet }}-zig cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
               - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
           - if: not unix
             then:

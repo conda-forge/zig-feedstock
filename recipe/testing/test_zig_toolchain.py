@@ -284,6 +284,7 @@ def test_flag_filtering() -> None:
                 exe_dl = Path(td) / "test_dynlist_lld"
                 dl_cmd = [
                     zig_cc,
+                    "-Wno-unused-command-line-argument",
                     f"-Wl,--dynamic-list={dynlist}",
                     "-o", str(exe_dl), str(main_src),
                 ]
