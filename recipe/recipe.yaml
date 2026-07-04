@@ -307,8 +307,8 @@ outputs:
         # Cross-compilation: need host tablegen tools + target compiler
         - if: build_platform != target_platform
           then:
-            - zig-llvm-tblgen
-            # zig-llvm-tblgen's llvm-tblgen binary is dynamically linked against
+            - zig-tblgen
+            # zig-tblgen's llvm-tblgen binary is dynamically linked against
             # libc++.so.1; pull zig-libcxx so the loader finds it at build time
             # (needed for ARMTargetParserDef.inc generation on cross-builds).
             # NOTE: no _${{ build_platform }} suffix — that variant doesn't exist

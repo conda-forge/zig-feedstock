@@ -199,6 +199,17 @@ EOF
     _RUNTIMES_CMAKE+=(-DCMAKE_OSX_ARCHITECTURES="${_osx_arch}")
   fi
 
+  # All linux glibc targets cap at glibc 2.17 (ZIG_TRIPLET is <arch>-linux-gnu.2.17),
+  # but zig's bundled libc headers are newer, so libc++abi's check_library_exists
+  # sets LIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=ON and emits a strong
+  # __cxa_thread_atexit_impl@GLIBC_2.18 reference that is absent from the 2.17
+  # sysroot (fails the final `zig build-exe` under --no-allow-shlib-undefined via
+  # liblldZig.so). Force OFF so the fallback impl is compiled. Required on every
+  # linux target, not just ppc64le; harmless where glibc is actually newer.
+  if is_linux; then
+    _RUNTIMES_FLAGS+=(-DLIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=OFF)
+  fi
+
   # ppc64le: skip CMake compiler link test (same as main LLVM build).
   # The ld wrapper (created above) injects --sysroot + -lpthread/-ldl for shared
   # lib builds. Additionally suppress glibc-version-gated symbols that are NOT
@@ -219,7 +230,6 @@ EOF
       "-DCMAKE_CXX_FLAGS=-fvisibility=default -fno-autolink -D__GLIBC_MINOR__=17"
     )
     _RUNTIMES_FLAGS+=(
-      -DLIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=OFF
       # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY (above) compiles without linking,
       # so check_library_exists() falsely reports dl/pthread as present and adds -ldl/-lpthread.
       # Pre-set the check results to NO to suppress the erroneous -l flags.

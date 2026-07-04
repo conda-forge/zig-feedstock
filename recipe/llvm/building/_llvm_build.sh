@@ -173,6 +173,17 @@ if [[ -n "${_llvm_experimental_targets}" ]]; then
     _LLVM+=("-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=${_llvm_experimental_targets}")
 fi
 
+# BLAKE3 asm guard: LLVM's lib/Support/BLAKE3/CMakeLists runs
+# check_symbol_exists(__x86_64__) with ZIG_CC, which targets the OUTPUT
+# platform (x86_64), so IS_X64=TRUE and it appends the x86 AVX-512 asm with
+# -mavx512vl. On a non-x86_64 build host that object is assembled for the host
+# arch (e.g. aarch64), which has no avx512vl -> ISA error. Disable asm-file
+# selection on non-x86_64 hosts; the portable C + NEON BLAKE3 path is used
+# instead (negligible perf cost — BLAKE3 is only used for LLVM module hashing).
+if [[ "$(uname -m)" != "x86_64" ]]; then
+  _LLVM+=(-DLLVM_DISABLE_ASSEMBLY_FILES=ON)
+fi
+
 # === Host tablegen pre-build + tablegen bypass flags ===
 # Must run HERE (in _llvm_build.sh) — NOT in _cross_compile.sh — because the
 # wrapper binaries (${BUILD_PREFIX}/bin/<triplet>-zig-cc) are compiled by
@@ -325,10 +336,24 @@ _CMAKE=(
   # 21) which the recipe's linked libc++ 20.1.8 never implements -> ld.lld
   # undefined symbol when linking llvm-tblgen. -nostdinc++ drops zig's bundled
   # headers (zig cc is clang; the wrapper forwards -nostdinc++ untouched);
-  # -isystem points at the freshly-built 20.1.8 libc++ headers (installed with
-  # their generated __config_site under ${LLVM_INSTALL}) so compile and link
-  # both use 20.1.8.
-  -DCMAKE_CXX_FLAGS="-fvisibility=default -nostdinc++ -isystem ${LLVM_INSTALL}/include/c++/v1"
+  # -I (NOT -isystem) points at the freshly-built 20.1.8 libc++ headers so they
+  # are searched in clang's user bracket, BEFORE zig's bundled glibc C-header
+  # dir. libc++'s <cstring>/<cmath> require libc++'s own v1/string.h,math.h to
+  # win over glibc's (they #include_next the real ones); with -isystem, zig's
+  # glibc dir preceded v1 and libc++ #error'd "didn't find libc++'s <string.h>"
+  # (CheckAtomic failure). -I fixes the order. __config_site is present under
+  # ${LLVM_INSTALL}/include/c++/v1 so compile and link both use 20.1.8.
+  -DCMAKE_CXX_FLAGS="-fvisibility=default -nostdinc++ -I${LLVM_INSTALL}/include/c++/v1"
+
+  # -nostdinc++ (above) also lands on the LINK line, which makes zig cc STOP
+  # auto-linking its bundled libc++ -> a flood of undefined std::__1::/operator
+  # new-delete/__cxa_/vtable-__cxxabiv1 symbols at the first executable link
+  # (llvm-min-tblgen). Explicitly link the freshly-built 20.1.8 libc++/libc++abi/
+  # libunwind. CMAKE_CXX_STANDARD_LIBRARIES is appended at the END of every C++
+  # link line (after objects and the static libLLVM*.a), which is required so
+  # those archives' libc++ references resolve, and it survives -Wl,--as-needed.
+  # libc++abi is static-only (.a); libunwind is shared; all under ${LLVM_INSTALL}/lib.
+  "-DCMAKE_CXX_STANDARD_LIBRARIES=-L${LLVM_INSTALL}/lib -lc++ -lc++abi -lunwind"
 )
 
 # Inject glibc-capped target to zig-cc so libclang-cpp.so and liblld.so don't
