@@ -481,10 +481,40 @@ esac
 PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
 "${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
 
-# Install ergonomic-name copies
-for suffix in zig-cc zig-cxx zig-ar zig-ranlib zig-lld zig-rc zig-asm zig-force-load-cc zig-force-load-cxx; do
-    cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-${suffix}${EXE_EXT}"
-done
+# Cross-arch wrapper detection note for downstream consumers:
+# All Windows variant wrappers (x86_64-w64-mingw32-zig.exe,
+# aarch64-w64-mingw32-zig.exe, i686-w64-mingw32-zig.exe) land in the SAME
+# ${PREFIX}/Library/bin directory when multiple zig_<cross-target> activation
+# packages are stacked in a build environment. Consumer recipes probing for
+# compiler presence by filename alone (e.g.,
+#   test -x .../aarch64-w64-mingw32-zig.exe
+# ) will FALSE-POSITIVE on an x86_64 host: the file exists but is an
+# x86_64-PE executable and cannot natively run aarch64 code. Consumers MUST
+# disambiguate by either:
+#   (a) inspecting the PE machine header (file, objdump -f, dumpbin /headers)
+#   (b) actually invoking the wrapper and checking exit status / output
+# See P-5 in zig_cc_consumer_pain_points.md.
+
+# Install ergonomic-name copies (canonical suffix list at
+# ${RECIPE_DIR}/building/wrapper_modes.txt).
+# Portable: simple file redirect, inline filter, CRLF strip — works in
+# m2-bash 3.1 (no mapfile, no process substitution) and tolerates files
+# checked out with CRLF line endings on Windows.
+while IFS= read -r suffix || [ -n "${suffix}" ]; do
+    suffix="${suffix%$'\r'}"
+    case "${suffix}" in
+        ''|'#'*) continue ;;
+    esac
+    cp -f "${PRIMARY_WRAPPER}" "${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig-${suffix}${EXE_EXT}"
+done < "${RECIPE_DIR}/building/wrapper_modes.txt"
+
+# Install wrapper_modes.txt for runtime self-test (A4)
+case "${target_platform}" in
+    win-*) SHARE_DIR="${PREFIX}/Library/share/zig-wrapper" ;;
+    *)     SHARE_DIR="${PREFIX}/share/zig-wrapper" ;;
+esac
+mkdir -p "${SHARE_DIR}"
+cp "${RECIPE_DIR}/building/wrapper_modes.txt" "${SHARE_DIR}/wrapper_modes.txt"
 
 # zig's PE/COFF link can still emit a .pdb sidecar named after the output;
 # it is not needed for the wrapper and trips package_contents strict checks.

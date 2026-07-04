@@ -78,86 +78,6 @@ jobs:
         resize_partitions: false
         store_build_artifacts: false
         tools_install_dir: ~/miniforge3
-      osx_64_cross_target_platform_win-32:
-        CONFIG: osx_64_cross_target_platform_win-32
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_64_cross_target_platform_win-64:
-        CONFIG: osx_64_cross_target_platform_win-64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_64_cross_target_platform_win-arm64:
-        CONFIG: osx_64_cross_target_platform_win-arm64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_linux-64:
-        CONFIG: osx_arm64_cross_target_platform_linux-64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_linux-aarch64:
-        CONFIG: osx_arm64_cross_target_platform_linux-aarch64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_linux-ppc64le:
-        CONFIG: osx_arm64_cross_target_platform_linux-ppc64le
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_linux-riscv64:
-        CONFIG: osx_arm64_cross_target_platform_linux-riscv64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_linux-s390x:
-        CONFIG: osx_arm64_cross_target_platform_linux-s390x
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
       osx_arm64_cross_target_platform_osx-64:
         CONFIG: osx_arm64_cross_target_platform_osx-64
         UPLOAD_PACKAGES: 'True'
@@ -170,36 +90,6 @@ jobs:
         tools_install_dir: ~/miniforge3
       osx_arm64_cross_target_platform_osx-arm64:
         CONFIG: osx_arm64_cross_target_platform_osx-arm64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_win-32:
-        CONFIG: osx_arm64_cross_target_platform_win-32
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_win-64:
-        CONFIG: osx_arm64_cross_target_platform_win-64
-        UPLOAD_PACKAGES: 'True'
-        VMIMAGE: macOS-15-arm64
-        build_workspace_dir: ~/miniforge3/conda-bld
-        free_disk_space: quick
-        pagefile_size: 0
-        resize_partitions: false
-        store_build_artifacts: false
-        tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_win-arm64:
-        CONFIG: osx_arm64_cross_target_platform_win-arm64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15-arm64
         build_workspace_dir: ~/miniforge3/conda-bld
