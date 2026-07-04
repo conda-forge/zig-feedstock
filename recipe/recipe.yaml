@@ -403,6 +403,8 @@ outputs:
               - ${{ conda_triplet }}-zig cc -mconsole -o %TEMP%\test_run.exe %TEMP%\test_run.c
               - '%TEMP%\test_run.exe'
               - echo PASS zig cc compile+run (UCRT DLL resolution)
+            else:
+              - echo "Skip"
 
       # Verify MinGW import libs were pre-generated in lib-common/
       - script:
@@ -529,6 +531,8 @@ outputs:
             then:
               - set CONDA_ZIG_HOST=${{ conda_triplet }}-zig
               - python testing/test_stack_probe.py
+            else:
+              - echo "Skip"
         requirements:
           run:
             - python >=3.10
@@ -574,13 +578,15 @@ outputs:
           LLVM_VERSION: ${{ llvm_version }}
     requirements:
       build:
+        - if: is_cross_compiler
+          then:
+            - ${{ stdlib("c") }}
         - ${{ m2 }}bash
         - python 3.12.*
         - zig_impl_${{ build_platform }} >=0.15.2
         - if: not unix
           then:
             - ${{ compiler('c') }}
-            - ${{ stdlib("c") }}
         - if: xc_ppc64le
           then:
             # ppc64le wrapper compiled with --target=powerpc64le-linux-gnu.*
