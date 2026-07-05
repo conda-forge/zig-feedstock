@@ -165,7 +165,7 @@
 +        try argv.appendSlice(&.{ "-arch", arch_str });
 +
 +        const os_ver = target.os.version_range.semver.min;
-+        const ver_str = try allocPrint(arena, "{d}.{d}.{d}", .{ os_ver.major, os_ver.minor, os_ver.patch });
++        const ver_str = try std.fmt.allocPrint(arena, "{d}.{d}.{d}", .{ os_ver.major, os_ver.minor, os_ver.patch });
 +        try argv.appendSlice(&.{ "-platform_version", "macos", ver_str, ver_str });
 +
 +        if (comp.sysroot) |sysroot| {
@@ -196,11 +196,11 @@
 +        }
 +
 +        if (macho.pagezero_size) |size| {
-+            try argv.appendSlice(&.{ "-pagezero_size", try allocPrint(arena, "0x{x}", .{size}) });
++            try argv.appendSlice(&.{ "-pagezero_size", try std.fmt.allocPrint(arena, "0x{x}", .{size}) });
 +        }
 +
 +        if (macho.headerpad_size) |size| {
-+            try argv.appendSlice(&.{ "-headerpad_size", try allocPrint(arena, "0x{x}", .{size}) });
++            try argv.appendSlice(&.{ "-headerpad_size", try std.fmt.allocPrint(arena, "0x{x}", .{size}) });
 +        }
 +
 +        if (macho.headerpad_max_install_names) {
@@ -212,7 +212,7 @@
 +        }
 +
 +        for (macho.lib_directories) |lib_directory| {
-+            const arg = try allocPrint(arena, "-L{s}", .{lib_directory.path orelse "."});
++            const arg = try std.fmt.allocPrint(arena, "-L{s}", .{lib_directory.path orelse "."});
 +            try argv.append(arg);
 +        }
 +

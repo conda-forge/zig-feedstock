@@ -89,7 +89,7 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
         echo "ERROR: No upstream bootstrap zig found in ${SRC_DIR}/zig-bootstrap/" >&2
         exit 1
     fi
-    ZIG_LIB_DIR_ARGS=(--zig-lib-dir "${SRC_DIR}/zig-bootstrap/lib")
+    ZIG_LIB_DIR_ARGS=()  # snapshot 1245: `zig build` no longer accepts --zig-lib-dir; lib dir auto-discovered from argv[0]
     echo "[build_native] Bootstrap zig (upstream tarball): ${ZIG_BIN}"
     echo "[build_native] Using zig-lib-dir: ${SRC_DIR}/zig-bootstrap/lib"
 else
