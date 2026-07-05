@@ -2,6 +2,8 @@
 
 source "${RECIPE_DIR}/building/_common.sh"
 
+type configure_cmake &>/dev/null || { echo "ERROR: _cmake.sh requires _build.sh to be sourced first" >&2; exit 1; }
+
 function cmake_build_install() {
   local build_dir=$1
   local install_prefix=${2:-}

@@ -161,6 +161,7 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
         subprocess.check_call([
             zig_bin, "cc",
             "-O2",
+            f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
             "-lkernel32",
@@ -399,6 +400,7 @@ def install_target_triplet_wrappers(
         subprocess.check_call([
             str(zig_bin), "cc", "-O2",
             *extra_flags,
+            f"-I{wrapper_src.parent}",
             str(tmp_src),
             "-o", str(primary_wrapper),
         ])

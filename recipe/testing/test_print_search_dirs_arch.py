@@ -13,14 +13,8 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import sys
 import tempfile
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from pathlib import Path
 
@@ -29,21 +23,19 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
+    _host,
     _results,
     _run,
-    get_zig_wrapper,
+    _triplet,
+    get_bare_zig_wrapper,
+    print_results,
     setup_zig_global_cache_dir,
 )
 
 # ---------------------------------------------------------------------------
 # Platform detection
 # ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
-if _arch == "arm64":
-    _arch = "aarch64"
-
 # Resolve the lib-<arch> dir name from the host arch / target_platform env var
 _target_platform = os.environ.get("target_platform", "")
 
@@ -64,24 +56,6 @@ def _host_lib_dir() -> str:
     return f"lib-{_arch}"
 
 
-def _bare_zig_wrapper() -> str | None:
-    """Return path to ``<triplet>-zig`` (bare) or fall back to ``<triplet>-zig-cc``."""
-    # Prefer the bare zig binary (if installed as a triplet-prefixed wrapper)
-    cc_wrapper = get_zig_wrapper("cc")
-    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
-    exe_suffix = ".exe" if sys.platform == "win32" else ""
-    if sys.platform == "win32":
-        wrapper_dir = prefix / "Library" / "bin"
-    else:
-        wrapper_dir = prefix / "bin"
-    bare = wrapper_dir / f"{_triplet}-zig{exe_suffix}"
-    if bare.exists():
-        return str(bare)
-    if cc_wrapper.exists():
-        return str(cc_wrapper)
-    return None
-
-
 setup_zig_global_cache_dir()
 
 
@@ -91,10 +65,10 @@ setup_zig_global_cache_dir()
 
 def _run_print_search_dirs(extra_args: list[str], *, timeout: int = 15) -> tuple[int, str, str]:
     """Run ``<wrapper> -print-search-dirs [extra_args]`` and return (rc, stdout, stderr)."""
-    wrapper = _bare_zig_wrapper()
+    wrapper = get_bare_zig_wrapper()
     if wrapper is None:
         return -1, "", "NOTFOUND"
-    cmd = [wrapper] + extra_args + ["-print-search-dirs"]
+    cmd = [str(wrapper)] + extra_args + ["-print-search-dirs"]
     r = _run(cmd, timeout=timeout)
     return r.returncode, r.stdout, r.stderr
 
@@ -107,7 +81,7 @@ def test_print_search_dirs_default_host_arch() -> None:
     """``-print-search-dirs`` (no ``-target``) contains ``lib-common`` and host arch dir."""
     print("--- -print-search-dirs: default host arch ---")
 
-    if _bare_zig_wrapper() is None:
+    if get_bare_zig_wrapper() is None:
         SKIP("-print-search-dirs default host arch", "wrapper cc not found — needs build env")
         return
 
@@ -139,7 +113,7 @@ def test_print_search_dirs_target_aarch64_windows_gnu() -> None:
     """``-target aarch64-windows-gnu`` yields ``lib-aarch64``, not ``lib-x86_64``."""
     print("--- -print-search-dirs: -target aarch64-windows-gnu ---")
 
-    if _bare_zig_wrapper() is None:
+    if get_bare_zig_wrapper() is None:
         SKIP("-print-search-dirs aarch64", "wrapper cc not found — needs build env")
         return
 
@@ -170,7 +144,7 @@ def test_print_search_dirs_target_x86_64_windows_gnu() -> None:
     """``-target x86_64-windows-gnu`` yields ``lib-x86_64``, not ``lib-aarch64``."""
     print("--- -print-search-dirs: -target x86_64-windows-gnu ---")
 
-    if _bare_zig_wrapper() is None:
+    if get_bare_zig_wrapper() is None:
         SKIP("-print-search-dirs x86_64", "wrapper cc not found — needs build env")
         return
 
@@ -201,7 +175,7 @@ def test_print_search_dirs_target_i386_windows_gnu() -> None:
     """``-target i386-windows-gnu`` yields ``lib-i386`` (skip if i386 not shipped)."""
     print("--- -print-search-dirs: -target i386-windows-gnu ---")
 
-    if _bare_zig_wrapper() is None:
+    if get_bare_zig_wrapper() is None:
         SKIP("-print-search-dirs i386", "wrapper cc not found — needs build env")
         return
 
@@ -234,7 +208,7 @@ def test_print_search_dirs_last_target_wins() -> None:
     """When two ``-target`` flags appear, the last one wins (zig convention)."""
     print("--- -print-search-dirs: last -target wins ---")
 
-    if _bare_zig_wrapper() is None:
+    if get_bare_zig_wrapper() is None:
         SKIP("-print-search-dirs last-target-wins", "wrapper cc not found — needs build env")
         return
 
@@ -262,7 +236,7 @@ def test_print_search_dirs_malformed_target_falls_back_with_warn() -> None:
     """A malformed ``-target`` falls back to host arch and warns on stderr."""
     print("--- -print-search-dirs: malformed -target falls back ---")
 
-    if _bare_zig_wrapper() is None:
+    if get_bare_zig_wrapper() is None:
         SKIP("-print-search-dirs malformed-target", "wrapper cc not found — needs build env")
         return
 
@@ -320,21 +294,7 @@ def main() -> int:
     test_print_search_dirs_malformed_target_falls_back_with_warn()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(
-        f"=== Results: {n_pass} passed, {n_fail} failed, "
-        f"{n_warn} warnings, {n_skip} skipped ==="
-    )
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(_results) else 1
 
 
 if __name__ == "__main__":

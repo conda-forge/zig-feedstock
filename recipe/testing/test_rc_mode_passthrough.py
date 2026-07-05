@@ -13,14 +13,8 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import sys
 import tempfile
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from pathlib import Path
 
@@ -32,23 +26,18 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
     _build_is_win,
+    _host,
     _results,
     _run,
+    _triplet,
     coff_machine_type,
     compile_minimal_rc,
     get_zig_wrapper,
+    print_results,
     setup_zig_global_cache_dir,
 )
-
-# ---------------------------------------------------------------------------
-# Platform detection (mirrors test_zig_toolchain.py conventions)
-# ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
-if _arch == "arm64":
-    _arch = "aarch64"
 
 _ARCH_TO_MACHINE: dict[str, int] = {
     "x86_64": COFF_MACHINE_X86_64,
@@ -204,21 +193,7 @@ def main() -> int:
     test_rc_version_probe_still_works()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(
-        f"=== Results: {n_pass} passed, {n_fail} failed, "
-        f"{n_warn} warnings, {n_skip} skipped ==="
-    )
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(_results) else 1
 
 
 if __name__ == "__main__":

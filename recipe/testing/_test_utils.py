@@ -14,6 +14,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # ---------------------------------------------------------------------------
 # Result tracking
 # ---------------------------------------------------------------------------
@@ -49,6 +54,15 @@ def SKIP(name: str, detail: str = "") -> None:
 # ---------------------------------------------------------------------------
 _build_is_win = sys.platform == "win32"
 _build_is_mac = sys.platform == "darwin"
+
+# ---------------------------------------------------------------------------
+# Host platform detection (from CONDA_ZIG_HOST, common to most test files)
+# ---------------------------------------------------------------------------
+_host = os.environ.get("CONDA_ZIG_HOST", "")  # e.g. "x86_64-w64-mingw32-zig"
+_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
+_arch = _triplet.split("-")[0] if _triplet else _platform.machine()
+if _arch == "arm64":
+    _arch = "aarch64"
 
 # ---------------------------------------------------------------------------
 # ZIG_GLOBAL_CACHE_DIR setup
@@ -170,6 +184,34 @@ def get_zig_wrapper(suffix: str) -> Path:
     return wrapper_dir / name
 
 
+def get_bare_zig_wrapper(fallback_to_cc: bool = True) -> Path | None:
+    """Return Path to the bare ``<triplet>-zig[.exe]`` binary, or None if not found.
+
+    Resolves the triplet from CONDA_ZIG_HOST (stripping the trailing ``-zig``
+    suffix if present) and the wrapper directory from CONDA_PREFIX.
+
+    When *fallback_to_cc* is True (default) and the bare binary does not exist,
+    falls back to the ``<triplet>-zig-cc`` wrapper.  Returns None if neither
+    is found.
+    """
+    host = os.environ.get("CONDA_ZIG_HOST", "")
+    triplet = host.removesuffix("-zig") if host.endswith("-zig") else host
+    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    if sys.platform == "win32":
+        wrapper_dir = prefix / "Library" / "bin"
+    else:
+        wrapper_dir = prefix / "bin"
+    bare = wrapper_dir / f"{triplet}-zig{exe_suffix}"
+    if bare.exists():
+        return bare
+    if fallback_to_cc:
+        cc = wrapper_dir / f"{triplet}-zig-cc{exe_suffix}"
+        if cc.exists():
+            return cc
+    return None
+
+
 def skip_if_no_wrapper(suffix: str) -> None:
     """Skip (via pytest) if the wrapper binary for *suffix* is not installed.
 
@@ -271,3 +313,64 @@ def nm_symbols(archive_or_obj: Path) -> dict[str, str]:
             continue
         symbols[name] = type_letter
     return symbols
+
+
+# ---------------------------------------------------------------------------
+# Results summary printer
+# ---------------------------------------------------------------------------
+def print_results(
+    results: dict[str, list[str]],
+    *,
+    warn_header: str | None = None,
+    extra_banner: str | None = None,
+    all_skipped_message: str | None = None,
+) -> bool:
+    """Print a standardised results summary and return True if no failures.
+
+    Parameters
+    ----------
+    results:
+        Mapping of status → list-of-names, typically the module-level
+        ``_results`` dict from ``_test_utils``.
+    warn_header:
+        Section header printed when warnings exist.  Pass
+        ``"Warnings (known issues):"`` (test_zig_toolchain) or
+        ``"Warnings:"`` (test_libcxx_shared).  When None no warn section is
+        emitted (most files don't print a warnings section).
+    extra_banner:
+        If not None, an additional line printed after the summary (with
+        ``flush=True``), e.g. ``"=== All tests completed ==="``.
+    all_skipped_message:
+        If not None and n_fail == 0 and n_pass == 0 and n_skip > 0, print
+        this message and return False.  Used by files that treat an all-skipped
+        run as a configuration error.
+    """
+    n_pass = len(results.get("PASS", []))
+    n_fail = len(results.get("FAIL", []))
+    n_warn = len(results.get("WARN", []))
+    n_skip = len(results.get("SKIP", []))
+
+    print(
+        f"=== Results: {n_pass} passed, {n_fail} failed, "
+        f"{n_warn} warnings, {n_skip} skipped ==="
+    )
+
+    if n_fail > 0:
+        print("\nFailed tests:")
+        for name in results.get("FAIL", []):
+            print(f"  - {name}")
+
+    if n_warn > 0 and warn_header is not None:
+        print(f"\n{warn_header}")
+        for name in results.get("WARN", []):
+            print(f"  - {name}")
+
+    if extra_banner is not None:
+        print(extra_banner, flush=True)
+
+    if n_fail > 0:
+        return False
+    if all_skipped_message is not None and n_pass == 0 and n_skip > 0:
+        print(f"\n{all_skipped_message}")
+        return False
+    return True

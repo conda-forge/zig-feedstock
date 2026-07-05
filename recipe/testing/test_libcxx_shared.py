@@ -27,12 +27,6 @@ import shutil
 import sys
 import tempfile
 
-# Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
-# rattler-build's UTF-8 stream reader even when tests pass).
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 from _test_utils import (
@@ -45,6 +39,7 @@ from _test_utils import (
     _is_emulated,
     _results,
     _run,
+    print_results,
     setup_zig_global_cache_dir,
 )
 
@@ -1069,25 +1064,11 @@ def main() -> int:
     test_whole_archive_shared_lib()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(f"=== Results: {n_pass} passed, {n_fail} failed, "
-          f"{n_warn} warnings, {n_skip} skipped ===")
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    if n_warn > 0:
-        print("\nWarnings:")
-        for name in _results["WARN"]:
-            print(f"  - {name}")
-
-    print("=== All tests completed ===", flush=True)
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(
+        _results,
+        warn_header="Warnings:",
+        extra_banner="=== All tests completed ===",
+    ) else 1
 
 
 if __name__ == "__main__":

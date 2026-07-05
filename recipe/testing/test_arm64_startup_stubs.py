@@ -12,14 +12,8 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import sys
 import tempfile
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from pathlib import Path
 
@@ -29,23 +23,19 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _arch,
+    _host,
     _results,
     _run,
+    _triplet,
     compile_minimal_winmain_c,
+    get_bare_zig_wrapper,
     get_zig_wrapper,
     nm_symbols,
     pe_machine_type,
+    print_results,
     setup_zig_global_cache_dir,
 )
-
-# ---------------------------------------------------------------------------
-# Platform detection
-# ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
-if _arch == "arm64":
-    _arch = "aarch64"
 
 setup_zig_global_cache_dir()
 
@@ -193,14 +183,7 @@ def test_arm64_winmain_end_to_end_link() -> None:
         return
 
     # Use the bare <triplet>-zig if available, else <triplet>-zig-cc
-    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
-    exe_suffix = ".exe" if sys.platform == "win32" else ""
-    if sys.platform == "win32":
-        wrapper_dir = prefix / "Library" / "bin"
-    else:
-        wrapper_dir = prefix / "bin"
-    bare = wrapper_dir / f"{_triplet}-zig{exe_suffix}"
-    zig = str(bare) if bare.exists() else str(cc_wrapper)
+    zig = str(get_bare_zig_wrapper() or cc_wrapper)
 
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
@@ -258,21 +241,7 @@ def main() -> int:
     test_arm64_winmain_end_to_end_link()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(
-        f"=== Results: {n_pass} passed, {n_fail} failed, "
-        f"{n_warn} warnings, {n_skip} skipped ==="
-    )
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    return 1 if n_fail > 0 else 0
+    return 0 if print_results(_results) else 1
 
 
 if __name__ == "__main__":

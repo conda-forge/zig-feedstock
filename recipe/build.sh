@@ -56,9 +56,6 @@ fi
 
 # --- Main ---
 
-# Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
-BUILD_ZIG="${CONDA_ZIG_BUILD}"
-
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
 export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR_OVERRIDE:-${SRC_DIR}/zig-global-cache}"
@@ -106,7 +103,7 @@ fi
 # Patch build.zig-doctest-forward-target adds -Ddoctest-target to build.zig.
 # Applied universally; gated here to platforms that benefit from explicit
 # target forwarding to zig2 self-hosted backend (avoids comptime f16->f32 bug).
-if is_linux || is_osx; then
+if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
@@ -267,11 +264,11 @@ if is_linux && is_cross; then
   # bundles will address that separately).
   if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
     perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
-    create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+    create_pthread_atfork_stub "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   fi
 
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/libc_single_threaded_stub.o\"|g" "${cmake_build_dir}/config.h"
-  create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+  create_libc_single_threaded_stub "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
 fi
 
 # Always-linux: sysroot ld-script rewrite (needed by wrapper compile and any zig cc
@@ -290,16 +287,13 @@ dbg echo "=== zig build env ==="
 if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
   source "${RECIPE_DIR}/building/_cmake.sh"
   cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
-elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+elif build_zig_with_zig "${zig_build_dir}" "${CONDA_ZIG_BUILD}" "${PREFIX}"; then
   :
 else
   echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
   exit 1
 fi
 
-
-# Odd random occurence of zig.pdb
-rm -f "${PREFIX}/bin/zig.pdb"
 
 # macOS: --search-prefix adds a library search but does not embed LC_RPATH in the Mach-O binary.
 if is_osx; then
@@ -330,6 +324,8 @@ elif _can_run_stage3; then
   fi
 
   # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
+  # ships the binary as qemu-ppc64le, but zig looks for qemu-powerpc64le,
+  # so a shadow directory with a correctly-named symlink is required.
   _qemu_shadow_dir=""
   if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
     _qemu_shadow_dir=$(mktemp -d)
@@ -401,11 +397,10 @@ sed -e "s|@ZIG_TARGET@|${WRAPPER_DEFAULT_TARGET}|g" \
 mkdir -p "${WRAPPER_BIN_DIR}" "${REAL_ZIG_DIR}"
 
 # macOS Mach-O needs header padding for conda's install_name_tool relinking
-if [[ "${target_platform}" == osx-* ]]; then
-    WRAPPER_LDFLAGS="-Wl,-headerpad_max_install_names"
-else
-    WRAPPER_LDFLAGS=""
-fi
+WRAPPER_LDFLAGS=""
+case "${target_platform}" in
+    osx-*) WRAPPER_LDFLAGS="-Wl,-headerpad_max_install_names" ;;
+esac
 
 dbg echo "=== pre-wrapper compile ==="
 
@@ -427,7 +422,7 @@ esac
 
 # Compile wrapper using the just-built zig
 PRIMARY_WRAPPER="${WRAPPER_BIN_DIR}/${CONDA_TRIPLET}-zig${EXE_EXT}"
-"${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
+"${PREFIX}/bin/zig" cc -O2 ${_WRAPPER_CC_EXTRA} ${WRAPPER_LDFLAGS} -I"${RECIPE_DIR}/building" "${WRAPPER_C}" -o "${PRIMARY_WRAPPER}"
 
 # Cross-arch wrapper detection note for downstream consumers:
 # All Windows variant wrappers (x86_64-w64-mingw32-zig.exe,
@@ -467,7 +462,7 @@ cp "${RECIPE_DIR}/building/wrapper_modes.txt" "${SHARE_DIR}/wrapper_modes.txt"
 # zig's PE/COFF link can still emit a .pdb sidecar named after the output;
 # it is not needed for the wrapper and trips package_contents strict checks.
 case "${target_platform}" in
-    win-*) rm -f "${WRAPPER_BIN_DIR}"/*.pdb ;;
+    win-*) rm -f "${WRAPPER_BIN_DIR}"/*.pdb "${PREFIX}/bin/zig.pdb" ;;
 esac
 
 # Move raw zig out of PATH
@@ -491,7 +486,7 @@ dbg echo "=== Build installed for package: ${PKG_NAME} ==="
 # ZIG_USE_CACHE trinary semantics (intentional):
 #   unset / empty → no cache action (CI default)
 #   "0"           → save current build artifacts into cache
-#   "1"           → restore cached artifacts from prior run
+#   "1"           → attempt restore from cache; build normally and save on miss
 #   any other     → no-op (filters garbage values silently)
 # Cache successful build (saves before rattler-build cleanup)
 if [[ "${ZIG_USE_CACHE:-}" == "0" || "${ZIG_USE_CACHE:-}" == "1" ]] && [[ -f "${RECIPE_DIR}/local-scripts/stub_cache.sh" ]]; then

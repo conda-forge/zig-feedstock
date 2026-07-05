@@ -13,15 +13,9 @@ Exit codes:
 from __future__ import annotations
 
 import os
-import platform
 import re
 import sys
 import tempfile
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from pathlib import Path
 
@@ -30,20 +24,15 @@ from _test_utils import (
     PASS,
     SKIP,
     WARN,
+    _host,
     _results,
     _run,
+    _triplet,
+    get_bare_zig_wrapper,
     get_zig_wrapper,
+    print_results,
     setup_zig_global_cache_dir,
 )
-
-# ---------------------------------------------------------------------------
-# Platform detection
-# ---------------------------------------------------------------------------
-_host = os.environ.get("CONDA_ZIG_HOST", "")
-_triplet = _host.removesuffix("-zig") if _host.endswith("-zig") else _host
-_arch = _triplet.split("-")[0] if _triplet else platform.machine()
-if _arch == "arm64":
-    _arch = "aarch64"
 
 setup_zig_global_cache_dir()
 
@@ -64,29 +53,6 @@ def _wrapper_modes_txt() -> Path | None:
     return None
 
 
-def _bare_zig() -> str | None:
-    """Return bare ``<triplet>-zig`` path, or None."""
-    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
-    exe_suffix = ".exe" if sys.platform == "win32" else ""
-    if sys.platform == "win32":
-        wrapper_dir = prefix / "Library" / "bin"
-    else:
-        wrapper_dir = prefix / "bin"
-    bare = wrapper_dir / f"{_triplet}-zig{exe_suffix}"
-    if bare.exists():
-        return str(bare)
-    return None
-
-
-def _any_wrapper() -> str | None:
-    """Return any available wrapper (bare ``-zig`` or ``-zig-cc``)."""
-    b = _bare_zig()
-    if b is not None:
-        return b
-    cc = get_zig_wrapper("cc")
-    if cc.exists():
-        return str(cc)
-    return None
 
 
 def _read_modes_lines(path: Path) -> list[str]:
@@ -107,7 +73,7 @@ def test_self_test_basic_invocation() -> None:
     """``<triplet>-zig --zig-wrapper-self-test`` exits 0 and prints a summary line."""
     print("--- self-test: basic invocation ---")
 
-    zig = _bare_zig()
+    zig = get_bare_zig_wrapper(fallback_to_cc=False)
     if zig is None:
         SKIP("self-test basic", "bare wrapper <triplet>-zig not found — needs build env")
         return
@@ -154,7 +120,7 @@ def test_self_test_with_explicit_good_path() -> None:
     """``--zig-wrapper-self-test=<path>`` with a valid wrapper_modes.txt exits 0."""
     print("--- self-test: explicit good modes path ---")
 
-    zig = _any_wrapper()
+    zig = get_bare_zig_wrapper()
     if zig is None:
         SKIP("self-test explicit good path", "no wrapper found — needs build env")
         return
@@ -182,7 +148,7 @@ def test_self_test_missing_entry_detected() -> None:
     """A modes file missing one real suffix causes exit != 0 and names the missing suffix."""
     print("--- self-test: missing entry detected ---")
 
-    zig = _any_wrapper()
+    zig = get_bare_zig_wrapper()
     if zig is None:
         SKIP("self-test missing entry", "no wrapper found — needs build env")
         return
@@ -231,7 +197,7 @@ def test_self_test_extra_entry_detected() -> None:
     """A modes file with an extra unknown suffix causes exit != 0 mentioning that suffix."""
     print("--- self-test: extra entry detected ---")
 
-    zig = _any_wrapper()
+    zig = get_bare_zig_wrapper()
     if zig is None:
         SKIP("self-test extra entry", "no wrapper found — needs build env")
         return
@@ -275,7 +241,7 @@ def test_self_test_duplicate_detected() -> None:
     """A modes file with ``cc`` listed twice causes exit != 0 mentioning duplicate or 'cc'."""
     print("--- self-test: duplicate entry detected ---")
 
-    zig = _any_wrapper()
+    zig = get_bare_zig_wrapper()
     if zig is None:
         SKIP("self-test duplicate", "no wrapper found — needs build env")
         return
@@ -320,7 +286,7 @@ def test_self_test_path_not_found() -> None:
     """``--zig-wrapper-self-test=/nonexistent/path`` exits != 0 and mentions the path."""
     print("--- self-test: path not found ---")
 
-    zig = _any_wrapper()
+    zig = get_bare_zig_wrapper()
     if zig is None:
         SKIP("self-test path not found", "no wrapper found — needs build env")
         return
@@ -366,26 +332,13 @@ def main() -> int:
     test_self_test_path_not_found()
 
     print()
-    n_pass = len(_results["PASS"])
-    n_fail = len(_results["FAIL"])
-    n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(
-        f"=== Results: {n_pass} passed, {n_fail} failed, "
-        f"{n_warn} warnings, {n_skip} skipped ==="
-    )
-
-    if n_fail > 0:
-        print("\nFailed tests:")
-        for name in _results["FAIL"]:
-            print(f"  - {name}")
-
-    if n_fail > 0:
-        return 1
-    if n_pass == 0 and n_skip > 0:
-        print("\nFAIL: test environment not properly set up — all sub-tests skipped (likely CONDA_ZIG_HOST unset or wrapper binary not found)")
-        return 1
-    return 0
+    return 0 if print_results(
+        _results,
+        all_skipped_message=(
+            "FAIL: test environment not properly set up — all sub-tests skipped"
+            " (likely CONDA_ZIG_HOST unset or wrapper binary not found)"
+        ),
+    ) else 1
 
 
 if __name__ == "__main__":
