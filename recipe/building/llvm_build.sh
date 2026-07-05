@@ -56,5 +56,6 @@ done
 unset _zigdep
 
 source ${RECIPE_DIR}/llvm/building/_runtimes_build.sh
+source ${RECIPE_DIR}/llvm/building/_native_tblgen.sh
 source ${RECIPE_DIR}/llvm/building/_llvm_build.sh
 source ${RECIPE_DIR}/llvm/building/_post_build.sh

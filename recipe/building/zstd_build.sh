@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-# Build zlib with zig cc for zig toolchain
+# Build zstd with zig cc for zig toolchain
 set -euxo pipefail
 
-echo "=== Building zig-zlib with zig cc ==="
-
-# Find zig binary
-ZIG="${CONDA_ZIG_BUILD}"
+echo "=== Building zig-zstd with zig cc ==="
 
 # Clear conda compiler flags - zig handles everything
 unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
@@ -18,8 +15,14 @@ cd build
 cmake ../build/cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}/lib/zig-zstd" \
+    -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_C_COMPILER="${ZIG_CC}" \
     -DCMAKE_CXX_COMPILER="${ZIG_CXX}" \
+    -DCMAKE_C_COMPILER_TARGET="${ZIG_TRIPLET}" \
+    -DCMAKE_CXX_COMPILER_TARGET="${ZIG_TRIPLET}" \
+    -DCMAKE_ASM_COMPILER="${ZIG_ASM}" \
+    -DCMAKE_ASM_COMPILER_TARGET="${ZIG_TRIPLET}" \
+    -DCMAKE_ASM_FLAGS="--target=${ZIG_TRIPLET}" \
     -DCMAKE_AR="${ZIG_AR}" \
     -DCMAKE_RANLIB="${ZIG_RANLIB}" \
     -DZSTD_BUILD_SHARED=ON \

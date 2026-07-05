@@ -7,11 +7,9 @@ c_stdlib_version:
 channel_sources:
 - conda-forge
 channel_targets:
-- conda-forge main
+- conda-forge zig_rc
 cross_target_platform_:
 - win-64
-cxx_compiler:
-- vs2022
 libxml2:
 - '2.14'
 libxml2_devel:

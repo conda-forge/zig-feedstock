@@ -15,10 +15,14 @@ function build_zig_with_zig() {
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1
       local rc=0
+      _disk_probe "zig-build-START"
+      echo "=== ZIG_PHASE zig build START $(date -u '+%FT%TZ') ==="
       "${zig}" build \
         --prefix "${install_dir}" \
         ${EXTRA_ZIG_ARGS[@]+"${EXTRA_ZIG_ARGS[@]}"} \
         -Dversion-string="${PKG_VERSION}" 2>&1 || rc=$?
+      echo "=== ZIG_PHASE zig build DONE (rc=${rc}) $(date -u '+%FT%TZ') ==="
+      _disk_probe "zig-build-DONE"
     cd "${current_dir}" || return 1
     if [[ ${rc} -ne 0 ]]; then
       echo "[build_zig_with_zig] FAILED (exit code ${rc})" >&2
@@ -58,9 +62,15 @@ function configure_cmake() {
 function configure_cmake_zigcpp() {
   local build_dir=$1
   local install_dir=$2
-
+  _disk_probe "zigcpp-configure-START"
+  echo "=== ZIG_PHASE zigcpp cmake configure START $(date -u '+%FT%TZ') ==="
   configure_cmake "${build_dir}" "${install_dir}"
+  echo "=== ZIG_PHASE zigcpp cmake configure DONE $(date -u '+%FT%TZ') ==="
+  _disk_probe "zigcpp-configure-DONE"
   pushd "${build_dir}"
+    echo "=== ZIG_PHASE zigcpp build START $(date -u '+%FT%TZ') ==="
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}" ${NINJA_FLAGS:-}
+    echo "=== ZIG_PHASE zigcpp build DONE $(date -u '+%FT%TZ') ==="
   popd
+  _disk_probe "zigcpp-build-DONE"
 }

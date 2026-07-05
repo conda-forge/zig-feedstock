@@ -1,0 +1,16 @@
+--- a/cmake/Findllvm.cmake
++++ b/cmake/Findllvm.cmake
+@@ -83,7 +83,12 @@ if(ZIG_USE_LLVM_CONFIG)
+       OUTPUT_STRIP_TRAILING_WHITESPACE)
+     string(REPLACE " " ";" LLVM_TARGETS_BUILT "${LLVM_TARGETS_BUILT_SPACES}")
+
+-    set(ZIG_LLVM_REQUIRED_TARGETS "AArch64;AMDGPU;ARM;AVR;BPF;Hexagon;Lanai;Mips;MSP430;NVPTX;PowerPC;RISCV;Sparc;SystemZ;VE;WebAssembly;X86;XCore")
++    # Relaxed target requirements for conda-forge zig-llvm
++    # Only require targets that are actually useful for practical compilation
++    set(ZIG_LLVM_REQUIRED_TARGETS "AArch64;AMDGPU;ARM;PowerPC;RISCV;SystemZ;WebAssembly;X86")
++    if (CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AArch64)$")
++        list(REMOVE_ITEM ZIG_LLVM_REQUIRED_TARGETS "AMDGPU")
++    endif ()
+
+     set(ZIG_LLVM_REQUIRED_TARGETS_ENABLED TRUE)
+     foreach(TARGET_NAME IN LISTS ZIG_LLVM_REQUIRED_TARGETS)

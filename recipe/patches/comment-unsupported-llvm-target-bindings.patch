@@ -1,0 +1,169 @@
+--- a/src/codegen/llvm/bindings.zig
++++ b/src/codegen/llvm/bindings.zig
+@@ -195,119 +195,119 @@ pub extern fn LLVMInitializeAMDGPUTargetInfo() void;
+ pub extern fn LLVMInitializeARMTargetInfo() void;
+ pub extern fn LLVMInitializeAVRTargetInfo() void;
+ pub extern fn LLVMInitializeBPFTargetInfo() void;
+-pub extern fn LLVMInitializeHexagonTargetInfo() void;
+-pub extern fn LLVMInitializeLanaiTargetInfo() void;
+-pub extern fn LLVMInitializeMipsTargetInfo() void;
+-pub extern fn LLVMInitializeMSP430TargetInfo() void;
+-pub extern fn LLVMInitializeNVPTXTargetInfo() void;
++// pub extern fn LLVMInitializeHexagonTargetInfo() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeLanaiTargetInfo() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMipsTargetInfo() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMSP430TargetInfo() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeNVPTXTargetInfo() void; // Not in zig-llvm
+ pub extern fn LLVMInitializePowerPCTargetInfo() void;
+ pub extern fn LLVMInitializeRISCVTargetInfo() void;
+-pub extern fn LLVMInitializeSparcTargetInfo() void;
++// pub extern fn LLVMInitializeSparcTargetInfo() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeSystemZTargetInfo() void;
+ pub extern fn LLVMInitializeWebAssemblyTargetInfo() void;
+ pub extern fn LLVMInitializeX86TargetInfo() void;
+-pub extern fn LLVMInitializeXCoreTargetInfo() void;
++// pub extern fn LLVMInitializeXCoreTargetInfo() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeXtensaTargetInfo() void;
+ pub extern fn LLVMInitializeM68kTargetInfo() void;
+ pub extern fn LLVMInitializeCSKYTargetInfo() void;
+-pub extern fn LLVMInitializeVETargetInfo() void;
++// pub extern fn LLVMInitializeVETargetInfo() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeARCTargetInfo() void;
+-pub extern fn LLVMInitializeLoongArchTargetInfo() void;
+-pub extern fn LLVMInitializeSPIRVTargetInfo() void;
++// pub extern fn LLVMInitializeLoongArchTargetInfo() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeSPIRVTargetInfo() void; // Not in zig-llvm
+
+ pub extern fn LLVMInitializeAArch64Target() void;
+ pub extern fn LLVMInitializeAMDGPUTarget() void;
+ pub extern fn LLVMInitializeARMTarget() void;
+ pub extern fn LLVMInitializeAVRTarget() void;
+ pub extern fn LLVMInitializeBPFTarget() void;
+-pub extern fn LLVMInitializeHexagonTarget() void;
+-pub extern fn LLVMInitializeLanaiTarget() void;
+-pub extern fn LLVMInitializeMipsTarget() void;
+-pub extern fn LLVMInitializeMSP430Target() void;
+-pub extern fn LLVMInitializeNVPTXTarget() void;
++// pub extern fn LLVMInitializeHexagonTarget() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeLanaiTarget() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMipsTarget() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMSP430Target() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeNVPTXTarget() void; // Not in zig-llvm
+ pub extern fn LLVMInitializePowerPCTarget() void;
+ pub extern fn LLVMInitializeRISCVTarget() void;
+-pub extern fn LLVMInitializeSparcTarget() void;
++// pub extern fn LLVMInitializeSparcTarget() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeSystemZTarget() void;
+ pub extern fn LLVMInitializeWebAssemblyTarget() void;
+ pub extern fn LLVMInitializeX86Target() void;
+-pub extern fn LLVMInitializeXCoreTarget() void;
++// pub extern fn LLVMInitializeXCoreTarget() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeXtensaTarget() void;
+ pub extern fn LLVMInitializeM68kTarget() void;
+-pub extern fn LLVMInitializeVETarget() void;
++// pub extern fn LLVMInitializeVETarget() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeCSKYTarget() void;
+ pub extern fn LLVMInitializeARCTarget() void;
+-pub extern fn LLVMInitializeLoongArchTarget() void;
+-pub extern fn LLVMInitializeSPIRVTarget() void;
++// pub extern fn LLVMInitializeLoongArchTarget() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeSPIRVTarget() void; // Not in zig-llvm
+
+ pub extern fn LLVMInitializeAArch64TargetMC() void;
+ pub extern fn LLVMInitializeAMDGPUTargetMC() void;
+ pub extern fn LLVMInitializeARMTargetMC() void;
+ pub extern fn LLVMInitializeAVRTargetMC() void;
+ pub extern fn LLVMInitializeBPFTargetMC() void;
+-pub extern fn LLVMInitializeHexagonTargetMC() void;
+-pub extern fn LLVMInitializeLanaiTargetMC() void;
+-pub extern fn LLVMInitializeMipsTargetMC() void;
+-pub extern fn LLVMInitializeMSP430TargetMC() void;
+-pub extern fn LLVMInitializeNVPTXTargetMC() void;
++// pub extern fn LLVMInitializeHexagonTargetMC() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeLanaiTargetMC() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMipsTargetMC() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMSP430TargetMC() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeNVPTXTargetMC() void; // Not in zig-llvm
+ pub extern fn LLVMInitializePowerPCTargetMC() void;
+ pub extern fn LLVMInitializeRISCVTargetMC() void;
+-pub extern fn LLVMInitializeSparcTargetMC() void;
++// pub extern fn LLVMInitializeSparcTargetMC() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeSystemZTargetMC() void;
+ pub extern fn LLVMInitializeWebAssemblyTargetMC() void;
+ pub extern fn LLVMInitializeX86TargetMC() void;
+-pub extern fn LLVMInitializeXCoreTargetMC() void;
++// pub extern fn LLVMInitializeXCoreTargetMC() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeXtensaTargetMC() void;
+ pub extern fn LLVMInitializeM68kTargetMC() void;
+ pub extern fn LLVMInitializeCSKYTargetMC() void;
+-pub extern fn LLVMInitializeVETargetMC() void;
++// pub extern fn LLVMInitializeVETargetMC() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeARCTargetMC() void;
+-pub extern fn LLVMInitializeLoongArchTargetMC() void;
+-pub extern fn LLVMInitializeSPIRVTargetMC() void;
++// pub extern fn LLVMInitializeLoongArchTargetMC() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeSPIRVTargetMC() void; // Not in zig-llvm
+
+ pub extern fn LLVMInitializeAArch64AsmPrinter() void;
+ pub extern fn LLVMInitializeAMDGPUAsmPrinter() void;
+ pub extern fn LLVMInitializeARMAsmPrinter() void;
+ pub extern fn LLVMInitializeAVRAsmPrinter() void;
+ pub extern fn LLVMInitializeBPFAsmPrinter() void;
+-pub extern fn LLVMInitializeHexagonAsmPrinter() void;
+-pub extern fn LLVMInitializeLanaiAsmPrinter() void;
+-pub extern fn LLVMInitializeMipsAsmPrinter() void;
+-pub extern fn LLVMInitializeMSP430AsmPrinter() void;
+-pub extern fn LLVMInitializeNVPTXAsmPrinter() void;
++// pub extern fn LLVMInitializeHexagonAsmPrinter() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeLanaiAsmPrinter() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMipsAsmPrinter() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMSP430AsmPrinter() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeNVPTXAsmPrinter() void; // Not in zig-llvm
+ pub extern fn LLVMInitializePowerPCAsmPrinter() void;
+ pub extern fn LLVMInitializeRISCVAsmPrinter() void;
+-pub extern fn LLVMInitializeSparcAsmPrinter() void;
++// pub extern fn LLVMInitializeSparcAsmPrinter() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeSystemZAsmPrinter() void;
+ pub extern fn LLVMInitializeWebAssemblyAsmPrinter() void;
+ pub extern fn LLVMInitializeX86AsmPrinter() void;
+-pub extern fn LLVMInitializeXCoreAsmPrinter() void;
++// pub extern fn LLVMInitializeXCoreAsmPrinter() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeM68kAsmPrinter() void;
+-pub extern fn LLVMInitializeVEAsmPrinter() void;
++// pub extern fn LLVMInitializeVEAsmPrinter() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeARCAsmPrinter() void;
+-pub extern fn LLVMInitializeLoongArchAsmPrinter() void;
+-pub extern fn LLVMInitializeSPIRVAsmPrinter() void;
++// pub extern fn LLVMInitializeLoongArchAsmPrinter() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeSPIRVAsmPrinter() void; // Not in zig-llvm
+
+ pub extern fn LLVMInitializeAArch64AsmParser() void;
+ pub extern fn LLVMInitializeAMDGPUAsmParser() void;
+ pub extern fn LLVMInitializeARMAsmParser() void;
+ pub extern fn LLVMInitializeAVRAsmParser() void;
+ pub extern fn LLVMInitializeBPFAsmParser() void;
+-pub extern fn LLVMInitializeHexagonAsmParser() void;
+-pub extern fn LLVMInitializeLanaiAsmParser() void;
+-pub extern fn LLVMInitializeMipsAsmParser() void;
+-pub extern fn LLVMInitializeMSP430AsmParser() void;
++// pub extern fn LLVMInitializeHexagonAsmParser() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeLanaiAsmParser() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMipsAsmParser() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeMSP430AsmParser() void; // Not in zig-llvm
+ pub extern fn LLVMInitializePowerPCAsmParser() void;
+ pub extern fn LLVMInitializeRISCVAsmParser() void;
+-pub extern fn LLVMInitializeSparcAsmParser() void;
++// pub extern fn LLVMInitializeSparcAsmParser() void; // Not in zig-llvm
+ pub extern fn LLVMInitializeSystemZAsmParser() void;
+ pub extern fn LLVMInitializeWebAssemblyAsmParser() void;
+ pub extern fn LLVMInitializeX86AsmParser() void;
+ pub extern fn LLVMInitializeXtensaAsmParser() void;
+ pub extern fn LLVMInitializeM68kAsmParser() void;
+ pub extern fn LLVMInitializeCSKYAsmParser() void;
+-pub extern fn LLVMInitializeVEAsmParser() void;
+-pub extern fn LLVMInitializeLoongArchAsmParser() void;
++// pub extern fn LLVMInitializeVEAsmParser() void; // Not in zig-llvm
++// pub extern fn LLVMInitializeLoongArchAsmParser() void; // Not in zig-llvm
+
+ extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;

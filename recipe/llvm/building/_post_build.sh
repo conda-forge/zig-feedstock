@@ -18,6 +18,18 @@ for _tbl in llvm-tblgen clang-tblgen llvm-min-tblgen; do
   fi
 done
 
+# A plain native (non-cross) LLVM build does NOT emit a distinct llvm-min-tblgen
+# binary, so the loop above leaves it absent -- but recipe.yaml declares
+# lib/zig-llvm/bin/llvm-min-tblgen unconditionally, failing the strict package
+# content test (observed on native osx-64). llvm-tblgen is a strict superset, so
+# satisfy the declaration with a symlink when the dedicated binary is missing.
+# Mirrors the cross-build fallback in _native_tblgen.sh:138-140. No-op on
+# platforms that produce a real llvm-min-tblgen (the -e guard skips it).
+if [[ ! -e "${LLVM_INSTALL}/bin/llvm-min-tblgen" && -x "${LLVM_INSTALL}/bin/llvm-tblgen" ]]; then
+  ln -sf llvm-tblgen "${LLVM_INSTALL}/bin/llvm-min-tblgen" \
+    && echo "  linked ${LLVM_INSTALL}/bin/llvm-min-tblgen -> llvm-tblgen"
+fi
+
 if [[ "${ZIG_LLVM_SKIP_BUILD:-}" == "0" ]]; then
   echo "=== Populating the cache ==="
   mkdir -p ${RECIPE_DIR}/cache && rm -rf ${RECIPE_DIR}/cache/*
@@ -53,4 +65,15 @@ echo "=== zig-llvm build complete ==="
 
 # Create a marker file for zig build to find this LLVM
 echo "${LLVM_INSTALL}" > "$(dirname "${LLVM_INSTALL}")/zig-llvm-path.txt"
+
+# Disk recovery: remove the LLVM build dir now that install + tblgen copy +
+# post-processing are done. Mirrors the Phase-1 runtimes build dir cleanup
+# in _runtimes_build.sh (rm -rf right after install, same ENOSPC rationale).
+# zig_build.sh (next phase in build.sh) only needs LLVM_INSTALL, not LLVM_BUILD.
+echo "=== Removing LLVM build dir (disk recovery) ==="
+echo "  Disk before LLVM build dir cleanup:"
+df -h "${SRC_DIR}" || true
+rm -rf "${LLVM_BUILD}"
+echo "  Disk after LLVM build dir cleanup:"
+df -h "${SRC_DIR}" || true
 

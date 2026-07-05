@@ -9,26 +9,28 @@ _CLANG=(
   -DCLANG_INCLUDE_TESTS=OFF
   -DCLANG_TOOL_APINOTES_TEST_BUILD=OFF
   -DCLANG_TOOL_CLANG_DIFF_BUILD=OFF
+  -DCLANG_TOOL_CLANG_FUZZER_BUILD=OFF
   -DCLANG_TOOL_CLANG_IMPORT_TEST_BUILD=OFF
   -DCLANG_TOOL_CLANG_LINKER_WRAPPER_BUILD=OFF
   -DCLANG_TOOL_C_INDEX_TEST_BUILD=OFF
   -DCLANG_TOOL_LIBCLANG_BUILD=OFF
 )
 
-# LLVM_TARGETS_TO_BUILD: full standard-target list matching zig's unconditional
-# LLVMInitialize<Target>AsmPrinter/AsmParser call sites. On aarch64-windows-gnu
-# the resulting libLLVM-20.dll would exceed the PE/COFF 65535 export-ordinal
-# limit because GPU + many backends have large TableGen instruction-selection
-# tables. Keep the win-arm64 pruned list to three safe targets only.
-_llvm_targets="X86;AArch64;ARM;PowerPC;RISCV;WebAssembly;SystemZ;AMDGPU;AVR;NVPTX;BPF;Hexagon;Lanai;LoongArch;Mips;MSP430;Sparc;VE;XCore"
-# SPIRV is experimental (not part of LLVM_TARGETS_TO_BUILD) but zig calls
-# LLVMInitializeSPIRVAsmPrinter unconditionally — build it as an experimental
-# target so the symbol resolves at link time.
-_llvm_experimental_targets="SPIRV"
+# LLVM_TARGETS_TO_BUILD: 10-target curated list. On aarch64-windows-gnu the
+# resulting libLLVM-20.dll exceeds the PE/COFF 65535 export-ordinal limit
+# because GPU backends (AMDGPU + NVPTX) have very large TableGen-generated
+# instruction-selection tables. Drop them on aarch64-windows-gnu only —
+# zig doesn't target GPU code generation on win-arm64.
+_llvm_targets="X86;AArch64;ARM;PowerPC;RISCV;WebAssembly;SystemZ;AMDGPU;AVR;NVPTX"
 if [[ "${ZIG_TRIPLET}" == aarch64-* ]] && is_not_unix; then
-    _llvm_targets="X86;AArch64;WebAssembly"
-    _llvm_experimental_targets=""
-    echo "  win-arm64: pruned LLVM_TARGETS_TO_BUILD (dropped ARM, RISCV, AVR, AMDGPU, NVPTX, PowerPC, SystemZ, BPF, Hexagon, Lanai, LoongArch, Mips, MSP430, Sparc, VE, XCore) to fit PE/COFF 65535 export limit"
+    # zig requires AArch64;ARM;PowerPC;RISCV;SystemZ;WebAssembly;X86 to be built
+    # (see recipes/zig-zig/patches/relax-llvm-required-targets.patch's
+    # ZIG_LLVM_REQUIRED_TARGETS). Only the GPU backends (AMDGPU, NVPTX) and AVR
+    # are dropped -- their huge TableGen instruction-selection tables were the
+    # actual cause of exceeding the PE/COFF 65535 export-ordinal limit, not
+    # ARM/PowerPC/RISCV/SystemZ.
+    _llvm_targets="X86;AArch64;ARM;PowerPC;RISCV;SystemZ;WebAssembly"
+    echo "  win-arm64: pruned LLVM_TARGETS_TO_BUILD (dropped AVR, AMDGPU, NVPTX) to fit PE/COFF 65535 export limit"
 fi
 
 _LLVM=(
@@ -169,152 +171,14 @@ _LLVM=(
   -DLLVM_TOOL_XCODE_TOOLCHAIN_BUILD=OFF
   -DLLVM_TOOL_YAML2OBJ_BUILD=OFF
 )
-if [[ -n "${_llvm_experimental_targets}" ]]; then
-    _LLVM+=("-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=${_llvm_experimental_targets}")
-fi
 
-# BLAKE3 asm guard: LLVM's lib/Support/BLAKE3/CMakeLists runs
-# check_symbol_exists(__x86_64__) with ZIG_CC, which targets the OUTPUT
-# platform (x86_64), so IS_X64=TRUE and it appends the x86 AVX-512 asm with
-# -mavx512vl. On a non-x86_64 build host that object is assembled for the host
-# arch (e.g. aarch64), which has no avx512vl -> ISA error. Disable asm-file
-# selection on non-x86_64 hosts; the portable C + NEON BLAKE3 path is used
-# instead (negligible perf cost — BLAKE3 is only used for LLVM module hashing).
-if [[ "$(uname -m)" != "x86_64" ]]; then
-  _LLVM+=(-DLLVM_DISABLE_ASSEMBLY_FILES=ON)
-fi
-
-# === Host tablegen pre-build + tablegen bypass flags ===
-# Must run HERE (in _llvm_build.sh) — NOT in _cross_compile.sh — because the
-# wrapper binaries (${BUILD_PREFIX}/bin/<triplet>-zig-cc) are compiled by
-# _zig_wrappers.sh, which build.sh sources AFTER _cross_compile.sh
-# but BEFORE _llvm_build.sh.  Calling cmake with a non-existent C compiler
-# triggers "is not a full path to an existing compiler tool".
-#
-# After the pre-build, we append LLVM_TABLEGEN / CLANG_TABLEGEN_EXE /
-# LLVM_NATIVE_TOOL_DIR to CMAKE_CROSS_FLAGS so the main cmake invocation
-# below uses host-runnable binaries instead of cross-compiled ones.
-if [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]]; then
-  _host_tblgen_build="${SRC_DIR}/_host_tblgen_build"
-
-  if is_linux; then
-    # _native_zig_{cc,cxx,asm} and _native_zig_triplet were set in
-    # _cross_compile.sh — they are shell variables still in scope.
-    if [[ ! -x "${_host_tblgen_build}/bin/llvm-tblgen" ]]; then
-      echo "Pre-building host llvm-tblgen + clang-tblgen for linux cross-compile..."
-      cmake -G Ninja -S "${LLVM_SRC}" -B "${_host_tblgen_build}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER="${_native_zig_cc}" \
-        -DCMAKE_CXX_COMPILER="${_native_zig_cxx}" \
-        -DCMAKE_ASM_COMPILER="${_native_zig_asm}" \
-        -DCMAKE_C_COMPILER_WORKS=TRUE \
-        -DCMAKE_CXX_COMPILER_WORKS=TRUE \
-        -DCMAKE_ASM_COMPILER_WORKS=TRUE \
-        -DLLVM_TARGETS_TO_BUILD=host \
-        -DLLVM_ENABLE_PROJECTS='clang' \
-        -DLLVM_ENABLE_ZSTD=OFF \
-        -DLLVM_ENABLE_LIBXML2=OFF \
-        -DLLVM_INCLUDE_TESTS=OFF \
-        -DLLVM_INCLUDE_EXAMPLES=OFF \
-        -DLLVM_INCLUDE_BENCHMARKS=OFF
-      cmake --build "${_host_tblgen_build}" --target llvm-tblgen llvm-min-tblgen clang-tblgen
-    fi
-  elif is_osx; then
-    if [[ ! -x "${_host_tblgen_build}/bin/llvm-tblgen" ]]; then
-      echo "Pre-building host llvm-tblgen + clang-tblgen for osx cross-compile..."
-      cmake -G Ninja -S "${LLVM_SRC}" -B "${_host_tblgen_build}" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER="${_native_zig_cc}" \
-        -DCMAKE_CXX_COMPILER="${_native_zig_cxx}" \
-        -DCMAKE_ASM_COMPILER="${_native_zig_asm}" \
-        -DCMAKE_OSX_SYSROOT="${CONDA_BUILD_SYSROOT}" \
-        -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}" \
-        -DCMAKE_C_COMPILER_WORKS=TRUE \
-        -DCMAKE_CXX_COMPILER_WORKS=TRUE \
-        -DCMAKE_ASM_COMPILER_WORKS=TRUE \
-        -DLLVM_TARGETS_TO_BUILD=host \
-        -DLLVM_ENABLE_PROJECTS='clang' \
-        -DLLVM_ENABLE_ZSTD=OFF \
-        -DLLVM_ENABLE_LIBXML2=OFF \
-        -DLLVM_INCLUDE_TESTS=OFF \
-        -DLLVM_INCLUDE_EXAMPLES=OFF \
-        -DLLVM_INCLUDE_BENCHMARKS=OFF
-      cmake --build "${_host_tblgen_build}" --target llvm-tblgen llvm-min-tblgen clang-tblgen
-    fi
-  fi
-
-  # Tablegen bypass flags: set LLVM_TBLGEN / CLANG_TBLGEN and append to
-  # CMAKE_CROSS_FLAGS.  For linux/osx the pre-build above provides binaries;
-  # for windows cross-builds fall back to finding tblgen in BUILD_PREFIX
-  # (provided by zig-llvm as a build dep).
-  if is_linux || is_osx; then
-    LLVM_TBLGEN="${_host_tblgen_build}/bin/llvm-tblgen"
-    CLANG_TBLGEN="${_host_tblgen_build}/bin/clang-tblgen"
-    echo "  LLVM_TBLGEN resolved to: ${LLVM_TBLGEN} (pre-built host tool)"
-    echo "  CLANG_TBLGEN resolved to: ${CLANG_TBLGEN} (pre-built host tool)"
-  else
-    # Windows cross-build: find tblgen from BUILD_PREFIX (zig-llvm build dep).
-    if [[ -z "${LLVM_TBLGEN:-}" ]]; then
-      LLVM_TBLGEN=$(find "${BUILD_PREFIX}" \
-          \( -name llvm-tblgen -o -name llvm-tblgen.exe \) \
-          ! -name 'llvm-min-tblgen' ! -name 'llvm-min-tblgen.exe' \
-          -type f 2>/dev/null | head -1)
-      echo "  LLVM_TBLGEN resolved to: ${LLVM_TBLGEN:-<not found>} (from BUILD_PREFIX)"
-    fi
-    CLANG_TBLGEN=$(find "${BUILD_PREFIX}" \
-        \( -name clang-tblgen -o -name clang-tblgen.exe \) \
-        -type f 2>/dev/null | head -1)
-    echo "  CLANG_TBLGEN resolved to: ${CLANG_TBLGEN:-<not found>} (from BUILD_PREFIX)"
-  fi
-
-  # Append tablegen bypass flags to CMAKE_CROSS_FLAGS (already populated by
-  # _cross_compile.sh with CROSS_TOOLCHAIN_FLAGS_NATIVE, compiler-target, etc.).
-  if [[ -n "${LLVM_TBLGEN:-}" ]]; then
-    # LLVM 20+ TableGen variable resolution:
-    #   LLVM_TABLEGEN: legacy cache variable (still honored).
-    #   LLVM_TABLEGEN_EXE: internal var consulted by tablegen() macro on LLVM 20+.
-    #     Without this, the macro may fall back to MIN tblgen for some generators
-    #     (e.g. -gen-asm-matcher on WebAssembly), producing "Unknown command line argument" errors.
-    #   LLVM_MIN_TABLEGEN_EXE: bootstrap-only minimal tblgen. Pointed at the FULL
-    #     llvm-tblgen since it is a strict superset (handles every generator
-    #     min-tblgen handles, plus the rest). Safe and avoids the asm-matcher mismatch.
-    CMAKE_CROSS_FLAGS+=(
-      -DLLVM_TABLEGEN="${LLVM_TBLGEN}"
-      -DLLVM_TABLEGEN_EXE="${LLVM_TBLGEN}"
-      -DLLVM_MIN_TABLEGEN_EXE="${LLVM_TBLGEN}"
-      # LLVM_MIN_TABLEGEN (no _EXE suffix) is the cache variable LLVM's
-      # CrossCompile.cmake reads to skip compiling llvm-min-tblgen from
-      # source. Without this, LLVM still tries to build min-tblgen via
-      # the outer cross-target CMake (using ZIG_CC=riscv64 wrapper),
-      # which fails to link against x86_64 BUILD_PREFIX/lib/libzstd.so.
-      -DLLVM_MIN_TABLEGEN="${LLVM_TBLGEN}"
-    )
-    # Pre-built tablegen dir: tells CrossCompile.cmake where to find llvm-tblgen
-    # without triggering a NATIVE sub-cmake rebuild.
-    _tblgen_dir=$(dirname "${LLVM_TBLGEN}")
-    CMAKE_CROSS_FLAGS+=(-DLLVM_NATIVE_TOOL_DIR="${_tblgen_dir}")
-  else
-    echo "WARNING: LLVM_TBLGEN not found — cross tablegen will likely fail"
-  fi
-  [[ -n "${CLANG_TBLGEN:-}" ]] && CMAKE_CROSS_FLAGS+=(-DCLANG_TABLEGEN_EXE="${CLANG_TBLGEN}")
-
-  echo "  LLVM_TABLEGEN: ${LLVM_TBLGEN:-<not set>}"
-  echo "  CLANG_TABLEGEN: ${CLANG_TBLGEN:-<not set>}"
-  echo "  LLVM_NATIVE_TOOL_DIR: ${_tblgen_dir:-<not set>}"
-fi
-# === End host tablegen pre-build ===
 
 echo "=== Configuring LLVM ==="
 echo "  Install prefix: ${LLVM_INSTALL} (separate from conda-forge llvmdev)"
 _CMAKE=(
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${LLVM_INSTALL}"
-  # Exclude $BUILD_PREFIX from CMAKE_PREFIX_PATH on cross-builds: it contains
-  # x86_64 host libs that must never link into target-arch artifacts (see
-  # ld.lld 'incompatible with elf64lriscv' style errors). Native build-tools
-  # are located via PATH, not find_package. On native builds, $BUILD_PREFIX
-  # is retained for parity with the prior behavior.
-  -DCMAKE_PREFIX_PATH="${LLVM_INSTALL};${PREFIX}$( [[ "${CONDA_BUILD_CROSS_COMPILATION:-0}" == "1" ]] || echo ";${BUILD_PREFIX}" )"
+  -DCMAKE_PREFIX_PATH="${LLVM_INSTALL};${PREFIX};${BUILD_PREFIX}"
   -DCMAKE_LINK_DEPENDS_USE_LINKER=OFF
 
   -DCMAKE_AR="${ZIG_AR}"
@@ -330,41 +194,8 @@ _CMAKE=(
   -DCMAKE_INSTALL_RPATH="${LLVM_INSTALL}/lib"
 
   -DCMAKE_C_FLAGS="-fvisibility=default"
-  # Isolate the C++ compile from zig's BUNDLED libc++ headers. The bootstrap
-  # zig (0.16.0) ships libc++ 21.1.0 headers (lib/zig/libcxx/include) that
-  # `zig c++` auto-injects; they declare std::__1::__hash_memory (new in libc++
-  # 21) which the recipe's linked libc++ 20.1.8 never implements -> ld.lld
-  # undefined symbol when linking llvm-tblgen. -nostdinc++ drops zig's bundled
-  # headers (zig cc is clang; the wrapper forwards -nostdinc++ untouched);
-  # -I (NOT -isystem) points at the freshly-built 20.1.8 libc++ headers so they
-  # are searched in clang's user bracket, BEFORE zig's bundled glibc C-header
-  # dir. libc++'s <cstring>/<cmath> require libc++'s own v1/string.h,math.h to
-  # win over glibc's (they #include_next the real ones); with -isystem, zig's
-  # glibc dir preceded v1 and libc++ #error'd "didn't find libc++'s <string.h>"
-  # (CheckAtomic failure). -I fixes the order. __config_site is present under
-  # ${LLVM_INSTALL}/include/c++/v1 so compile and link both use 20.1.8.
-  -DCMAKE_CXX_FLAGS="-fvisibility=default -nostdinc++ -I${LLVM_INSTALL}/include/c++/v1"
-
-  # -nostdinc++ (above) also lands on the LINK line, which makes zig cc STOP
-  # auto-linking its bundled libc++ -> a flood of undefined std::__1::/operator
-  # new-delete/__cxa_/vtable-__cxxabiv1 symbols at the first executable link
-  # (llvm-min-tblgen). Explicitly link the freshly-built 20.1.8 libc++/libc++abi/
-  # libunwind. CMAKE_CXX_STANDARD_LIBRARIES is appended at the END of every C++
-  # link line (after objects and the static libLLVM*.a), which is required so
-  # those archives' libc++ references resolve, and it survives -Wl,--as-needed.
-  # libc++abi is static-only (.a); libunwind is shared; all under ${LLVM_INSTALL}/lib.
-  "-DCMAKE_CXX_STANDARD_LIBRARIES=-L${LLVM_INSTALL}/lib -lc++ -lc++abi -lunwind"
+  -DCMAKE_CXX_FLAGS="-fvisibility=default"
 )
-
-# Inject glibc-capped target to zig-cc so libclang-cpp.so and liblld.so don't
-# reference newer glibc symbols than the .2.17 cap allows (ZIG_TRIPLET comes
-# from recipe.yaml env, e.g. x86_64-linux-gnu.2.17 on linux-64).
-if is_linux; then
-  _CMAKE+=(
-    "-DCMAKE_C_COMPILER_TARGET=${ZIG_TRIPLET}"
-    "-DCMAKE_CXX_COMPILER_TARGET=${ZIG_TRIPLET}"
-  )
-fi
 
 # RC compiler (resource compiler for Windows .exe version info).
 # On Windows, Platform/Windows-GNU.cmake auto-enables RC language during
@@ -376,7 +207,7 @@ fi
 #
 # Since we use zig (Clang, not MSVC), the RC resource is never compiled
 # (add_windows_version_resource_file guards on MSVC).
-# Fix: use _BUILD_PREFIX (forward-slash unix path) in the -C initial-cache
+# Fix: use BUILD_PREFIX (forward-slash unix path) in the -C initial-cache
 # script. Forward slashes have no escape issues in CMake string literals.
 # Two cmake script files:
 #
@@ -407,9 +238,17 @@ CMINIT
 
 CMAKE_RC_FLAGS=()
 if is_not_unix; then
-  # _BUILD_PREFIX: forward-slash unix path version of BUILD_PREFIX,
-  # created by build.bat (e.g. /d/a/package-incubator/.../build_env).
-  _rc_path="${_BUILD_PREFIX}/Library/bin/${ZIG_TARGET_HOST}-zig-rc.exe"
+  # BUILD_PREFIX can arrive either as a forward-slash unix path (package-incubator
+  # build.bat, e.g. /d/a/package-incubator/.../build_env) OR as a native Windows
+  # path with backslashes (conda-forge / rattler-build CI, e.g. D:\bld\...\build_env).
+  # In the backslash case the raw path interpolated into the set() below trips
+  # CMake's "Invalid character escape '\b'" (from \bin / \bld / \build_env) and
+  # aborts the initial-cache parse before project() (confirmed: build 1551110
+  # log 55, win-64 zig_impl). Normalize backslashes -> forward slashes so the
+  # written CMAKE_RC_COMPILER path is escape-safe regardless of how BUILD_PREFIX
+  # arrives (forward slashes are valid path separators for CMake on Windows).
+  _rc_path="${BUILD_PREFIX}/Library/bin/${CONDA_ZIG_BUILD%.exe}-rc.exe"
+  _rc_path="${_rc_path//\\//}"
   cat >> "${_cmake_init}" << CMINIT
 # RC compiler with forward-slash path — avoids CMake 4.2 backslash escape bug.
 set(CMAKE_RC_COMPILER "${_rc_path}" CACHE FILEPATH "RC compiler")
@@ -438,6 +277,13 @@ if [[ "${target_platform}" == "linux-"* ]]; then
   trap '_zstd_diag' EXIT
 fi
 
+# CMake's compiler check runs the zig wrapper -> build-arch host zig, which is
+# dynamically linked to libc++.so.1 from the zig-libcxx build dep. Put that dir
+# on the loader path BEFORE configure (the existing export later only covers build).
+if is_linux; then
+  export LD_LIBRARY_PATH="${BUILD_PREFIX}/lib/zig-llvm/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
 cmake "-C${_cmake_init}" \
   -S "${LLVM_SRC}" -B "${LLVM_BUILD}" \
   -DCMAKE_PROJECT_INCLUDE="${_cmake_project_include}" \
@@ -456,6 +302,44 @@ cmake "-C${_cmake_init}" \
   echo "=== zstd CMake resolution ==="
   grep -i '^zstd' "${LLVM_BUILD}/CMakeCache.txt" 2>/dev/null || true
   echo "============================="
+
+  # TEMP DIAG (win-64 --export-all-symbols investigation)
+  # Capture CMAKE_SHARED_LINKER_FLAGS and generated Ninja linker rules immediately
+  # after cmake configure, before the quick-fail guard. This helps determine whether
+  # --export-all-symbols is lost at configure time or at Ninja-generation time.
+  if is_not_unix; then
+    echo "=== DIAG: live shared-linker flags after configure ==="
+    grep -E "CMAKE_SHARED_LINKER_FLAGS" "${LLVM_BUILD}/CMakeCache.txt" || true
+    echo "--- Ninja rules for CXX_SHARED_LIBRARY_LINKER ---"
+    grep -nE "rule CXX_SHARED_LIBRARY_LINKER__(LLVM|clang-cpp)_Release" -A2 "${LLVM_BUILD}/CMakeFiles/rules.ninja" 2>/dev/null || \
+      find "${LLVM_BUILD}" -maxdepth 3 -name 'rules.ninja' -exec grep -nE "rule CXX_SHARED_LIBRARY_LINKER__(LLVM|clang-cpp)_Release" -A2 {} \; 2>/dev/null || true
+    echo "=== END DIAG ==="
+  fi
+
+  # TEMP DIAG (win-64 build.ninja LINK_FLAGS)
+  # rules.ninja only holds the unexpanded `$LINK_FLAGS` template; the actual
+  # per-target flags (from CMAKE_SHARED_LINKER_FLAGS/_INIT) are written by CMake's
+  # Ninja generator into the per-target BUILD EDGE in build.ninja as a
+  # `LINK_FLAGS = ...` variable. Dump those edges here so the next CI run proves
+  # whether --export-all-symbols actually reaches the expanded link command.
+  if is_not_unix; then
+    echo "=== DIAG: build.ninja LINK_FLAGS for LLVM/clang-cpp build edges ==="
+    _build_ninja_diag="${LLVM_BUILD}/build.ninja"
+    [[ -f "${_build_ninja_diag}" ]] || _build_ninja_diag=$(find "${LLVM_BUILD}" -maxdepth 3 -name 'build.ninja' 2>/dev/null | head -1)
+    if [[ -n "${_build_ninja_diag}" && -f "${_build_ninja_diag}" ]]; then
+      for _diag_rule in "CXX_SHARED_LIBRARY_LINKER__LLVM_Release" "CXX_SHARED_LIBRARY_LINKER__clang-cpp_Release"; do
+        echo "--- build edge for rule: ${_diag_rule} ---"
+        awk -v rule=": ${_diag_rule}" '
+          /^build / { in_edge = index($0, rule) > 0; if (in_edge) print; next }
+          in_edge && NF == 0 { in_edge = 0 }
+          in_edge { print }
+        ' "${_build_ninja_diag}" | grep -E '^build |LINK_FLAGS' || echo "  (no matching build edge found)"
+      done
+    else
+      echo "  (build.ninja not found under ${LLVM_BUILD})"
+    fi
+    echo "=== END DIAG ==="
+  fi
 
   # === ppc64le ld.real shim (Option A diagnostic) ===
   if [[ "${target_platform}" == "linux-ppc64le" ]]; then
@@ -484,7 +368,7 @@ LDSHIM
     echo "=== ppc64le pre-link SONAME probe ==="
     for _dir in "${PREFIX}/lib" "${PREFIX}/lib/zig-zstd/lib" \
                 "${PREFIX}/lib/zig-zlib/lib" "${PREFIX}/lib/zig-libxml2/lib" \
-                "${PREFIX}/lib/zig-xml2/lib" "${BUILD_PREFIX}/lib"; do
+                "${BUILD_PREFIX}/lib"; do
       echo "--- ${_dir} ---"
       if [[ -d "${_dir}" ]]; then
         ls -la "${_dir}"/libzstd* "${_dir}"/libz.so* "${_dir}"/libxml2.so* \
@@ -496,38 +380,60 @@ LDSHIM
     echo "===================================="
   fi
 
-# === Quick-fail: verify --export-all-symbols in ALL shared library link rules ===
-# libLLVM and libclang-cpp each get their own CXX_SHARED_LIBRARY_LINKER rule in
-# rules.ninja.  If --export-all-symbols is missing from either, the import lib
-# will be 8 KiB instead of 100+ KiB — but we'd only discover that AFTER 2+ hours.
+# === Quick-fail: verify --export-all-symbols in ALL shared library link edges ===
+# libLLVM and libclang-cpp each get their own CXX_SHARED_LIBRARY_LINKER rule, but
+# the per-target linker flags (from CMAKE_SHARED_LINKER_FLAGS/_INIT) are NOT baked
+# into that rule's `command =` template in rules.ninja — CMake's Ninja generator
+# only ever writes the unexpanded `$LINK_FLAGS` placeholder there. The expanded
+# flags live per-target in build.ninja, as a `LINK_FLAGS = ...` variable inside
+# each target's BUILD EDGE. If --export-all-symbols is missing from either
+# target's LINK_FLAGS, the import lib will be 8 KiB instead of 100+ KiB — but
+# we'd only discover that AFTER 2+ hours.
 #
 # win-arm64: skip this assertion — patch 0004 routes to --def (not --export-all-symbols)
 # for aarch64 to avoid the PE/COFF 65535 export-ordinal cap. The .def file is generated
 # in Phase 0 below; its presence (not --export-all-symbols) is what matters there.
 if is_not_unix && ! { [[ "${ZIG_TRIPLET}" == aarch64-* ]]; }; then
   { set +x; } 2>/dev/null
-  echo "=== Quick-fail: verifying --export-all-symbols in ALL shared library rules ==="
+  # Locate build.ninja, which holds the per-target BUILD EDGES (`build <out> :
+  # CXX_SHARED_LIBRARY_LINKER__<target>_Release ...` followed by an indented
+  # `LINK_FLAGS = ...` variable) with the fully expanded linker flags. Keying off
+  # the rule name (rather than the output filename, e.g. libLLVM-20.dll) is
+  # stable regardless of versioned .dll naming.
+  _build_ninja="${LLVM_BUILD}/build.ninja"
+  [[ -f "${_build_ninja}" ]] || _build_ninja=$(find "${LLVM_BUILD}" -maxdepth 3 -name 'build.ninja' 2>/dev/null | head -1)
+  echo "=== Quick-fail: verifying --export-all-symbols in ALL shared library LINK_FLAGS ==="
   _export_fail=0
-  while IFS= read -r _rule_name; do
-    # Extract the command line for this rule (next 8 lines after the rule declaration)
-    _rule_cmd=$(grep -A8 "^rule ${_rule_name}$" "${_rules_ninja}" 2>/dev/null | grep 'command =' || true)
+  for _rule_name in CXX_SHARED_LIBRARY_LINKER__LLVM_Release CXX_SHARED_LIBRARY_LINKER__clang-cpp_Release; do
     echo "  ${_rule_name}:"
-    if echo "${_rule_cmd}" | grep -q 'export-all-symbols'; then
+    if [[ -z "${_build_ninja}" || ! -f "${_build_ninja}" ]]; then
+      echo "    FAIL: build.ninja not found under ${LLVM_BUILD}"
+      _export_fail=1
+      continue
+    fi
+    # Extract this target's build edge: the `build ... : <rule> ...` line and
+    # its following indented variable lines, up to the next blank line.
+    _link_flags=$(awk -v rule=": ${_rule_name}" '
+      /^build / { in_edge = index($0, rule) > 0; next }
+      in_edge && NF == 0 { in_edge = 0 }
+      in_edge { print }
+    ' "${_build_ninja}" | grep 'LINK_FLAGS =' || true)
+    if echo "${_link_flags}" | grep -q -- '--export-all-symbols'; then
       echo "    OK: --export-all-symbols present"
     else
-      echo "    FAIL: --export-all-symbols NOT in command line!"
-      echo "    command = ${_rule_cmd}"
+      echo "    FAIL: --export-all-symbols NOT in LINK_FLAGS!"
+      echo "    LINK_FLAGS = ${_link_flags}"
       _export_fail=1
     fi
-  done < <(grep '^rule CXX_SHARED_LIBRARY_LINKER' "${_rules_ninja}" 2>/dev/null | sed 's/^rule //')
+  done
   if [[ ${_export_fail} -ne 0 ]]; then
-    echo "  FATAL: --export-all-symbols missing from one or more shared library link rules."
+    echo "  FATAL: --export-all-symbols missing from one or more shared library LINK_FLAGS."
     echo "  libclang-cpp.dll.a will be ~8 KiB instead of 100+ KiB."
     echo "  Aborting to avoid wasting 2+ hours on a build that will fail."
     set -x
     exit 1
   fi
-  echo "  All shared library rules have --export-all-symbols"
+  echo "  All shared library LINK_FLAGS have --export-all-symbols"
   set -x
 elif is_not_unix && [[ "${ZIG_TRIPLET}" == aarch64-* ]]; then
   dbg "win-arm64: skipping --export-all-symbols ninja-rule assertion (using .def file instead)"
@@ -547,8 +453,22 @@ if is_not_unix; then
   # Add libc++ DLL location to PATH so build-time executables (llvm-min-tblgen etc.)
   # can find libc++.dll at runtime.  With zig _14's libc++ probe, zig links
   # executables against shared libc++ — but the DLL must be discoverable via PATH.
-  export PATH="${LLVM_INSTALL}/bin:${LLVM_INSTALL}/lib:${PATH}"
-  echo "  Added ${LLVM_INSTALL}/bin and lib to PATH for runtime DLL discovery"
+  #
+  # win-arm64 cross-build: the runtimes build (Phase 0) installs an ARM64 libc++.dll
+  # to ${LLVM_INSTALL}/bin/ = ${PREFIX}/Library/lib/zig-llvm/bin/. Adding that path
+  # first causes NATIVE x86_64 tools (llvm-min-tblgen.exe, llvm-config.exe) to find
+  # the ARM64 DLL and fail with STATUS_INVALID_IMAGE_FORMAT (0xc000007b) at launch.
+  # Fix: for cross-builds, prepend the BUILD-arch (x86_64) libc++ path first so
+  # NATIVE tools load the correct x86_64 libc++.dll from the zig-libcxx build dep.
+  if is_cross; then
+    _build_libcxx_dir="${BUILD_PREFIX}/Library/lib/zig-llvm"
+    export PATH="${_build_libcxx_dir}/lib:${_build_libcxx_dir}/bin:${LLVM_INSTALL}/bin:${LLVM_INSTALL}/lib:${PATH}"
+    echo "  Cross: build-arch libc++ (${_build_libcxx_dir}/lib) prepended before target-arch libc++ (${LLVM_INSTALL}/bin)"
+    unset _build_libcxx_dir
+  else
+    export PATH="${LLVM_INSTALL}/bin:${LLVM_INSTALL}/lib:${PATH}"
+    echo "  Added ${LLVM_INSTALL}/bin and lib to PATH for runtime DLL discovery"
+  fi
 
   # Phase 1: Build libLLVM DLL only.
   # win-arm64: two-stage pre-link approach to generate libLLVM.def before the dll
@@ -564,16 +484,21 @@ if is_not_unix; then
     # Strategy: build a representative set of LLVM* static lib targets that pull in
     # all transitive LLVM* static archives via ninja dependency resolution.
     # These are always present regardless of LLVM_TARGETS_TO_BUILD pruning.
-    # AArch64/X86/WebAssembly backends are included because our pruned target list
-    # is exactly X86;AArch64;WebAssembly for win-arm64 (see _llvm_targets above).
+    # Backends are included because our pruned target list is exactly
+    # X86;AArch64;ARM;PowerPC;RISCV;SystemZ;WebAssembly for win-arm64 (see
+    # _llvm_targets above). Only each backend's top-level CodeGen target is
+    # listed explicitly -- ninja transitively builds its AsmParser/Desc/Info/
+    # Disassembler/Utils dependencies as real .a files regardless of whether
+    # they're separately named here.
     cmake --build "${LLVM_BUILD}" --config Release -- \
       LLVMSupport LLVMCore LLVMMC LLVMAnalysis LLVMTransformUtils LLVMCodeGen \
       LLVMTarget LLVMMCParser LLVMBinaryFormat LLVMBitWriter LLVMBitReader \
       LLVMAArch64CodeGen LLVMAArch64AsmParser LLVMAArch64Desc LLVMAArch64Info LLVMAArch64Utils \
       LLVMX86CodeGen LLVMX86AsmParser LLVMX86Desc LLVMX86Info \
-      LLVMWebAssemblyCodeGen LLVMWebAssemblyAsmParser LLVMWebAssemblyDesc LLVMWebAssemblyInfo
+      LLVMWebAssemblyCodeGen LLVMWebAssemblyAsmParser LLVMWebAssemblyDesc LLVMWebAssemblyInfo \
+      LLVMARMCodeGen LLVMPowerPCCodeGen LLVMRISCVCodeGen LLVMSystemZCodeGen
     # ninja resolves transitive deps; this populates ${LLVM_BUILD}/lib/*.lib with all
-    # LLVM core + 3-target backend statics.
+    # LLVM core + 7-target backend statics.
 
     # Stage 2: generate libLLVM.def from the static archives.
     # === win-arm64: libLLVM.def diagnostics + multi-attempt extraction ===
@@ -672,9 +597,24 @@ EOF
       _attempts+=( "zignm-itanium|${_nm_wrapper}|itanium" )
     fi
 
-    shopt -s nullglob
-    _real_archives=( "${LLVM_BUILD}"/lib/LLVM*.lib "${LLVM_BUILD}"/lib/libLLVM*.a )
-    shopt -u nullglob
+    # Restrict archive set to libLLVM's actual link inputs (match win-64's
+    # --export-all-symbols linker pruning behavior). Falls back to a wide glob
+    # if ninja-inputs fails (e.g., target name differs across LLVM versions).
+    _real_archives=()
+    if command -v ninja >/dev/null 2>&1; then
+      while IFS= read -r _arch; do
+        [[ -n "${_arch}" && -f "${_arch}" ]] && _real_archives+=( "${_arch}" )
+      done < <(ninja -C "${LLVM_BUILD}" -t inputs LLVM 2>/dev/null \
+        | grep -E '/(lib)?LLVM[^/]*\.(lib|a)$' \
+        | sort -u)
+    fi
+    if (( ${#_real_archives[@]} == 0 )); then
+      echo "[Stage 2] ninja-inputs returned no LLVM archives; falling back to glob" >&2
+      shopt -s nullglob
+      _real_archives=( "${LLVM_BUILD}"/lib/LLVM*.lib "${LLVM_BUILD}"/lib/libLLVM*.a )
+      shopt -u nullglob
+    fi
+    echo "[Stage 2] Archive count fed to extract_symbols.py: ${#_real_archives[@]}"
 
     _winner_def=""
     _winner_lines=0
@@ -695,6 +635,7 @@ EOF
         > "${_cand}" 2> "${_errf}" && _rc=0 || _rc=$?
       _lines=$(wc -l < "${_cand}" 2>/dev/null || echo 0)
       echo "  exit: ${_rc}, def lines: ${_lines}"
+      echo "[Stage 2] Attempt '${_label}': .def line count = ${_lines}"
       if [[ -s "${_errf}" ]]; then
         echo "  stderr (first 200 lines):"
         head -200 "${_errf}" | sed 's/^/    /'
@@ -709,6 +650,11 @@ EOF
     if [[ -n "${_winner_def}" ]]; then
       echo "=== WINNER: ${_winner_label} with ${_winner_lines} lines ==="
       cp "${_winner_def}" "${_def_out}"
+      echo "[Stage 2] === .def file head (first 20 lines) ==="
+      head -20 "${LLVM_BUILD}/libLLVM.def" 2>/dev/null | sed 's/^/[Stage 2] DEF: /' || echo "[Stage 2] DEF: <empty or unreadable>"
+      echo "[Stage 2] === .def file md5 / size ==="
+      wc -l "${LLVM_BUILD}/libLLVM.def" 2>/dev/null
+      md5sum "${LLVM_BUILD}/libLLVM.def" 2>/dev/null || true
     else
       echo "=== ALL ATTEMPTS PRODUCED EMPTY .def ==="
     fi
@@ -719,6 +665,31 @@ EOF
       exit 1
     fi
     dbg "win-arm64: libLLVM.def has $(wc -l < "${_def_out}") lines"
+
+    # Stage 2 post-filter: strip libc++ symbols (Itanium-mangled std::__1).
+    # libc++ symbols should not be exported from libLLVM — they are an internal
+    # implementation detail. Removing them reduces the export count by ~10-15k
+    # symbols to fit the PE/COFF 65535-symbol limit on win-arm64.
+    if [[ -s "${_def_out}" ]]; then
+      _pre_count=$(wc -l < "${_def_out}")
+      sed -i \
+        -e '/_ZNSt3__1/d' \
+        -e '/_ZNKSt3__1/d' \
+        -e '/_ZTVNSt3__1/d' \
+        -e '/_ZTINSt3__1/d' \
+        -e '/_ZTSNSt3__1/d' \
+        "${_def_out}"
+      _post_count=$(wc -l < "${_def_out}")
+      _delta=$(( _pre_count - _post_count ))
+      echo "[Stage 2 filter] libc++ stripped: ${_pre_count} → ${_post_count} (-${_delta})"
+      if [[ ${_post_count} -gt 65000 ]]; then
+        echo "ERROR: .def still has ${_post_count} symbols (limit ~65535). Need more aggressive filtering." >&2
+        echo "  Next options: --exclude '_ZN.*templates' or whitelist only _ZN4llvm/_ZN5clang/_ZN3lld namespaces" >&2
+        exit 1
+      fi
+    else
+      echo "WARNING: ${_def_out} empty or missing — Stage 2 extract_symbols.py may have failed" >&2
+    fi
 
     # Stage 3: build the libLLVM dll (patch 0004 uses --def libLLVM.def via the
     # patched cmake conditional; the .def file now exists so the link succeeds).
@@ -765,8 +736,176 @@ EOF
 
     # Count total symbol-like strings (approximate, for logging)
     _llvm_nsyms=$(strings -a "${_implib}" 2>/dev/null \
-      | grep -cxE '[_A-Za-z?@][_A-Za-z0-9?@$]*' || echo 0)
+      | grep -cxE '[_A-Za-z?@][_A-Za-z0-9?@$]*' || true)
     echo "    Total symbols in libLLVM.dll.a: ${_llvm_nsyms}"
+
+    # Phase 1.5c: native win-64 LLD-MinGW empty-implib workaround.
+    # LLD's MinGW driver can write an EMPTY import library (0 symbols) on
+    # native win-64 even though the DLL itself links fine with correct
+    # exports (--export-all-symbols + --out-implib). Cross win-32/win-arm64
+    # implibs are already valid (nsyms >= threshold below), so this block is
+    # a no-op for them -- only fires when the implib is actually broken.
+    echo "WIN_IMPLIB_DIAG: primary implib symbol count = ${_llvm_nsyms} (threshold 5000) for implib ${_implib}"
+    if is_not_unix && [[ "${_llvm_nsyms}" -lt 5000 ]]; then
+      _llvm_dll="$(dirname "${_implib}")/libLLVM-20.dll"
+      [[ -f "${_llvm_dll}" ]] || _llvm_dll=$(find "${LLVM_BUILD}" -name 'libLLVM-20.dll' 2>/dev/null | awk 'NR==1')
+      if [[ -n "${_llvm_dll}" ]] && [[ -f "${_llvm_dll}" ]]; then
+        echo "WIN_IMPLIB_REGEN: implib had ${_llvm_nsyms} syms (<5000 threshold); regenerating from DLL via gendef+dlltool" >&2
+
+        # Resolve host llvm-readobj: reads the target PE export table directly
+        # from the built DLL (format-agnostic COFF/PE parser). No gendef-like
+        # tool (gendef, pexports, mingw-w64-tools) is available anywhere in
+        # this recipe's build dependencies -- llvm-readobj --coff-exports is
+        # the available substitute for extracting exports from a built DLL.
+        _regen_readobj=""
+        for _cand in \
+            "${BUILD_PREFIX}/Library/bin/llvm-readobj.exe" \
+            "${BUILD_PREFIX}/Library/bin/llvm-readobj" \
+            "${BUILD_PREFIX}/bin/llvm-readobj" \
+            "$(command -v llvm-readobj 2>/dev/null || true)"; do
+          [[ -x "${_cand}" ]] && { _regen_readobj="${_cand}"; break; }
+        done
+
+        # Resolve llvm-dlltool (same candidate search as _mingw.sh's _dlltool).
+        _regen_dlltool=""
+        for _cand in \
+            "${BUILD_PREFIX}/bin/llvm-dlltool" \
+            "${BUILD_PREFIX}/bin/llvm-dlltool.exe" \
+            "${BUILD_PREFIX}/Library/bin/llvm-dlltool.exe" \
+            "${BUILD_PREFIX}/Library/bin/llvm-dlltool" \
+            "$(command -v llvm-dlltool 2>/dev/null || true)"; do
+          [[ -x "${_cand}" ]] && { _regen_dlltool="${_cand}"; break; }
+        done
+
+        if [[ -n "${_regen_readobj}" ]] && [[ -n "${_regen_dlltool}" ]]; then
+          _llvm_dll_name="$(basename "${_llvm_dll}")"
+          _regen_exports="$("${_regen_readobj}" --coff-exports "${_llvm_dll}" 2>/dev/null | awk '$1=="Name:"{print $2}')"
+          _regen_def_nsyms=$(printf '%s\n' "${_regen_exports}" | grep -c . || echo 0)
+          echo "WIN_IMPLIB_REGEN: extracted ${_regen_def_nsyms} export names from ${_llvm_dll}" >&2
+
+          if [[ "${_regen_def_nsyms}" -gt 2 ]]; then
+            _regen_def="${LLVM_BUILD}/libLLVM-20.regen.def"
+            {
+              echo "LIBRARY ${_llvm_dll_name}"
+              echo "EXPORTS"
+              printf '%s\n' "${_regen_exports}"
+            } > "${_regen_def}"
+
+            # NOTE: intentionally NOT calling _mingw.sh's _gen_implib() helper
+            # here -- it short-circuits with `[[ -f "${lib}" ]] && return 0`,
+            # and ${_implib} already exists on disk (broken/empty), so it
+            # would silently no-op instead of regenerating. It is also a
+            # function nested inside generate_mingw_import_libs(), only
+            # registered once that unrelated outer workflow actually runs.
+            # Replicate its underlying dlltool invocation directly instead.
+            #
+            # Regenerate to a FRESH sidecar path rather than in place: LLD
+            # just wrote ${_implib} moments ago, and overwriting a file the
+            # linker just produced (in place) was observed to still yield 0
+            # symbols on native win-64. Writing to a fresh path and only
+            # swapping it in on success avoids any such in-place-overwrite
+            # hazard and lets diagnostics show exactly what dlltool produced.
+            _implib_pre_size="unknown"
+            _implib_pre_mtime="unknown"
+            if [[ -f "${_implib}" ]]; then
+              _implib_pre_size=$(stat -c '%s' "${_implib}" 2>/dev/null || stat -f '%z' "${_implib}" 2>/dev/null || echo "unknown")
+              _implib_pre_mtime=$(stat -c '%y' "${_implib}" 2>/dev/null || stat -f '%m' "${_implib}" 2>/dev/null || echo "unknown")
+            fi
+            echo "WIN_IMPLIB_DIAG: pre-regen ${_implib} size=${_implib_pre_size} mtime=${_implib_pre_mtime}" >&2
+
+            _implib_fresh="${_implib}.regen"
+            rm -f "${_implib_fresh}"
+
+            _dlltool_rc=0
+            "${_regen_dlltool}" -m "${_dlltool_machine}" -D "${_llvm_dll_name}" \
+              -d "${_regen_def}" -l "${_implib_fresh}" 2>"${LLVM_BUILD}/dlltool_regen.err" || _dlltool_rc=$?
+            echo "WIN_IMPLIB_DIAG: dlltool exit code=${_dlltool_rc}" >&2
+            if [[ "${_dlltool_rc}" -ne 0 ]]; then
+              echo "WIN_IMPLIB_REGEN: dlltool regeneration command failed" >&2
+              cat "${LLVM_BUILD}/dlltool_regen.err" >&2
+            fi
+
+            if [[ -f "${_implib_fresh}" ]]; then
+              _implib_fresh_size=$(stat -c '%s' "${_implib_fresh}" 2>/dev/null || stat -f '%z' "${_implib_fresh}" 2>/dev/null || echo "unknown")
+              echo "WIN_IMPLIB_DIAG: fresh implib ${_implib_fresh} size=${_implib_fresh_size}" >&2
+            else
+              echo "WIN_IMPLIB_DIAG: fresh implib ${_implib_fresh} NOT created" >&2
+            fi
+
+            _llvm_nsyms_fresh=$(strings -a "${_implib_fresh}" 2>/dev/null \
+              | grep -cxE '[_A-Za-z?@][_A-Za-z0-9?@$]*' || true)
+            echo "WIN_IMPLIB_REGEN: fresh-path recount: ${_llvm_nsyms_fresh} symbols" >&2
+
+            # Accept the freshly regenerated implib on dlltool success + real
+            # file size, NOT the strings recount: `strings` under-counts on
+            # native win-64 (the very bug this block works around), so a valid
+            # multi-MB regenerated implib would be wrongly rejected. A real
+            # libLLVM import lib is tens of MB; require >= 1MB as a sanity floor.
+            _implib_fresh_bytes=$(stat -c '%s' "${_implib_fresh}" 2>/dev/null || stat -f '%z' "${_implib_fresh}" 2>/dev/null || echo 0)
+            if [[ "${_dlltool_rc}" -eq 0 ]] && [[ "${_implib_fresh_bytes}" -ge 1048576 ]]; then
+              mv -f "${_implib_fresh}" "${_implib}"
+              echo "WIN_IMPLIB_REGEN: fresh implib accepted (dlltool rc=0, size=${_implib_fresh_bytes} >= 1MB; strings recount ${_llvm_nsyms_fresh}) -- replaced ${_implib}" >&2
+            else
+              echo "WIN_IMPLIB_REGEN: fresh implib rejected (dlltool rc=${_dlltool_rc}, size=${_implib_fresh_bytes}) -- leaving original ${_implib} in place" >&2
+            fi
+
+            _llvm_nsyms=$(strings -a "${_implib}" 2>/dev/null \
+              | grep -cxE '[_A-Za-z?@][_A-Za-z0-9?@$]*' || true)
+            echo "WIN_IMPLIB_REGEN: recount after regen: ${_llvm_nsyms} symbols" >&2
+            echo "WIN_IMPLIB_DIAG: ===== dlltool_regen.err begin ====="
+            cat "${LLVM_BUILD}/dlltool_regen.err" 2>/dev/null || echo "WIN_IMPLIB_DIAG: (err file absent: ${LLVM_BUILD}/dlltool_regen.err)"
+            echo "WIN_IMPLIB_DIAG: ===== dlltool_regen.err end ====="
+          else
+            echo "WIN_IMPLIB_REGEN: extracted export list too small (${_regen_def_nsyms}) -- skipping regen attempt" >&2
+          fi
+        else
+          echo "WIN_IMPLIB_REGEN: llvm-readobj or llvm-dlltool not resolvable -- cannot regenerate" >&2
+        fi
+      else
+        echo "WIN_IMPLIB_REGEN: could not locate built DLL next to ${_implib} -- cannot regenerate" >&2
+      fi
+    fi
+
+    # Authoritative override for native win-64: `strings`-based counting
+    # under-reports on this platform, so both the Phase 1.5b critical-symbol
+    # check and the nsyms gate below can false-fail on an implib that is
+    # actually valid. If the DLL's real export table (llvm-readobj
+    # --coff-exports, ${_regen_def_nsyms} names) is full AND the in-place implib
+    # is a real multi-MB file, trust the export table: re-verify the critical
+    # symbols against the actual export names and clear the strings-derived
+    # failure. For win-32/win-arm64 the regen block never ran (_regen_def_nsyms
+    # unset -> :-0 < 5000) and _llvm_nsyms >= 5000, so this never fires.
+    if [[ "${_llvm_nsyms}" -lt 5000 ]] && [[ "${_regen_def_nsyms:-0}" -ge 5000 ]]; then
+      _implib_bytes=$(stat -c '%s' "${_implib}" 2>/dev/null || stat -f '%z' "${_implib}" 2>/dev/null || echo 0)
+      if [[ "${_implib_bytes}" -ge 1048576 ]]; then
+        _crit_ok=1
+        echo "WIN_IMPLIB_PROBE: _regen_exports var byte-size=$(printf %s "${_regen_exports}" | wc -c) line-count=$(printf %s "${_regen_exports}" | grep -c . 2>/dev/null || echo NA)" >&2
+        echo "WIN_IMPLIB_PROBE: .def file ${_regen_def} size/lines:" >&2; wc -c -l "${_regen_def}" >&2 2>&1 || echo "WIN_IMPLIB_PROBE: no .def file" >&2
+        echo "WIN_IMPLIB_PROBE: grep ErrorInfoBase in .def FILE:" >&2; grep -c "ErrorInfoBase" "${_regen_def}" >&2 2>&1 || echo "WIN_IMPLIB_PROBE: ErrorInfoBase absent in .def file" >&2
+        echo "WIN_IMPLIB_PROBE: grep LLVMInitialize in .def FILE:" >&2; grep -c "LLVMInitialize" "${_regen_def}" >&2 2>&1 || echo "WIN_IMPLIB_PROBE: LLVMInitialize absent in .def file" >&2
+        echo "WIN_IMPLIB_PROBE: llvm-nm armap count on implib:" >&2; "${_host_nm:-}" --print-armap "${_implib}" 2>/dev/null | grep -c "ErrorInfoBase\|LLVMInitialize" >&2 || echo "WIN_IMPLIB_PROBE: llvm-nm found neither / failed / _host_nm unset" >&2
+        for _check_sym in ErrorInfoBase LLVMInitialize; do
+          # Grep the on-disk .def FILE (proven reliable at line 884), NOT the
+          # ~3.9MB in-memory _regen_exports bash var: a pipe-grep over a large
+          # MSYS2 bash variable false-negatives on native win-64 even when the
+          # export is genuinely present (WIN_IMPLIB_PROBE confirmed .def has both
+          # symbols while the var-grep reported them missing). Same var-vs-file
+          # anti-pattern the Phase-1.5b comment at 723-724 warned about.
+          if grep -q "${_check_sym}" "${_regen_def}"; then
+            echo "    OK (via export table): ${_check_sym} found"
+          else
+            echo "    FAIL (via export table): ${_check_sym} NOT found"
+            _crit_ok=0
+          fi
+        done
+        if [[ "${_crit_ok}" -eq 1 ]]; then
+          echo "WIN_IMPLIB_REGEN: authoritative override -- export table has ${_regen_def_nsyms} syms, implib size=${_implib_bytes} >= 1MB; trusting export table over strings recount (${_llvm_nsyms})" >&2
+          _llvm_nsyms="${_regen_def_nsyms}"
+          _llvm_fail=0
+        fi
+      fi
+    fi
+
     if [[ "${_llvm_nsyms}" -lt 5000 ]]; then
       echo "    FAIL: expected 5000+ symbols, got ${_llvm_nsyms}"
       _llvm_fail=1
@@ -845,6 +984,47 @@ EOF
     _clang_nsyms=$(strings -a "${_clang_implib}" 2>/dev/null \
       | grep -cxE '[_A-Za-z?@][_A-Za-z0-9?@$]*' || echo 0)
     echo "    Total symbols in libclang-cpp.dll.a: ${_clang_nsyms}"
+
+    # Authoritative override for native win-64 (mirrors Phase 1.5c for libLLVM):
+    # `strings`/zig-nm-based symbol counting can under-report on this platform
+    # even though the DLL's actual PE export table is intact -- this is the
+    # same LLD-MinGW empty-implib / string-scan blind spot already worked
+    # around for libLLVM above. Before trusting the strings-derived failure,
+    # check the DLL's real export table via llvm-readobj --coff-exports,
+    # which parses the export directory directly instead of scanning for
+    # symbol-like strings.
+    if is_not_unix && [[ "${_clang_nsyms}" -lt 1000 ]]; then
+      _clang_dll_probe=$(find "${LLVM_BUILD}" -name 'libclang-cpp*.dll' -o -name 'clang-cpp*.dll' 2>/dev/null | head -1)
+      _clang_readobj=""
+      for _cand in \
+          "${BUILD_PREFIX}/Library/bin/llvm-readobj.exe" \
+          "${BUILD_PREFIX}/Library/bin/llvm-readobj" \
+          "${BUILD_PREFIX}/bin/llvm-readobj" \
+          "$(command -v llvm-readobj 2>/dev/null || true)"; do
+        [[ -x "${_cand}" ]] && { _clang_readobj="${_cand}"; break; }
+      done
+      if [[ -n "${_clang_dll_probe}" ]] && [[ -n "${_clang_readobj}" ]]; then
+        _clang_export_names="$("${_clang_readobj}" --coff-exports "${_clang_dll_probe}" 2>/dev/null | awk '$1=="Name:"{print $2}')"
+        _clang_export_nsyms=$(printf '%s\n' "${_clang_export_names}" | grep -c . || echo 0)
+        echo "WIN_CLANG_EXPORT_PROBE: llvm-readobj --coff-exports found ${_clang_export_nsyms} export names in ${_clang_dll_probe}" >&2
+        if [[ "${_clang_export_nsyms}" -ge 1000 ]]; then
+          _crit_ok=1
+          for _check_sym in SourceManager CompilerInstance ASTContext; do
+            if printf '%s\n' "${_clang_export_names}" | grep -q "${_check_sym}"; then
+              echo "    OK (via export table): ${_check_sym} found"
+            else
+              echo "    FAIL (via export table): ${_check_sym} NOT found"
+              _crit_ok=0
+            fi
+          done
+          if [[ "${_crit_ok}" -eq 1 ]]; then
+            echo "WIN_CLANG_EXPORT_PROBE: authoritative override -- export table has ${_clang_export_nsyms} syms; trusting export table over strings recount (same native win-64 tooling gap as Phase 1.5c)" >&2
+            _clang_nsyms="${_clang_export_nsyms}"
+            _clang_fail=0
+          fi
+        fi
+      fi
+    fi
     if [[ "${_clang_nsyms}" -lt 1000 ]]; then
       echo "    FAIL: expected 1000+ symbols, got ${_clang_nsyms}"
       _clang_fail=1
@@ -876,18 +1056,60 @@ elif is_osx; then
   # Two-phase build on macOS: build libLLVM.dylib first, check symbol exports,
   # then build the rest. Without this, a visibility bug wastes the full 2-hour build
   # only to fail at the very end when libclang-cpp.dylib links against libLLVM.dylib.
-  # Same rpath issue as Linux: llvm-min-tblgen needs to find libunwind from LLVM_INSTALL.
-  export DYLD_LIBRARY_PATH="${LLVM_INSTALL}/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+  # The NATIVE (build-arch, e.g. arm64) llvm-min-tblgen links libc++ dynamically
+  # (zig-cxx does so regardless of the static -lc++), so it needs the build-arch
+  # native-libcxx-install libc++.1.dylib, NOT the x86_64 TARGET libc++ in
+  # LLVM_INSTALL/lib. Put native-libcxx-install/lib FIRST so dyld resolves the
+  # libc++.1.dylib / libunwind leaf to the arch-correct one (DYLD_LIBRARY_PATH
+  # matches by leaf name and takes precedence over @rpath). native-libcxx-install
+  # exists only on cross builds; a missing dir is harmless (dyld skips it).
+  export DYLD_LIBRARY_PATH="${SRC_DIR}/native-libcxx-install/lib:${LLVM_INSTALL}/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
   echo "  Phase 1: Building LLVM shared library..."
   set +e
   cmake --build "${LLVM_BUILD}" --target LLVM -j"${CPU_COUNT}"
   _phase1_rc=$?
   set -e
 
+  if [[ ${_phase1_rc} -eq 0 ]]; then
+    # OSX_DYLIB_LINK_DIAG (non-fatal): Phase 1 succeeded, but libLLVM.dylib on
+    # native osx can still end up missing LLVMInitialize{AArch64,X86}Target
+    # symbols. Dump the actual ninja link command for the dylib plus the key
+    # levers (-all_load / -force_load / dead_strip) and probe the resulting
+    # dylib for the target-init symbols, so we can see why without failing
+    # the build.
+    echo "=== OSX_DYLIB_LINK_DIAG: dylib link command (tail -5) ==="
+    ( cd "${LLVM_BUILD}" && ninja -t commands lib/libLLVM.dylib 2>/dev/null | tail -5 ) || true
+    echo "=== OSX_DYLIB_LINK_DIAG: all_load/force_load/dead_strip flags ==="
+    ( cd "${LLVM_BUILD}" && ninja -t commands lib/libLLVM.dylib 2>/dev/null | tail -5 ) \
+      | grep -oE -- '-Wl,-all_load|-Wl,-force_load[^ ]*|-dead_strip|-no_dead_strip' \
+      || echo "OSX_DYLIB_LINK_DIAG: none of all_load/force_load/dead_strip flags present"
+    echo "=== OSX_DYLIB_LINK_DIAG: target-init symbols in freshly-linked dylib ==="
+    nm -gU "${LLVM_BUILD}/lib/libLLVM.dylib" 2>/dev/null \
+      | grep -E 'LLVMInitialize(AArch64|X86)Target$' | head \
+      || echo "OSX_DYLIB_LINK_DIAG: LLVMInitialize{AArch64,X86}Target ABSENT in freshly-linked dylib"
+  fi
+
   if [[ ${_phase1_rc} -ne 0 ]]; then
     echo "=================================================================="
     echo "  Phase 1 FAILED (rc=${_phase1_rc}). Entering hypothesis test mode."
     echo "=================================================================="
+
+    # DBG (osx native-tblgen libc++ arch-mismatch): the NATIVE host-arch
+    # llvm-min-tblgen dyld-aborts loading @rpath/libc++.1.dylib (resolves only to
+    # the x86_64 TARGET libc++). Dump its actual dylib deps + LC_RPATHs so we can
+    # see whether the static-libc++ link held (no libc++.1.dylib load command) or
+    # a dynamic dep leaked, and which rpath resolves it. Guides the rpath/DYLD fix.
+    _native_tblgen="${LLVM_BUILD}/NATIVE/bin/llvm-min-tblgen"
+    if [[ -x "${_native_tblgen}" ]]; then
+      echo "=== DBG native tblgen: file ==="
+      file "${_native_tblgen}" || true
+      echo "=== DBG native tblgen: otool -L (dynamic deps) ==="
+      otool -L "${_native_tblgen}" || true
+      echo "=== DBG native tblgen: otool -l LC_RPATH ==="
+      otool -l "${_native_tblgen}" | grep -A2 LC_RPATH || true
+    else
+      echo "  DBG: native tblgen not found at ${_native_tblgen}"
+    fi
 
     # Extract the failing libLLVM.dylib link command from ninja
     _link_cmd=$(ninja -C "${LLVM_BUILD}" -t commands lib/libLLVM.dylib 2>/dev/null | tail -1)
@@ -902,24 +1124,6 @@ elif is_osx; then
     _bare_link_cmd="${_link_cmd}"
     _bare_link_cmd="${_bare_link_cmd#: && }"
     _bare_link_cmd="${_bare_link_cmd% && :}"
-
-    # Normalize zig -target in _bare_link_cmd: CMake emits GCC-style triplets like
-    # x86_64-apple-darwin or aarch64-apple-darwin (no version) that zig rejects with
-    # "UnknownOperatingSystem". Replace with the proper zig target from ZIG_TRIPLET
-    # (e.g. aarch64-macos.11.0-none). This fixes all append-mode hypotheses (H1-H4,
-    # H7-H10) which inherit _bare_link_cmd unmodified.
-    # ZIG_TRIPLET is set by recipe.yaml and holds the canonical zig target for this build.
-    # If ZIG_TRIPLET is unset at runtime, derive from HOST and MACOSX_DEPLOYMENT_TARGET.
-    if [[ -n "${ZIG_TRIPLET:-}" ]]; then
-      _zig_target_norm="${ZIG_TRIPLET}"
-    else
-      # Fallback: derive from host arch + macOS deployment target
-      _zig_target_arch="${HOST%%-*}"  # x86_64 or arm64
-      [[ "${_zig_target_arch}" == "arm64" ]] && _zig_target_arch="aarch64"
-      _zig_target_norm="${_zig_target_arch}-macos.${MACOSX_DEPLOYMENT_TARGET:-11.0}-none"
-    fi
-    _bare_link_cmd=$(echo "${_bare_link_cmd}" | sed -E "s/-target (aarch64|x86_64)-apple-darwin[^ ]*/-target ${_zig_target_norm}/g")
-    unset _zig_target_norm _zig_target_arch
 
     # SDKROOT detection
     _sdkroot="${CONDA_BUILD_SYSROOT:-${SDKROOT:-}}"
@@ -945,11 +1149,7 @@ elif is_osx; then
       "H3|append|-L${_sdkroot}/usr/lib"
       "H4|append|-Wl,-syslibroot,${_sdkroot} -L${_sdkroot}/usr/lib -Wl,-lSystem"
       "H5|target-version|append|-Wl,-syslibroot,${_sdkroot}"
-      # H6 (direct-zig) bypasses the zig wrapper entirely; our wrapper-side fixes
-      # (-Wl,-lSystem → -lSystem, -Wl,-syslibroot filtering) do not apply, so H6
-      # never represents the real build path and produces misleading failures.
-      # Disabled to reduce CI noise.
-      # "H6|direct-zig|append|-Wl,-syslibroot,${_sdkroot}"
+      "H6|direct-zig|append|-Wl,-syslibroot,${_sdkroot}"
       # H7: set SDKROOT + MACOSX_DEPLOYMENT_TARGET in env so zig auto-detects SDK; no extra flags.
       # env-prefix captures one token (space-sep vars OK); trailing |append| makes _append empty.
       "H7|env-prefix|SDKROOT=${_sdkroot} MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-11.3}|append|"
@@ -984,7 +1184,7 @@ elif is_osx; then
           ;;
         target-version\|*)
           _ver="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
-          _modified_cmd=$(echo "${_bare_link_cmd}" | sed -E "s/(aarch64|x86_64)-macos[^ ]*/\\1-macos.${_ver}-none/g")
+          _modified_cmd=$(echo "${_bare_link_cmd}" | sed -E "s/(aarch64|x86_64)-macos-none/\\1-macos.${_ver}-none/g")
           _append="${_rest##*append|}"
           _modified_cmd="${_modified_cmd} ${_append}"
           ;;
@@ -993,12 +1193,11 @@ elif is_osx; then
           # Direct zig c++ does NOT accept -all_load / -Wl,-all_load (unsupported linker arg),
           # so strip those flags. The .a archives are already on the link line directly;
           # without -all_load zig links only referenced symbols (standard behaviour).
-          _zig_bin="${BUILD_PREFIX}/bin/${_conda_triplet:-${HOST_PLATFORM:-arm64-apple-darwin}}-zig"
-          [[ ! -x "${_zig_bin}" ]] && _zig_bin=$(ls "${BUILD_PREFIX}/bin/"*-zig 2>/dev/null | head -1)
-          echo "DBG _llvm_build diag: _zig_bin=${_zig_bin} _conda_triplet=${_conda_triplet:-unset} HOST_PLATFORM=${HOST_PLATFORM:-unset}"
+          _zig_bin="${BUILD_PREFIX}/bin/${HOST_PLATFORM:-arm64-apple-darwin}-zig"
+          [[ ! -x "${_zig_bin}" ]] && _zig_bin=$(find "${BUILD_PREFIX}/bin" -name '*-zig' -not -name '*.cmd' 2>/dev/null | head -1)
           _modified_cmd=$(echo "${_bare_link_cmd}" | sed -E "s|[^ ]*zig-force-load-cxx|${_zig_bin} c++ -target aarch64-macos.${MACOSX_DEPLOYMENT_TARGET:-11.0}-none -mcpu=baseline|")
           # Strip -all_load / -Wl,-all_load — not accepted by zig's Mach-O linker directly
-          _modified_cmd=$(echo "${_modified_cmd}" | sed -E 's/ -Wl,-all_load\b//g; s/ -all_load\b//g')
+          _modified_cmd=$(echo "${_modified_cmd}" | sed -E 's/ -Wl,-all_load / /g; s/ -Wl,-all_load$//; s/ -all_load / /g; s/ -all_load$//')
           _append="${_rest##*append|}"
           _modified_cmd="${_modified_cmd} ${_append}"
           ;;
@@ -1007,6 +1206,31 @@ elif is_osx; then
           _modified_cmd="${_bare_link_cmd} ${_append}"
           ;;
       esac
+
+      # Zig 0.15.2 build 27 rejects two flags that the original CMake/ninja link
+      # command (and several of the hypotheses) still inject:
+      #   -Wl,-all_load / -all_load    (Apple ld; use -Wl,-force_load per-archive
+      #                                  or rely on lld linking referenced syms only)
+      #   -Wl,-syslibroot,<path>       (Apple ld; use -isysroot or --sysroot=)
+      # Strip them from every hypothesis baseline so the hypothesis-specific
+      # append actually gets a chance to drive the link strategy. H1-H6 will
+      # effectively collapse onto the bare baseline (their appended -syslibroot
+      # gets re-stripped), but H7-H10 (env-prefix / --sysroot= / -isysroot /
+      # -nostdlib++) get a clean shot at producing libLLVM.dylib.
+      #
+      # NOTE: BSD sed on macOS does not support \b as a word boundary (it would
+      # be interpreted as literal `b`), so we use explicit space/end-of-line
+      # anchors instead of \b. The pattern matches ` flag ` (token surrounded
+      # by spaces) OR ` flag$` (token at end of line) and replaces with a
+      # single space (preserving spacing for the surrounding tokens).
+      _modified_cmd=$(echo "${_modified_cmd}" | sed -E '
+        s/ -Wl,-all_load / /g
+        s/ -Wl,-all_load$//
+        s/ -all_load / /g
+        s/ -all_load$//
+        s/ -Wl,-syslibroot,[^ ]+ / /g
+        s/ -Wl,-syslibroot,[^ ]+$//
+      ')
 
       echo ""
       echo "  ----- ${_hid}: trying -----"
@@ -1062,13 +1286,12 @@ elif is_osx; then
       echo "=== DIAGNOSTIC: verbose zig+ld64.lld link output ==="
       echo "  All H1-H9 failed; capturing --verbose-link to localize blank -l source"
       _diag_log="${LLVM_BUILD}/diagnostic_verbose_link.log"
-      _zig_bin="${BUILD_PREFIX}/bin/${_conda_triplet:-${HOST_PLATFORM:-arm64-apple-darwin}}-zig"
-      [[ ! -x "${_zig_bin}" ]] && _zig_bin=$(ls "${BUILD_PREFIX}/bin/"*-zig 2>/dev/null | head -1)
-      echo "DBG _llvm_build diag: _zig_bin=${_zig_bin} _conda_triplet=${_conda_triplet:-unset} HOST_PLATFORM=${HOST_PLATFORM:-unset}"
+      _zig_bin="${BUILD_PREFIX}/bin/${HOST_PLATFORM:-arm64-apple-darwin}-zig"
+      [[ ! -x "${_zig_bin}" ]] && _zig_bin=$(find "${BUILD_PREFIX}/bin" -name '*-zig' -not -name '*.cmd' 2>/dev/null | head -1)
       # Build the diagnostic command: replace wrapper with direct zig c++ -v,
       # strip -all_load variants (unsupported by direct zig), add SDK flags to reduce noise.
       _diag_cmd=$(echo "${_bare_link_cmd}" | sed -E "s|[^ ]*zig-force-load-cxx|${_zig_bin} c++ -v -target aarch64-macos.${MACOSX_DEPLOYMENT_TARGET:-11.0}-none -mcpu=baseline|")
-      _diag_cmd=$(echo "${_diag_cmd}" | sed -E 's/ -Wl,-all_load\b//g; s/ -all_load\b//g')
+      _diag_cmd=$(echo "${_diag_cmd}" | sed -E 's/ -Wl,-all_load / /g; s/ -Wl,-all_load$//; s/ -all_load / /g; s/ -all_load$//')
       _diag_cmd="${_diag_cmd} -Wl,-syslibroot,${_sdkroot} -L${_sdkroot}/usr/lib"
       _diag_cmd="${_diag_cmd} -Wl,-t"
       echo "  --- diagnostic command (length=${#_diag_cmd} chars) ---"

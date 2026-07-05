@@ -2,10 +2,7 @@
 # Build xml2 with zig cc for zig toolchain
 set -euxo pipefail
 
-echo "=== Building zig-xml2 with zig cc ==="
-
-# Find zig binary
-ZIG="${CONDA_ZIG_BUILD}"
+echo "=== Building zig-libxml2 with zig cc ==="
 
 # Clear conda compiler flags - zig handles everything
 unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
@@ -17,9 +14,13 @@ cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="${PREFIX}/lib/zig-zlib;${PREFIX}" \
-    -DCMAKE_INSTALL_PREFIX="${PREFIX}/lib/zig-xml2" \
+    -DCMAKE_INSTALL_PREFIX="${PREFIX}/lib/zig-libxml2" \
     -DCMAKE_C_COMPILER="${ZIG_CC}" \
     -DCMAKE_CXX_COMPILER="${ZIG_CXX}" \
+    -DCMAKE_C_COMPILER_TARGET="${ZIG_TRIPLET}" \
+    -DCMAKE_CXX_COMPILER_TARGET="${ZIG_TRIPLET}" \
+    -DCMAKE_ASM_COMPILER="${ZIG_ASM}" \
+    -DCMAKE_ASM_COMPILER_TARGET="${ZIG_TRIPLET}" \
     -DCMAKE_AR="${ZIG_AR}" \
     -DCMAKE_RANLIB="${ZIG_RANLIB}" \
     -DBUILD_SHARED_LIBS=ON \
@@ -31,5 +32,5 @@ cmake .. \
 cmake --build . -j"${CPU_COUNT}"
 
 # Manual install - cmake --install expects static lib which we didn't build
-mkdir -p "${PREFIX}/lib/zig-xml2/lib"
-cp -P libxml2.so* "${PREFIX}/lib/zig-xml2/lib/"
+mkdir -p "${PREFIX}/lib/zig-libxml2/lib"
+cp -P libxml2.so* "${PREFIX}/lib/zig-libxml2/lib/"

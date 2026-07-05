@@ -28,21 +28,21 @@ function build_lld_bundle_ppc64le() {
 
   mkdir -p "${output_dir}"
 
-  echo "[lld-bundle] Building ${output_so} from \${PREFIX}/lib/liblld*.a"
+  echo "[lld-bundle] Building ${output_so} from \${PREFIX}/lib/zig-llvm/lib/liblld*.a"
 
   "${cxx_compiler}" -shared -fPIC \
     -Wl,--whole-archive \
-    "${prefix}/lib/liblldELF.a" \
-    "${prefix}/lib/liblldCOFF.a" \
-    "${prefix}/lib/liblldMachO.a" \
-    "${prefix}/lib/liblldWasm.a" \
-    "${prefix}/lib/liblldMinGW.a" \
-    "${prefix}/lib/liblldCommon.a" \
+    "${prefix}/lib/zig-llvm/lib/liblldELF.a" \
+    "${prefix}/lib/zig-llvm/lib/liblldCOFF.a" \
+    "${prefix}/lib/zig-llvm/lib/liblldMachO.a" \
+    "${prefix}/lib/zig-llvm/lib/liblldWasm.a" \
+    "${prefix}/lib/zig-llvm/lib/liblldMinGW.a" \
+    "${prefix}/lib/zig-llvm/lib/liblldCommon.a" \
     -Wl,--no-whole-archive \
     -Wl,--export-dynamic \
-    -Wl,-rpath,"${prefix}/lib" \
+    -Wl,-rpath,"${prefix}/lib/zig-llvm/lib" \
     -L"${prefix}/lib" \
-    "${prefix}/lib/libLLVM-20.so" \
+    "${prefix}/lib/zig-llvm/lib/libLLVM-20.so" \
     -lzstd -lxml2 -lz -lpthread \
     -o "${output_so}" || {
     echo "[lld-bundle] FAILED: compiler error building ${output_so}" >&2

@@ -71,8 +71,18 @@ post_install() {
     for _lib in "${LLVM_INSTALL}/lib/libLLVM"*.so.* "${LLVM_INSTALL}/lib/libclang-cpp"*.so.*; do
       [[ -L "${_lib}" ]] && continue
       [[ ! -f "${_lib}" ]] && continue
-      _bind=$(nm -a "${_lib}" 2>/dev/null | grep 'generic_category' | head -1 || true)
+      # Exclude ppc64le PLT call stubs: ld.bfd generates local symbols named
+      # plt_call._ZNSt3__16xxx for each cross-DSO call site. These stubs appear
+      # as type 't' (local text) in `nm -a` output but are NOT static copies of
+      # the symbol — they are call thunks that resolve the symbol dynamically via
+      # PLT. Filtering them out prevents false-positive static-merge detection.
+      _bind=$(nm -a "${_lib}" 2>/dev/null | grep 'generic_category' | grep -v 'plt_call\.' | head -1 || true)
+      # Also report all generic_category matches (including PLT stubs) for diagnostics.
+      _all_bind=$(nm -a "${_lib}" 2>/dev/null | grep 'generic_category' || true)
       echo "  $(basename ${_lib}): ${_bind:-not found}"
+      if [[ -n "${_all_bind}" && -z "${_bind}" ]]; then
+        echo "    (only PLT stubs found — correct dynamic resolution via libc++.so)"
+      fi
       if echo "${_bind}" | grep -q '^[0-9a-f]* t '; then
         echo "  FAIL: LOCAL_DEFINED — static libc++ merged in"
         _fail=1
@@ -208,7 +218,7 @@ post_install() {
     for _bin in "${LLVM_INSTALL}/bin/"*; do
       if [[ -f "${_bin}" ]] && [[ ! -L "${_bin}" ]] && file "${_bin}" | grep -q 'ELF'; then
         echo "  Setting RPATH on $(basename "${_bin}")"
-        patchelf --set-rpath '$ORIGIN/../lib' "${_bin}" 2>/dev/null || true
+        patchelf --set-rpath '$ORIGIN/../lib:$ORIGIN/../..' "${_bin}" 2>/dev/null || true
       fi
     done
     echo "=== Fixing RPATH for Linux shared libraries ==="
@@ -223,9 +233,29 @@ post_install() {
   if [[ "${target_platform}" == linux-* ]] || [[ "${target_platform}" == osx-* ]]; then
     echo "=== Stripping debug info from shared libraries ==="
     find "${LLVM_INSTALL}/lib" \( -name '*.so*' -o -name '*.dylib' \) -not -type l | while read -r lib; do
-      echo "  Stripping: $(basename "${lib}")"
+      _lib_base=$(basename "${lib}")
+      if [[ "${target_platform}" == osx-* ]] && [[ "${_lib_base}" == libLLVM*.dylib ]]; then
+        # --strip-debug corrupts the Mach-O LC_DYLD_EXPORTS_TRIE for libLLVM on
+        # macOS, dropping the LLVMInitialize*Target exports that the self-hosted
+        # zig needs at runtime (PR #109 osx-arm64 "no targets registered"); skip it.
+        echo "  Skipping strip (osx export-trie protection): ${_lib_base}"
+        continue
+      fi
+      echo "  Stripping: ${_lib_base}"
       llvm-strip --strip-debug "${lib}" 2>/dev/null || strip --strip-debug "${lib}" 2>/dev/null || true
     done
+  fi
+
+  if [[ "${target_platform}" == osx-* ]]; then
+    echo "=== OSX post-strip libLLVM export-trie diagnostic ==="
+    _diaglib=$(find "${LLVM_INSTALL}/lib" -name 'libLLVM*.dylib' 2>/dev/null | head -1)
+    if [[ -n "${_diaglib}" ]]; then
+      echo "OSX_POSTSTRIP_DIAG: checking $(basename "${_diaglib}")"
+      nm -gU "${_diaglib}" 2>/dev/null | grep -E 'LLVMInitialize(AArch64|X86)Target$' || echo "OSX_POSTSTRIP_DIAG: Target syms ABSENT from nm symtab"
+      ( dyld_info -exports "${_diaglib}" 2>/dev/null || otool -l "${_diaglib}" 2>/dev/null | grep -A3 DYLD_EXPORTS_TRIE ) | grep -E 'LLVMInitialize(AArch64|X86)Target' | head || echo "OSX_POSTSTRIP_DIAG: Target syms ABSENT from dyld export trie"
+    else
+      echo "OSX_POSTSTRIP_DIAG: libLLVM*.dylib not found under ${LLVM_INSTALL}/lib"
+    fi
   fi
   set -x
 }

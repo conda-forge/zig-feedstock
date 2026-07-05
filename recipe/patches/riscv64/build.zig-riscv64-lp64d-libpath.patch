@@ -1,0 +1,21 @@
+# Purpose: riscv64 - add the lp64d multilib dir to the LLD library search path so
+#          lld can resolve the sysroot GROUP script's relative ../../lib64/lp64d/libc.so.6
+# Affects: build.zig (configureModule/link setup for zig-real, riscv64 host only)
+# Upstream: not filed
+# Drop-when: sysroot_linux-riscv64 stops needing an lp64d-specific multilib library path
+# Last-verified: 2026-07-20 (zig 0.15.2)
+--- a/build.zig
++++ b/build.zig
+@@ -791,6 +791,12 @@
+     mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
+     mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });
+     mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
++    // riscv64: add the lp64d multilib dir so lld resolves the sysroot libc.so
++    // GROUP script's relative ../../lib64/lp64d/libc.so.6. Gated via env var —
++    // `target` is not in scope in this function; the riscv64 shell branch sets it.
++    if (b.graph.env_map.get("ZIG_EXTRA_LIBDIR")) |extra_libdir| {
++        mod.addLibraryPath(.{ .cwd_relative = extra_libdir });
++    }
+     addCMakeLibraryList(mod, cfg.clang_libraries);
+     addCMakeLibraryList(mod, cfg.lld_libraries);
+     addCMakeLibraryList(mod, cfg.llvm_libraries);

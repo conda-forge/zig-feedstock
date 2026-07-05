@@ -291,6 +291,31 @@ def install_nonunix_cross_wrappers(
     )
 
 
+def _codesign_adhoc(path: Path) -> None:
+    """Apply an ad-hoc code signature to a compiled binary (macOS only).
+
+    On Apple Silicon (arm64 macOS), the kernel's AMFI/Gatekeeper enforcement
+    rejects exec() of any unsigned Mach-O binary — even one compiled locally
+    — with OSError: [Errno 8] Exec format error. zig's self-hosted linker
+    (unlike Apple's ld64) does not emit a signature when linking, so every
+    wrapper binary compiled here must be ad-hoc signed before it is usable.
+    Ad-hoc signing on osx-64 is a harmless no-op-equivalent, so this guards
+    on sys.platform alone (mirrors the _build_is_mac convention used in
+    recipe/testing/_test_utils.py) rather than also checking machine arch.
+
+    Hard-fails on error: an unsigned wrapper cannot execute on osx-arm64,
+    so a silent/soft failure here would only surface later as a confusing
+    Exec format error at test or activation time.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        subprocess.check_call(["codesign", "--force", "--sign", "-", str(path)])
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        raise RuntimeError(f"codesign ad-hoc signing failed for {path}: {exc}") from exc
+    print(f"  Codesigned (ad-hoc): {path.name}")
+
+
 def install_target_triplet_wrappers(
     prefix: Path, recipe_dir: Path,
     target_triplet: str, zig_triplet: str,
@@ -413,6 +438,7 @@ def install_target_triplet_wrappers(
             shutil.copy2(str(primary_wrapper), str(dst))
             if not is_nonunix:
                 dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            _codesign_adhoc(dst)
             print(f"  Installed: {dst}")
 
         # Remove any stray .pdb sidecar emitted by zig's PE/COFF link (Windows)

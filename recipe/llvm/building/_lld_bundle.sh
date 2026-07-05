@@ -41,7 +41,12 @@ function build_lld_bundle() {
 
   if is_linux; then
     local _out="${_lld_lib}/liblldZig.so"
-    "${ZIG_CXX}" -shared -fPIC \
+    # Pass -target so zig-cc links for TARGET arch, not the build-host arch.
+    # On native (linux-64) this is a no-op; on cross (aarch64, ppc64le, …) it
+    # prevents ld.lld rejecting TARGET .a members as "incompatible with elf_x86_64".
+    # Use ZIG_TRIPLET (the glibc-floored triple, e.g. aarch64-linux-gnu.2.17) so the
+    # bundle's libc symbol versions match those required by the final self-hosted zig build.
+    "${ZIG_CXX}" -target "${ZIG_TRIPLET}" -shared -fPIC \
       -Wl,--whole-archive \
         "${_lld_lib}/liblldELF.a" \
         "${_lld_lib}/liblldCOFF.a" \
@@ -54,6 +59,9 @@ function build_lld_bundle() {
       -Wl,-rpath,'$ORIGIN' \
       -L"${_lld_lib}" \
       -L"${PREFIX}/lib" \
+      -L"${PREFIX}/lib/zig-zstd/lib" \
+      -L"${PREFIX}/lib/zig-zlib/lib" \
+      -L"${PREFIX}/lib/zig-libxml2/lib" \
       "${_lld_lib}/libLLVM-20.so" \
       -lzstd -lxml2 -lz -lpthread \
       -o "${_out}" || {
@@ -65,13 +73,6 @@ function build_lld_bundle() {
       return 1
     fi
     echo "  OK: $(ls -lh "${_out}" | awk '{print $5, $9}')"
-
-    # Create a 'liblld.so' compatibility symlink so zig's Findlld.cmake
-    # find_library(NAMES lld-20.0 lld200 lld) resolves to liblldZig.so.
-    # Without this, the individual lld*.a archives are absent (removed by
-    # remove_unneeded) and LLD_LIBRARIES is empty.
-    ln -sf liblldZig.so "${_lld_lib}/liblld.so"
-    echo "  OK: created liblld.so -> liblldZig.so compat symlink"
 
   elif is_osx; then
     local _out="${_lld_lib}/liblldZig.dylib"
@@ -100,20 +101,24 @@ function build_lld_bundle() {
     fi
     echo "  OK: $(ls -lh "${_out}" | awk '{print $5, $9}')"
 
-    # Create a 'liblld.dylib' compatibility symlink so zig's Findlld.cmake
-    # find_library(NAMES lld-20.0 lld200 lld) resolves to liblldZig.dylib.
-    # Without this, the individual lld*.a archives are absent (removed by
-    # remove_unneeded) and LLD_LIBRARIES is empty, causing undefined lld
-    # symbols when zig links against libLLVM-20.dylib only.
-    ln -sf liblldZig.dylib "${_lld_lib}/liblld.dylib"
-    echo "  OK: created liblld.dylib -> liblldZig.dylib compat symlink"
-
   elif is_not_unix; then
     # DIAGNOSTIC: log environment before Windows build
     echo "DEBUG: target_platform=${target_platform:-unset} ZIG_CXX=${ZIG_CXX:-unset} LLVM_INSTALL=${LLVM_INSTALL:-unset} _lld_lib=${_lld_lib:-unset}" >&2
     local _out="${LLVM_INSTALL}/bin/liblldZig.dll"
     local _implib="${_lld_lib}/liblldZig.dll.a"
-    "${ZIG_CXX}" -shared \
+    # Pass -target so zig-cc links/compiles for the TARGET arch (aarch64-windows-gnu),
+    # not the x86_64 build host.  Mirrors the is_linux branch above.  Without it, zig
+    # defaults to the build-host triple and, on the VS2022 runner, auto-compiles its OWN
+    # bundled libcxxabi (cxa_exception.cpp) against the native MSVC SDK — whose
+    # vcruntime_typeinfo.h:137 `using ::type_info` collides with zig's bundled
+    # cxxabi.h:30 `class type_info`.  Under aarch64-windows-gnu zig uses its bundled
+    # MinGW/libc++ headers instead, so no MSVC header is pulled and the collision cannot
+    # occur (and the produced DLL matches the aarch64 liblld*.a archives it bundles).
+    # ZIG_TARGET_HOST = aarch64-windows-gnu here (recipe.yaml zig_target).
+    # The -I shim keeps LLVM's patched libc++ headers ahead of zig's for any residual
+    # inclusion; harmless once -target removes the MSVC path.
+    local _cxxabi_idir="-I${PREFIX}/lib/zig-llvm/include/c++/v1"
+    "${ZIG_CXX}" -target "${ZIG_TARGET_HOST}" ${_cxxabi_idir} -shared \
       -Wl,--whole-archive \
         "${_lld_lib}/liblldELF.a" \
         "${_lld_lib}/liblldCOFF.a" \

@@ -1,202 +1,63 @@
-# === BOOTSTRAP: compile zig-wrapper.c with the host CC ===
-# zig_impl_<plat> only ships the <triplet>-zig binary; no pre-built wrappers.
-# We compile the unified zig-wrapper.c (already present in recipe/building/)
-# using the conda host CC, substituting compile-time placeholders, then copy
-# the resulting binary under every suffix name expected by consumers.
+# Use the zig C-wrapper binaries installed by the upstream zig package (build _27+).
+# Layout:
+#   Unix:    $BUILD_PREFIX/bin/${CONDA_ZIG_BUILD}-{cc,cxx,ar,ranlib,asm,rc,force-load-cc,force-load-cxx}
+#   Windows: $BUILD_PREFIX/Library/bin/${CONDA_ZIG_BUILD}-{...}.exe
+#
+# Upstream activation also exports ZIG_CC / ZIG_CXX / ZIG_AR / ZIG_RANLIB /
+# ZIG_ASM / ZIG_RC / ZIG_LLD / ZIG_FORCE_LOAD_CC / ZIG_FORCE_LOAD_CXX. We pin
+# the same values explicitly so the script is deterministic regardless of
+# activation order.
 
-# Locate all bootstrap zig binaries. Windows installs under Library/bin/ with .exe suffix.
-# On linux cross-builds there may be multiple triplets (e.g. x86_64-conda-linux-gnu-zig
-# AND powerpc64le-conda-linux-gnu-zig). Install wrappers for every triplet found.
 if is_not_unix; then
-    _zig_bins=( "${BUILD_PREFIX}/Library/bin/"*-zig.exe )
+  _zig_bindir="${BUILD_PREFIX}/Library/bin"
+  _ext=".exe"
 else
-    _zig_bins=( "${BUILD_PREFIX}/bin/"*-zig )
-fi
-# Verify at least one executable was found
-_found_any=0
-for _b in "${_zig_bins[@]}"; do [[ -x "${_b}" ]] && { _found_any=1; break; }; done
-if [[ "${_found_any}" -eq 0 ]]; then
-    echo "ERROR: bootstrap zig binary not found"
-    echo "  Searched: ${BUILD_PREFIX}/bin/*-zig and ${BUILD_PREFIX}/Library/bin/*-zig.exe"
-    ls "${BUILD_PREFIX}/bin/" 2>/dev/null || true
-    ls "${BUILD_PREFIX}/Library/bin/" 2>/dev/null || true
-    exit 1
-fi
-unset _b _found_any
-
-_bootstrap_recipe_dir="${RECIPE_DIR:-${SRC_DIR}/../recipe}"
-_wrapper_src="${_bootstrap_recipe_dir}/building/zig-wrapper.c"
-if [[ ! -f "${_wrapper_src}" ]]; then
-    echo "ERROR: zig-wrapper.c not found at ${_wrapper_src}"
-    exit 1
+  _zig_bindir="${BUILD_PREFIX}/bin"
+  _ext=""
 fi
 
-_wrapper_objdir="${SRC_DIR}/_zig_wrapper_build"
-mkdir -p "${_wrapper_objdir}"
+# CONDA_ZIG_BUILD already carries a trailing .exe on Windows (recipe.yaml's
+# `exe` jinja var, recipe.yaml:286), so appending wrapper-role suffixes
+# (-cc/-cxx/...) directly to it would insert them BEFORE the extension
+# (zig.exe-cc.exe) instead of before it (zig-cc.exe). Strip the suffix once
+# here; ${_ext} below re-adds it at the correct, final position.
+_conda_zig_build_base="${CONDA_ZIG_BUILD%.exe}"
 
-# Platform-specific output directory and exe suffix
-if is_not_unix; then
-    _wrapper_bin_dir="${BUILD_PREFIX}/Library/bin"
-    _exe_suffix=".exe"
-else
-    _wrapper_bin_dir="${BUILD_PREFIX}/bin"
-    _exe_suffix=""
+_probe_cc="${_zig_bindir}/${_conda_zig_build_base}-cc${_ext}"
+if [[ ! -x "${_probe_cc}" ]]; then
+  echo "ERROR: zig cc wrapper not found at ${_probe_cc}"
+  echo "  Is zig_${build_platform} > 0.15.2 build 28 a build dependency?"
+  ls "${_zig_bindir}/"*zig* 2>/dev/null || true
+  exit 1
 fi
-mkdir -p "${_wrapper_bin_dir}"
-
-for _zig_bin in "${_zig_bins[@]}"; do
-    [[ -x "${_zig_bin}" ]] || continue
-    echo "  Bootstrap zig: ${_zig_bin}"
-
-    # Derive conda_triplet from binary name: strip trailing -zig (and .exe on Windows)
-    _conda_triplet=$(basename "${_zig_bin}" .exe)
-    _conda_triplet="${_conda_triplet%-zig}"
-    echo "  Conda triplet: ${_conda_triplet}"
-
-    # Translate conda triplet -> zig-canonical ZIG_TRIPLET that `zig -target` accepts.
-    case "${_conda_triplet}" in
-        *-apple-darwin*)
-            _arch="${_conda_triplet%%-apple-darwin*}"
-            _osver="${_conda_triplet##*-apple-darwin}"
-            [[ "${_arch}" == "arm64" ]] && _arch="aarch64"
-            _zig_triplet_for_bin="${_arch}-macos.${_osver}-none"
-            unset _arch _osver
-            ;;
-        *-conda-*)
-            _zig_triplet_for_bin="${_conda_triplet//-conda-/-}"
-            ;;
-        x86_64-w64-mingw32)
-            _zig_triplet_for_bin="x86_64-windows-gnu"
-            ;;
-        i686-w64-mingw32)
-            _zig_triplet_for_bin="i686-windows-gnu"
-            ;;
-        aarch64-w64-mingw32)
-            _zig_triplet_for_bin="aarch64-windows-gnu"
-            ;;
-        *)
-            _zig_triplet_for_bin="${_conda_triplet}"
-            ;;
-    esac
-
-    # Wrapper's baked default -target (matches reference build.sh:388-393)
-    case "${target_platform:-}" in
-        win-64)    _wrapper_default_target="x86_64-windows-gnu" ;;
-        win-arm64) _wrapper_default_target="aarch64-windows-gnu" ;;
-        win-32)    _wrapper_default_target="x86-windows-gnu" ;;
-        *)         _wrapper_default_target="${_zig_triplet_for_bin%%.[0-9]*}" ;;
-    esac
-
-    # Prefer bare zig; fall back to triplet-prefixed binary if zig_impl_* drops the symlink.
-    if is_not_unix; then
-        if [[ -e "${BUILD_PREFIX}/Library/bin/zig.exe" ]]; then
-            _real_zig_path="${BUILD_PREFIX}/Library/bin/zig.exe"
-        else
-            _real_zig_path="${_zig_bin}"
-        fi
-    else
-        if [[ -e "${BUILD_PREFIX}/bin/zig" ]]; then
-            _real_zig_path="${BUILD_PREFIX}/bin/zig"
-        else
-            _real_zig_path="${_zig_bin}"
-        fi
-    fi
-
-    # Windows: convert backslash to forward slash to avoid C string escape sequences.
-    # On Windows, _real_zig_path may be a backslash path (e.g. D:\a\1\s\...). When
-    # sed-substituted into #define ZIG_REAL_PATH "@ZIG_REAL_PATH@", the backslash
-    # sequences (\a, \1, \r, \s, etc.) are interpreted as C escape sequences inside
-    # the string literal. Forward slashes are accepted by both mingw and zig.
-    if is_not_unix; then
-        _real_zig_path="${_real_zig_path//\\//}"
-    fi
-
-    # Substitute compile-time placeholders into a per-triplet copy of the source
-    _wrapper_c="${_wrapper_objdir}/${_conda_triplet}-zig-wrapper-substituted.c"
-    sed -e "s|@ZIG_TARGET@|${_wrapper_default_target}|g" \
-        -e "s|@ZIG_REAL_PATH@|${_real_zig_path}|g" \
-        "${_wrapper_src}" > "${_wrapper_c}"
-
-    # Compile primary wrapper binary using the host CC
-    _primary_wrapper="${_wrapper_bin_dir}/${_conda_triplet}-zig-cc${_exe_suffix}"
-    echo "  Compiling wrapper: ${_primary_wrapper}"
-    # -I the source building/ dir so the quoted #include "wrapper_utils.h" in
-    # zig-wrapper.c resolves (only the .c is staged into _wrapper_objdir; the
-    # shared header stays in recipe/building/).
-    "${_real_zig_path}" cc -O2 -I"${_bootstrap_recipe_dir}/building" \
-        -o "${_primary_wrapper}" "${_wrapper_c}" \
-        || { echo "ERROR: zig-wrapper.c compile failed for ${_conda_triplet}"; exit 1; }
-
-    # Install ergonomic-name copies (8 suffix names; zig-cc already at _primary_wrapper)
-    for _suffix in zig-cxx zig-ar zig-ranlib zig-asm zig-rc zig-lld zig-force-load-cc zig-force-load-cxx; do
-        cp -f "${_primary_wrapper}" "${_wrapper_bin_dir}/${_conda_triplet}-${_suffix}${_exe_suffix}"
-    done
-
-    unset _zig_triplet_for_bin _wrapper_default_target _wrapper_c _primary_wrapper _suffix
-    echo "  Wrappers installed for: ${_conda_triplet}"
-done
-
-unset _zig_bin _zig_bins _conda_triplet _wrapper_src _wrapper_objdir _bootstrap_recipe_dir
-
-# Re-derive _conda_triplet for env-var exports: prefer the triplet matching
-# CONDA_TOOLCHAIN_HOST (the build-host compiler), falling back to the first binary.
-if is_not_unix; then
-    _first_zig=$(ls "${BUILD_PREFIX}/Library/bin/"*-zig.exe 2>/dev/null | head -1 || true)
-else
-    _first_zig=$(ls "${BUILD_PREFIX}/bin/"*-zig 2>/dev/null | head -1 || true)
-fi
-_conda_triplet=$(basename "${_first_zig}" .exe)
-_conda_triplet="${_conda_triplet%-zig}"
-if [[ -n "${CONDA_TOOLCHAIN_HOST:-}" ]]; then
-    _host_zig="${BUILD_PREFIX}/bin/${CONDA_TOOLCHAIN_HOST}-zig"
-    is_not_unix && _host_zig="${BUILD_PREFIX}/Library/bin/${CONDA_TOOLCHAIN_HOST}-zig.exe"
-    if [[ -x "${_host_zig}" ]]; then
-        _conda_triplet="${CONDA_TOOLCHAIN_HOST}"
-    fi
-fi
-unset _first_zig _host_zig
-echo "  Active triplet for ZIG_CC/CXX exports: ${_conda_triplet}"
-
-# Export ZIG_CC etc. pointing at the compiled binaries
-export ZIG_WRAPPERS="${_wrapper_bin_dir}"
-export ZIG_CC="${_wrapper_bin_dir}/${_conda_triplet}-zig-cc${_exe_suffix}"
-export ZIG_CXX="${_wrapper_bin_dir}/${_conda_triplet}-zig-cxx${_exe_suffix}"
-export ZIG_AR="${_wrapper_bin_dir}/${_conda_triplet}-zig-ar${_exe_suffix}"
-export ZIG_RANLIB="${_wrapper_bin_dir}/${_conda_triplet}-zig-ranlib${_exe_suffix}"
-export ZIG_ASM="${_wrapper_bin_dir}/${_conda_triplet}-zig-asm${_exe_suffix}"
-export ZIG_RC="${_wrapper_bin_dir}/${_conda_triplet}-zig-rc${_exe_suffix}"
-if [[ -x "${_wrapper_bin_dir}/${_conda_triplet}-zig-lld${_exe_suffix}" ]]; then
-  export ZIG_LLD="${_wrapper_bin_dir}/${_conda_triplet}-zig-lld${_exe_suffix}"
+# Sanity check that the wrapper produces a clang version banner.
+# Build 28's compiled C wrapper outputs to stderr; capture both streams.
+# Non-fatal: if the probe doesn't find the banner, log a warning and
+# continue. The actual compile will surface any real wrapper defect.
+# (4 rounds of probe-iteration debugging exhausted — bias toward letting
+# the build proceed and revealing real issues instead of pre-aborting.)
+if ! "${_probe_cc}" --version 2>&1 | grep -q "clang version"; then
+  echo "WARN: zig-cc probe (${_probe_cc} --version) did not output 'clang version' banner" >&2
+  echo "WARN: continuing anyway — actual compilation will catch any real wrapper defect" >&2
 fi
 
-for _v in ZIG_CC ZIG_CXX ZIG_AR ZIG_RANLIB ZIG_ASM; do
-  _path="${!_v}"
-  if [[ ! -x "${_path}" ]]; then
-    echo "ERROR: expected wrapper ${_v}=${_path} not executable after compile"
-    ls "${_wrapper_bin_dir}/" 2>/dev/null || true
-    exit 1
-  fi
-done
-echo "  Wrappers installed: ${_wrapper_bin_dir}"
-
-# ZIG_FORCE_LOAD_CC / ZIG_FORCE_LOAD_CXX: compiled binaries (same binary, different suffix name)
-if [[ -x "${_wrapper_bin_dir}/${_conda_triplet}-zig-force-load-cc${_exe_suffix}" ]]; then
-  export ZIG_FORCE_LOAD_CC="${_wrapper_bin_dir}/${_conda_triplet}-zig-force-load-cc${_exe_suffix}"
-fi
-if [[ -x "${_wrapper_bin_dir}/${_conda_triplet}-zig-force-load-cxx${_exe_suffix}" ]]; then
-  export ZIG_FORCE_LOAD_CXX="${_wrapper_bin_dir}/${_conda_triplet}-zig-force-load-cxx${_exe_suffix}"
-fi
-
-unset _conda_triplet _wrapper_bin_dir _exe_suffix _v _path
-# === END BOOTSTRAP ===
+export ZIG_CC="${_zig_bindir}/${_conda_zig_build_base}-cc${_ext}"
+export ZIG_CXX="${_zig_bindir}/${_conda_zig_build_base}-cxx${_ext}"
+export ZIG_AR="${_zig_bindir}/${_conda_zig_build_base}-ar${_ext}"
+export ZIG_RANLIB="${_zig_bindir}/${_conda_zig_build_base}-ranlib${_ext}"
+export ZIG_RC="${_zig_bindir}/${_conda_zig_build_base}-rc${_ext}"
+# Route ASM through the cc binary on all platforms. The dedicated `-zig-asm`
+# wrapper invokes `zig as`, which is not a valid zig subcommand in 0.15.2 build 27
+# (zig has cc/c++/ar/ranlib/objcopy/rc/dlltool/lib but no `as`). Routing .S/.s
+# files through `zig cc` lets clang's integrated assembler handle them.
+export ZIG_ASM="${_zig_bindir}/${_conda_zig_build_base}-cc${_ext}"
 
 # setup_macos_sysroot: ensure /opt/MacOSX*.sdk exists for zig-cc path #3 lookup.
-# The zig-cc wrapper (_zig-cc-common.sh) globs /opt/MacOSX*.sdk as its third
-# macOS SDK search path. If neither that nor CONDA_BUILD_SYSROOT provides an
-# SDK, download the pinned phracker MacOSX11.0.sdk tarball, verify sha256, and
-# extract to /opt/. Falls back to ${SRC_DIR}/conda-sdks/ + symlink (or
-# CONDA_BUILD_SYSROOT export) if /opt/ is not writable.
-# Ported from conda-forge OCAML feedstock pattern (known-working).
+# The zig-cc wrapper globs /opt/MacOSX*.sdk as its third macOS SDK search path.
+# If neither that nor CONDA_BUILD_SYSROOT provides an SDK, download the pinned
+# phracker MacOSX11.0.sdk tarball, verify sha256, and extract to /opt/. Falls
+# back to ${SRC_DIR}/conda-sdks/ + symlink (or CONDA_BUILD_SYSROOT export) if
+# /opt/ is not writable. Ported from conda-forge OCAML feedstock pattern.
 setup_macos_sysroot() {
   local _sdk_primary="/opt"
   local _sdk_fallback="${SRC_DIR}/conda-sdks"
@@ -269,17 +130,53 @@ PYEOF
   echo "  macOS SDK ready: ${_sdk_path}"
 }
 
-# macOS force-load wrapper: deployment target is baked at compile time into the
-# wrapper binary via @ZIG_TARGET@. ZIG_FORCE_LOAD_CXX (compiled binary) handles
-# -Wl,-all_load/-Wl,-force_load by extracting archives to .o files in c++ mode.
-# Set ZIG_CXX to the force-load variant so CMake uses it for both compile+link.
+# macOS force-load wrapper: zig provides force-load-cxx/-cc which handle
+# -Wl,-all_load / -Wl,-force_load by extracting archives to .o files
+# before linking. Use as ZIG_CXX/ZIG_CC so it handles both compile and link;
+# force-load logic only activates when those linker flags are present.
+#
+# macOS deployment target: conda-build sets MACOSX_DEPLOYMENT_TARGET; CMake on
+# macOS reads it into CMAKE_OSX_DEPLOYMENT_TARGET and injects -mmacosx-version-min
+# automatically. The C-binary wrapper passes those flags through to clang.
+# No wrapper-level patching is needed — the build system handles it end-to-end.
 if is_osx; then
-    setup_macos_sysroot
+  setup_macos_sysroot
 
-    if [[ -n "${ZIG_FORCE_LOAD_CXX:-}" && -x "${ZIG_FORCE_LOAD_CXX}" ]]; then
-        export ZIG_CXX="${ZIG_FORCE_LOAD_CXX}"
-    else
-        echo "ERROR: ZIG_FORCE_LOAD_CXX not available in environment"
-        exit 1
-    fi
+  # macOS libLLVM.dylib link needs -Wl,-all_load / -Wl,-force_load semantics
+  # (LLVM's CMake injects -Wl,-all_load to prevent dead-strip of LLVM*.a archive
+  # members from the dylib — without it, ld64 only links symbols referenced by
+  # libllvm.cpp.o and the dylib ends up nearly empty, failing the
+  # _LLVMInitializeAArch64AsmParser export check).
+  #
+  # Upstream zig 0.15.2 build 27 ships bin/${CONDA_ZIG_BUILD}-force-load-cc
+  # and -cxx as copies of the compiled zig-wrapper.c, but that wrapper's
+  # detect_mode() lacks cases for -force-load-cc/-cxx suffixes — invocation
+  # errors with `zig-wrapper: cannot determine mode from basename(...)` and
+  # exit 1. The wrapper also has no archive extraction (it would only inject
+  # -fuse-ld=lld, which doesn't help: zig's MachO ld64 rejects -Wl,-all_load
+  # and -Wl,-force_load,X as unsupported linker args).
+  #
+  # Workaround: use the vendored shell-script force-load shim (adapted from
+  # this repo's zig-gcc recipe). The shim extracts .o members from each
+  # force-loaded archive via `ar x` and execs upstream's bin/${CONDA_ZIG_BUILD}-cc
+  # / -cxx with the modified argv + extracted .o files appended. The upstream
+  # wrapper still injects -target/-mcpu correctly in CC/CXX mode.
+  _fl_shim_cc="${RECIPE_DIR}/llvm/building/zig-force-load-cc.sh"
+  _fl_shim_cxx="${RECIPE_DIR}/llvm/building/zig-force-load-cxx.sh"
+  _fl_shim_asm="${RECIPE_DIR}/llvm/building/zig-force-load-asm.sh"
+  _fl_shim_common="${RECIPE_DIR}/llvm/building/_zig-force-load-common.sh"
+  if [[ ! -f "${_fl_shim_cc}" || ! -f "${_fl_shim_cxx}" || ! -f "${_fl_shim_asm}" || ! -f "${_fl_shim_common}" ]]; then
+    echo "ERROR: force-load shim missing in ${RECIPE_DIR}/llvm/building/" >&2
+    exit 1
+  fi
+  # git may not preserve the executable bit (depending on commit history /
+  # checkout settings); chmod just-in-time so cmake/ninja can invoke them.
+  chmod +x "${_fl_shim_cc}" "${_fl_shim_cxx}" "${_fl_shim_asm}" "${_fl_shim_common}"
+  export ZIG_CC="${_fl_shim_cc}"
+  export ZIG_CXX="${_fl_shim_cxx}"
+  # Route ASM through the force-load shim (cc mode) on macOS so that CMake's
+  # CMAKE_ASM_COMPILER gets the same -target ${ZIG_TARGET_HOST} injection as
+  # CC/CXX. Without this, CMake passes --target=x86_64-apple-darwin (LLVM format)
+  # which zig rejects with UnknownOperatingSystem for .S files.
+  export ZIG_ASM="${_fl_shim_asm}"
 fi

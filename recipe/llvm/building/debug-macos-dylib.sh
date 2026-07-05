@@ -74,7 +74,7 @@ debug_macos_dylib() {
     | head -5 | sed 's/^/      /'; } || echo "      (not found)"
 
   # Dump key lines from zig-force-load-cxx wrapper
-  # ZIG_CXX is set to the wrapper path by build.sh (e.g. ${ZIG_WRAPPERS}/zig-force-load-cxx)
+  # ZIG_CXX is set to the wrapper path by build.sh (e.g. ${BUILD_PREFIX}/bin/${CONDA_BUILD_ZIG}-force-load-cxx)
   local _wrapper=""
   for _try in \
     "${ZIG_CXX:-}" \

@@ -13,13 +13,9 @@ c_stdlib_version:
 channel_sources:
 - conda-forge
 channel_targets:
-- conda-forge main
+- conda-forge zig_rc
 cross_target_platform_:
 - osx-arm64
-cxx_compiler:
-- clangxx
-cxx_compiler_version:
-- '20'
 libxml2:
 - '2.14'
 libxml2_devel:
@@ -28,9 +24,6 @@ macos_machine:
 - x86_64-apple-darwin13.4.0
 target_platform:
 - osx-64
-zip_keys:
-- - c_compiler_version
-  - cxx_compiler_version
 zlib:
 - '1'
 zstd:

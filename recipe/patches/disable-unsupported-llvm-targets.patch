@@ -1,0 +1,151 @@
+--- a/src/codegen/llvm.zig	2026-02-25 11:01:28.246152399 -0600
++++ b/src/codegen/llvm.zig	2026-02-25 11:01:28.518152269 -0600
+@@ -13011,9 +13011,9 @@
+         },
+-        .amdgcn => {
+-            llvm.LLVMInitializeAMDGPUTarget();
+-            llvm.LLVMInitializeAMDGPUTargetInfo();
+-            llvm.LLVMInitializeAMDGPUTargetMC();
+-            llvm.LLVMInitializeAMDGPUAsmPrinter();
+-            llvm.LLVMInitializeAMDGPUAsmParser();
+-        },
++        .amdgcn => if (comptime builtin.os.tag == .windows and builtin.cpu.arch == .aarch64) unreachable else {
++            llvm.LLVMInitializeAMDGPUTarget();
++            llvm.LLVMInitializeAMDGPUTargetInfo();
++            llvm.LLVMInitializeAMDGPUTargetMC();
++            llvm.LLVMInitializeAMDGPUAsmPrinter();
++            llvm.LLVMInitializeAMDGPUAsmParser();
++        },
+         .thumb, .thumbeb, .arm, .armeb => {
+@@ -13023,55 +13023,13 @@
+             llvm.LLVMInitializeARMAsmPrinter();
+             llvm.LLVMInitializeARMAsmParser();
+         },
+-        .avr => {
+-            llvm.LLVMInitializeAVRTarget();
+-            llvm.LLVMInitializeAVRTargetInfo();
+-            llvm.LLVMInitializeAVRTargetMC();
+-            llvm.LLVMInitializeAVRAsmPrinter();
+-            llvm.LLVMInitializeAVRAsmParser();
+-        },
+-        .bpfel, .bpfeb => {
+-            llvm.LLVMInitializeBPFTarget();
+-            llvm.LLVMInitializeBPFTargetInfo();
+-            llvm.LLVMInitializeBPFTargetMC();
+-            llvm.LLVMInitializeBPFAsmPrinter();
+-            llvm.LLVMInitializeBPFAsmParser();
+-        },
+-        .hexagon => {
+-            llvm.LLVMInitializeHexagonTarget();
+-            llvm.LLVMInitializeHexagonTargetInfo();
+-            llvm.LLVMInitializeHexagonTargetMC();
+-            llvm.LLVMInitializeHexagonAsmPrinter();
+-            llvm.LLVMInitializeHexagonAsmParser();
+-        },
+-        .lanai => {
+-            llvm.LLVMInitializeLanaiTarget();
+-            llvm.LLVMInitializeLanaiTargetInfo();
+-            llvm.LLVMInitializeLanaiTargetMC();
+-            llvm.LLVMInitializeLanaiAsmPrinter();
+-            llvm.LLVMInitializeLanaiAsmParser();
+-        },
+-        .mips, .mipsel, .mips64, .mips64el => {
+-            llvm.LLVMInitializeMipsTarget();
+-            llvm.LLVMInitializeMipsTargetInfo();
+-            llvm.LLVMInitializeMipsTargetMC();
+-            llvm.LLVMInitializeMipsAsmPrinter();
+-            llvm.LLVMInitializeMipsAsmParser();
+-        },
+-        .msp430 => {
+-            llvm.LLVMInitializeMSP430Target();
+-            llvm.LLVMInitializeMSP430TargetInfo();
+-            llvm.LLVMInitializeMSP430TargetMC();
+-            llvm.LLVMInitializeMSP430AsmPrinter();
+-            llvm.LLVMInitializeMSP430AsmParser();
+-        },
+-        .nvptx, .nvptx64 => {
+-            llvm.LLVMInitializeNVPTXTarget();
+-            llvm.LLVMInitializeNVPTXTargetInfo();
+-            llvm.LLVMInitializeNVPTXTargetMC();
+-            llvm.LLVMInitializeNVPTXAsmPrinter();
+-            // There is no LLVMInitializeNVPTXAsmParser function available.
+-        },
++        .avr => unreachable,
++        .bpfel, .bpfeb => unreachable,
++        .hexagon => unreachable,
++        .lanai => unreachable,
++        .mips, .mipsel, .mips64, .mips64el => unreachable,
++        .msp430 => unreachable,
++        .nvptx, .nvptx64 => unreachable,
+         .powerpc, .powerpcle, .powerpc64, .powerpc64le => {
+             llvm.LLVMInitializePowerPCTarget();
+             llvm.LLVMInitializePowerPCTargetInfo();
+@@ -13086,13 +13044,7 @@
+             llvm.LLVMInitializeRISCVAsmPrinter();
+             llvm.LLVMInitializeRISCVAsmParser();
+         },
+-        .sparc, .sparc64 => {
+-            llvm.LLVMInitializeSparcTarget();
+-            llvm.LLVMInitializeSparcTargetInfo();
+-            llvm.LLVMInitializeSparcTargetMC();
+-            llvm.LLVMInitializeSparcAsmPrinter();
+-            llvm.LLVMInitializeSparcAsmParser();
+-        },
++        .sparc, .sparc64 => unreachable,
+         .s390x => {
+             llvm.LLVMInitializeSystemZTarget();
+             llvm.LLVMInitializeSystemZTargetInfo();
+@@ -13123,13 +13075,7 @@
+                 llvm.LLVMInitializeXtensaAsmParser();
+             }
+         },
+-        .xcore => {
+-            llvm.LLVMInitializeXCoreTarget();
+-            llvm.LLVMInitializeXCoreTargetInfo();
+-            llvm.LLVMInitializeXCoreTargetMC();
+-            llvm.LLVMInitializeXCoreAsmPrinter();
+-            // There is no LLVMInitializeXCoreAsmParser function.
+-        },
++        .xcore => unreachable,
+         .m68k => {
+             if (build_options.llvm_has_m68k) {
+                 llvm.LLVMInitializeM68kTarget();
+@@ -13148,13 +13094,7 @@
+                 llvm.LLVMInitializeCSKYAsmParser();
+             }
+         },
+-        .ve => {
+-            llvm.LLVMInitializeVETarget();
+-            llvm.LLVMInitializeVETargetInfo();
+-            llvm.LLVMInitializeVETargetMC();
+-            llvm.LLVMInitializeVEAsmPrinter();
+-            llvm.LLVMInitializeVEAsmParser();
+-        },
++        .ve => unreachable,
+         .arc => {
+             if (build_options.llvm_has_arc) {
+                 llvm.LLVMInitializeARCTarget();
+@@ -13164,21 +13104,8 @@
+                 // There is no LLVMInitializeARCAsmParser function.
+             }
+         },
+-        .loongarch32, .loongarch64 => {
+-            llvm.LLVMInitializeLoongArchTarget();
+-            llvm.LLVMInitializeLoongArchTargetInfo();
+-            llvm.LLVMInitializeLoongArchTargetMC();
+-            llvm.LLVMInitializeLoongArchAsmPrinter();
+-            llvm.LLVMInitializeLoongArchAsmParser();
+-        },
+-        .spirv32,
+-        .spirv64,
+-        => {
+-            llvm.LLVMInitializeSPIRVTarget();
+-            llvm.LLVMInitializeSPIRVTargetInfo();
+-            llvm.LLVMInitializeSPIRVTargetMC();
+-            llvm.LLVMInitializeSPIRVAsmPrinter();
+-        },
++        .loongarch32, .loongarch64 => unreachable,
++        .spirv32, .spirv64 => unreachable,
+
+         // LLVM does does not have a backend for these.
+         .kalimba,

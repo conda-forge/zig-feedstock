@@ -2,10 +2,18 @@ function remove_unneeded() {
   # Remove static libraries - zig only needs shared libs (saves ~500MB)
   # Keep .dll.a import libraries on Windows (needed to link against DLLs)
   # liblld*.a are bundled into liblldZig.so/.dylib/.dll by build_lld_bundle
-  # and are no longer needed as standalone archives.
+  # and are no longer needed as standalone archives — EXCEPT on linux-riscv64
+  # and linux-s390x where liblldZig.so is not built (no shared zstd/xml2/z
+  # available from conda-forge for those arches).  On those platforms keep the
+  # six individual liblld*.a archives so zig-zig can link them statically.
   echo "=== Removing static libraries ==="
-  find "${LLVM_INSTALL}/lib" -name "*.a" ! -name "*.dll.a" -type f -delete
-  echo "  Removed .a files from ${LLVM_INSTALL}/lib (kept .dll.a import libs; liblld*.a replaced by liblldZig bundle)"
+  if [[ "${target_platform}" == "linux-riscv64" || "${target_platform}" == "linux-s390x" ]]; then
+    find "${LLVM_INSTALL}/lib" -name "*.a" ! -name "*.dll.a" ! -name "liblld*.a" -type f -delete
+    echo "  Removed .a files from ${LLVM_INSTALL}/lib (kept .dll.a import libs; kept liblld*.a — no liblldZig.so on ${target_platform})"
+  else
+    find "${LLVM_INSTALL}/lib" -name "*.a" ! -name "*.dll.a" -type f -delete
+    echo "  Removed .a files from ${LLVM_INSTALL}/lib (kept .dll.a import libs; liblld*.a replaced by liblldZig bundle)"
+  fi
 
   # Explicitly remove C++ runtime static archives (libc++, libc++abi, libc++experimental,
   # libunwind). These are installed by the runtimes build and must not ship — zig consumers

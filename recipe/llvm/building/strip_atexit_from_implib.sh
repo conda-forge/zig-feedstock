@@ -322,6 +322,18 @@ def main():
     members = parse_ar(data)
     print(f"    total members: {len(members)}", file=sys.stderr)
 
+    # ── DIAGNOSTIC: full member enumeration ──────────────────────────────────
+    # Unconditional (win-32/win-arm64 known-good AND win-64 broken) so CI logs
+    # give us a direct diff of native zig-ar archive layout across targets.
+    print(f"STRIP_ATEXIT_DIAG: total member count: {len(members)}", file=sys.stderr)
+    for i, (off, hdr, body) in enumerate(members):
+        raw_name = hdr[:16]
+        print(
+            f"STRIP_ATEXIT_DIAG: member[{i}] offset={off:#x} "
+            f"name={member_name(hdr)!r} raw_name={raw_name!r} size={len(body)}",
+            file=sys.stderr,
+        )
+
     # Identify the special members by position/name, import members by the rest.
     # Layout: [first_linker "/"] [second_linker "/"] [longnames "//"] [import...]
     # The first two "/" members are linker members; we rebuild both.
@@ -346,6 +358,43 @@ def main():
     print(f"    second linker member index: {second_linker_idx}", file=sys.stderr)
     print(f"    longnames member index:     {longnames_idx}", file=sys.stderr)
 
+    # ── DIAGNOSTIC: linker/symbol-table fields the strip logic keys on ───────
+    print(
+        f"STRIP_ATEXIT_DIAG: first_linker_present={first_linker_idx is not None} "
+        f"second_linker_present={second_linker_idx is not None} "
+        f"longnames_present={longnames_idx is not None} slash_count={slash_count}",
+        file=sys.stderr,
+    )
+    if first_linker_idx is not None:
+        _fl_body = members[first_linker_idx][2]
+        if len(_fl_body) >= 4:
+            _fl_num_syms = struct.unpack('>I', _fl_body[:4])[0]
+        else:
+            _fl_num_syms = None
+        print(
+            f"STRIP_ATEXIT_DIAG: first_linker body_size={len(_fl_body)} "
+            f"parsed_num_syms={_fl_num_syms}",
+            file=sys.stderr,
+        )
+    if second_linker_idx is not None:
+        _sl_body = members[second_linker_idx][2]
+        if len(_sl_body) >= 4:
+            _sl_num_members = struct.unpack('<I', _sl_body[:4])[0]
+            _sl_syms_off = 4 + _sl_num_members * 4
+            if len(_sl_body) >= _sl_syms_off + 4:
+                _sl_num_syms = struct.unpack(
+                    '<I', _sl_body[_sl_syms_off:_sl_syms_off + 4])[0]
+            else:
+                _sl_num_syms = None
+        else:
+            _sl_num_members = None
+            _sl_num_syms = None
+        print(
+            f"STRIP_ATEXIT_DIAG: second_linker body_size={len(_sl_body)} "
+            f"parsed_num_members={_sl_num_members} parsed_num_syms={_sl_num_syms}",
+            file=sys.stderr,
+        )
+
     # Scan import members for atexit
     atexit_indices = []
     import_count = 0
@@ -359,10 +408,47 @@ def main():
     print(f"    import members scanned: {import_count}", file=sys.stderr)
     print(f"    atexit members found:   {len(atexit_indices)}", file=sys.stderr)
 
+    # ── DIAGNOSTIC: exact selection set BEFORE any deletion/guard decision ───
+    print(
+        f"STRIP_ATEXIT_DIAG: selected for removal: {len(atexit_indices)} of "
+        f"{import_count} import members (of {len(members)} total)",
+        file=sys.stderr,
+    )
+    for i in atexit_indices:
+        off, hdr, body = members[i]
+        print(
+            f"STRIP_ATEXIT_DIAG: selected member[{i}] offset={off:#x} "
+            f"name={member_name(hdr)!r} size={len(body)}",
+            file=sys.stderr,
+        )
+
     if not atexit_indices:
         print("    no atexit member found — strings detection was a false positive",
               file=sys.stderr)
         sys.exit(1)
+
+    # ── Safety guard: refuse implausible over-deletion ──────────────────────
+    # atexit is a single CRT thunk; only a small, fixed number of import
+    # members should ever reference it (observed: 1-2 on all known targets).
+    # If the match set covers most/all of the archive's import members, the
+    # detection has gone wrong (e.g. a native-mingw ar member layout that
+    # defeats the null-boundary check in has_atexit) and writing the result
+    # would zero out the import library. Abort loudly instead of silently
+    # producing a near-empty .dll.a — this must never regress into a
+    # 0-symbol implib again.
+    _MAX_ATEXIT_MEMBERS = 8
+    if (len(atexit_indices) > _MAX_ATEXIT_MEMBERS
+            or (import_count > 0
+                and len(atexit_indices) > import_count // 2)):
+        print(
+            f"    ERROR: refusing to strip — {len(atexit_indices)} of "
+            f"{import_count} import members matched atexit (expected a "
+            f"handful at most). This looks like an over-broad match rather "
+            f"than the real atexit thunk; aborting to avoid destroying the "
+            f"import library.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     for i in atexit_indices:
         off, hdr, body = members[i]
@@ -457,6 +543,55 @@ def main():
             final_members.append((hdr, rebuilt_second))
         else:
             final_members.append((hdr, body))
+
+    # ── Safety guard: refuse an implausibly shrunk archive ───────────────────
+    # Independent of how atexit_indices was computed, if the rebuilt archive
+    # lost most of its members or shrank drastically, something over-deleted.
+    # Better to abort and keep the original (working) import lib than write
+    # a near-empty one that fails 20+ minutes later in a downstream link.
+    kept_member_count = len(final_members)
+
+    # ── DIAGNOSTIC: kept-member count + resulting symbol count ──────────────
+    # Mirrors the field the caller's "Total symbols" check inspects downstream
+    # (post-write strings-based count), but computed here from the rebuilt
+    # linker member(s) so we see it even if the guards below abort first.
+    _diag_first_syms = None
+    _diag_second_syms = None
+    if rebuilt_first is not None and len(rebuilt_first) >= 4:
+        _diag_first_syms = struct.unpack('>I', rebuilt_first[:4])[0]
+    if rebuilt_second is not None and len(rebuilt_second) >= 4:
+        _diag_sl_num_members = struct.unpack('<I', rebuilt_second[:4])[0]
+        _diag_sl_syms_off = 4 + _diag_sl_num_members * 4
+        if len(rebuilt_second) >= _diag_sl_syms_off + 4:
+            _diag_second_syms = struct.unpack(
+                '<I', rebuilt_second[_diag_sl_syms_off:_diag_sl_syms_off + 4])[0]
+    print(
+        f"STRIP_ATEXIT_DIAG: kept_member_count={kept_member_count} "
+        f"(of {len(members)} original) "
+        f"rebuilt_first_linker_symbol_count={_diag_first_syms} "
+        f"rebuilt_second_linker_symbol_count={_diag_second_syms}",
+        file=sys.stderr,
+    )
+
+    if kept_member_count < (len(members) - len(atexit_indices)):
+        print(
+            f"    ERROR: internal inconsistency — expected "
+            f"{len(members) - len(atexit_indices)} kept members, got "
+            f"{kept_member_count}. Aborting.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if len(data) > 0 and len(final_members) > 0:
+        _shrink_ratio = 1.0 - (sum(len(b) for _, b in final_members) / len(data))
+        if _shrink_ratio > 0.5:
+            print(
+                f"    ERROR: refusing to write — archive body would shrink "
+                f"by {_shrink_ratio:.0%} (from {len(data):,} bytes), far "
+                f"more than removing a single atexit thunk should cause. "
+                f"Aborting to avoid producing a near-empty import library.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     # Serialise
     new_data = write_ar(final_members)

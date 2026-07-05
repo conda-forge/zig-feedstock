@@ -143,6 +143,9 @@ static int is_drop_flag(const char *arg) {
         || str_eq(arg, "-ftree-vectorize")
         || starts_with(arg, "-fstack-protector")
         || str_eq(arg, "-fno-plt")
+        || str_eq(arg, "-fno-partial-inlining")
+        || str_eq(arg, "-fno-ipa-cp-clone")
+        || str_eq(arg, "-fno-ipa-cp")
         || starts_with(arg, "-fdebug-prefix-map=")
         || starts_with(arg, "-stdlib=")
         || str_eq(arg, "-lgcc_eh")
@@ -759,11 +762,7 @@ int main(int argc, char *argv[]) {
         case MODE_RC:
             subcommand = "rc"; new_argv[ni++] = "rc"; break;
         case MODE_ASM:
-            /* zig has no `as` subcommand (error: unknown command: as). Assemble
-             * .S files through the cc driver (clang infers assembly from the .S
-             * extension). Mirror MODE_CC so cross-target .S files get -target
-             * injection and flag filtering. */
-            subcommand = "cc";  new_argv[ni++] = "cc";  do_filter = 1; allow_target = 1; break;
+            subcommand = ASM_SUBCOMMAND; new_argv[ni++] = (char *)ASM_SUBCOMMAND; break;
         case MODE_UNKNOWN:
             break; /* unreachable: checked above */
     }

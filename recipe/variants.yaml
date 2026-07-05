@@ -23,15 +23,18 @@ c_compiler:
   - if: not unix
     then:
       - vs2022
-cxx_compiler:
-  - if: not unix
-    then:
-      - vs2022
-
 c_compiler_version:
   - if: osx
     then:
       - "20"
+
+channel_targets:
+  - conda-forge zig_rc
+
+cxx_compiler:
+  - if: not unix
+    then:
+      - vs2022
 cxx_compiler_version:
   - if: osx
     then:
@@ -42,6 +45,7 @@ zig_compiler:
 zig_compiler_version:
   - "0.15.2"
 
+# Custom cross-target list
 cross_target_platform_:
   - linux-64
   - linux-aarch64
