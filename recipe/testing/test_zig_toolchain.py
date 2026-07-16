@@ -133,6 +133,7 @@ def test_wrapper_existence() -> None:
             f"{_triplet}-zig-lld",
             f"{_triplet}-_zig-cc-common.sh",
             f"{_triplet}-_zig-force-load-common.sh",
+            f"{_triplet}-_translate.gen.sh",
         ]
 
     for w in expected:
@@ -726,6 +727,19 @@ def test_win_arm64_entry_point() -> None:
                     "(@ptrCast without @alignCast) -- libubsan sub-compilation fails "
                     "before link; entry resolution unprobed",
                 )
+                # DIAGNOSTIC: the aligncast patch fixes SelfInfo/Windows.zig:670 yet the
+                # trip persists, so the real offending @ptrCast is elsewhere. Surface the
+                # actual zig error lines (file:line + the alignment message) so the next
+                # CI run identifies the true site. Does not affect pass/fail.
+                _diag = [
+                    _ln.strip()
+                    for _ln in r.stderr.splitlines()
+                    if ".zig:" in _ln
+                    or "increases pointer alignment" in _ln
+                    or "sub-compilation of" in _ln
+                ]
+                for _ln in _diag[:20]:
+                    print(f"  [arm64-diag] {entry}: {_ln}")
             else:
                 FAIL(f"win-arm64 {entry} link",
                      f"rc={r.returncode} stderr={r.stderr[:2000]}")
@@ -948,7 +962,6 @@ def test_flag_filter_content() -> None:
     text = common.read_text()
 
     checks = [
-        ("-mcpu=* in filter list", "-mcpu="),
         ("-march=* in filter list", "-march="),
         ("-mtune=* in filter list", "-mtune="),
         ("exported_symbols_list filtered", "exported_symbols_list"),
@@ -961,7 +974,6 @@ def test_flag_filter_content() -> None:
         ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
         ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
         ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
-        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
     ]
     for label, needle in checks:
         if needle in text:
@@ -969,16 +981,25 @@ def test_flag_filter_content() -> None:
         else:
             FAIL(label)
 
-    # -mcpu=baseline injection moved from _zig-cc-common.sh into the generated
+    # These behaviors moved from _zig-cc-common.sh into the generated
     # _translate.gen.sh by the R6 flag-translation refactor (see
-    # test_flag_translation_parity.py); check it in its new home.
+    # test_flag_translation_parity.py); verify them in their new home rather
+    # than grepping _zig-cc-common.sh (where only explanatory comments remain).
     translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
     if not translate.exists():
-        FAIL("_translate.gen.sh exists for -mcpu=baseline check")
-    elif "mcpu=baseline" in translate.read_text():
-        PASS("-mcpu=baseline injection in _translate.gen.sh")
+        FAIL("_translate.gen.sh exists for flag-translation checks")
     else:
-        FAIL("-mcpu=baseline injection in _translate.gen.sh")
+        gen_text = translate.read_text()
+        gen_checks = [
+            ("-mcpu= handled by translator", "-mcpu="),
+            ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
+            ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
+        ]
+        for label, needle in gen_checks:
+            if needle in gen_text:
+                PASS(label)
+            else:
+                FAIL(label)
 
     # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
     if "_use_lld" in text and "-fuse-ld=lld" in text:
