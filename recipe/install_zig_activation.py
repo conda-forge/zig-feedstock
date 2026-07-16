@@ -298,9 +298,18 @@ def install_zig_cc_wrappers(
 
     else:
         wrapper_dir = prefix / "bin"
-        # Install shared helpers (sourced by wrapper scripts, not executed directly)
-        for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
-            src = scripts_dir / helper
+        building_dir = recipe_dir / "building"
+        # Install shared helpers (sourced by wrapper scripts, not executed directly).
+        # _translate.gen.sh is the generated flag-translation fragment (R1-R9);
+        # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
+        # the other two helpers which live in recipe/scripts/ alongside the
+        # wrapper templates that source them.
+        for helper, helper_src_dir in [
+            ("_zig-cc-common.sh", scripts_dir),
+            ("_zig-force-load-common.sh", scripts_dir),
+            ("_translate.gen.sh", building_dir),
+        ]:
+            src = helper_src_dir / helper
             if src.exists():
                 _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
         wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-windres", "zig-force-load-cc", "zig-force-load-cxx"]

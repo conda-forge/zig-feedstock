@@ -25,45 +25,18 @@ if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
     fi
 fi
 
-# --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
-# zig doesn't implement this flag. flexlink calls it to discover library search
-# paths for resolving -lXXX arguments. Without a response, flexlink has no
-# paths and treats -lws2_32 as a literal filename, then crashes.
-for _arg in "$@"; do
-    if [[ "$_arg" == "-print-search-dirs" ]]; then
-        _zig_lib="${CONDA_PREFIX}/lib/zig"
-        _mingw_common="${_zig_lib}/libc/mingw/lib-common"
-        # Select arch-specific mingw dir from the baked-in target arch.
-        # x86_64 -> lib-x86_64 (zig stdlib name); aarch64 -> libarm64.
-        # Fall back to lib-x86_64 for unknown arches so nothing regresses.
-        case "@ZIG_TARGET_ARCH@" in
-            aarch64) _mingw_arch="${_zig_lib}/libc/mingw/libarm64" ;;
-            *)       _mingw_arch="${_zig_lib}/libc/mingw/lib-x86_64" ;;
-        esac
-        echo "install: ${_zig_lib}/"
-        echo "programs: =${CONDA_PREFIX}/bin/"
-        echo "libraries: =${_mingw_common}:${_mingw_arch}:${_zig_lib}"
-        exit 0
-    fi
-done
-
-# --- Handle -print-file-name=<name> (GCC/Clang compat) ---
-# zig doesn't support this flag. Intercept it, probe for the file in the
-# same locations as libcxx_shared.zig (zig-llvm/lib then lib), print the
-# path if found (or echo back the name if not), and exit.
-for _arg in "$@"; do
-    if [[ "$_arg" == -print-file-name=* ]]; then
-        _name="${_arg#-print-file-name=}"
-        for _dir in "${CONDA_PREFIX}/lib/zig-llvm/lib" "${CONDA_PREFIX}/lib"; do
-            if [[ -e "${_dir}/${_name}" ]]; then
-                echo "${_dir}/${_name}"
-                exit 0
-            fi
-        done
-        echo "${_name}"
-        exit 0
-    fi
-done
+# --- Source generated flag-translation rules (R1-R9, unix profile) ---
+# Source of truth: recipe/building/flag_rules.py -> _zig_translate_flags()
+# in recipe/building/_translate.gen.sh. Handles R1 (-Map rewrite), R2/R3
+# (-print-search-dirs / -print-file-name= intercepts), R4 (-nostdlib++),
+# R5 (-target/--target= triplet translation), R6 (-mcpu= preserve-or-
+# default), R7 (always-drop -Wl,--color-diagnostics/-rpath-link*/
+# --disable-new-dtags), R8 (-Bsymbolic* keep+trigger), R9 (-Wl,-z,*/
+# -Wl,-O* passthrough+trigger). Reuses _self_dir if the sourcing wrapper
+# already computed it (zig-cc.sh/zig-cxx.sh/_zig-force-load-common.sh all
+# do), else derives it from this file's own location.
+_self_dir="${_self_dir:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+source "${_self_dir}/@WRAPPER_PREFIX@_translate.gen.sh"
 
 # --- Sysroot detection (Linux only) ---
 _sysroot_flags=()
@@ -121,6 +94,51 @@ for _a in "$@"; do
     esac
 done
 
+# --- Preserve: -Xlinker general pair drop (out of R1-R9 manifest scope) ---
+# Drops -Xlinker --color-diagnostics and -Xlinker --dependency-file=* pairs
+# (Clang-specific flags the self-hosted linker path doesn't want); keeps
+# every other -Xlinker <arg> pair verbatim. flag_rules.py explicitly calls
+# this out as NOT part of R1-R9 ("-Xlinker general trigger/drop besides
+# Bsymbolic ... stays hand-written"), so it runs as a pre-filter over the
+# raw argv before the generated call (R8's own -Xlinker Bsymbolic handling
+# lives inside the generated fn and is unaffected by this pre-filter).
+_pre_args=()
+_xl_argv=("$@")
+_xl_argc=${#_xl_argv[@]}
+_xl_i=0
+while [[ $_xl_i -lt $_xl_argc ]]; do
+    _xl_a="${_xl_argv[$_xl_i]}"
+    if [[ "$_xl_a" == "-Xlinker" ]]; then
+        _xl_next_i=$((_xl_i + 1))
+        if [[ $_xl_next_i -lt $_xl_argc ]]; then
+            _xl_next="${_xl_argv[$_xl_next_i]}"
+            case "$_xl_next" in
+                --color-diagnostics|--dependency-file=*) ;;
+                *) _pre_args+=("$_xl_a" "$_xl_next") ;;
+            esac
+            _xl_i=$_xl_next_i
+        fi
+    else
+        _pre_args+=("$_xl_a")
+    fi
+    ((_xl_i++))
+done
+
+# --- Delegate the 9 de-dup rules (R1-R9) to the generated translator ---
+_tr_in_args=("${_pre_args[@]}")
+_tr_conda_prefix="${CONDA_PREFIX}"
+_tr_target_arch="@ZIG_TARGET_ARCH@"
+_tr_is_win_target=0
+[[ "@ZIG_TARGET@" == *-windows-* ]] && _tr_is_win_target=1
+_tr_mode_is_cxx=0
+[[ "${_ZIG_MODE}" == "c++" ]] && _tr_mode_is_cxx=1
+_zig_translate_flags   # may exit 0 directly for R2 (-print-search-dirs) / R3 (-print-file-name=)
+
+# Merge the generated fn's own R8/R9 trigger scan with the hand-written
+# out-of-scope scan above (--version-script/--dynamic-list/--gc-sections/
+# --build-id/--allow-shlib-undefined/Mach-O equivalents).
+(( _tr_use_lld )) && _use_lld=1
+
 # --- Block LLD on ppc64le: LLD lacks ppc64le relocation support ---
 if (( _use_lld )) && [[ "@ZIG_TARGET_ARCH@" == "powerpc64le" ]]; then
     echo "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)" >&2
@@ -128,36 +146,14 @@ if (( _use_lld )) && [[ "@ZIG_TARGET_ARCH@" == "powerpc64le" ]]; then
     exit 1
 fi
 
-# --- Flag filtering ---
-# Only filter flags genuinely unsupported by both linkers and Clang.
-# LLD-supported flags pass through (LLD auto-promoted above).
-args=()
-i=0
-argv=("$@")
-argc=${#argv[@]}
-
-while [[ $i -lt $argc ]]; do
-    arg="${argv[$i]}"
-    case "$arg" in
-        -Xlinker)
-            next_i=$((i + 1))
-            if [[ $next_i -lt $argc ]]; then
-                next_arg="${argv[$next_i]}"
-                case "$next_arg" in
-                    --color-diagnostics|--dependency-file=*)
-                        i=$next_i ;;
-                    *)
-                        args+=("$arg" "$next_arg")
-                        i=$next_i ;;
-                esac
-            fi
-            ;;
-        # --- Always filtered: unsupported by all linkers or Clang ---
-        -Wl,-rpath-link|-Wl,-rpath-link,*|-Wl,--disable-new-dtags) ;;
-        -Wl,--color-diagnostics) ;;
-        # (macOS Mach-O flags now handled via auto-LLD promotion above)
+# --- Flag filtering: unix-only drops NOT covered by the generated R1-R9
+# manifest (GCC-specific flags Clang rejects, GCC runtime libs zig doesn't
+# ship/can't link). Operates on the already-translated _tr_out_args.
+_final_args=()
+for _fa in "${_tr_out_args[@]}"; do
+    case "$_fa" in
         # GCC-specific flags that zig's Clang doesn't accept
-        -march=*|-mtune=*|-mcpu=*|-ftree-vectorize) ;;
+        -march=*|-mtune=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
@@ -171,51 +167,11 @@ while [[ $i -lt $argc ]]; do
         # For targets where zig provides pthreads natively (Windows, Linux via
         # libc), the static-pthread request is unnecessary and panics the linker.
         -l:libpthread.a|-l:libpthread.so*) ;;
-        # Bare -Map handling for mingw cross targets. Clang rejects bare -Map
-        # ("Unknown Clang option"); rewrite to -Wl,-Map,FILE so it reaches lld.
-        -Map)
-            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
-                next_i=$((i + 1))
-                if [[ $next_i -lt $argc ]]; then
-                    args+=("-Wl,-Map,${argv[$next_i]}")
-                    i=$next_i
-                fi
-            else
-                args+=("$arg")
-            fi
-            ;;
-        -Map=*)
-            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
-                args+=("-Wl,-Map,${arg#-Map=}")
-            else
-                args+=("$arg")
-            fi
-            ;;
-        -Map?*)
-            if [[ "@ZIG_TARGET@" == *-windows-* ]]; then
-                args+=("-Wl,-Map,${arg#-Map}")
-            else
-                args+=("$arg")
-            fi
-            ;;
-        *) args+=("$arg") ;;
+        *) _final_args+=("$_fa") ;;
     esac
-    ((i++))
 done
 
-# --- Handle -nostdlib++: downgrade to cc ---
-_final_args=()
-_saw_nostdlibxx=0
-for _a in "${args[@]}"; do
-    if [[ "$_a" == "-nostdlib++" ]]; then
-        _saw_nostdlibxx=1
-    else
-        _final_args+=("$_a")
-    fi
-done
-
-_mode="${_ZIG_MODE}"
-[[ ${_saw_nostdlibxx} -eq 1 ]] && _mode="cc"
+_mode="${_tr_mode_out}"
 
 # --- macOS: honor MACOSX_DEPLOYMENT_TARGET at runtime ---
 # Override the version in the target triple if MACOSX_DEPLOYMENT_TARGET is set.
@@ -235,47 +191,13 @@ if (( _use_lld )); then
     (( _has_explicit )) || _lld_flag=(-fuse-ld=lld)
 fi
 
-# --- Translate conda triplets to zig triplets in -target args ---
-# Build systems (configure, cmake, meson) pass conda-format triplets that zig
-# doesn't understand. Translate them transparently.
-_conda_to_zig_target() {
-    case "$1" in
-        x86_64-w64-mingw32*)   echo "x86_64-windows-gnu" ;;
-        aarch64-w64-mingw32*)  echo "aarch64-windows-gnu" ;;
-        x86_64-apple-darwin*)  echo "x86_64-macos-none" ;;
-        arm64-apple-darwin*)   echo "aarch64-macos-none" ;;
-        *-conda-linux-gnu*)    echo "${1%%-conda-linux-gnu*}-linux-gnu" ;;
-        *)                     echo "$1" ;;  # pass through as-is
-    esac
-}
-
-# Scan for user-provided -target and -mcpu, translate if needed
+# --- Default -target injection (skip if the generated R5 pass already
+# translated a user-provided -target/--target=) ---
 _target_flag=(-target "${_zig_target}")
-_mcpu_flag=(-mcpu=baseline)
-_translated_args=()
-_skip_next=0
-for _i in "${!_final_args[@]}"; do
-    _a="${_final_args[$_i]}"
-    if (( _skip_next )); then
-        _skip_next=0
-        # This is the value after -target -- translate it
-        _translated_args+=("$(_conda_to_zig_target "$_a")")
-        _target_flag=()  # user provided -target, skip baked-in
-        continue
-    fi
+for _a in "${_final_args[@]}"; do
     case "$_a" in
-        -target)
-            _skip_next=1
-            _translated_args+=("$_a")
-            ;;
-        --target=*)
-            _val="${_a#--target=}"
-            _translated_args+=("--target=$(_conda_to_zig_target "$_val")")
-            _target_flag=()
-            ;;
-        -mcpu=*) _mcpu_flag=(); _translated_args+=("$_a") ;;
-        *) _translated_args+=("$_a") ;;
+        -target|--target=*) _target_flag=() ;;
     esac
 done
 
-_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_mcpu_flag[@]}" "${_sysroot_flags[@]}" "${_translated_args[@]}")
+_exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}" "${_sysroot_flags[@]}" "${_final_args[@]}")

@@ -543,6 +543,7 @@ outputs:
               then:
                 - bin/${{ conda_triplet }}-_zig-cc-common.sh
                 - bin/${{ conda_triplet }}-_zig-force-load-common.sh
+                - bin/${{ conda_triplet }}-_translate.gen.sh
                 - bin/${{ conda_triplet }}-zig-force-load-cc
                 - bin/${{ conda_triplet }}-zig-force-load-cxx
             # Post-install tests

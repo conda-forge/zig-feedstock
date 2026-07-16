@@ -958,7 +958,6 @@ def test_flag_filter_content() -> None:
         ("reexported_symbols_list filtered", "reexported_symbols_list"),
         ("-Wl,-all_load filtered", "all_load"),
         ("-Wl,-force_load filtered", "force_load"),
-        ("-mcpu=baseline in exec args", "mcpu=baseline"),
         ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
         ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
         ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
@@ -969,6 +968,17 @@ def test_flag_filter_content() -> None:
             PASS(label)
         else:
             FAIL(label)
+
+    # -mcpu=baseline injection moved from _zig-cc-common.sh into the generated
+    # _translate.gen.sh by the R6 flag-translation refactor (see
+    # test_flag_translation_parity.py); check it in its new home.
+    translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
+    if not translate.exists():
+        FAIL("_translate.gen.sh exists for -mcpu=baseline check")
+    elif "mcpu=baseline" in translate.read_text():
+        PASS("-mcpu=baseline injection in _translate.gen.sh")
+    else:
+        FAIL("-mcpu=baseline injection in _translate.gen.sh")
 
     # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
     if "_use_lld" in text and "-fuse-ld=lld" in text:

@@ -9,15 +9,25 @@
  * lld-based linker rejects (-march, -fstack-protector, -Wl,-Bsymbolic, etc).
  * Port of the Unix _zig-cc-common.sh logic to compiled C.
  *
+ * The R1-R9 de-dup rules (see recipe/building/flag_rules.py) are delegated
+ * to the generated, portable zig_translate_flags() (_translate.inc). Only
+ * out-of-scope hand-written translations/drops remain below: -Wl,-e<sym>
+ * entry-symbol translation, MSVC /MANIFEST* drops, GCC-only flag drops,
+ * the non-Bsymbolic -Xlinker pair drop, and the LLD-trigger scans not
+ * owned by R8/R9 (--version-script/--dynamic-list/--gc-sections/
+ * --build-id/--allow-shlib-undefined).
+ *
  * Placeholders replaced at install time:
- *   ZIG_CC_MODE    - "cc" or "c++"
- *   ZIG_BIN_NAME   - zig binary filename (e.g. x86_64-w64-mingw32-zig.exe)
- *   ZIG_TARGET     - zig target triplet (e.g. x86_64-windows-msvc)
+ *   ZIG_CC_MODE      - "cc" or "c++"
+ *   ZIG_BIN_NAME     - zig binary filename (e.g. x86_64-w64-mingw32-zig.exe)
+ *   ZIG_TARGET       - zig target triplet (e.g. x86_64-windows-msvc)
+ *   ZIG_TARGET_ARCH  - zig target arch (e.g. "x86_64", "aarch64")
  *
  * Compiled during package build with zig cc.
  */
 
 #include "nonunix_common.h"
+#include "_translate.inc"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +38,7 @@
 #define ZIG_CC_MODE "@ZIG_CC_MODE@"
 #define ZIG_BIN_NAME "@ZIG_BIN_NAME@"
 #define ZIG_TARGET "@ZIG_TARGET@"
+#define ZIG_TARGET_ARCH "@ZIG_TARGET_ARCH@"
 #define IS_MINGW_TARGET @IS_MINGW_TARGET@
 
 /* --- Flag classification helpers --- */
@@ -37,22 +48,6 @@ static int starts_with(const char *s, const char *prefix) {
 
 static int str_eq(const char *a, const char *b) {
     return strcmp(a, b) == 0;
-}
-
-/* Translate conda triplets to zig target format.
- * Returns a static string or the input unchanged. */
-static const char *conda_to_zig_target(const char *triplet) {
-    if (starts_with(triplet, "x86_64-w64-mingw32"))  return "x86_64-windows-gnu";
-    if (starts_with(triplet, "aarch64-w64-mingw32")) return "aarch64-windows-gnu";
-    /* *-conda-linux-gnu* -> *-linux-gnu (strip -conda-) */
-    if (strstr(triplet, "-conda-linux-gnu")) {
-        static char buf[256];
-        const char *p = strstr(triplet, "-conda-linux-gnu");
-        size_t prefix_len = p - triplet;
-        snprintf(buf, sizeof(buf), "%.*s-linux-gnu", (int)prefix_len, triplet);
-        return buf;
-    }
-    return triplet;  /* pass through as-is */
 }
 
 /*
@@ -85,25 +80,26 @@ static char *translate_wl_entry(const char *arg)
     return out;
 }
 
-/* -Xlinker passthrough flags to drop */
+/* -Xlinker passthrough flags to drop.
+ * -Bsymbolic-functions/-Bsymbolic are intentionally NOT listed here: R8
+ * inside zig_translate_flags() owns keep+use_lld handling for the -Xlinker
+ * Bsymbolic pair, and this pre-filter runs BEFORE the generated call, so
+ * dropping them here would silently defeat R8 (a -Xlinker -Bsymbolic pair
+ * must pass through to reach zig_tr_is_xlinker_bsymbolic). */
 static int is_xlinker_drop(const char *arg) {
-    return str_eq(arg, "-Bsymbolic-functions") ||
-           str_eq(arg, "-Bsymbolic") ||
-           str_eq(arg, "--color-diagnostics") ||
+    return str_eq(arg, "--color-diagnostics") ||
            starts_with(arg, "--dependency-file=");
 }
 
-/* -Wl,* flags to drop (entire arg) */
+/* -Wl,* flags to drop (entire arg) -- kept out-of-scope members only.
+ * --color-diagnostics/-Wl,-rpath-link (prefix) / --disable-new-dtags (R7) and
+ * -Wl,-Bsymbolic(-functions) (R8) are now handled inside
+ * zig_translate_flags(). */
 static int is_wl_drop(const char *arg) {
     if (!starts_with(arg, "-Wl,"))
         return 0;
-    return starts_with(arg, "-Wl,-rpath-link") ||
-           str_eq(arg, "-Wl,--disable-new-dtags") ||
-           str_eq(arg, "-Wl,--allow-shlib-undefined") ||
+    return str_eq(arg, "-Wl,--allow-shlib-undefined") ||
            str_eq(arg, "-Wl,--no-allow-shlib-undefined") ||
-           str_eq(arg, "-Wl,-Bsymbolic-functions") ||
-           str_eq(arg, "-Wl,-Bsymbolic") ||
-           str_eq(arg, "-Wl,--color-diagnostics") ||
            starts_with(arg, "-Wl,--version-script") ||
            starts_with(arg, "-Wl,-soname") ||
            starts_with(arg, "-Wl,-z,") ||
@@ -145,18 +141,19 @@ static int is_manifest_flag(const char *arg) {
     return 1;
 }
 
-/* Flags that trigger auto-promotion to LLD (unsupported by self-hosted linker) */
+/* Flags that trigger auto-promotion to LLD (unsupported by self-hosted
+ * linker) -- kept out-of-scope members only. -Wl,-Bsymbolic(-functions)/
+ * bare -Bsymbolic(-functions) (R8) and -Wl,-z,defs|nodelete (R9) are now
+ * handled inside zig_translate_flags(); its out_use_lld must be OR'd with
+ * this scan's result by the caller. */
 static int is_lld_trigger(const char *arg) {
     if (str_eq(arg, "-fuse-ld=lld")) return 1;
     /* ELF flags (-Wl, prefixed) */
     if (starts_with(arg, "-Wl,--version-script")) return 1;
     if (starts_with(arg, "-Wl,--dynamic-list")) return 1;
-    if (starts_with(arg, "-Wl,-z,defs") || starts_with(arg, "-Wl,-z,nodelete")) return 1;
     if (str_eq(arg, "-Wl,--gc-sections") || str_eq(arg, "-Wl,--no-gc-sections")) return 1;
     if (starts_with(arg, "-Wl,--build-id")) return 1;
     if (str_eq(arg, "-Wl,--allow-shlib-undefined") || str_eq(arg, "-Wl,--no-allow-shlib-undefined")) return 1;
-    if (str_eq(arg, "-Wl,-Bsymbolic-functions") || str_eq(arg, "-Wl,-Bsymbolic")) return 1;
-    if (str_eq(arg, "-Bsymbolic-functions") || str_eq(arg, "-Bsymbolic")) return 1;
     return 0;
 }
 
@@ -180,75 +177,95 @@ static int find_zig(char *out, size_t out_size) {
     return 0;
 }
 
-/* --- Handle -print-search-dirs (GCC compat for flexlink/mingw_libs) ---
- * zig doesn't implement this flag. flexlink calls it to discover library
- * search paths before resolving -lXXX arguments. Without a response,
- * flexlink has no search paths and treats -lws2_32 as a literal filename.
- * We return paths to zig's pre-generated MinGW import libraries.
- */
-static int handle_print_search_dirs(int argc, char *argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (str_eq(argv[i], "-print-search-dirs")) {
-            const char *conda = getenv("CONDA_PREFIX");
-            if (conda && conda[0]) {
-                /* lib-common: MinGW import libs (libws2_32.a, libole32.a, etc.)
-                 * lib-x86_64: arch-specific import libs
-                 * lib: zig compiler runtime libs */
-                printf("install: %s\\Library\\lib\\zig\\\n", conda);
-                printf("programs: =%s\\Library\\bin\\\n", conda);
-                const char *arch_dir =
-                    starts_with(ZIG_TARGET, "aarch64") ? "libarm64" : "lib-x86_64";
-                printf("libraries: =%s\\Library\\lib\\zig\\libc\\mingw\\lib-common;"
-                       "%s\\Library\\lib\\zig\\libc\\mingw\\%s;"
-                       "%s\\Library\\lib\\zig\n",
-                       conda, conda, arch_dir, conda);
-            } else {
-                printf("install: \nprograms: =\nlibraries: =\n");
-            }
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/* --- Handle -print-file-name=<name> (GCC/Clang compat) ---
- * zig doesn't support this flag. Probe zig-llvm/lib then lib under
- * CONDA_PREFIX, print the path if found (or echo back the name), and exit.
- */
-static int handle_print_file_name(int argc, char *argv[]) {
-    const char *prefix = "-print-file-name=";
-    size_t plen = strlen(prefix);
-
-    for (int i = 1; i < argc; i++) {
-        if (strncmp(argv[i], prefix, plen) == 0) {
-            const char *name = argv[i] + plen;
-            const char *conda = getenv("CONDA_PREFIX");
-            if (conda && conda[0]) {
-                char probe[MAX_PATH];
-                const char *dirs[] = {"Library\\lib\\zig-llvm\\lib", "Library\\lib"};
-                for (int d = 0; d < 2; d++) {
-                    snprintf(probe, MAX_PATH, "%s\\%s\\%s", conda, dirs[d], name);
-                    if (GetFileAttributesA(probe) != INVALID_FILE_ATTRIBUTES) {
-                        printf("%s\n", probe);
-                        return 1;
-                    }
-                }
-            }
-            printf("%s\n", name);
-            return 1;
-        }
-    }
-    return 0;
-}
-
 int main(int argc, char *argv[]) {
     init_zig_global_cache_dir();
 
-    /* Handle -print-search-dirs and -print-file-name before anything else */
-    if (handle_print_search_dirs(argc, argv))
+    /* One CONDA_PREFIX getenv() call for the translate profile; the
+     * pre-existing getenv("CONDA_PREFIX") calls inside find_zig() are left
+     * untouched. */
+    const char *conda_prefix = getenv("CONDA_PREFIX");
+
+    /* Pre-filter over the raw args (argv[0] excluded):
+     *  - drop -Xlinker <arg> pairs not owned by the generated translator
+     *    (--color-diagnostics / --dependency-file=*; Bsymbolic pairs are
+     *    intentionally excluded here, see is_xlinker_drop doc comment)
+     *  - scan for the LLD triggers that stay out of R8/R9 scope
+     *    (-Wl,--version-script/-Wl,--dynamic-list/-Wl,--gc-sections/
+     *    -Wl,--build-id/-Wl,--allow-shlib-undefined and their bare
+     *    -Xlinker <arg> equivalents)
+     */
+    const char **pre_argv = malloc(sizeof(char *) * (size_t)(argc + 1));
+    if (!pre_argv) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        return 1;
+    }
+    int pi = 0;
+    int use_lld_extra = 0;
+    {
+        int grab_next = 0;
+        for (int i = 1; i < argc; i++) {
+            const char *arg = argv[i];
+
+            if (is_lld_trigger(arg)) use_lld_extra = 1;
+            if (str_eq(arg, "-Xlinker") && i + 1 < argc && is_xlinker_lld_trigger(argv[i + 1]))
+                use_lld_extra = 1;
+
+            if (grab_next) {
+                grab_next = 0;
+                if (!is_xlinker_drop(arg)) {
+                    pre_argv[pi++] = "-Xlinker";
+                    pre_argv[pi++] = arg;
+                }
+                continue;
+            }
+
+            if (str_eq(arg, "-Xlinker")) {
+                grab_next = 1;
+                continue;
+            }
+
+            pre_argv[pi++] = arg;
+        }
+    }
+
+    /* --- Delegate the 9 de-dup rules (R1-R9) to the generated translator --- */
+    zig_translate_profile profile;
+    profile.is_win = 1;
+    profile.is_win_target = IS_MINGW_TARGET;
+    profile.conda_prefix = conda_prefix;
+    profile.zig_target_arch = ZIG_TARGET_ARCH;
+
+    int mode_is_cxx = str_eq(ZIG_CC_MODE, "c++");
+    char **out_argv = NULL;
+    int out_argc = 0;
+    int use_lld_from_gen = 0;
+    int tr_rc = zig_translate_flags(pi, (char *const *)pre_argv, &profile,
+                                     &out_argv, &out_argc, &use_lld_from_gen,
+                                     &mode_is_cxx);
+    free(pre_argv);
+
+    /* R2/R3 (-print-search-dirs / -print-file-name=) already printed to
+     * stdout inside zig_translate_flags(); exit immediately. */
+    if (tr_rc == 2)
         return 0;
-    if (handle_print_file_name(argc, argv))
-        return 0;
+    if (tr_rc != 0) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        return 1;
+    }
+
+    /* Merge the generated fn's own R8/R9 trigger scan with the hand-written
+     * out-of-scope scan above. */
+    int use_lld = use_lld_from_gen || use_lld_extra;
+
+    /* Default -target injection later must only fire if the generated
+     * out_argv (R5) has no -target/--target= of its own. */
+    int has_target = 0;
+    for (int i = 0; i < out_argc; i++) {
+        if (str_eq(out_argv[i], "-target") || starts_with(out_argv[i], "--target=")) {
+            has_target = 1;
+            break;
+        }
+    }
 
     /* Find zig binary */
     char zig_path[MAX_PATH];
@@ -256,105 +273,24 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "ERROR: zig-%s: zig binary not found (%s)\n",
                 ZIG_CC_MODE, ZIG_BIN_NAME);
         fprintf(stderr, "  CONDA_PREFIX=%s\n",
-                getenv("CONDA_PREFIX") ? getenv("CONDA_PREFIX") : "(unset)");
+                conda_prefix ? conda_prefix : "(unset)");
+        free(out_argv);
         return 1;
     }
 
-    /* Allocate filtered args array (worst case: 1:1 with input) */
-    const char **filtered = malloc(sizeof(char *) * (argc + 1));
+    /* Second pass over the generated output: hand-written translations and
+     * drops that stay out of R1-R9 scope (-Wl,-e<sym> entry rewrite, the
+     * 11 out-of-scope -Wl,* drops, GCC-only drops, MSVC manifest drops,
+     * and the self-injected -fuse-ld=lld). */
+    const char **filtered = malloc(sizeof(char *) * (size_t)(out_argc + 1));
     if (!filtered) {
         fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        free(out_argv);
         return 1;
     }
-
-    /* Pre-scan: detect LLD-triggering flags, user overrides, and translate targets */
-    int use_lld = 0;
-    int has_target = 0;
-    int has_mcpu = 0;
-    for (int i = 1; i < argc; i++) {
-        if (is_lld_trigger(argv[i])) use_lld = 1;
-        /* -Xlinker <arg>: check the following arg for bare LLD triggers */
-        if (str_eq(argv[i], "-Xlinker") && i + 1 < argc) {
-            if (is_xlinker_lld_trigger(argv[i + 1])) use_lld = 1;
-        }
-        if (str_eq(argv[i], "-target")) {
-            has_target = 1;
-            /* Translate the next arg (the target value) */
-            if (i + 1 < argc)
-                argv[i + 1] = (char *)conda_to_zig_target(argv[i + 1]);
-        }
-        if (starts_with(argv[i], "--target=")) {
-            has_target = 1;
-            /* Translate inline target value */
-            const char *val = argv[i] + 9; /* strlen("--target=") */
-            const char *translated = conda_to_zig_target(val);
-            if (translated != val) {
-                static char target_buf[280];
-                snprintf(target_buf, sizeof(target_buf), "--target=%s", translated);
-                argv[i] = target_buf;
-            }
-        }
-        if (starts_with(argv[i], "-mcpu=")) has_mcpu = 1;
-    }
-
-    /* First pass: filter flags, detect -nostdlib++ */
     int fi = 0;
-    int saw_nostdlibxx = 0;
-    int grab_next = 0;
-
-    for (int i = 1; i < argc; i++) {
-        const char *arg = argv[i];
-
-        if (grab_next) {
-            grab_next = 0;
-            if (!is_xlinker_drop(arg)) {
-                filtered[fi++] = "-Xlinker";
-                filtered[fi++] = arg;
-            }
-            continue;
-        }
-
-        /* -Xlinker: grab next arg for inspection */
-        if (str_eq(arg, "-Xlinker")) {
-            grab_next = 1;
-            continue;
-        }
-
-        /* Bare -Map handling on mingw targets. Clang's driver rejects bare
-         * -Map as "Unknown Clang option"; rewrite to -Wl,-Map,FILE so clang
-         * forwards it to lld. -Wl,-Map,FILE already passes through unchanged.
-         * Forms: -Map FILE (two-arg), -Map=FILE, -MapFILE. */
-        if (IS_MINGW_TARGET && str_eq(arg, "-Map") && i + 1 < argc) {
-            const char *mapfile = argv[i + 1];
-            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
-            char *out = (char *)malloc(len);
-            if (out) {
-                snprintf(out, len, "-Wl,-Map,%s", mapfile);
-                filtered[fi++] = out;
-            }
-            i++;  /* consume the FILE arg */
-            continue;
-        }
-        if (IS_MINGW_TARGET && starts_with(arg, "-Map=") && arg[5] != '\0') {
-            const char *mapfile = arg + 5;
-            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
-            char *out = (char *)malloc(len);
-            if (out) {
-                snprintf(out, len, "-Wl,-Map,%s", mapfile);
-                filtered[fi++] = out;
-            }
-            continue;
-        }
-        if (IS_MINGW_TARGET && starts_with(arg, "-Map") && arg[4] != '\0' && arg[4] != '=') {
-            const char *mapfile = arg + 4;
-            size_t len = strlen("-Wl,-Map,") + strlen(mapfile) + 1;
-            char *out = (char *)malloc(len);
-            if (out) {
-                snprintf(out, len, "-Wl,-Map,%s", mapfile);
-                filtered[fi++] = out;
-            }
-            continue;
-        }
+    for (int i = 0; i < out_argc; i++) {
+        const char *arg = out_argv[i];
 
         /* -Wl,-e<sym> translation: rewrite to -Wl,--entry,<sym> on mingw */
         {
@@ -378,26 +314,20 @@ int main(int argc, char *argv[]) {
         if (is_manifest_flag(arg))
             continue;
 
-        /* -nostdlib++: downgrade mode from c++ to cc */
-        if (str_eq(arg, "-nostdlib++")) {
-            saw_nostdlibxx = 1;
-            continue;
-        }
-
         /* Skip -fuse-ld=lld from filtered (we inject it ourselves) */
         if (str_eq(arg, "-fuse-ld=lld"))
             continue;
 
         filtered[fi++] = arg;
     }
+    free(out_argv);
 
-    /* Determine final mode */
-    const char *mode = ZIG_CC_MODE;
-    if (saw_nostdlibxx && str_eq(mode, "c++"))
-        mode = "cc";
+    /* Determine final mode (R4 -nostdlib++ downgrade already applied
+     * inside zig_translate_flags()) */
+    const char *mode = mode_is_cxx ? "c++" : "cc";
 
-    /* Build final argv: zig mode [-fuse-ld=lld] -target TARGET -mcpu=baseline <filtered...> */
-    int max_args = fi + 10;
+    /* Build final argv: zig mode [-fuse-ld=lld] [-target TARGET] <filtered...> */
+    int max_args = fi + 8;
     const char **new_argv = malloc(sizeof(char *) * max_args);
     if (!new_argv) {
         fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
@@ -414,8 +344,6 @@ int main(int argc, char *argv[]) {
         new_argv[ni++] = "-target";
         new_argv[ni++] = ZIG_TARGET;
     }
-    if (!has_mcpu)
-        new_argv[ni++] = "-mcpu=baseline";
 
     for (int i = 0; i < fi; i++)
         new_argv[ni++] = filtered[i];
