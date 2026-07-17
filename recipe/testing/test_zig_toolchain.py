@@ -696,6 +696,45 @@ def test_win_arm64_entry_point() -> None:
         SKIP("win-arm64 entry-point probe", "ZIG_CC not set")
         return
 
+    try:
+        print(
+            "[arm64-diag] setup: host PROCESSOR_ARCHITECTURE="
+            f"{os.environ.get('PROCESSOR_ARCHITECTURE', '')} "
+            f"PROCESSOR_ARCHITEW6432={os.environ.get('PROCESSOR_ARCHITEW6432', '')}"
+        )
+        print(f"[arm64-diag] setup: zig_cc={zig_cc}")
+        for _name in ("CONDA_ZIG_BUILD", "CONDA_ZIG_HOST", "ZIG_LIB_DIR",
+                      "CONDA_PREFIX", "BUILD_PREFIX", "PREFIX"):
+            _val = os.environ.get(_name)
+            if _val:
+                print(f"[arm64-diag] setup: {_name}={_val}")
+        _vr = _run([zig_cc, "--version"], timeout=15)
+        _vr_stdout = getattr(_vr, "stdout", "")
+        _vr_stderr = getattr(_vr, "stderr", "")
+        print(
+            f"[arm64-diag] setup: zig_cc --version rc={getattr(_vr, 'returncode', None)} "
+            f"stdout={_vr_stdout[:200]!r} stderr={_vr_stderr[:200]!r}"
+        )
+        _seen_selfinfo: set[str] = set()
+        for _root_name in ("CONDA_PREFIX", "BUILD_PREFIX", "PREFIX"):
+            _root = os.environ.get(_root_name)
+            if not _root:
+                continue
+            for _p in Path(_root).glob("**/lib/zig/std/debug/SelfInfo/Windows.zig"):
+                _key = str(_p)
+                if _key in _seen_selfinfo:
+                    continue
+                _seen_selfinfo.add(_key)
+                try:
+                    _lines = _p.read_text(encoding="utf-8", errors="replace").splitlines()
+                    _line670 = _lines[669].strip() if len(_lines) > 669 else "<line 670 missing>"
+                    print(f"[arm64-diag] setup: SelfInfo/Windows.zig -> {_key}")
+                    print(f"[arm64-diag] setup: line670={_line670!r} patched={'@alignCast' in _line670}")
+                except Exception as _e:
+                    print(f"[arm64-diag] setup: read error for {_key}: {_e}")
+    except Exception as _e:
+        print(f"[arm64-diag] setup: diagnostic error: {_e}")
+
     probes = (
         ("mainCRTStartup", _MAIN_C, []),
         ("wmainCRTStartup", _WMAIN_C, ["-municode"]),
