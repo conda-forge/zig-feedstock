@@ -145,6 +145,11 @@ source:
           # explicitly requested --no-as-needed, breaking dlsym(sin) at runtime.
           # Three-part fix: Config.zig flag + main.zig recorder + Lld.zig bracket.
           - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
+          # LLVM backend: downgrade .shr_exact → .shr when safety checks are on.
+          # LLVM InstCombine folds shl(lshr_exact(x,N),N) → x, making the runtime
+          # back-shift comparison trivially true and silently dropping the panic.
+          # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, …).
+          - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
       # can also `zig cc -target powerpc64le-linux-gnu`.
@@ -183,6 +188,10 @@ source:
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
+          # win-64/arm64: bound zig's mingw __do_global_ctors walk so a malformed
+          # flexlink-merged __CTOR_LIST__ (no -1 head / no NULL terminator) cannot
+          # run off the end (0xC00000FD STATUS_STACK_OVERFLOW pre-main).
+          - patches/non_unix/gccmain-do-global-ctors-guard.patch
       - if: not unix and cross_target_platform_ == "win-32"
         then:
           - patches/non_unix/mingw-include-setjmp-s.patch
@@ -253,8 +262,6 @@ outputs:
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-
-          CMAKE_BUILD: ${{ "1" if riscv64 else "0" }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -621,6 +628,28 @@ outputs:
         files:
           recipe:
             - testing/test_wl_entry_translation.py
+        requirements:
+          run:
+            - python >=3.10
+      # Golden/characterization parity tests for the zig-cc wrapper flag
+      # translation fragment (recipe/scripts/_zig-cc-common.sh) and its
+      # generated C/bash translators (recipe/building/_translate.inc,
+      # _translate.gen.sh). Target-independent: internally exercises both
+      # unix and windows profiles via subprocess/bash-source-capture, so it
+      # is NOT gated on xc_w64 and runs once per build.
+      - script:
+          - if: unix
+            then: python testing/test_flag_translation_parity.py
+          - if: not unix
+            then: python testing\test_flag_translation_parity.py
+        files:
+          recipe:
+            - testing/test_flag_translation_parity.py
+            - testing/_test_utils.py
+            - testing/_translate_harness.c
+            - scripts/_zig-cc-common.sh
+            - building/_translate.gen.sh
+            - building/_translate.inc
         requirements:
           run:
             - python >=3.10

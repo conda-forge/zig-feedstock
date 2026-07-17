@@ -60,8 +60,15 @@ from typing import Callable
 
 from _test_utils import PASS, FAIL, WARN, SKIP, _results
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_COMMON_SH = _REPO_ROOT / "recipe" / "scripts" / "_zig-cc-common.sh"
+# Anchor: __file__ is <base>/testing/<thisfile>. At local-dev time <base> is
+# recipe/; at rattler-build test time the `files: recipe:` entries (recipe.yaml)
+# stage under the test-step dir with the SAME scripts/ building/ testing/ layout,
+# so <base> is the step dir. parents[1] is correct for BOTH layouts; do NOT
+# prepend a "recipe" segment (it only exists in the local checkout, and adding
+# it makes the path resolve one level too deep at rattler test time, which is
+# the FileNotFoundError seen across all CI columns in PR #115).
+_RECIPE_DIR = Path(__file__).resolve().parents[1]
+_COMMON_SH = _RECIPE_DIR / "scripts" / "_zig-cc-common.sh"
 
 _BASH = shutil.which("bash")
 
@@ -79,9 +86,9 @@ _WINDOWS_TARGET = "x86_64-windows-gnu"  # needed to trigger the -Map rewrite bra
 # ---------------------------------------------------------------------------
 # GENERATED-leg constants (recipe/building/_translate.inc, _translate.gen.sh)
 # ---------------------------------------------------------------------------
-_BUILDING_DIR = _REPO_ROOT / "recipe" / "building"
+_BUILDING_DIR = _RECIPE_DIR / "building"
 _TRANSLATE_GEN_SH = _BUILDING_DIR / "_translate.gen.sh"
-_HARNESS_C = _REPO_ROOT / "recipe" / "testing" / "_translate_harness.c"
+_HARNESS_C = _RECIPE_DIR / "testing" / "_translate_harness.c"
 
 
 # ---------------------------------------------------------------------------
@@ -103,9 +110,19 @@ def _patch_common_sh(dest: Path, *, target: str, arch: str) -> None:
 
 
 def _parse_declare_p_array(output: str, varname: str) -> list[str] | None:
-    """Parse `declare -p <varname>` bash output for an indexed array."""
+    """Parse `declare -p <varname>` bash output for an indexed array.
+
+    Tolerates both serializations: GNU bash 4+ emits
+    `declare -a NAME=([0]="a" [1]="b")`, while macOS bash 3.2 wraps the
+    whole RHS in an extra outer pair of single quotes:
+    `declare -a NAME='([0]="a" [1]="b")'`. The optional `'?` around the
+    parens absorbs the bash-3.2 form so osx (bash 3.2) parses the same as
+    linux/win (bash 4+). Without it, osx sourced fine but exec_args came
+    back None (PR #115 build 1554311 osx FAILs, generated-C leg green).
+    """
     m = re.search(
-        rf'declare -a {re.escape(varname)}=\((.*)\)\s*$', output, re.DOTALL | re.MULTILINE
+        rf"declare -a {re.escape(varname)}='?\((.*)\)'?\s*$",
+        output, re.DOTALL | re.MULTILINE
     )
     if not m:
         return None

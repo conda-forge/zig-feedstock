@@ -70,20 +70,6 @@ EXTRA_CMAKE_ARGS=(
   -DZIG_USE_LLVM_CONFIG=ON
 )
 
-# Cross-compile stage1 host-tool split: zig-wasm2c / zig1 are
-# build-host tools; when CC ≠ CC_FOR_BUILD CMAKE_C_COMPILER produces
-# binaries that can't run on the build host.  ZIG_STAGE1_HOST_CC
-# routes those targets through the build-host compiler (via add_
-# custom_command in patches/cmake/0003-cmake-stage1-host-cc-...),
-# leaving zig2 / compiler_rt / zigcpp on CMAKE_C_COMPILER.
-#
-# Applied on every cross variant (osx + linux-cross).  For linux-cross
-# this replaces the qemu emulator path that used to wrap zig-wasm2c /
-# zig1 invocations in 0003-cross-CMakeLists.txt.patch.
-if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
-  EXTRA_CMAKE_ARGS+=(-DZIG_STAGE1_HOST_CC="${CC_FOR_BUILD}")
-fi
-
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
   --search-prefix "${PREFIX}"
@@ -269,14 +255,10 @@ if is_linux; then
 fi
 
 
-if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
-  dbg echo "=== ZIG BUILD: CMAKE_BUILD=1, forcing cmake build (bypass zig-with-zig) ==="
-  source "${RECIPE_DIR}/building/_cmake.sh"
-  cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
-elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
-  echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
+  echo "ERROR: zig-build failed." >&2
   exit 1
 fi
 
