@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
 Golden/characterization parity tests for the zig-cc wrapper flag-translation
-fragment (recipe/scripts/_zig-cc-common.sh), written AHEAD of the Phase 2/3
-wrapper de-dup refactor (branch mnt/v0.16.0_7-verify-non-unix).
+fragment (recipe/scripts/_zig-cc-common.sh) vs the shared manifest
+(recipe/building/flag_rules.py) that now drives both the Unix bash fragment
+and the Windows compiled shim (recipe/building/zig-cc-nonunix.c).
 
-This is test-FIRST, not a regression suite: it is EXPECTED that some cases
-FAIL against the CURRENT wrappers, because those cases encode the target
-post-refactor ("winner") behavior for the planned single flag-translation
-manifest shared between the Unix bash fragment and the Windows compiled
-shim (recipe/building/zig-cc-nonunix.c). Those cases are labelled
-kind="drift-tdd" and print as WARN (not FAIL) so the module stays green
-until Phase 2/3 lands, while still surfacing the intentional gap.
+The Phase 2/3 wrapper de-dup refactor has LANDED: the single flag-translation
+manifest is generated into _translate.gen.sh (bash) and _translate.inc (C),
+and both wrappers consume it. So this is now a REGRESSION suite, not test-
+first scaffolding: all 13 characterization cases are labelled
+kind="clean-lock" and record the unified ("winner") behavior as a fixed
+literal, so any drift in already-correct behavior shows up as a real FAIL.
 
-Cases labelled kind="clean-lock" record TODAY's ACTUAL bash output as a
-fixed literal, so any accidental drift in already-correct behavior shows
-up as a real FAIL.
+The kind="drift-tdd" label (print as WARN, not FAIL) remains available in the
+harness for any FUTURE test-first rule added ahead of its wrapper
+implementation, but no case currently uses it.
 
 Facts verified by reading recipe/scripts/_zig-cc-common.sh + zig-cc.sh
 before writing this table (do not re-derive from memory -- re-read the
@@ -327,11 +327,11 @@ CASES: list[Case] = [
             ("no duplicate baked-in -target", _target_count_one()),
         ],
     ),
-    # --- DRIFT rules: golden = WINNER (post-unification) behavior ----------
+    # --- Former DRIFT rules: now UNIFIED via the manifest and LOCKED to the winner behavior (clean-lock) ---
     Case(
         id=6,
         desc="-mcpu=native kept verbatim, no -mcpu=baseline injected",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-mcpu=native"],
         checks=[
@@ -342,7 +342,7 @@ CASES: list[Case] = [
     Case(
         id=7,
         desc="-Wl,--color-diagnostics always dropped regardless of use_lld",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Wl,--color-diagnostics"],
         checks=[
@@ -352,7 +352,7 @@ CASES: list[Case] = [
     Case(
         id=8,
         desc="-Wl,-z,now kept (pass through, not dropped)",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Wl,-z,now"],
         checks=[
@@ -362,7 +362,7 @@ CASES: list[Case] = [
     Case(
         id=9,
         desc="-Wl,-z,defs kept AND activates use_lld",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Wl,-z,defs"],
         checks=[
@@ -373,7 +373,7 @@ CASES: list[Case] = [
     Case(
         id=10,
         desc="-Wl,-O2 kept AND activates use_lld",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Wl,-O2"],
         checks=[
@@ -384,7 +384,7 @@ CASES: list[Case] = [
     Case(
         id=11,
         desc="-Xlinker -Bsymbolic-functions kept AND activates use_lld",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Xlinker", "-Bsymbolic-functions"],
         checks=[
@@ -395,7 +395,7 @@ CASES: list[Case] = [
     Case(
         id=12,
         desc="combo: -z,defs kept+lld active, --color-diagnostics still dropped",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Wl,-z,defs", "-Wl,--color-diagnostics"],
         checks=[
@@ -407,7 +407,7 @@ CASES: list[Case] = [
     Case(
         id=13,
         desc="combo: -O2 kept+lld active, -rpath-link still dropped despite lld",
-        kind="drift-tdd",
+        kind="clean-lock",
         mode="cc",
         argv=["-Wl,-rpath-link,/x", "-Wl,-O2"],
         checks=[
@@ -459,10 +459,9 @@ def _run_case(case: Case, expected_red: list[str]) -> None:
 #
 # These two legs assert that the GENERATED translators
 # (recipe/building/_translate.inc / _translate.gen.sh) implement the
-# WINNER behavior directly -- unlike the actual-bash leg above (which
-# still characterizes TODAY's _zig-cc-common.sh and intentionally shows
-# red for cases 6/11 pending the Phase 2/3 manifest unification), these
-# two legs are expected to be entirely GREEN right now.
+# WINNER behavior directly. The Phase 2/3 manifest unification has LANDED,
+# so the actual-bash leg above now matches these legs on every case (all 13
+# are clean-lock); all three legs are expected to be entirely GREEN.
 #
 # Assertions are RULE-RELEVANT TOKEN predicates, not full-array equality:
 # the generated function's *out_argv is a PARTIAL argv that excludes

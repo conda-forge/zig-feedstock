@@ -642,12 +642,21 @@ outputs:
             then: python testing/test_flag_translation_parity.py
           - if: not unix
             then: python testing\test_flag_translation_parity.py
+          # Drift guard: the committed generated translators
+          # (_translate.gen.sh / _translate.inc) must stay in sync with the
+          # flag_rules.py manifest they are generated from.
+          - if: unix
+            then: python building/gen_translators.py --check
+          - if: not unix
+            then: python building\gen_translators.py --check
         files:
           recipe:
             - testing/test_flag_translation_parity.py
             - testing/_test_utils.py
             - testing/_translate_harness.c
             - scripts/_zig-cc-common.sh
+            - building/flag_rules.py
+            - building/gen_translators.py
             - building/_translate.gen.sh
             - building/_translate.inc
         requirements:
