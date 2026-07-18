@@ -6,12 +6,12 @@
 
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -660,7 +660,7 @@
+@@ -675,7 +675,7 @@
                              .dynamic => "",
                          };
-                         try argv.append(try allocPrint(arena, "{s}vcruntime.lib", .{lib_str}));
--                        try argv.append(try allocPrint(arena, "{s}ucrt.lib", .{lib_str}));
-+                        // try argv.append(try allocPrint(arena, "{s}ucrt.lib", .{lib_str}));
+                         try argv.append(try arena.print("{s}vcruntime.lib", .{lib_str}));
+-                        try argv.append(try arena.print("{s}ucrt.lib", .{lib_str}));
++                        // try argv.append(try arena.print("{s}ucrt.lib", .{lib_str}));
 
                          //Visual C++ 2015 Conformance Changes
                          //https://msdn.microsoft.com/en-us/library/bb531344.aspx

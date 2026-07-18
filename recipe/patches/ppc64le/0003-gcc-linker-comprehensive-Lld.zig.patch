@@ -211,8 +211,8 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +            }
 +
 +            // Object files
-+            for (comp.c_object_table.keys()) |key| {
-+                try argv.append(try key.status.success.object_path.toString(arena));
++            for (comp.c_objects.items) |c_object| {
++                try argv.append(try c_object.status.success.object_path.toString(arena));
 +            }
 +            if (zcu_obj_path) |p| {
 +                try argv.append(try p.toString(arena));

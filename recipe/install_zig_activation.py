@@ -252,6 +252,12 @@ def install_zig_cc_wrappers(
 
     if is_nonunix:
         wrapper_dir = prefix / "Library" / "bin"
+        # Extract zig binary filename from full %CONDA_PREFIX%\... path once
+        zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
+
+        # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
+        cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
+        if cc_src.exists():
             is_mingw = "mingw32" in conda_triplet
             for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
                 mode_replacements = {
