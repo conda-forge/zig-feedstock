@@ -255,7 +255,7 @@ outputs:
           - if: not unix
             then: "*/VERSION.dll"
       script:
-        file: build${{ sh }}
+        file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
