@@ -1,3 +1,5 @@
+source "${RECIPE_DIR}/building/_common.sh"
+
 function create_zig_linux_libc_file() {
   local output_file=$1
 
@@ -6,9 +8,10 @@ function create_zig_linux_libc_file() {
     return 1
   fi
 
-  is_debug && echo "Creating Zig libc configuration file: ${output_file}"
+  dbg echo "Creating Zig libc configuration file: ${output_file}"
 
   # Find GCC library directory (contains crtbegin.o, crtend.o)
+  # Rewrite sysroot path: replace $BUILD_PREFIX with $BUILD_PREFIX/lib/gcc to reach the gcc multilib subdir.
   local gcc_lib_dir="${CONDA_BUILD_SYSROOT//${BUILD_PREFIX}/${BUILD_PREFIX}\/lib\/gcc}"
   gcc_lib_dir=${gcc_lib_dir//\/sysroot/}
   gcc_lib_dir=$(dirname "$(find "${gcc_lib_dir}" -name "crtbeginS.o" | head -1)")
@@ -17,7 +20,7 @@ function create_zig_linux_libc_file() {
     echo "WARNING: Could not find GCC library directory for ${CONDA_BUILD_SYSROOT}" >&2
     gcc_lib_dir=""
   else
-    is_debug && echo "  Found GCC library directory: ${gcc_lib_dir}"
+    dbg echo "  Found GCC library directory: ${gcc_lib_dir}"
   fi
 
   # Create libc configuration file
@@ -30,6 +33,6 @@ kernel32_lib_dir=
 gcc_dir=${gcc_lib_dir}
 EOF
 
-  is_debug && echo "Zig libc file created: ${output_file}"
+  dbg echo "Zig libc file created: ${output_file}"
   :
 }

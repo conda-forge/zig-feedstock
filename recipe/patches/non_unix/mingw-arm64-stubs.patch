@@ -1,0 +1,98 @@
+# Purpose: Add aarch64 stub sources to mingw32_arm64_src so libmingw32.lib resolves _fpreset
+#          natively without wrapper injection. Guard _fpreset F_LD80(DATA) with
+#          #ifndef __aarch64__ in the two CRT .def.in files: on aarch64, F_LD80(DATA)
+#          expands to empty, so the symbol would be emitted as a plain (non-DATA) export,
+#          causing BRANCH26 auto-import collisions at link time.
+# Affects: src/libs/mingw.zig, lib/libc/mingw/crt/fpreset_arm64.c (new file),
+#          lib/libc/mingw/lib-common/ucrtbase-common.def.in,
+#          lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
+# Note: chkstk_arm64.S dropped -- compiler_rt provides ___chkstk_ms via
+#       lib/compiler_rt/stack_probe.zig:267 for aarch64-windows targets.
+#       setjmp.S dropped -- F_NON_ARM64 guard in .def.in means __intrinsic_setjmp
+#       is not declared for arm64ec; provided via mingw-include-setjmp-s.patch for i386.
+# Upstream: TBD
+# drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
+# Last-verified: 2026-06-04
+
+From: zig-feedstock
+Subject: [PATCH] mingw: add aarch64-specific fpreset stub via new mingw32_arm64_src array
+
+Adds fpreset_arm64.c to a new mingw32_arm64_src array (aarch64-only)
+so libmingw32.lib for aarch64-windows-gnu resolves _fpreset natively.
+Previously required wrapper injection via aarch64-w64-mingw32-zig.exe
+(_win_arm64_stubs.sh), which broke direct `zig cc -target aarch64-windows-gnu`.
+
+drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
+
+--- /dev/null
++++ b/lib/libc/mingw/crt/fpreset_arm64.c
+@@ -0,0 +1,11 @@
++/* aarch64 stub for _fpreset and fpreset.
++ *
++ * CRT_fp10.c provides these symbols for x86 via `__asm__ ("fninit")`,
++ * but is excluded from aarch64 builds. References to _fpreset from
++ * crt_handler.c, tlsthrd.c, crtexe.c, winpthreads/thread.c need a
++ * resolved symbol on aarch64-windows-gnu -- they get one here.
++ *
++ * No-op: aarch64 has no x87 FPU to reset.
++ */
++void _fpreset(void) {}
++void fpreset(void) {}
+
+--- a/src/libs/mingw.zig
++++ b/src/libs/mingw.zig
+@@ -125,6 +125,17 @@
+                             .owner = undefined,
+                         });
+                     }
++                    if (target.cpu.arch == .aarch64) {
++                        for (mingw32_arm64_src) |dep| {
++                            try c_source_files.append(.{
++                                .src_path = try comp.dirs.zig_lib.join(arena, &.{
++                                    "libc", "mingw", dep,
++                                }),
++                                .extra_flags = crt_args.items,
++                                .owner = undefined,
++                            });
++                        }
++                    }
+                 } else {
+                     @panic("unsupported arch");
+                 }
+@@ -905,6 +916,10 @@
+     "math" ++ path.sep_str ++ "arm-common" ++ path.sep_str ++ "ldexpl.c",
+ };
+
++const mingw32_arm64_src = [_][]const u8{
++    "crt" ++ path.sep_str ++ "fpreset_arm64.c",
++};
++
+ const mingw32_winpthreads_src = [_][]const u8{
+     // winpthreads
+     "winpthreads" ++ path.sep_str ++ "barrier.c",
+
+--- a/lib/libc/mingw/lib-common/ucrtbase-common.def.in
++++ b/lib/libc/mingw/lib-common/ucrtbase-common.def.in
+@@ -388,7 +388,9 @@
+ _fpclass
+ F_X64(_fpclassf)
+ _fpieee_flt
++#ifndef __aarch64__
+ _fpreset F_LD80(DATA) ; DATA added manually
++#endif
+ _fputc_nolock
+ _fputchar
+ _fputwc_nolock
+
+--- a/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
++++ b/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
+@@ -44,7 +44,9 @@
+ _execute_onexit_table
+ _exit
+ _fpieee_flt
++#ifndef __aarch64__
+ _fpreset F_LD80(DATA) ; DATA added manually
++#endif
+ _get_doserrno
+ _get_errno
+ _get_initial_narrow_environment

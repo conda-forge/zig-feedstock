@@ -1,0 +1,72 @@
+--- a/lib/libc/mingw/crt/gccmain.c
++++ b/lib/libc/mingw/crt/gccmain.c
+@@ -7,6 +7,7 @@
+ #include <windows.h>
+ #include <stdlib.h>
+ #include <setjmp.h>
++#include <stdio.h>
+
+ typedef void (*func_ptr) (void);
+ extern func_ptr __CTOR_LIST__[];
+@@ -29,23 +30,44 @@
+ }
+
+ void
+-__do_global_ctors (void)
+-{
+-  unsigned long nptrs = (unsigned long) (ptrdiff_t) __CTOR_LIST__[0];
+-  unsigned long i;
+-
+-  if (nptrs == (unsigned long) -1)
+-    {
+-      for (nptrs = 0; __CTOR_LIST__[nptrs + 1] != 0; nptrs++);
+-    }
+-
+-  for (i = nptrs; i >= 1; i--)
+-    {
+-      __CTOR_LIST__[i] ();
+-    }
+-
+-  atexit (__do_global_dtors);
+-}
++__do_global_ctors (void)
++{
++  /* zig-feedstock defensive guard.  flexlink -chain mingw64 can merge a
++     malformed __CTOR_LIST__ (missing the -1 head sentinel and/or the NULL
++     terminator) because zig ships no PE crtbegin/crtend bookends, and the
++     stock walker then runs off the end -> 0xC00000FD STATUS_STACK_OVERFLOW
++     before main.  Read the head at pointer width (Win64 is LLP64: unsigned
++     long is 32-bit) and bound the scan; refuse a malformed list instead of
++     walking into garbage.  Well-formed lists (the plain `zig cc` path, whose
++     LLD-synthesized list is properly -1-headed and NULL-terminated) take the
++     normal path silently.  */
++  size_t nptrs = (size_t) (ptrdiff_t) __CTOR_LIST__[0];
++  size_t i;
++
++  if (nptrs == (size_t) -1)
++    {
++      for (nptrs = 0; nptrs < 65536 && __CTOR_LIST__[nptrs + 1] != 0; nptrs++)
++        ;
++      if (nptrs >= 65536)
++        {
++          fputs ("[W7R] gccmain refuse:unterminated\n", stderr);
++          return;
++        }
++    }
++  else if (nptrs > 65536)
++    {
++      fprintf (stderr, "[W7R] gccmain refuse:no-head head=0x%llx\n",
++               (unsigned long long) nptrs);
++      return;
++    }
++
++  for (i = nptrs; i >= 1; i--)
++    {
++      __CTOR_LIST__[i] ();
++    }
++
++  atexit (__do_global_dtors);
++}
+
+ static int initialized = 0;
+

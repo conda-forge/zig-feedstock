@@ -13,7 +13,7 @@ function create_glibc217_syscall_stubs() {
   local cc_compiler="${1}"
   local output_dir="${2:-${SRC_DIR}}"
 
-  is_debug && echo "Creating glibc 2.17 syscall stubs (getrandom, copy_file_range, statx)"
+  dbg echo "Creating glibc 2.17 syscall stubs (getrandom, copy_file_range, statx)"
 
   cat > "${output_dir}/glibc217_syscall_stubs.c" << 'EOF'
 /*
@@ -115,6 +115,6 @@ EOF
     return 1
   fi
 
-  is_debug && echo "glibc 2.17 syscall stubs created: ${output_dir}/glibc217_syscall_stubs.o"
+  dbg echo "glibc 2.17 syscall stubs created: ${output_dir}/glibc217_syscall_stubs.o"
   return 0
 }

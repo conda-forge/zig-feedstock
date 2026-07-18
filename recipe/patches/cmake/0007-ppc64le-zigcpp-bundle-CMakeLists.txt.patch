@@ -1,0 +1,23 @@
+# Purpose: Override zigcpp static archive with a shared .so bundle on ppc64le to avoid R_PPC64_REL24 overflow
+# Affects: CMakeLists.txt (zigcpp target_link_libraries override block)
+# Upstream: TBD
+# Drop-when: conda-forge ppc64le libzigcpp.a compiled with -mlongcall or dynamic linker layout changes
+# Last-verified: 2026-05-23
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -727,7 +727,13 @@
+   LINK_FLAGS "${ZIG2_LINK_FLAGS}"
+ )
+ target_include_directories(zig2 PUBLIC stage1)
+-target_link_libraries(zig2 LINK_PUBLIC zigcpp)
++if(DEFINED ZIG_ZIGCPP_BUNDLE_SO)
++    message(STATUS "ZIG: overriding zigcpp link target with bundle: ${ZIG_ZIGCPP_BUNDLE_SO}")
++    target_link_libraries(zig2 LINK_PUBLIC "${ZIG_ZIGCPP_BUNDLE_SO}")
++    target_link_libraries(zig2 LINK_PUBLIC ${CLANG_LIBRARIES} ${LLD_LIBRARIES} ${LLVM_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
++else()
++    target_link_libraries(zig2 LINK_PUBLIC zigcpp)
++endif()
+
+ # ppc64le: zig2.c is a ~11M-line auto-generated C TU; same 32MB branch limit
+ # applies.  Force indirect calls so the linker can resolve all cross-unit refs.
