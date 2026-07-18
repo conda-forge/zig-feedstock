@@ -78,6 +78,7 @@ fi
 #    in linker scripts — fix_sysroot_libc_scripts rewrites them to relative paths)
 source "${RECIPE_DIR}/building/_common.sh"
 source "${RECIPE_DIR}/building/_sysroot_fix.sh"
+source "${RECIPE_DIR}/building/_atfork.sh"
 fix_sysroot_libc_scripts "${ENV_DIR}"
 
 # 3. Find the zig binary to use as bootstrap
@@ -118,15 +119,8 @@ cmake --build "${CMAKE_BUILD}" --target zigcpp -- -j"${CPU_COUNT:-4}"
 # 4b. Create pthread_atfork stub (glibc 2.28 libc_nonshared.a not found by lld)
 STUB_DIR="${WORK_DIR}/atfork-stub"
 mkdir -p "${STUB_DIR}"
-cat > "${STUB_DIR}/pthread_atfork_stub.c" << 'STUBEOF'
-__attribute__((weak))
-int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void)) {
-    (void)prepare; (void)parent; (void)child;
-    return 0;
-}
-STUBEOF
 NATIVE_CC=$(ls "${ENV_DIR}"/bin/x86_64-conda-linux-gnu-cc 2>/dev/null || echo gcc)
-"${NATIVE_CC}" -c "${STUB_DIR}/pthread_atfork_stub.c" -o "${STUB_DIR}/pthread_atfork_stub.o"
+create_pthread_atfork_stub "x86_64" "${NATIVE_CC}" "${STUB_DIR}"
 perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${STUB_DIR}/pthread_atfork_stub.o\"|g" \
     "${CMAKE_BUILD}/config.h"
 echo "[build_native] Injected pthread_atfork stub into config.h"

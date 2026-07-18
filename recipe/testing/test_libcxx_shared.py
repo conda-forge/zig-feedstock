@@ -361,9 +361,14 @@ def test_libcxx_probe_paths() -> None:
         SKIP("verbose-link", "Linux-only")
         return
 
+    # --- Strace test ---
+    strace = shutil.which("strace")
+    if not strace:
+        SKIP("strace probe", "strace not found in PATH")
+        return
+
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "probe.cpp"
-        out = Path(td) / "libprobe.so"
         src.write_text(
             '#include <string>\n'
             'extern "C" {\n'
@@ -373,6 +378,7 @@ def test_libcxx_probe_paths() -> None:
         )
 
         # Run with --verbose-link to see actual linker args
+        out = Path(td) / "libprobe.so"
         r_vl = _run([zig, "c++", "-shared", "--verbose-link",
                       "-o", str(out), str(src)], cwd=td, timeout=120)
         if r_vl.returncode == 0 or r_vl.stderr:
@@ -391,23 +397,7 @@ def test_libcxx_probe_paths() -> None:
                     if line.strip():
                         print(f"      {line.strip()[:200]}")
 
-    # --- Strace test ---
-    strace = shutil.which("strace")
-    if not strace:
-        SKIP("strace probe", "strace not found in PATH")
-        return
-
-    with tempfile.TemporaryDirectory() as td:
-        src = Path(td) / "probe.cpp"
-        out = Path(td) / "libprobe.so"
-        src.write_text(
-            '#include <string>\n'
-            'extern "C" {\n'
-            '  __attribute__((visibility("default")))\n'
-            '  int cxx_probe(void) { std::string s("probe"); return (int)s.size(); }\n'
-            '}\n'
-        )
-
+        out = Path(td) / "libprobe_strace.so"
         cmd = [
             strace, "-f", "-e", "trace=access,faccessat,faccessat2",
             zig, "c++", "-shared", "-o", str(out), str(src),

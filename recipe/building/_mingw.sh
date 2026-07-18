@@ -283,6 +283,120 @@ SYNCHRONIZATION_DEF
         dbg echo "=== MinGW CRT sources not found at ${_mingw_crt} ==="
       fi
 
+      # Step 6: empty stub archives for libs external consumers expect by convention
+      # but zig folds elsewhere (winpthread -> mingw32), uses compiler-rt for
+      # (gcc, gcc_eh, ssp), or doesn't provide (stdc++).  These satisfy -lXXX
+      # filename checks without symbols; any actual symbol references must be
+      # satisfied by other libs the consumer links.
+      #
+      # Helper: compile a one-symbol weak C stub and archive it.
+      # Args: out_dir  target_triple  lib_name
+      _create_stub_lib_archive() {
+        local out_dir="$1"
+        local target_triple="$2"
+        local lib_name="$3"
+        local lib_path="${out_dir}/lib${lib_name}.a"
+        [[ -f "${lib_path}" ]] && return 0
+        # Sanitize lib_name to a valid C identifier (replace +, -, . with _)
+        local sym_name
+        sym_name="$(printf '%s' "${lib_name}" | tr -c 'a-zA-Z0-9_' '_')"
+        local stub_c="${out_dir}/.zig_${sym_name}_stub.c"
+        local stub_o="${out_dir}/.zig_${sym_name}_stub.o"
+        printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
+        if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>/dev/null; then
+          rm -f "${stub_c}" "${stub_o}"
+          return 1
+        fi
+        if ! "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" 2>/dev/null; then
+          rm -f "${stub_c}" "${stub_o}"
+          return 1
+        fi
+        rm -f "${stub_c}" "${stub_o}"
+        dbg echo "[_mingw] stub archive: ${lib_path}"
+      }
+
+      dbg echo "=== Generating stub archives for ${_win_target} in ${_crt_outdir} ==="
+      # Real archives ship for all three arches now (cache-warm loop below),
+      # so only the toolchain convenience libs need empty stubs.
+      local _stub_libs=(gcc gcc_eh stdc++ ssp)
+      for _stub_lib in "${_stub_libs[@]}"; do
+        _create_stub_lib_archive "${_crt_outdir}" "${_win_target}" "${_stub_lib}"
+      done
+
+      # Cache-warm + stage real libmingw32.lib for all three Windows targets so
+      # non-zig linkers (flexlink, mingw-gcc) can resolve -lmingw32 / -lucrt /
+      # -lmingwex / -lwinpthread without falling back to empty stubs. Zig compiles
+      # its full mingw source tree into a single ~10MB libmingw32.lib at link time
+      # and caches it; we trigger materialization with a real link of a tiny program
+      # that references snprintf + pthread_self, then harvest the cached artifact.
+      # Each target gets its own ZIG_GLOBAL_CACHE_DIR to avoid cross-arch contamination.
+      # Soft-fail on missing libmingw32.lib: WARN + continue (not a hard error).
+      local _warm_dir
+      _warm_dir="$(mktemp -d 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/zig-warm-$$")"
+      mkdir -p "${_warm_dir}"
+      cat > "${_warm_dir}/warm.c" <<'WARM_EOF'
+#include <stdio.h>
+#include <pthread.h>
+int main(void) {
+    char b[8]; (void)snprintf(b, 8, "%d", 0);
+    pthread_t t = pthread_self(); (void)t;
+    return 0;
+}
+WARM_EOF
+
+      # Pre-initialize cross-arch staging paths so the multi-target cache-warm loop
+      # below can reference them regardless of which arch this function call targets.
+      # The if/elif block at lines 205–215 only sets these conditionally per arch.
+      : "${_mingw_libarm64:=${_mingw_common}/../libarm64}"
+      : "${_mingw_lib32:=${_mingw_common}/../lib32}"
+
+      # Map: zig target triple -> staging dir name under lib/libc/mingw/
+      for _warm_pair in \
+          "x86_64-windows-gnu:${_mingw_common}" \
+          "aarch64-windows-gnu:${_mingw_libarm64}" \
+          "x86-windows-gnu:${_mingw_lib32}"; do
+          _warm_tgt="${_warm_pair%%:*}"
+          _warm_stage="${_warm_pair##*:}"
+          _warm_cache="${_warm_dir}/cache-${_warm_tgt}"
+          rm -rf "${_warm_cache}"
+          mkdir -p "${_warm_cache}"
+
+          # Real link (NOT -c compile-only) to force libmingw32 materialization.
+          if ! ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
+                  "${_zig_bin}" cc -target "${_warm_tgt}" -pthread \
+                  "${_warm_dir}/warm.c" \
+                  -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err"; then
+              echo "WARN: cache-warm failed for ${_warm_tgt}; skipping stage. Errors:" >&2
+              tail -5 "${_warm_cache}/warm.err" >&2 || true
+              continue
+          fi
+
+          local _warm_lib
+          _warm_lib="$(find "${_warm_cache}" -name 'libmingw32.lib' -print -quit 2>/dev/null)"
+          if [[ -z "${_warm_lib}" || ! -f "${_warm_lib}" ]]; then
+              echo "WARN: libmingw32.lib not found in cache for ${_warm_tgt}; skipping stage" >&2
+              continue
+          fi
+
+          mkdir -p "${_warm_stage}"
+          # Stage under conventional library names + both .lib (Windows MSVC) and
+          # .a (Unix toolchain) extensions so consumers spelling -lucrt /
+          # -lmingwex / -lwinpthread all resolve to the single zig-built archive.
+          # DO NOT overwrite libpthread.a — it's the 2KB import lib for
+          # libwinpthread-1.dll; overwriting would silently switch consumers from
+          # dynamic to static threading runtime.
+          local _name
+          for _name in libmingw32 libucrt libmingwex libwinpthread; do
+              cp -f "${_warm_lib}" "${_warm_stage}/${_name}.lib"
+              cp -f "${_warm_lib}" "${_warm_stage}/${_name}.a"
+          done
+          dbg echo "[_mingw] staged libmingw32+aliases for ${_warm_tgt} under ${_warm_stage}"
+      done
+
+      rm -rf "${_warm_dir}"
+
+      dbg echo "=== Stub archive generation done ==="
+
     else
       dbg echo "=== llvm-dlltool or zig not found; skipping import lib pre-generation ==="
     fi

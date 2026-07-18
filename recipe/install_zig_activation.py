@@ -252,15 +252,14 @@ def install_zig_cc_wrappers(
 
     if is_nonunix:
         wrapper_dir = prefix / "Library" / "bin"
-
-        # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
-        cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
-        if cc_src.exists():
-            # Extract zig binary filename from full %CONDA_PREFIX%\... path
-            zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
-            is_mingw = 1 if "mingw32" in conda_triplet else 0
+            is_mingw = "mingw32" in conda_triplet
             for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
-                mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name, "@IS_MINGW_TARGET@": str(is_mingw)}
+                mode_replacements = {
+                    **replacements,
+                    "@ZIG_CC_MODE@": mode,
+                    "@ZIG_BIN_NAME@": zig_bin_name,
+                    "@IS_MINGW_TARGET@": "1" if is_mingw else "0",
+                }
                 _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
 
         # Compile .exe shims for simple pass-through tools

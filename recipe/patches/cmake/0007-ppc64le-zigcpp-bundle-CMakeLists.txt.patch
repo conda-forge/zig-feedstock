@@ -2,7 +2,7 @@
 # Affects: CMakeLists.txt (zigcpp target_link_libraries override block)
 # Upstream: TBD
 # Drop-when: conda-forge ppc64le libzigcpp.a compiled with -mlongcall or dynamic linker layout changes
-# Last-verified: 2026-05-23 (zig 0.16.0; line number may need regen against zig 0.17.0)
+# Last-verified: 2026-05-23
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt

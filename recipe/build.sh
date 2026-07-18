@@ -3,33 +3,14 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
-  echo "Attempting to re-exec with conda bash..."
-  if [[ -x "${BUILD_PREFIX}/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/bin/bash" "$0" "$@"
-  elif [[ -x "${BUILD_PREFIX}/Library/bin/bash" ]]; then
-    exec "${BUILD_PREFIX}/Library/bin/bash" "$0" "$@"
-  else
-    echo "ERROR: Could not find conda bash at ${BUILD_PREFIX}/bin/bash"
-    exit 1
-  fi
-fi
+export build_platform="${build_platform:-${target_platform}}"
 
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # --- Functions ---
 
+source "${RECIPE_DIR}/building/_common.sh"
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
-
-build_platform="${build_platform:-${target_platform}}"
-
-is_linux() { [[ "${target_platform}" == "linux-"* ]]; }
-is_osx() { [[ "${target_platform}" == "osx-"* ]]; }
-is_unix() { [[ "${target_platform}" == "linux-"* || "${target_platform}" == "osx-"* ]]; }
-is_not_unix() { ! is_unix; }
-is_cross() { [[ "${build_platform}" != "${target_platform}" ]]; }
-
-is_debug() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; }
 
 # --- Early exits ---
 
@@ -40,7 +21,7 @@ is_debug() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; }
 export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
 
 if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
-  echo "ERROR: Unknown package name: ${PKG_NAME} - Verify recipe.yaml script:"
+  echo "ERROR: Unknown package name: >${PKG_NAME:-}< - Verify recipe.yaml script:"
   exit 1
 fi
 
@@ -60,13 +41,7 @@ fi
 
 # --- Main ---
 
-# Bootstrap selection (build_number == 0 only): use upstream
-# ziglang.org binary as bootstrap when this is the first build of a
-# new zig release. Subsequent builds use conda-forge's published
-# zig_impl_${build_platform} which can parse the matching build.zig
-# directly. recipe.yaml gates the source-entry download on
-# build_number == 0; this helper is a no-op when zig-bootstrap/
-# wasn't extracted.
+# Bootstrap selection (build_number == 0 only: no-op otherwise)
 source "${RECIPE_DIR}/building/_upstream_bootstrap.sh"
 setup_upstream_zig_bootstrap
 
@@ -75,17 +50,11 @@ BUILD_ZIG="${CONDA_ZIG_BUILD}"
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
-export ZIG_GLOBAL_CACHE_DIR="${SRC_DIR}/zig-global-cache"
+export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR_OVERRIDE:-${SRC_DIR}/zig-global-cache}"
 export ZIG_LOCAL_CACHE_DIR="${SRC_DIR}/zig-local-cache"
 
 cmake_source_dir="${SRC_DIR}/zig-source"
 cmake_build_dir="${SRC_DIR}/build-release"
-# Point the cmake install prefix directly at ${PREFIX}. Zig's upstream
-# cmake/install.cmake bakes the configure-time CMAKE_INSTALL_PREFIX into
-# the install script (it invokes `zig build --prefix ${CMAKE_INSTALL_PREFIX}`
-# via install(CODE ...)), so `cmake --install . --prefix X` at install time
-# is silently ignored. Using ${PREFIX} here ensures the CMake fallback path
-# lands files where the rest of build.sh expects them.
 cmake_install_dir="${PREFIX}"
 zig_build_dir="${SRC_DIR}/conda-zig-source"
 
@@ -100,20 +69,6 @@ EXTRA_CMAKE_ARGS=(
   -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
   -DZIG_USE_LLVM_CONFIG=ON
 )
-
-# Cross-compile stage1 host-tool split: zig-wasm2c / zig1 are
-# build-host tools; when CC ≠ CC_FOR_BUILD CMAKE_C_COMPILER produces
-# binaries that can't run on the build host.  ZIG_STAGE1_HOST_CC
-# routes those targets through the build-host compiler (via add_
-# custom_command in patches/cmake/0003-cmake-stage1-host-cc-...),
-# leaving zig2 / compiler_rt / zigcpp on CMAKE_C_COMPILER.
-#
-# Applied on every cross variant (osx + linux-cross).  For linux-cross
-# this replaces the qemu emulator path that used to wrap zig-wasm2c /
-# zig1 invocations in 0003-cross-CMakeLists.txt.patch.
-if [[ -n "${CC_FOR_BUILD:-}" && "${CC_FOR_BUILD:-}" != "${CC:-}" ]]; then
-  EXTRA_CMAKE_ARGS+=(-DZIG_STAGE1_HOST_CC="${CC_FOR_BUILD}")
-fi
 
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
 EXTRA_ZIG_ARGS=(
@@ -132,13 +87,35 @@ EXTRA_ZIG_ARGS=(
 
 # Patch build.zig-02-doctest-forward-target adds -Ddoctest-target to build.zig.
 # Gated to linux/osx where the patch applies and where doctest target forwarding matters.
-if is_linux || is_osx; then
+if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
-# ppc64le cross: skip docgen — qemu-ppc64le doesn't faithfully emulate traps,
-# and the ppc64le GCC linker has __tls_get_addr DSO ordering issues with doctests
-[[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && EXTRA_ZIG_ARGS+=(-Dno-langref)
+# --- ppc64le R_PPC64_REL24 mitigation (defense in depth) ---
+# Bundle approach: build libLLD and libzigcpp as separate .so files to split
+# the 24-bit branch relocation domain across multiple PLT sections.
+# Combined with cmake patch 0005 (-mlongcall via target_compile_options),
+# this prevents R_PPC64_REL24 overflow when linking the full zig2 binary.
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=0"
+  export NINJA_FLAGS="-v"
+  EXTRA_CMAKE_ARGS+=(
+    -DCMAKE_C_FLAGS="${CFLAGS}"
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
+    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
+    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
+  )
+  # Use PREFIX/lib here (not ZIG_LOCAL_CACHE_DIR): these paths are baked into
+  # the zig binary's DT_NEEDED at link time. conda-build's patchelf/prefix
+  # replacement then rewrites PREFIX to the install location correctly.
+  # The bundles are installed to PREFIX/lib/ at lines 213/216 (before zig2 link).
+  EXTRA_CMAKE_ARGS+=(
+    -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
+    -DZIG_ZIGCPP_BUNDLE_SO="${PREFIX}/lib/libzig-zigcpp-bundle.so"
+  )
+fi
 
 # Strip host-arch flags injected by conda-build for cross builds.
 # Safe for ppc64le/aarch64: intentional target-arch flags (e.g. -mlongcall,
@@ -148,26 +125,16 @@ if is_cross; then
   sanitize_and_export_cross_flags
 fi
 
+# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
+# Phase 2 (zig build langref) handles it separately when stage3 is runnable.
+EXTRA_ZIG_ARGS+=(-Dno-langref)
+
 if is_osx; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
-  # macOS-15-arm64 GitHub Actions runners ship with ~7 GB RAM; zig's
-  # ReleaseSafe link step declares an 8 GB upper bound and refuses to
-  # schedule itself unless explicitly allowed.  Pass --maxrss 8 GB so
-  # zig will run the step (overflow into swap is fine on a clean
-  # runner).  Do *not* set this on macOS-15 x86_64 (Azure) — those
-  # agents have plenty of RAM and capping the scheduler caused
-  # serialization slowdowns previously (see the linux comment below).
-  if [[ "${build_platform}" == "osx-arm64" ]]; then
-    EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
-    if [[ "${target_platform}" == "osx-64" ]]; then
-      EXTRA_CMAKE_ARGS+=(
-        -DCMAKE_OSX_ARCHITECTURES=x86_64
-      )
-    fi
-  fi
+  EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   # --maxrss + the build.zig max_rss patch are linux-only.  Adding
@@ -184,7 +151,7 @@ fi
 if is_not_unix; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SHARED_LLVM=OFF
-    # Bootstrap libucrt/ucrt confilct may come from /DEFAULTLIB:libucrt (hopefully not from LLVM)
+    # Force dynamic CRT (/MD) for zigcpp objects so their /DEFAULTLIB
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
   )
 else
@@ -226,7 +193,25 @@ if is_linux; then
   is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
 fi
 
+if is_osx && is_cross; then
+  case "${target_platform}" in
+    osx-64)     EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=x86_64) ;;
+    osx-arm64)  EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=arm64) ;;
+  esac
+fi
+
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
+
+# --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  mkdir -p "${PREFIX}/lib"
+  source "${RECIPE_DIR}/building/_lld_bundle.sh"
+  build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
+  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
+  source "${RECIPE_DIR}/building/_zigcpp_bundle.sh"
+  build_zigcpp_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" "${cmake_build_dir}" || exit 1
+  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so" "${PREFIX}/lib/" || exit 1
+fi
 
 # --- Post CMake Configuration ---
 
@@ -258,7 +243,7 @@ if is_linux && [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o\"|g" "${cmake_build_dir}/config.h"
 fi
 
-is_debug && echo "=== DEBUG ===" && cat "${cmake_build_dir}"/config.h && echo "=== DEBUG ==="
+dbg echo "=== DEBUG ===" && dbg cat "${cmake_build_dir}"/config.h && dbg echo "=== DEBUG ==="
 
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
 
@@ -303,20 +288,16 @@ if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
   echo "[build.sh] linux-ppc64le: two-stage bootstrap engaged — Stage 1 native build complete, using patched native zig as bootstrap: ${BUILD_ZIG}"
 fi
 
-if [[ "${CMAKE_BUILD:-0}" == "1" ]]; then
-  is_debug && echo "=== ZIG BUILD: CMAKE_BUILD=1, forcing cmake build (bypass zig-with-zig) ===" || true
-  source "${RECIPE_DIR}/building/_cmake.sh"
-  cmake_build "${cmake_source_dir}" "${cmake_build_dir}" "${PREFIX}"
-elif build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
-  is_debug && echo "=== ZIG BUILD: SUCCESS ===" || true
+if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+  dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
-  echo "ERROR: zig-build failed. Set CMAKE_BUILD=1 to force the cmake path explicitly." >&2
+  echo "ERROR: zig-build failed." >&2
   exit 1
 fi
 
 
 # Odd random occurence of zig.pdb
-rm -f ${PREFIX}/bin/zig.pdb
+rm -f "${PREFIX}/bin/zig.pdb"
 
 # macOS: --search-prefix adds a library search but does not embed LC_RPATH in the Mach-O binary.
 if is_osx; then
@@ -343,7 +324,7 @@ _can_run_stage3() {
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
 elif _can_run_stage3; then
-  is_debug && echo "=== PHASE 2: building langref via stage3 zig ===" || true
+  dbg echo "=== PHASE 2: building langref via stage3 zig ==="
   _stage3_runner=()
   if is_cross && is_linux; then
     _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
@@ -355,7 +336,7 @@ elif _can_run_stage3; then
     _qemu_shadow_dir=$(mktemp -d)
     ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     export PATH="${_qemu_shadow_dir}:${PATH}"
-    is_debug && echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}" || true
+    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
   fi
 
   (
@@ -380,12 +361,12 @@ else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
 fi
 
-is_debug && echo "Post-install implementation package: ${PKG_NAME}" || true
+dbg echo "Post-install implementation package: ${PKG_NAME}"
 mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
 
 # Non-unix conda convention: artifacts go under Library/
 if is_not_unix; then
-  is_debug && echo "Relocating to Library/ for non-unix conda convention" || true
+  dbg echo "Relocating to Library/ for non-unix conda convention"
   mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
@@ -411,12 +392,12 @@ else
     echo "[build.sh] WARNING: ${PREFIX} does not exist — find skipped"
 fi
 
-is_debug && echo "=== Build installed for package: ${PKG_NAME} ===" || true
+dbg echo "=== Build installed for package: ${PKG_NAME} ==="
 
 # Cache successful build (saves before rattler-build cleanup)
 if [[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]; then
   # stub_cache.sh already sourced at the top if ZIG_USE_CACHE=1
   [[ "$(type -t stub_cache_save)" != "function" ]] && source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
   stub_cache_save
-  is_debug && echo "=== Build cached for future restoration ===" || true
+  dbg echo "=== Build cached for future restoration ==="
 fi
