@@ -149,6 +149,7 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
         subprocess.check_call([
             zig_bin, "cc",
             "-O2",
+            f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
             "-lkernel32",
@@ -250,7 +251,7 @@ def install_zig_cc_wrappers(
     }
 
     if is_nonunix:
-        wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
+        wrapper_dir = prefix / "Library" / "bin"
 
         # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
         cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
@@ -291,10 +292,19 @@ def install_zig_cc_wrappers(
             _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements)
 
     else:
-        wrapper_dir = prefix / "share" / "zig" / "wrappers"
-        # Install shared helpers (sourced by wrapper scripts, not executed directly)
-        for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
-            src = scripts_dir / helper
+        wrapper_dir = prefix / "bin"
+        building_dir = recipe_dir / "building"
+        # Install shared helpers (sourced by wrapper scripts, not executed directly).
+        # _translate.gen.sh is the generated flag-translation fragment (R1-R9);
+        # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
+        # the other two helpers which live in recipe/scripts/ alongside the
+        # wrapper templates that source them.
+        for helper, helper_src_dir in [
+            ("_zig-cc-common.sh", scripts_dir),
+            ("_zig-force-load-common.sh", scripts_dir),
+            ("_translate.gen.sh", building_dir),
+        ]:
+            src = helper_src_dir / helper
             if src.exists():
                 _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
         wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-windres", "zig-force-load-cc", "zig-force-load-cxx"]

@@ -3,7 +3,7 @@ REM Zig compiler activation script (non-unix)
 REM Installed to: %PREFIX%\etc\conda\activate.d\zig_activate.bat
 REM
 REM Exports ZIG_CC, ZIG_CXX, etc. pointing to pre-installed wrapper scripts
-REM in %CONDA_PREFIX%\Library\share\zig\wrappers\
+REM in %CONDA_PREFIX%\Library\bin\
 
 set "_CONDA_TRIPLET=@CONDA_TRIPLET@"
 set "_CROSS_TARGET_TRIPLET=@CROSS_TARGET_TRIPLET@"
@@ -21,7 +21,7 @@ if not "%_CROSS_TARGET_TRIPLET%"=="" (
 )
 
 REM === Wrapper directory (pre-installed at build time) ===
-set "_wrapper_dir=%CONDA_PREFIX%\Library\share\zig\wrappers"
+set "_wrapper_dir=%CONDA_PREFIX%\Library\bin"
 
 if not exist "%_wrapper_dir%" (
     echo WARNING: zig-cc activation: wrapper directory not found: %_wrapper_dir% 1>&2

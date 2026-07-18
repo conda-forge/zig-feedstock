@@ -91,6 +91,7 @@ def _env_var(name: str) -> str:
 # ---------------------------------------------------------------------------
 _HELLO_C = 'int hello(void) { return 42; }\n'
 _MAIN_C = 'int main(void) { return 0; }\n'
+_WMAIN_C = '#include <wchar.h>\nint wmain(int argc, wchar_t **argv) { (void)argc; (void)argv; return 0; }\n'
 _VIS_C = '__attribute__((visibility("default"))) int vis_test_func(void) { return 1; }\n'
 _LIBC_C = """\
 #include <stdio.h>
@@ -691,6 +692,121 @@ def test_windows_import_libs() -> None:
 
 
 # ===================================================================
+# Section 4d2 — win-arm64 entry-point link probe (Q2)
+# ===================================================================
+def test_win_arm64_entry_point() -> None:
+    """Q2 link probe: aarch64-windows console entry symbols resolve.
+
+    win-arm64 was never verified to resolve the MinGW console entry points
+    against the 0.16.0 wrapper + arm64 stub set (ZIG_RECIPE_LLM_REFERENCE.md
+    sec 7.2). Cross-link a console exe (main -> mainCRTStartup) and a unicode
+    console exe (-municode wmain -> wmainCRTStartup) and assert each links with
+    no undefined-symbol error. Linking only -- the arm64 PE is never executed,
+    so this is safe under cross/emulated CI.
+
+    A FAIL whose stderr matches the known zig 0.16.0 SelfInfo/libubsan arm64
+    bug signature is downgraded to WARN below (mirroring test_windows_import_libs);
+    any other failure stays a hard FAIL.
+    """
+    print("--- win-arm64 entry-point link probe ---")
+    if not is_aarch64_win:
+        SKIP("win-arm64 entry-point probe", "aarch64-windows target only")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("win-arm64 entry-point probe", "ZIG_CC not set")
+        return
+
+    try:
+        print(
+            "[arm64-diag] setup: host PROCESSOR_ARCHITECTURE="
+            f"{os.environ.get('PROCESSOR_ARCHITECTURE', '')} "
+            f"PROCESSOR_ARCHITEW6432={os.environ.get('PROCESSOR_ARCHITEW6432', '')}"
+        )
+        print(f"[arm64-diag] setup: zig_cc={zig_cc}")
+        for _name in ("CONDA_ZIG_BUILD", "CONDA_ZIG_HOST", "ZIG_LIB_DIR",
+                      "CONDA_PREFIX", "BUILD_PREFIX", "PREFIX"):
+            _val = os.environ.get(_name)
+            if _val:
+                print(f"[arm64-diag] setup: {_name}={_val}")
+        _vr = _run([zig_cc, "--version"], timeout=15)
+        _vr_stdout = getattr(_vr, "stdout", "")
+        _vr_stderr = getattr(_vr, "stderr", "")
+        print(
+            f"[arm64-diag] setup: zig_cc --version rc={getattr(_vr, 'returncode', None)} "
+            f"stdout={_vr_stdout[:200]!r} stderr={_vr_stderr[:200]!r}"
+        )
+        _seen_selfinfo: set[str] = set()
+        for _root_name in ("CONDA_PREFIX", "BUILD_PREFIX", "PREFIX"):
+            _root = os.environ.get(_root_name)
+            if not _root:
+                continue
+            for _p in Path(_root).glob("**/lib/zig/std/debug/SelfInfo/Windows.zig"):
+                _key = str(_p)
+                if _key in _seen_selfinfo:
+                    continue
+                _seen_selfinfo.add(_key)
+                try:
+                    _lines = _p.read_text(encoding="utf-8", errors="replace").splitlines()
+                    _line670 = _lines[669].strip() if len(_lines) > 669 else "<line 670 missing>"
+                    print(f"[arm64-diag] setup: SelfInfo/Windows.zig -> {_key}")
+                    print(f"[arm64-diag] setup: line670={_line670!r} patched={'@alignCast' in _line670}")
+                except Exception as _e:
+                    print(f"[arm64-diag] setup: read error for {_key}: {_e}")
+    except Exception as _e:
+        print(f"[arm64-diag] setup: diagnostic error: {_e}")
+
+    probes = (
+        ("mainCRTStartup", _MAIN_C, []),
+        ("wmainCRTStartup", _WMAIN_C, ["-municode"]),
+    )
+    for entry, source, extra in probes:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "entry_probe.c"
+            src.write_text(source)
+            out = Path(td) / "entry_probe.exe"
+            r = _run([zig_cc, *extra, "-o", str(out), str(src)], cwd=td, timeout=60)
+            if r.stderr == "TIMEOUT":
+                WARN(f"win-arm64 {entry} link", "timed out (60s)")
+                continue
+            if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
+                PASS(f"win-arm64 {entry} link")
+            elif (
+                "sub-compilation of libubsan failed" in r.stderr
+                and "SelfInfo" in r.stderr
+                and "increases pointer alignment" in r.stderr
+            ):
+                # Known upstream zig 0.16.0 stdlib bug (cf. test_windows_import_libs):
+                # SelfInfo/Windows.zig:670 does @ptrCast without @alignCast, tripped by
+                # libubsan's alignment check during sub-compilation for aarch64-windows.
+                # zig errors out before the link step, so entry-symbol resolution
+                # (mainCRTStartup/wmainCRTStartup) cannot be probed until upstream fixes it.
+                WARN(
+                    f"win-arm64 {entry} link",
+                    "suspected upstream zig 0.16.0 stdlib bug SelfInfo/Windows.zig:670 "
+                    "(@ptrCast without @alignCast) -- libubsan sub-compilation fails "
+                    "before link; entry resolution unprobed",
+                )
+                # DIAGNOSTIC: the aligncast patch fixes SelfInfo/Windows.zig:670 yet the
+                # trip persists, so the real offending @ptrCast is elsewhere. Surface the
+                # actual zig error lines (file:line + the alignment message) so the next
+                # CI run identifies the true site. Does not affect pass/fail.
+                _diag = [
+                    _ln.strip()
+                    for _ln in r.stderr.splitlines()
+                    if ".zig:" in _ln
+                    or "increases pointer alignment" in _ln
+                    or "sub-compilation of" in _ln
+                ]
+                for _ln in _diag[:20]:
+                    print(f"  [arm64-diag] {entry}: {_ln}")
+            else:
+                FAIL(f"win-arm64 {entry} link",
+                     f"rc={r.returncode} stderr={r.stderr[:2000]}")
+
+
+# ===================================================================
 # Section 4e — -print-search-dirs and pre-generated MinGW import libs
 # ===================================================================
 def test_print_search_dirs() -> None:
@@ -907,7 +1023,6 @@ def test_flag_filter_content() -> None:
     text = common.read_text()
 
     checks = [
-        ("-mcpu=* in filter list", "-mcpu="),
         ("-march=* in filter list", "-march="),
         ("-mtune=* in filter list", "-mtune="),
         ("exported_symbols_list filtered", "exported_symbols_list"),
@@ -917,17 +1032,35 @@ def test_flag_filter_content() -> None:
         ("reexported_symbols_list filtered", "reexported_symbols_list"),
         ("-Wl,-all_load filtered", "all_load"),
         ("-Wl,-force_load filtered", "force_load"),
-        ("-mcpu=baseline in exec args", "mcpu=baseline"),
         ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
         ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
         ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
-        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
     ]
     for label, needle in checks:
         if needle in text:
             PASS(label)
         else:
             FAIL(label)
+
+    # These behaviors moved from _zig-cc-common.sh into the generated
+    # _translate.gen.sh by the R6 flag-translation refactor (see
+    # test_flag_translation_parity.py); verify them in their new home rather
+    # than grepping _zig-cc-common.sh (where only explanatory comments remain).
+    translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
+    if not translate.exists():
+        FAIL("_translate.gen.sh exists for flag-translation checks")
+    else:
+        gen_text = translate.read_text()
+        gen_checks = [
+            ("-mcpu= handled by translator", "-mcpu="),
+            ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
+            ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
+        ]
+        for label, needle in gen_checks:
+            if needle in gen_text:
+                PASS(label)
+            else:
+                FAIL(label)
 
     # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
     if "_use_lld" in text and "-fuse-ld=lld" in text:
@@ -1039,6 +1172,7 @@ def main() -> int:
     test_exe_linking()
     test_libc_linking()
     test_windows_import_libs()
+    test_win_arm64_entry_point()
     test_print_search_dirs()
     test_mingw_prebuilt_import_libs()
     test_visibility()

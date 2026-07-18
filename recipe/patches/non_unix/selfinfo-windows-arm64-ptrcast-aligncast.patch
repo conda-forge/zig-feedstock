@@ -1,0 +1,11 @@
+--- a/lib/std/debug/SelfInfo/Windows.zig
++++ b/lib/std/debug/SelfInfo/Windows.zig
+@@ -667,7 +667,7 @@ inline fn getNtdllProc(
+     comptime proc: std.meta.DeclEnum(windows.ntdll),
+ ) !@TypeOf(&@field(windows.ntdll, @tagName(proc))) {
+     return if (load_dll_notification_procs)
+-        @ptrCast(try si.loadNtdllProc(@tagName(proc)))
++        @ptrCast(@alignCast(try si.loadNtdllProc(@tagName(proc))))
+     else
+         &@field(windows.ntdll, @tagName(proc));
+ }

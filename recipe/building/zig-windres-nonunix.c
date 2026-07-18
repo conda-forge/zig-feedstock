@@ -11,50 +11,12 @@
  * Compiled during package build with zig cc.
  */
 
+#include "nonunix_common.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <process.h>
 #include <windows.h>
-
-static void init_zig_global_cache_dir(void) {
-    if (!getenv("ZIG_GLOBAL_CACHE_DIR")) {
-        char base[MAX_PATH];
-        const char *appdata = getenv("APPDATA");
-        const char *userprofile = getenv("USERPROFILE");
-        if (appdata)
-            snprintf(base, MAX_PATH, "%s\\zig\\zig-cache", appdata);
-        else if (userprofile)
-            snprintf(base, MAX_PATH, "%s\\AppData\\Roaming\\zig\\zig-cache", userprofile);
-        else {
-            DWORD tmp_len = GetTempPathA(MAX_PATH, base);
-            if (tmp_len > 0)
-                snprintf(base + tmp_len - 1, MAX_PATH - tmp_len, "\\zig-cache");
-        }
-        char *env_val = malloc(strlen("ZIG_GLOBAL_CACHE_DIR=") + strlen(base) + 2);
-        if (env_val) {
-            sprintf(env_val, "ZIG_GLOBAL_CACHE_DIR=%s", base);
-            _putenv(env_val);
-            free(env_val);
-        }
-    }
-}
-
-static void restore_msys2_system32_path(void) {
-    if (getenv("MSYSTEM") != NULL) {
-        const char *path = getenv("PATH");
-        const char *sys32 = "C:\\Windows\\System32";
-        if (path && !strstr(path, sys32)) {
-            char *new_path = malloc(strlen(path) + strlen(sys32) + 7);
-            if (new_path) {
-                sprintf(new_path, "PATH=%s;%s", sys32, path);
-                _putenv(new_path);
-                free(new_path);
-            }
-        }
-    }
-}
 
 #define ZIG_BIN_NAME "@ZIG_BIN_NAME@"
 
