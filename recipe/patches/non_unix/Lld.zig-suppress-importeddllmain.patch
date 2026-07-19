@@ -1,0 +1,18 @@
+# non-unix: Suppress LLD's [importeddllmain] warning (COFF linker)
+#
+# xml2.lib (and potentially other import libraries) export DllMain, which
+# triggers LLD's -WARN:importeddllmain diagnostic.  Zig's stderr-fatal
+# heuristic treats any unexpected LLD warning as a hard error, crashing
+# the win-64 Stage 2 build.  Add -IGNORE:importeddllmain to silence the
+# warning before it reaches that heuristic.
+
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -436,6 +436,7 @@
+
+         try argv.append("-ERRORLIMIT:0");
+         try argv.append("-NOLOGO");
++        try argv.append("-IGNORE:importeddllmain");
+         if (comp.config.debug_format != .strip) {
+             try argv.append("-DEBUG");
+
