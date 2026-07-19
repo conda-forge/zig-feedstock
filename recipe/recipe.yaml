@@ -155,23 +155,14 @@ source:
       # can also `zig cc -target powerpc64le-linux-gnu`.
       - if: linux
         then:
-          # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
-          # [AUDIT EXPERIMENT 2026-07-18] The 8 commented patches below are self-hosted
-          # ELF-linker arch arms that the audit found unreachable for ppc64le: sibling
-          # 0003-linker-redirect forces the LLD backend (-> gcc/ld) for powerpc64le+elf,
-          # so the self-hosted final-link path is never instantiated. Commented out to
-          # validate via a real linux-64 -> linux-ppc64le build + ppc64le tests. KEEP
-          # LdScript (its outputFormat() runs on every backend). To restore: uncomment.
-          # See ZIG_PATCH_AUDIT_0.16.0.md (Tier 1 + Tier 2).
-          # - patches/ppc64le/0001-arch-support-relocation.zig.patch
+          # Phase 0001: Architecture Support. Only LdScript is required here: its
+          # outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch
+          # arms (relocation, Elf, Atom, LinkerDefined, ZigObject, synthetic_sections,
+          # eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
+          # build + ppc64le tests confirmed they are dead code: 0003-linker-redirect
+          # forces the LLD backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted
+          # final-link path is never instantiated. See ZIG_PATCH_AUDIT_0.16.0.md.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
-          # - patches/ppc64le/0001-arch-support-Elf.zig.patch
-          # - patches/ppc64le/0001-arch-support-Atom.zig.patch
-          # - patches/ppc64le/0001-arch-support-LinkerDefined.zig.patch
-          # - patches/ppc64le/0001-arch-support-ZigObject.zig.patch
-          # - patches/ppc64le/0001-arch-support-synthetic_sections.zig.patch
-          # - patches/ppc64le/0001-arch-support-eh_frame.zig.patch
-          # - patches/ppc64le/0001-arch-support-Thunk.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
