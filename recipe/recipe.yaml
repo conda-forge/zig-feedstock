@@ -168,10 +168,9 @@ source:
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
-          # Phase 0005-0007: CMake ppc64le configuration (mlongcall, lld bundle, zigcpp bundle)
+          # Phase 0005-0006: CMake ppc64le configuration (mlongcall, lld bundle)
           - patches/cmake/0005-ppc64le-mlongcall-CMakeLists.txt.patch
           - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
-          - patches/cmake/0007-ppc64le-zigcpp-bundle-CMakeLists.txt.patch
       - if: not unix
         then:
           - patches/non_unix/build.zig-01-maxrss.patch
@@ -179,7 +178,6 @@ source:
           - patches/non_unix/build.zig-03-msvc-crt-dynamic.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
           - patches/non_unix/Lld.zig-remove-ucrt.patch
-          - patches/non_unix/Lld.zig-suppress-importeddllmain.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
           - patches/non_unix/mingw-arm64-stubs.patch
@@ -337,7 +335,6 @@ outputs:
             - if: ppc64le
               then:
                 - zig-lld-bundle
-                - zig-zigcpp-bundle
           files:
             # qemu-ppc64le doesn't faithfully emulate traps
             - if: is_native or (linux and not xc_ppc64le)
