@@ -156,25 +156,21 @@ source:
       # can also `zig cc -target powerpc64le-linux-gnu`.
       - if: linux
         then:
-          # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
-          - patches/ppc64le/0001-arch-support-relocation.zig.patch
+          # Phase 0001: Architecture Support. Only LdScript is required here: its
+          # outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch
+          # arms (relocation, Elf, Atom, LinkerDefined, ZigObject, synthetic_sections,
+          # eh_frame, Thunk) are dead code: 0003-linker-redirect forces the LLD
+          # backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted final-link
+          # path is never instantiated.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
-          - patches/ppc64le/0001-arch-support-Elf.zig.patch
-          - patches/ppc64le/0001-arch-support-Atom.zig.patch
-          - patches/ppc64le/0001-arch-support-LinkerDefined.zig.patch
-          - patches/ppc64le/0001-arch-support-ZigObject.zig.patch
-          - patches/ppc64le/0001-arch-support-synthetic_sections.zig.patch
-          - patches/ppc64le/0001-arch-support-eh_frame.zig.patch
-          - patches/ppc64le/0001-arch-support-Thunk.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
-          # Phase 0005-0007: CMake ppc64le configuration (mlongcall, lld bundle, zigcpp bundle)
+          # Phase 0005-0006: CMake ppc64le configuration (mlongcall, lld bundle)
           - patches/cmake/0005-ppc64le-mlongcall-CMakeLists.txt.patch
           - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
-          - patches/cmake/0007-ppc64le-zigcpp-bundle-CMakeLists.txt.patch
       - if: not unix
         then:
           - patches/non_unix/build.zig-01-maxrss.patch
@@ -256,7 +252,7 @@ outputs:
           - if: not unix
             then: "*/VERSION.dll"
       script:
-        file: build${{ sh }}
+        file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
@@ -343,7 +339,6 @@ outputs:
             - if: ppc64le
               then:
                 - zig-lld-bundle
-                - zig-zigcpp-bundle
           files:
             # qemu-ppc64le doesn't faithfully emulate traps
             - if: (is_native and not win) or (linux and not xc_ppc64le)

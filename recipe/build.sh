@@ -110,10 +110,9 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   # Use PREFIX/lib here (not ZIG_LOCAL_CACHE_DIR): these paths are baked into
   # the zig binary's DT_NEEDED at link time. conda-build's patchelf/prefix
   # replacement then rewrites PREFIX to the install location correctly.
-  # The bundles are installed to PREFIX/lib/ at lines 213/216 (before zig2 link).
+  # The lld bundle is installed to PREFIX/lib/ (before zig2 link).
   EXTRA_CMAKE_ARGS+=(
     -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
-    -DZIG_ZIGCPP_BUNDLE_SO="${PREFIX}/lib/libzig-zigcpp-bundle.so"
   )
 fi
 
@@ -208,9 +207,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   source "${RECIPE_DIR}/building/_lld_bundle.sh"
   build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
   install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
-  source "${RECIPE_DIR}/building/_zigcpp_bundle.sh"
-  build_zigcpp_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" "${cmake_build_dir}" || exit 1
-  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-zigcpp-bundle.so" "${PREFIX}/lib/" || exit 1
 fi
 
 # --- Post CMake Configuration ---
