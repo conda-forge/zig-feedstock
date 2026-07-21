@@ -4,6 +4,7 @@
 # and the dbg() function defined in build.sh.
 
 source "${RECIPE_DIR}/building/_common.sh"
+source "${RECIPE_DIR}/building/_diag.sh"  # diag_fail (idempotent; build-zig.sh already sources this)
 
 function generate_mingw_import_libs() {
   # Workaround for ziglang/zig#14919: add synchronization.def so zig can generate
@@ -70,18 +71,68 @@ SYNCHRONIZATION_DEF
                     echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
   esac
   if [[ -d "${_mingw_common}" ]]; then
-    # Use the BUILD machine's zig binary (CONDA_ZIG_BUILD) so this works even
-    # for cross-compilation targets (e.g. win-arm64 built on win-64) where the
-    # installed zig binary is for the wrong architecture and can't execute.
+    # Prefer the FRESHLY-BUILT zig we are about to ship (installed + renamed by
+    # build-zig.sh:750 to "${CONDA_TRIPLET}-zig") so the staged import libs are
+    # produced by the zig our own mingw patches govern, not a previously
+    # published bootstrap package. CONDA_TRIPLET is the target triplet (set in
+    # recipe.yaml env); layout mirrors build-zig.sh's is_not_unix relocation.
+    if is_not_unix; then
+      _zig_bin_fresh="${PREFIX}/Library/bin/${CONDA_TRIPLET}-zig"
+    else
+      _zig_bin_fresh="${PREFIX}/bin/${CONDA_TRIPLET}-zig"
+    fi
+
+    # Fallback: the BUILD machine's bootstrap zig (CONDA_ZIG_BUILD), needed for
+    # cross-compilation targets (e.g. win-arm64 built on win-64) where the
+    # freshly-built zig binary is for the wrong architecture and can't execute.
     # BUILD_ZIG is the binary name (not a full path), so resolve via PATH first,
     # then fall back to explicit BUILD_PREFIX locations.
-    _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
-    if [[ -z "${_zig_bin}" ]]; then
+    _zig_bin_boot="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
+    if [[ -z "${_zig_bin_boot}" ]]; then
       if is_not_unix; then
-        _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
+        _zig_bin_boot="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
       else
-        _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+        _zig_bin_boot="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
       fi
+    fi
+
+    # Selection gate. A file-mode test ([[ -x ]]) is NOT sufficient: on a cross
+    # lane the freshly-built zig is a TARGET-arch ELF that is perfectly
+    # executable-mode yet cannot run on this build host. It dies at the dynamic
+    # loader (e.g. "libzstd.so.1: cannot open shared object file") and only
+    # surfaces far downstream as "failed to compile crt2.o". Probe by actually
+    # running it, so this cannot disagree with _can_run_stage3 (build-zig.sh:686),
+    # which already skips Phase 2 langref for exactly this reason.
+    _tgt_arch="${CONDA_TRIPLET%%-*}"
+    _bld_arch="${BUILD_ZIG%%-*}"
+    _zig_fresh_ver=""
+    _zig_fresh_runs=0
+    if [[ -x "${_zig_bin_fresh}" ]] && _zig_fresh_ver="$("${_zig_bin_fresh}" version 2>&1)"; then
+      _zig_fresh_runs=1
+    fi
+
+    if [[ ${_zig_fresh_runs} -eq 1 ]]; then
+      _zig_bin="${_zig_bin_fresh}"
+      echo "INFO: [_mingw] cache-warm using FRESHLY-BUILT zig (shipped compiler): ${_zig_bin} (version ${_zig_fresh_ver})" >&2
+    else
+      _zig_bin="${_zig_bin_boot}"
+      if [[ ! -e "${_zig_bin_fresh}" ]]; then
+        echo "WARN: [_mingw] freshly-built zig absent at ${_zig_bin_fresh}; cache-warm falling back to BOOTSTRAP zig: ${_zig_bin}" >&2
+        diag_fail "cache-warm zig selection" "freshly-built zig missing at ${_zig_bin_fresh}; used bootstrap ${_zig_bin} instead"
+      elif [[ "${_tgt_arch}" != "${_bld_arch}" ]]; then
+        # EXPECTED on cross lanes: target-arch binary, unrunnable here. Not a
+        # defect, so it must NOT enter the diag accumulator -- otherwise every
+        # cross lane would report a false failure.
+        echo "INFO: [_mingw] freshly-built zig is ${_tgt_arch} and cannot run on this ${_bld_arch} build host (cross lane); cache-warm using BOOTSTRAP zig: ${_zig_bin}" >&2
+        echo "INFO: [_mingw] consequence: import libs staged here are NOT produced by the zig our mingw patches govern; that pairing only holds on native lanes." >&2
+      else
+        # Same arch yet still will not run: the build produced a broken binary.
+        echo "WARN: [_mingw] freshly-built zig at ${_zig_bin_fresh} is same-arch (${_tgt_arch}) but failed to execute; cache-warm falling back to BOOTSTRAP zig: ${_zig_bin}" >&2
+        diag_fail "cache-warm zig selection" "same-arch freshly-built zig at ${_zig_bin_fresh} failed to run: ${_zig_fresh_ver}; used bootstrap ${_zig_bin} instead"
+      fi
+    fi
+    if [[ -x "${_zig_bin}" ]]; then
+      echo "INFO: [_mingw] cache-warm compiler: ${_zig_bin} (version $("${_zig_bin}" version 2>&1 || true))" >&2
     fi
     _def_include="${_mingw_common}/../def-include"
     _mingw_libsrc="${_mingw_common}/../libsrc"
@@ -227,21 +278,99 @@ SYNCHRONIZATION_DEF
         dbg echo "=== Compiling MinGW CRT startup objects from ${_mingw_crt} -> ${_crt_outdir} ==="
         dbg echo "=== CRT sources: $(ls "${_mingw_crt}" | tr '\n' ' ') ==="
 
+        # Diagnostic: confirm both header search roots exist in the installed tree
+        # before the CRT compiles depend on them. Informational only, never fatal.
+        for _inc_probe in "${_win_inc}" "${_mingw_inc}"; do
+          if [[ -d "${_inc_probe}" ]]; then
+            echo "INFO: [_mingw] include root present: ${_inc_probe} ($(ls -1 "${_inc_probe}" 2>/dev/null | wc -l) entries)"
+          else
+            echo "WARN: [_mingw] include root MISSING: ${_inc_probe}" >&2
+          fi
+        done
+        if [[ -f "${_win_inc}/crtdefs.h" ]]; then
+          echo "INFO: [_mingw] crtdefs.h resolved at ${_win_inc}/crtdefs.h"
+        else
+          echo "WARN: [_mingw] crtdefs.h NOT present at ${_win_inc}/crtdefs.h" >&2
+        fi
+
+        # ZIGDIAG[mingw-incdir]: full listing of the SMALL include root.
+        # Round-20 established that the -cc1 -v search list is CORRECT and that
+        # any-windows-any is on it carrying crtdefs.h, yet clang still fails with
+        #   cannot open file '<mingw_inc>/crtdefs.h': No such file or directory
+        # That is a resolved-then-failed-open, not a search miss. Entry COUNTS
+        # alone (the loop above) cannot reveal a broken symlink or an unreadable
+        # entry, so list the directory itself. Only _mingw_inc is listed in full:
+        # any-windows-any holds ~1463 entries and would flood the log.
+        echo "ZIGDIAG[mingw-incdir]: ls -la ${_mingw_inc}"
+        ls -la "${_mingw_inc}" 2>&1 | sed 's/^/ZIGDIAG[mingw-incdir]: /' || true
+        echo "ZIGDIAG[mingw-incdir]: realpath = $(readlink -f "${_mingw_inc}" 2>/dev/null || echo '(unresolvable)')"
+
+        # ZIGDIAG[crtdefs]: per-directory verdict for crtdefs.h. Distinguishes the
+        # states that a bare `-f` test collapses into one: absent, present+readable,
+        # present-but-unreadable, and BROKEN SYMLINK (-L true, -e false). The last
+        # is the only state that explains a successful existence probe followed by
+        # a failed open, which is exactly the observed failure signature.
+        for _cd_dir in "${_mingw_inc}" "${_win_inc}"; do
+          _cd="${_cd_dir}/crtdefs.h"
+          if [[ -L "${_cd}" && ! -e "${_cd}" ]]; then
+            echo "ZIGDIAG[crtdefs]: BROKEN SYMLINK ${_cd} -> $(readlink "${_cd}" 2>/dev/null)" >&2
+          elif [[ -L "${_cd}" ]]; then
+            echo "ZIGDIAG[crtdefs]: symlink ${_cd} -> $(readlink "${_cd}" 2>/dev/null) (target exists)"
+          elif [[ -f "${_cd}" && -r "${_cd}" ]]; then
+            echo "ZIGDIAG[crtdefs]: regular file ${_cd} ($(wc -c <"${_cd}" 2>/dev/null) bytes, readable)"
+          elif [[ -e "${_cd}" ]]; then
+            echo "ZIGDIAG[crtdefs]: present but NOT a readable regular file: ${_cd}" >&2
+          else
+            echo "ZIGDIAG[crtdefs]: absent: ${_cd}"
+          fi
+        done
+
+        # PR #123 round 26: the -I/-isystem mitigation below (added after Azure
+        # buildId 1563426) did NOT stop crtdefs.h failing again in buildId 1565080.
+        # clang reports a resolved-then-failed-open against <mingw_inc>/crtdefs.h
+        # while ZIGDIAG[crtdefs] reports it ABSENT there. Rather than permute the
+        # search path a third time, make the resolved path real: stage the header
+        # where clang already looks. Real mingw-w64 ships crtdefs.h in its include
+        # root; zig is the outlier for keeping it only under any-windows-any.
+        if [[ ! -e "${_mingw_inc}/crtdefs.h" && -f "${_win_inc}/crtdefs.h" ]]; then
+          if cp -f "${_win_inc}/crtdefs.h" "${_mingw_inc}/crtdefs.h"; then
+            echo "  [_mingw] staged crtdefs.h into ${_mingw_inc} (from ${_win_inc})"
+          else
+            echo "WARN: [_mingw] failed to stage crtdefs.h into ${_mingw_inc}" >&2
+          fi
+        fi
+
         # CRT compile flags must match zig's internal addCrtCcArgs (src/libs/mingw.zig)
         # exactly, otherwise oscalls.h and other internal headers reject inclusion via
         # `#error ERROR: Use of C runtime library internal header file.`. Keep this in
-        # lockstep with upstream zig's addCcArgs+addCrtCcArgs flag set.
+        # lockstep with upstream zig's addCcArgs+addCrtCcArgs flag set: -isystem
+        # any-windows-any right after -D__USE_MINGW_ANSI_STDIO=0, THEN the CRT -D flags,
+        # THEN -I mingw/include last (verified against zig-0.16.0 src/libs/mingw.zig
+        # addCcArgs/addCrtCcArgs, 2026-08-06).
+        #
+        # any-windows-any is ALSO listed via -I (in addition to -isystem): a confirmed CI
+        # failure (osx-64, Azure buildId 1563426) showed crtdefs.h -- which lives only under
+        # libc/include/any-windows-any -- failing to resolve from oscalls.h's
+        # `#include <crtdefs.h>`, even though the compiler's own -v search-list dump proved
+        # any-windows-any was present in the isystem group. zig cc's own target
+        # auto-detection already injects "-isystem .../any-windows-any" ahead of these flags
+        # for any windows-gnu target, so our explicit -isystem copy gets clang-deduped away
+        # as a "duplicate directory". -I populates a separate, independently-deduped search
+        # group (searched before -isystem), giving crtdefs.h a resolution path that survives
+        # the isystem-group dedup. The original -isystem copy is kept too, since other
+        # windows-gnu cross targets (aarch64/i386) may not get the same auto-detected list.
         _crt_flags=(-target "${_win_target}" -mcpu=baseline -c
                     -std=gnu11
                     -D__USE_MINGW_ANSI_STDIO=0
+                    -isystem "${_win_inc}"
                     -D__MSVCRT_VERSION__=0x700
                     -D_CRTBLD
                     -D_SYSCRT=1
                     -D_WIN32_WINNT=0x0f00
                     -DCRTDLL=1
                     -DHAVE_CONFIG_H
-                    -isystem "${_win_inc}"
-                    -I"${_mingw_inc}")
+                    -I"${_mingw_inc}"
+                    -I"${_win_inc}")
 
         # Helper: compile one CRT object, surface errors (do NOT swallow).
         # Captures stderr to a log; on success emits dbg trace; on failure
@@ -257,8 +386,22 @@ SYNCHRONIZATION_DEF
             return 0
           fi
           echo "ERROR: failed to compile $(basename "${obj}") for ${_win_target}:" >&2
+          echo "  invocation: ${_zig_bin} cc ${_crt_flags[*]} ${extra} ${src} -o ${obj}" >&2
           cat "${log}" >&2
           rm -f "${log}"
+          # Diagnostic re-run: -v prints the resolved include search list; -H
+          # prints the header-inclusion tree with the FULL resolved path of every
+          # header actually opened. Round-20 proved the search list is correct, so
+          # -H is the probe that matters: it shows which directory clang committed
+          # crtdefs.h to before the open failed. Never fatal, never affects the
+          # return code below.
+          local vlog; vlog=$(mktemp)
+          # shellcheck disable=SC2086
+          "${_zig_bin}" cc "${_crt_flags[@]}" ${extra} -v -H "${src}" -o /dev/null >"${vlog}" 2>&1 || true
+          echo "  --- diagnostic -v include search dump ---" >&2
+          cat "${vlog}" >&2
+          echo "  --- end -v dump ---" >&2
+          rm -f "${vlog}"
           return 1
         }
 
@@ -362,12 +505,19 @@ WARM_EOF
           mkdir -p "${_warm_cache}"
 
           # Real link (NOT -c compile-only) to force libmingw32 materialization.
-          if ! ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
+          local _warm_rc=0
+          ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
                   "${_zig_bin}" cc -target "${_warm_tgt}" -pthread \
                   "${_warm_dir}/warm.c" \
-                  -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err"; then
+                  -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err" || _warm_rc=$?
+          if [[ ${_warm_rc} -ne 0 ]]; then
               echo "WARN: cache-warm failed for ${_warm_tgt}; skipping stage. Errors:" >&2
               tail -5 "${_warm_cache}/warm.err" >&2 || true
+              # Non-fatal skip-and-continue is unchanged; also record it so a real
+              # linker error here (e.g. PR #123's swallowed lld-link "unable to
+              # automatically import from _fpreset" / "undefined symbol: __setjmp3")
+              # surfaces in the end-of-run diag_report instead of only in mid-log WARN.
+              diag_fail "cache-warm ${_warm_tgt}" "exit ${_warm_rc}: $(tail -5 "${_warm_cache}/warm.err")"
               continue
           fi
 

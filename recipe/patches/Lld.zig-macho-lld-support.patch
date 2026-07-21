@@ -43,7 +43,7 @@
  },
 
  const Coff = struct {
-@@ -197,6 +198,31 @@
+@@ -197,6 +198,33 @@
      }
  };
 
@@ -56,6 +56,7 @@
 +    install_name: ?[]const u8,
 +    lib_directories: []const Cache.Directory,
 +    rpath_list: []const []const u8,
++    export_symbol_names: []const []const u8,
 +
 +    fn init(comp: *const Compilation, options: link.File.OpenOptions) !MachO {
 +        _ = comp;
@@ -68,6 +69,7 @@
 +            .install_name = options.install_name,
 +            .lib_directories = options.lib_directories,
 +            .rpath_list = options.rpath_list,
++            .export_symbol_names = options.export_symbol_names,
 +        };
 +    }
 +};
@@ -75,7 +77,7 @@
  pub fn createEmpty(
      arena: Allocator,
      comp: *Compilation,
-@@ -209,12 +235,13 @@
+@@ -209,12 +237,13 @@
 
      const obj_file_ext: []const u8 = switch (target.ofmt) {
          .coff => "obj",
@@ -90,7 +92,7 @@
          .wasm => output_mode != .Obj,
          else => unreachable,
      };
-@@ -242,6 +269,7 @@
+@@ -242,6 +271,7 @@
              .coff => .{ .coff = try .init(comp, options) },
              .elf => .{ .elf = try .init(comp, options) },
              .wasm => .{ .wasm = try .init(comp, options) },
@@ -98,7 +100,7 @@
              else => unreachable,
          },
      };
-@@ -275,6 +303,7 @@
+@@ -275,6 +305,7 @@
          .coff => coffLink(lld, arena),
          .elf => elfLink(lld, arena),
          .wasm => wasmLink(lld, arena),
@@ -106,7 +108,7 @@
      };
      result catch |err| switch (err) {
          error.OutOfMemory, error.LinkFailure => |e| return e,
-@@ -1609,6 +1638,178 @@
+@@ -1609,6 +1640,182 @@
      }
  }
 
@@ -221,6 +223,10 @@
 +        for (macho.lib_directories) |lib_directory| {
 +            const arg = try allocPrint(arena, "-L{s}", .{lib_directory.path orelse "."});
 +            try argv.append(arg);
++        }
++
++        for (macho.export_symbol_names) |symbol_name| {
++            try argv.appendSlice(&.{ "-exported_symbol", symbol_name });
 +        }
 +
 +        try argv.appendSlice(&.{ "-o", full_out_path });

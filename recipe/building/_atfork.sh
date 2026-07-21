@@ -77,3 +77,93 @@ EOF
   dbg echo "__libc_single_threaded stub created: ${output_dir}/libc_single_threaded_stub.o"
   return 0
 }
+
+
+function create_cxa_thread_atexit_impl_stub() {
+  # Create __cxa_thread_atexit_impl stub for cross-compiler builds targeting glibc < 2.18
+  # (Itanium C++ ABI thread_local destructor registration; glibc added this symbol in
+  # 2.18). Rather than a pure no-op (which would silently drop every registered
+  # thread_local destructor -- a real correctness gap since the shipped zig binary is
+  # a genuinely multi-threaded, long-running process, unlike pthread_atfork above where
+  # zig simply never calls fork()), this queues each (dtor, obj) pair and runs them all
+  # via a single atexit() handler in LIFO order -- a deliberate approximation of the
+  # real glibc per-thread-exit semantics: destructors run once, in the right order,
+  # with a still-valid process image, but deferred to process exit rather than
+  # immediate thread exit.
+
+  local arch_name="${1}"
+  local cc_compiler="${2}"
+  local output_dir="${3:-${SRC_DIR}}"
+
+  dbg echo "Creating __cxa_thread_atexit_impl stub for glibc < 2.18 ${arch_name}"
+
+  cat > "${output_dir}/cxa_thread_atexit_impl_stub.c" << 'EOF'
+// Weak stub for __cxa_thread_atexit_impl when targeting glibc < 2.18
+// (Itanium C++ ABI thread_local destructor registration; glibc added this
+// symbol in 2.18). See create_cxa_thread_atexit_impl_stub() in _atfork.sh
+// for the full rationale.
+//
+// Rather than a pure no-op (which would silently drop every registered
+// thread_local destructor -- a real correctness gap, not just a missed
+// optimization), this queues each (dtor, obj) pair and runs them all via
+// a single atexit() handler in LIFO order. This is a deliberate
+// approximation of the real glibc per-thread-exit semantics: destructors
+// run once, in the right order, with a still-valid process image, but
+// deferred to process exit rather than immediate thread exit.
+#include <stdlib.h>
+#include <pthread.h>
+
+struct cxa_thread_dtor_entry {
+    void (*dtor)(void *);
+    void *obj;
+    struct cxa_thread_dtor_entry *next;
+};
+
+static pthread_mutex_t cxa_thread_dtor_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct cxa_thread_dtor_entry *cxa_thread_dtor_list = NULL;
+static int cxa_thread_dtor_atexit_registered = 0;
+
+static void run_cxa_thread_dtors(void) {
+    pthread_mutex_lock(&cxa_thread_dtor_lock);
+    struct cxa_thread_dtor_entry *entry = cxa_thread_dtor_list;
+    cxa_thread_dtor_list = NULL;
+    pthread_mutex_unlock(&cxa_thread_dtor_lock);
+
+    while (entry != NULL) {
+        struct cxa_thread_dtor_entry *next = entry->next;
+        entry->dtor(entry->obj);
+        free(entry);
+        entry = next;
+    }
+}
+
+__attribute__((weak))
+int __cxa_thread_atexit_impl(void (*dtor)(void *), void *obj, void *dso_symbol) {
+    (void)dso_symbol;  // Statically-linked binary: no DSO-unload cleanup to do
+
+    struct cxa_thread_dtor_entry *entry =
+        (struct cxa_thread_dtor_entry *)malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return -1;  // Match the glibc OOM failure contract
+    }
+    entry->dtor = dtor;
+    entry->obj = obj;
+
+    pthread_mutex_lock(&cxa_thread_dtor_lock);
+    entry->next = cxa_thread_dtor_list;
+    cxa_thread_dtor_list = entry;  // LIFO: matches __cxa_atexit ordering
+    if (!cxa_thread_dtor_atexit_registered) {
+        cxa_thread_dtor_atexit_registered = 1;
+        atexit(run_cxa_thread_dtors);
+    }
+    pthread_mutex_unlock(&cxa_thread_dtor_lock);
+
+    return 0;  // Success
+}
+EOF
+
+  _compile_stub_object "${cc_compiler}" "${output_dir}/cxa_thread_atexit_impl_stub.c" "${output_dir}/cxa_thread_atexit_impl_stub.o" "cxa_thread_atexit_impl" || return 1
+
+  dbg echo "__cxa_thread_atexit_impl stub created: ${output_dir}/cxa_thread_atexit_impl_stub.o"
+  return 0
+}
