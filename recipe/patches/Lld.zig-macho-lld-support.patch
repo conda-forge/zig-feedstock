@@ -77,9 +77,9 @@
      comp: *Compilation,
 @@ -210,6 +236,7 @@
      const gc_sections: bool = options.gc_sections orelse switch (target.ofmt) {
-         .coff => optimize_mode != .Debug,
-         .elf => optimize_mode != .Debug and output_mode != .Obj,
-+        .macho => optimize_mode != .Debug and output_mode != .Obj,
+         .coff => optimize_mode != .debug,
+         .elf => optimize_mode != .debug and output_mode != .Obj,
++        .macho => optimize_mode != .debug and output_mode != .Obj,
          .wasm => output_mode != .Obj,
          else => unreachable,
      };
