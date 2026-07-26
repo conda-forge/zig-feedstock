@@ -5,7 +5,11 @@ Build script for zig_$cross_target_platform_ activation package.
 Installs:
 1. Activation/deactivation scripts (all builds)
 2. zig-cc wrapper scripts from templates (all Unix builds)
-3. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
+3. Native-triplet compiler suite (cross-compiler builds only) — many
+   downstream cross-compiling recipes invoke the build machine's own
+   triplet-prefixed compiler for build-time tools in addition to the
+   host/target compiler.
+4. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
 
 All wrapper content lives in recipe/scripts/ as templates with @PLACEHOLDER@
 substitution — no script content is generated inline.
@@ -70,12 +74,31 @@ def main():
         is_nonunix=is_nonunix,
     )
 
+
     # 3. Cross-compiler: install triplet-prefixed wrappers
     if cross_compiler == "true":
         native_triplet = os.environ.get("NATIVE_TRIPLET", "x86_64-conda-linux-gnu")
+        native_zig_triplet = os.environ.get("NATIVE_ZIG_TRIPLET", "native")
 
         print(f"Native triplet: {native_triplet}")
+        print(f"Native zig triplet: {native_zig_triplet}")
         print(f"Target triplet: {target_triplet}")
+
+        # Native-triplet compiler suite (zig-cc/cxx/ar/ranlib/asm/rc/lld/
+        # windres/force-load-cc/force-load-cxx targeting the build machine
+        # itself) — reuses install_zig_cc_wrappers with native_triplet/
+        # native_zig_triplet substituted for conda_triplet/zig_triplet, so
+        # the resulting suite is named f"{native_triplet}-{name}" instead
+        # of f"{conda_triplet}-{name}". is_nonunix is shared with the target
+        # suite because this recipe's xc_valid gating (xc_lnx/xc_osx/xc_nlo)
+        # only allows same-OS-family cross builds — native and target are
+        # never on opposite sides of the Unix/non-Unix boundary.
+        install_zig_cc_wrappers(
+            prefix, recipe_dir,
+            zig_triplet=native_zig_triplet,
+            conda_triplet=native_triplet,
+            is_nonunix=is_nonunix,
+        )
 
         if is_nonunix:
             install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
