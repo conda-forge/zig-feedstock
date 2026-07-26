@@ -4,7 +4,8 @@
  * Regenerate:       python recipe/building/gen_translators.py
  * CI drift guard:   python recipe/building/gen_translators.py --check
  *
- * Encodes rules R1-R9 from flag_rules.py. Pure portable C: no
+ * Encodes rules R1-R11 and R13 from flag_rules.py (R12 is unix-only,
+ * omitted here -- see flag_rules.rules_for_profile). Pure portable C: no
  * windows.h, no spawn/exec, no platform calls beyond the fields
  * already resolved into zig_translate_profile by the caller.
  */
@@ -141,6 +142,42 @@ static void zig_tr_print_file_name(const char *name, const zig_translate_profile
     printf("%s\n", name);
 }
 
+/* R10: -print-multi-os-directory intercept. No multilib support -- always
+ * the current directory, matching standard GCC behavior. */
+static void zig_tr_print_multi_os_directory(void) {
+    printf(".\n");
+}
+
+/* R11: -print-prog-name=<name> intercept. Probes profile's bin dir for
+ * the named program; falls back to the bare name if not found (mirrors
+ * R3's fallback). */
+static void zig_tr_print_prog_name(const char *name, const zig_translate_profile *profile) {
+    char probe[1024];
+    if (profile->is_win)
+        snprintf(probe, sizeof(probe), "%s\\Library\\bin\\%s", profile->conda_prefix, name);
+    else
+        snprintf(probe, sizeof(probe), "%s/bin/%s", profile->conda_prefix, name);
+    FILE *f = fopen(probe, "rb");
+    if (f) {
+        fclose(f);
+        printf("%s\n", probe);
+        return;
+    }
+    printf("%s\n", name);
+}
+
+/* R13: -print-multiarch intercept. Synthesizes this profile/arch's
+ * conda-style triplet and reuses zig_tr_translate_target() (R5) so the
+ * printed value matches what -target/--target= would translate to. */
+static void zig_tr_print_multiarch(const zig_translate_profile *profile) {
+    char synth[64];
+    if (profile->is_win)
+        snprintf(synth, sizeof(synth), "%s-w64-mingw32", profile->zig_target_arch);
+    else
+        snprintf(synth, sizeof(synth), "%s-conda-linux-gnu", profile->zig_target_arch);
+    printf("%s\n", zig_tr_translate_target(synth, profile));
+}
+
 /* R1: -Map / -Map=FILE / -MapFILE -> -Wl,-Map,FILE (mingw targets only).
  * Returns 1 if handled: *out is a malloc'd replacement (ownership
  * transferred to the caller's out_argv, do not free here); *consumed_next
@@ -207,10 +244,11 @@ static int zig_tr_rewrite_map(const char *arg, const char *next_arg, int has_nex
  *        *out_mode_is_cxx - possibly downgraded by R4 (c++ -> cc); never
  *                          upgraded.
  *
- * Return value: 0 on success (*out_argv populated). 2 if an R2/R3
- * intercept rule matched: output was already printed to stdout and the
- * caller must exit(0) immediately WITHOUT touching *out_argv (left
- * unset). 1 on allocation failure.
+ * Return value: 0 on success (*out_argv populated). 2 if any intercept
+ * rule matched (R2, R3, R10, R11, R13 -- see zig_tr_streq/starts_with
+ * dispatch below): output was already printed to stdout and the caller
+ * must exit(0) immediately WITHOUT touching *out_argv (left unset). 1 on
+ * allocation failure.
  *
  * No spawn, no platform calls beyond the fields already resolved into
  * profile by the caller.
@@ -220,16 +258,12 @@ int zig_translate_flags(int argc, char *const argv[], const zig_translate_profil
     int i;
 
     for (i = 0; i < argc; i++) {
-        if (zig_tr_streq(argv[i], "-print-search-dirs")) {
-            zig_tr_print_search_dirs(profile);
-            return 2;
-        }
-    }
-    for (i = 0; i < argc; i++) {
-        if (zig_tr_starts_with(argv[i], "-print-file-name=")) {
-            zig_tr_print_file_name(argv[i] + strlen("-print-file-name="), profile);
-            return 2;
-        }
+        const char *a = argv[i];
+        if (zig_tr_streq(a, "-print-search-dirs")) { zig_tr_print_search_dirs(profile); return 2; }
+        if (zig_tr_starts_with(a, "-print-file-name=")) { zig_tr_print_file_name(a + strlen("-print-file-name="), profile); return 2; }
+        if (zig_tr_streq(a, "-print-multi-os-directory")) { zig_tr_print_multi_os_directory(); return 2; }
+        if (zig_tr_starts_with(a, "-print-prog-name=")) { zig_tr_print_prog_name(a + strlen("-print-prog-name="), profile); return 2; }
+        if (zig_tr_streq(a, "-print-multiarch")) { zig_tr_print_multiarch(profile); return 2; }
     }
 
     {
