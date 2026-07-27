@@ -1,11 +1,11 @@
 --- a/src/codegen/llvm.zig
 +++ b/src/codegen/llvm.zig
-@@ -1756,7 +1756,7 @@
-             const lf = comp.bin_file orelse break :coff_export_flags;
-             const lld = lf.cast(.lld) orelse break :coff_export_flags;
-             const coff = switch (lld.ofmt) {
+@@ -1612,7 +1612,7 @@
+            const lf = comp.bin_file orelse break :coff_export_flags;
+            const lld = lf.cast(.lld) orelse break :coff_export_flags;
+            const coff = switch (lld.ofmt) {
 -                .elf, .wasm => break :coff_export_flags,
 +                .elf, .wasm, .macho => break :coff_export_flags,
-                 .coff => |*coff| coff,
-             };
-             if (ty.zigTypeTag(zcu) != .@"fn") break :coff_export_flags;
+                .coff => |*coff| coff,
+            };
+            if (ty.zigTypeTag(zcu) != .@"fn") break :coff_export_flags;

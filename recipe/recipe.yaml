@@ -53,6 +53,17 @@ context:
       "native"
     }}
 
+  # Known conda-forge build_platforms (zig -target format, no glibc suffix)
+  zig_build_triplet: >-
+    ${{
+      "x86_64-linux-gnu"                if build_platform == "linux-64"        else
+      "aarch64-linux-gnu"               if build_platform == "linux-aarch64"   else
+      "x86_64-macos." ~ _c_v            if build_platform == "osx-64"          else
+      "aarch64-macos." ~ _c_v           if build_platform == "osx-arm64"       else
+      "x86_64-windows-gnu"              if build_platform == "win-64"          else
+      "native"
+    }}
+
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
   conda_triplet: >-
     ${{
@@ -97,6 +108,23 @@ context:
       "unknown_target_triplet"
     }}
 
+  # Same mapping as zig_build_triplet but keyed on target_platform (zig -target format).
+  # Used by xc_build_zig_triplet for unhosted cross-compilers (runs on target_platform).
+  zig_target_triplet: >-
+    ${{
+      "x86_64-linux-gnu." ~ _c_v        if target_platform == "linux-64"       else
+      "aarch64-linux-gnu." ~ _c_v       if target_platform == "linux-aarch64"  else
+      "powerpc64le-linux-gnu." ~ _c_v   if target_platform == "linux-ppc64le"  else
+      "riscv64-linux-gnu." ~ _c_v       if target_platform == "linux-riscv64"  else
+      "s390x-linux-gnu." ~ _c_v         if target_platform == "linux-s390x"    else
+      "x86_64-macos." ~ _c_v ~ "-none"  if target_platform == "osx-64"         else
+      "aarch64-macos." ~ _c_v ~ "-none" if target_platform == "osx-arm64"      else
+      "x86_64-windows-gnu"              if target_platform == "win-64"         else
+      "aarch64-windows-gnu"             if target_platform == "win-arm64"      else
+      "x86-windows-gnu"                 if target_platform == "win-32"         else
+      "native"
+    }}
+
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
   is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
   xc_build_platform: >-
@@ -107,6 +135,7 @@ context:
     }}
 
   xc_build_triplet: ${{ build_triplet if not is_unhosted_xcompiler else target_triplet }}
+  xc_build_zig_triplet: ${{ zig_build_triplet if not is_unhosted_xcompiler else zig_target_triplet }}
 
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
@@ -491,6 +520,7 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
+          NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
           # Zig toolchain identification (independent of gcc TOOLCHAIN)
           # Includes -zig suffix so value is directly usable as binary name
           CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
@@ -553,6 +583,26 @@ outputs:
                 - bin/${{ conda_triplet }}-_translate.gen.sh
                 - bin/${{ conda_triplet }}-zig-force-load-cc
                 - bin/${{ conda_triplet }}-zig-force-load-cxx
+            # Native-triplet compiler suite (cross-compiler builds only) —
+            # the build machine's own zig-cc/cxx/etc, mirroring the target
+            # suite above but keyed on xc_build_triplet instead of conda_triplet.
+            - if: is_cross_compiler
+              then:
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-cc${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-cxx${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-ar${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-ranlib${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-asm${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-rc${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-lld${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-windres${{ exe }}
+            - if: is_cross_compiler and unix
+              then:
+                - bin/${{ xc_build_triplet }}-_zig-cc-common.sh
+                - bin/${{ xc_build_triplet }}-_zig-force-load-common.sh
+                - bin/${{ xc_build_triplet }}-_translate.gen.sh
+                - bin/${{ xc_build_triplet }}-zig-force-load-cc
+                - bin/${{ xc_build_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:

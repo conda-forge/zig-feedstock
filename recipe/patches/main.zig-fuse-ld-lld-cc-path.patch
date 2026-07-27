@@ -1,38 +1,38 @@
 --- a/src/main.zig
 +++ b/src/main.zig
-@@ -250,6 +250,7 @@
-     @"-cc1as",
+@@ -247,6 +247,7 @@
+    @"-cc1as",
 
-     @"ld.lld",
+    @"ld.lld",
 +    @"ld64.lld",
-     @"lld-link",
-     @"wasm-ld",
+    @"lld-link",
+    @"wasm-ld",
 
-@@ -361,7 +362,7 @@
-             dev.check(.clang_command);
-             return process.exit(try clangMain(arena, args));
-         },
+@@ -367,7 +368,7 @@
+            dev.check(.clang_command);
+            return process.exit(try clangMain(arena, args));
+        },
 -        .@"ld.lld", .@"lld-link", .@"wasm-ld" => {
 +        .@"ld.lld", .@"ld64.lld", .@"lld-link", .@"wasm-ld" => {
-             dev.check(.lld_linker);
-             return process.exit(try lldMain(arena, args, true));
-         },
-@@ -1990,6 +1991,11 @@
-                         }
-                     },
-                     .other => {
+            dev.check(.lld_linker);
+            return process.exit(try lldMain(arena, args, true));
+        },
+@@ -1979,6 +1980,11 @@
+                        }
+                    },
+                    .other => {
 +                        if (mem.eql(u8, it.only_arg, "lld") or
 +                            mem.eql(u8, it.only_arg, "ld.lld"))
 +                        {
 +                            create_module.opts.use_lld = true;
 +                        }
-                         try cc_argv.appendSlice(arena, it.other_args);
-                     },
-                     .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
-@@ -2965,7 +2971,13 @@
-                     try Io.File.stdout().writeStreamingAll(io, "zig ld " ++ build_options.version ++ "\n");
-                     process.exit(0);
-                 } else {
+                        try cc_argv.appendSlice(arena, it.other_args);
+                    },
+                    .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
+@@ -2953,7 +2959,13 @@
+                    try Io.File.stdout().writeStreamingAll(io, "zig ld " ++ build_options.version ++ "\n");
+                    process.exit(0);
+                } else {
 -                    fatal("unsupported linker arg: {s}", .{arg});
 +                    // When LLD requested, pass unrecognized linker args through
 +                    if (create_module.opts.use_lld == true) {
@@ -41,23 +41,23 @@
 +                    } else {
 +                        fatal("unsupported linker arg: {s}", .{arg});
 +                    }
-                 }
-             }
+                }
+            }
 
-@@ -6331,6 +6343,7 @@
+@@ -5185,6 +5197,7 @@
 
- /// The first argument determines which backend is invoked. The options are:
- /// * `ld.lld` - ELF
+/// The first argument determines which backend is invoked. The options are:
+/// * `ld.lld` - ELF
 +/// * `ld64.lld` - Mach-O
- /// * `lld-link` - COFF
- /// * `wasm-ld` - WebAssembly
- pub fn lldMain(
-@@ -6369,6 +6382,8 @@
-             break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
-         } else if (mem.eql(u8, args[1], "wasm-ld")) {
-             break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
+/// * `lld-link` - COFF
+/// * `wasm-ld` - WebAssembly
+pub fn lldMain(
+@@ -5223,6 +5236,8 @@
+            break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
+        } else if (mem.eql(u8, args[1], "wasm-ld")) {
+            break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
 +        } else if (mem.eql(u8, args[1], "ld64.lld")) {
 +            break :rc llvm.LinkMachO(argc, argv.ptr, can_exit_early, false);
-         } else {
-             unreachable;
-         }
+        } else {
+            unreachable;
+        }
