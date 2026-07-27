@@ -157,9 +157,6 @@ for _fa in "${_tr_out_args[@]}"; do
         # GCC-specific flags that zig's Clang doesn't accept
         -march=*|-mtune=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
-        # ppc64le REL24-mitigation flags (GCC-only) reach zig's Clang frontend
-        # via CFLAGS during our own build of zig; Clang rejects them. Parity
-        # port from the 0.16.0 _9 branch "GCC filter" (2026-07-27).
         -fno-partial-inlining|-fno-ipa-cp-clone) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
