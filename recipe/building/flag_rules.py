@@ -12,13 +12,14 @@ gen_translators.py, which turns it into:
   - recipe/building/_translate.gen.sh   (bash translation function, sourced
                                           by _zig-cc-common.sh)
 
-SCOPE: only the 9 rules below (R1-R9) are de-duplicated here. Everything
-else in _zig-cc-common.sh / zig-cc-nonunix.c that is NOT one of these 9
-rules (sysroot detection, -Xlinker general trigger/drop besides Bsymbolic,
--march/-mtune/-fstack-protector/... drops, MSVC /MANIFEST* handling,
--Wl,-e<sym> entry translation, cache-dir init, MACOSX_DEPLOYMENT_TARGET
-override) stays hand-written in the wrappers and is intentionally left
-OUT of this manifest.
+SCOPE: rules R1-R13 below are de-duplicated here. Everything else in
+_zig-cc-common.sh / zig-cc-nonunix.c that is NOT one of these rules
+(sysroot *detection* itself -- R12 only prints the already-computed _sr
+value, -Xlinker general trigger/drop besides Bsymbolic, -march/-mtune/
+-fstack-protector/... drops, MSVC /MANIFEST* handling, -Wl,-e<sym> entry
+translation, cache-dir init, MACOSX_DEPLOYMENT_TARGET override) stays
+hand-written in the wrappers and is intentionally left OUT of this
+manifest.
 
 Grounded against (2026-07-15):
   - recipe/scripts/_zig-cc-common.sh
@@ -61,7 +62,8 @@ Each entry in RULES is a dict with this common envelope:
 RULE_KINDS (top-level "kind")
 ---------------------------------------------------------------------------
   "rewrite"           R1 -- token rewritten to a fixed-template replacement
-  "intercept"         R2, R3 -- print profile-specific text then exit 0
+  "intercept"         R2, R3, R10-R13 -- print profile-specific text then
+                      exit 0
   "mode_override"     R4 -- strip flag, force translation mode
   "target_translate"  R5 -- rewrite -target/--target= value via "families"
   "option_preserve"   R6 -- keep user value if present, else inject default
@@ -105,6 +107,24 @@ ACTION KINDS (action["op"])
   "intercept_print_file_name"   (R3) probe profile-specific dirs for the
                                  named file, print resolved path or the
                                  bare name, then exit 0
+  "intercept_print_multi_os_directory" (R10) print "." (no multilib
+                                 support -- standard GCC behavior), then
+                                 exit 0
+  "intercept_print_prog_name"   (R11) probe profile's programs_dir (bin
+                                 dir) for the named program, print
+                                 resolved path or the bare name (mirrors
+                                 R3's fallback), then exit 0
+  "intercept_print_sysroot"     (R12, unix profile only) print the _sr
+                                 shell variable that _zig-cc-common.sh's
+                                 sysroot-detection block already computed
+                                 (empty string if unset/empty -- mirrors
+                                 that an empty _sr means no -isysroot is
+                                 injected either), then exit 0
+  "intercept_print_multiarch"   (R13) synthesize this profile/arch's
+                                 conda-style triplet and reuse R5's
+                                 target_translate function/logic to
+                                 produce the Debian-style value, then
+                                 exit 0
   "mode_override"               (R4) action["strip"]=True drops the flag
                                  from output; action["force_mode"] is the
                                  mode value to force (only ever downgrades,
@@ -160,7 +180,8 @@ from __future__ import annotations
 PROFILES: tuple[str, ...] = ("unix", "win")
 
 # ---------------------------------------------------------------------------
-# Per-profile literal data for the two intercept rules (R2, R3).
+# Per-profile literal data for the intercept rules that need per-profile
+# path templates (R2, R3, R11 -- R10/R12/R13 need no PROFILE_DATA entries).
 # ---------------------------------------------------------------------------
 PROFILE_DATA: dict[str, dict] = {
     "unix": dict(
@@ -375,6 +396,71 @@ R9_Z_O_PASSTHROUGH = dict(
     ],
 )
 
+# ---------------------------------------------------------------------------
+# R10 -- -print-multi-os-directory intercept + exit 0 (no multilib support,
+# standard GCC behavior: always print the current directory).
+# ---------------------------------------------------------------------------
+R10_PRINT_MULTI_OS_DIRECTORY = dict(
+    id="R10_print_multi_os_directory",
+    kind="intercept",
+    profiles=PROFILES,
+    gate="n/a",
+    lld_trigger=False,
+    match=dict(form="exact", values=["-print-multi-os-directory"]),
+    action=dict(op="intercept_print_multi_os_directory"),
+)
+
+# ---------------------------------------------------------------------------
+# R11 -- -print-prog-name=<name> intercept + exit 0. Same "resolve or
+# fallback to bare name" shape as R3, but probes PROFILE_DATA's
+# programs_dir (bin dir) instead of R3's lib-dir probe set.
+# ---------------------------------------------------------------------------
+R11_PRINT_PROG_NAME = dict(
+    id="R11_print_prog_name",
+    kind="intercept",
+    profiles=PROFILES,
+    gate="n/a",
+    lld_trigger=False,
+    match=dict(form="prefix", values=["-print-prog-name="]),
+    action=dict(op="intercept_print_prog_name"),
+)
+
+# ---------------------------------------------------------------------------
+# R12 -- -print-sysroot intercept + exit 0. UNIX PROFILE ONLY: the Windows
+# shim (zig-cc-nonunix.c) has no sysroot concept (confirmed via grep), so
+# there is nothing to mirror on the win profile -- gen_translators.py must
+# filter this rule out of its C/win output via rules_for_profile("win").
+# Prints the _sr shell variable _zig-cc-common.sh's sysroot-detection
+# block already computes (empty string if unset/empty).
+# ---------------------------------------------------------------------------
+R12_PRINT_SYSROOT = dict(
+    id="R12_print_sysroot",
+    kind="intercept",
+    profiles=("unix",),
+    gate="n/a",
+    lld_trigger=False,
+    match=dict(form="exact", values=["-print-sysroot"]),
+    action=dict(op="intercept_print_sysroot"),
+)
+
+# ---------------------------------------------------------------------------
+# R13 -- -print-multiarch intercept + exit 0. Reuses R5's target_translate
+# families: synthesizes this profile/arch's conda-style triplet (the same
+# pre-translation form R5 expects for -target/--target=) and feeds it
+# through the SAME translation function/logic R5 uses, so R13 prints
+# exactly what R5 would translate that value to -- not a hand-invented
+# string.
+# ---------------------------------------------------------------------------
+R13_PRINT_MULTIARCH = dict(
+    id="R13_print_multiarch",
+    kind="intercept",
+    profiles=PROFILES,
+    gate="n/a",
+    lld_trigger=False,
+    match=dict(form="exact", values=["-print-multiarch"]),
+    action=dict(op="intercept_print_multiarch"),
+)
+
 RULES: list[dict] = [
     R1_MAP_REWRITE,
     R2_PRINT_SEARCH_DIRS,
@@ -385,6 +471,10 @@ RULES: list[dict] = [
     R7_WL_DROP_HYBRID,
     R8_BSYMBOLIC_LLD_TRIGGER,
     R9_Z_O_PASSTHROUGH,
+    R10_PRINT_MULTI_OS_DIRECTORY,
+    R11_PRINT_PROG_NAME,
+    R12_PRINT_SYSROOT,
+    R13_PRINT_MULTIARCH,
 ]
 
 

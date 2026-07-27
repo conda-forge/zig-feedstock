@@ -155,6 +155,7 @@ for _fa in "${_tr_out_args[@]}"; do
         # GCC-specific flags that zig's Clang doesn't accept
         -march=*|-mtune=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
+        -fno-partial-inlining|-fno-ipa-cp-clone) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
         # GCC runtime libraries zig doesn't ship and can't link

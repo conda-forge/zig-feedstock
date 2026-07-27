@@ -1,9 +1,10 @@
 schema_version: 1
 
 context:
-  build_number: 8
+  build_number: 9
   name: zig
   version: "0.16.0"
+  api_version: ${{ version | split(".") | last }}
 
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
@@ -36,7 +37,7 @@ context:
   sh: ${{ ".bat" if not unix else ".sh" }}
 
   # Zig target mapping https://github.com/ziglang/zig-bootstrap
-  _c_v: ${{ c_stdlib_version | default("") }}  # Must be maj.min for osx, update variants.yaml
+  _c_v: ${{ c_stdlib_version | default("") }}
   zig_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ _c_v        if xc_l64                              else
@@ -49,6 +50,18 @@ context:
       "x86_64-windows-msvc"             if xc_w64                              else
       "aarch64-windows-msvc"            if xc_warm64                           else
       "x86-windows-msvc"                if xc_win32                            else
+      "native"
+    }}
+  zig_short_triplet: ${{ zig_triplet | split(".") | first }}
+
+  # Known conda-forge build_platforms (zig -target format, no glibc suffix)
+  zig_build_triplet: >-
+    ${{
+      "x86_64-linux-gnu"                if build_platform == "linux-64"        else
+      "aarch64-linux-gnu"               if build_platform == "linux-aarch64"   else
+      "x86_64-macos." ~ _c_v            if build_platform == "osx-64"          else
+      "aarch64-macos." ~ _c_v           if build_platform == "osx-arm64"       else
+      "x86_64-windows-gnu"              if build_platform == "win-64"          else
       "native"
     }}
 
@@ -96,16 +109,34 @@ context:
       "unknown_target_triplet"
     }}
 
+  # Same mapping as zig_build_triplet but keyed on target_platform (zig -target format).
+  # Used by xc_build_zig_triplet for unhosted cross-compilers (runs on target_platform).
+  zig_target_triplet: >-
+    ${{
+      "x86_64-linux-gnu." ~ _c_v        if target_platform == "linux-64"       else
+      "aarch64-linux-gnu." ~ _c_v       if target_platform == "linux-aarch64"  else
+      "powerpc64le-linux-gnu." ~ _c_v   if target_platform == "linux-ppc64le"  else
+      "riscv64-linux-gnu." ~ _c_v       if target_platform == "linux-riscv64"  else
+      "s390x-linux-gnu." ~ _c_v         if target_platform == "linux-s390x"    else
+      "x86_64-macos." ~ _c_v ~ "-none"  if target_platform == "osx-64"         else
+      "aarch64-macos." ~ _c_v ~ "-none" if target_platform == "osx-arm64"      else
+      "x86_64-windows-gnu"              if target_platform == "win-64"         else
+      "aarch64-windows-gnu"             if target_platform == "win-arm64"      else
+      "x86-windows-gnu"                 if target_platform == "win-32"         else
+      "native"
+    }}
+
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
   is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
   xc_build_platform: >-
     ${{
       build_platform                    if is_hosted_xcompiler                 else
       target_platform                   if is_unhosted_xcompiler               else
-      "unknown"
+      "unknown_xc_build_platform"
     }}
 
   xc_build_triplet: ${{ build_triplet if not is_unhosted_xcompiler else target_triplet }}
+  xc_build_zig_triplet: ${{ zig_build_triplet if not is_unhosted_xcompiler else zig_target_triplet }}
 
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
@@ -155,25 +186,22 @@ source:
       # can also `zig cc -target powerpc64le-linux-gnu`.
       - if: linux
         then:
-          # Phase 0001: Architecture Support (add PowerPC64LE to CPU arch switches)
-          - patches/ppc64le/0001-arch-support-relocation.zig.patch
+          # Phase 0001: Architecture Support. Only LdScript is required here: its
+          # outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch
+          # arms (relocation, Elf, Atom, LinkerDefined, ZigObject, synthetic_sections,
+          # eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
+          # build + ppc64le tests confirmed they are dead code: 0003-linker-redirect
+          # forces the LLD backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted
+          # final-link path is never instantiated. See ZIG_PATCH_AUDIT_0.16.0.md.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
-          - patches/ppc64le/0001-arch-support-Elf.zig.patch
-          - patches/ppc64le/0001-arch-support-Atom.zig.patch
-          - patches/ppc64le/0001-arch-support-LinkerDefined.zig.patch
-          - patches/ppc64le/0001-arch-support-ZigObject.zig.patch
-          - patches/ppc64le/0001-arch-support-synthetic_sections.zig.patch
-          - patches/ppc64le/0001-arch-support-eh_frame.zig.patch
-          - patches/ppc64le/0001-arch-support-Thunk.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
           # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
-          # Phase 0005-0007: CMake ppc64le configuration (mlongcall, lld bundle, zigcpp bundle)
+          # Phase 0005-0006: CMake ppc64le configuration (mlongcall, lld bundle)
           - patches/cmake/0005-ppc64le-mlongcall-CMakeLists.txt.patch
           - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
-          - patches/cmake/0007-ppc64le-zigcpp-bundle-CMakeLists.txt.patch
       - if: not unix
         then:
           - patches/non_unix/build.zig-01-maxrss.patch
@@ -255,7 +283,7 @@ outputs:
           - if: not unix
             then: "*/VERSION.dll"
       script:
-        file: build${{ sh }}
+        file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
@@ -276,9 +304,9 @@ outputs:
         - python 3.12.*
         - if: not unix
           then:
-            - ${{ m2 }}gawk
             - ${{ m2 }}coreutils
             - ${{ m2 }}findutils
+            - ${{ m2 }}gawk
             - ${{ m2 }}which
         # NOTE: libcxx is deliberately NOT listed in the build env on osx.
         # The bootstrap zig_impl (previous release, 0.15.2) was linked against
@@ -298,7 +326,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} >=0.15.2,<=${{ version }}
+            - zig_impl_${{ build_platform }} ${{ api_version }}.*
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -339,7 +367,6 @@ outputs:
             - if: ppc64le
               then:
                 - zig-lld-bundle
-                - zig-zigcpp-bundle
           files:
             # qemu-ppc64le doesn't faithfully emulate traps
             - if: is_native or (linux and not xc_ppc64le)
@@ -491,6 +518,7 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
+          NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
           # Zig toolchain identification (independent of gcc TOOLCHAIN)
           # Includes -zig suffix so value is directly usable as binary name
           CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
@@ -504,7 +532,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2
+            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -518,7 +546,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} >=0.15.2,<=${{ version }}
+            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -553,6 +581,26 @@ outputs:
                 - bin/${{ conda_triplet }}-_translate.gen.sh
                 - bin/${{ conda_triplet }}-zig-force-load-cc
                 - bin/${{ conda_triplet }}-zig-force-load-cxx
+            # Native-triplet compiler suite (cross-compiler builds only) —
+            # the build machine's own zig-cc/cxx/etc, mirroring the target
+            # suite above but keyed on xc_build_triplet instead of conda_triplet.
+            - if: is_cross_compiler
+              then:
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-cc${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-cxx${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-ar${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-ranlib${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-asm${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-rc${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-lld${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-windres${{ exe }}
+            - if: is_cross_compiler and unix
+              then:
+                - bin/${{ xc_build_triplet }}-_zig-cc-common.sh
+                - bin/${{ xc_build_triplet }}-_zig-force-load-common.sh
+                - bin/${{ xc_build_triplet }}-_translate.gen.sh
+                - bin/${{ xc_build_triplet }}-zig-force-load-cc
+                - bin/${{ xc_build_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
       - script:
