@@ -5,7 +5,7 @@ context:
   name: zig
   version: "0.17.0"
   api_version: ${{ version | split(".") | last }}
-  snapshot: "1465+8b2d0ce21"
+  snapshot: "1476+91a29d707"
 
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
@@ -149,7 +149,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: b1bbdf550916d25a45b56223f3029041ce3929311a888a299ed91de2d3c75277
+    sha256: a6b8971a080c277993b935608d02dc17174acf5834cdc16ab53dc0b66f3fc1b5
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
