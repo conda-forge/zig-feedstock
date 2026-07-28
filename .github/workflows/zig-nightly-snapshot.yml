@@ -19,15 +19,23 @@ env:
 jobs:
   check-and-bump:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - branch: dev
+            channel: master
+          - branch: experimental
+            channel: release
     steps:
       - name: Checkout this repo (for the bump script)
         uses: actions/checkout@v4
 
-      - name: Checkout conda-forge/zig-feedstock@dev
+      - name: Checkout conda-forge/zig-feedstock@${{ matrix.branch }}
         uses: actions/checkout@v4
         with:
           repository: conda-forge/zig-feedstock
-          ref: dev
+          ref: ${{ matrix.branch }}
           path: upstream
 
       - name: Set up Python
@@ -35,9 +43,9 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Check for a new zig nightly snapshot
+      - name: Check for a new zig ${{ matrix.channel }} version
         id: bump
-        run: python3 .github/scripts/bump_snapshot.py upstream/recipe/recipe.yaml
+        run: python3 .github/scripts/bump_snapshot.py upstream/recipe/recipe.yaml --channel ${{ matrix.channel }}
 
       - name: Run patch-relevancy gate
         if: steps.bump.outputs.changed == 'true'
@@ -55,7 +63,7 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Push bump branch to fork and open PR to conda-forge:dev
+      - name: Push bump branch to fork and open PR to conda-forge:${{ matrix.branch }}
         if: steps.bump.outputs.changed == 'true'
         working-directory: upstream
         env:
@@ -63,20 +71,19 @@ jobs:
         run: |
           git config user.name "zig-snapshot-bot"
           git config user.email "actions@users.noreply.github.com"
-          BRANCH="snapshot/${{ steps.bump.outputs.new_snapshot }}"
+          BRANCH="snapshot/${{ matrix.branch }}-${{ steps.bump.outputs.new_id }}"
           git checkout -b "$BRANCH"
-          git commit -am "snapshot: bump to ${{ steps.bump.outputs.new_version }}-dev.${{ steps.bump.outputs.new_snapshot }}"
+          git commit -am "zig ${{ matrix.channel }}: bump ${{ steps.bump.outputs.old_id }} -> ${{ steps.bump.outputs.new_id }}"
           git remote add fork "https://x-access-token:${GH_TOKEN}@github.com/MementoRC/zig-feedstock.git"
           git push fork "$BRANCH"
           gh pr create \
             --repo conda-forge/zig-feedstock \
-            --base dev \
+            --base "${{ matrix.branch }}" \
             --head "MementoRC:${BRANCH}" \
-            --title "[dev] snapshot bump: ${{ steps.bump.outputs.old_snapshot }} -> ${{ steps.bump.outputs.new_snapshot }}" \
-            --body "Automated zig nightly snapshot bump.
+            --title "[${{ matrix.branch }}] version bump: ${{ steps.bump.outputs.old_id }} -> ${{ steps.bump.outputs.new_id }}" \
+            --body "Automated zig ${{ matrix.channel }} version bump.
 
           - version: ${{ steps.bump.outputs.old_version }} -> ${{ steps.bump.outputs.new_version }}
-          - snapshot: ${{ steps.bump.outputs.old_snapshot }} -> ${{ steps.bump.outputs.new_snapshot }}
           - tarball: ${{ steps.bump.outputs.tarball_url }}
           - sha256: ${{ steps.bump.outputs.sha256 }}
 
