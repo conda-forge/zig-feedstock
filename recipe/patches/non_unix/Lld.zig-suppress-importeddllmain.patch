@@ -8,7 +8,7 @@
 
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -423,6 +423,7 @@
+@@ -436,6 +436,7 @@
 
          try argv.append("-ERRORLIMIT:0");
          try argv.append("-NOLOGO");

@@ -5,14 +5,14 @@
 #   MSVC_RUNTIME_LIBRARY "MultiThreaded" which links libucrt.lib
 #   statically into zigcpp.a's DEFAULTLIB pragmas.  When the
 #   bootstrap zig links zigcpp.a, it also auto-adds ucrt.lib
-#   (dynamic) for `link_libc=true` on x86_64-windows-msvc — both
-#   resolve the same symbols → lld-link "duplicate symbol" errors.
+#   (dynamic) for `link_libc=true` on x86_64-windows-msvc -- both
+#   resolve the same symbols -> lld-link "duplicate symbol" errors.
 #   Switching zigcpp to MultiThreadedDLL aligns it with the dynamic
 #   ucrt the bootstrap pulls.
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -518,6 +518,8 @@
+@@ -520,8 +520,10 @@
      -Wno-comment
    )
  else()
@@ -22,3 +22,5 @@
 -set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
 +set_property(TARGET zigcpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
  endif()
+
+ target_include_directories(zigcpp PUBLIC

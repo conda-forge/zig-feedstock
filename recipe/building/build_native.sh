@@ -56,21 +56,9 @@ ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
 
 eval "$(${CONDA_CMD} shell activate -p ${ENV_DIR} 2>/dev/null || conda shell.bash activate ${ENV_DIR})"
 
-# 2. Fix libc/libm linker scripts for zig (same as main build's modify_libc_libm_for_zig)
-#    zig's lld can't handle relative paths in linker scripts → replace with symlinks
-SYSROOT=$(ls -d "${ENV_DIR}"/*-conda-linux-gnu/sysroot 2>/dev/null | head -1)
-if [[ -n "${SYSROOT}" ]]; then
-    for lib in libc libm; do
-        so="${SYSROOT}/usr/lib64/${lib}.so"
-        if [[ -f "$so" ]] && file "$so" | grep -q "text"; then
-            echo "  - Replacing ${lib}.so linker script with symlink"
-            rm -f "$so"
-            ln -sf "../../lib64/${lib}.so.6" "$so"
-        fi
-    done
-fi
-# Fix sysroot libc.so linker scripts 2.17 to use relative paths
+# 2. Fix sysroot libc.so linker scripts 2.17 to use relative paths
 source ${RECIPE_DIR}/building/_sysroot_fix.sh
+source ${RECIPE_DIR}/building/_atfork.sh
 fix_sysroot_libc_scripts "${ENV_DIR}"
 
 # 3. Find the zig binary from zig_impl (conda bootstrap)
@@ -96,15 +84,8 @@ cmake --build "${CMAKE_BUILD}" --target zigcpp -- -j"${CPU_COUNT:-4}"
 # 4b. Create pthread_atfork stub (glibc 2.28 libc_nonshared.a not found by lld)
 STUB_DIR="${WORK_DIR}/atfork-stub"
 mkdir -p "${STUB_DIR}"
-cat > "${STUB_DIR}/pthread_atfork_stub.c" << 'STUBEOF'
-__attribute__((weak))
-int pthread_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void)) {
-    (void)prepare; (void)parent; (void)child;
-    return 0;
-}
-STUBEOF
 NATIVE_CC=$(ls "${ENV_DIR}"/bin/x86_64-conda-linux-gnu-cc 2>/dev/null || echo gcc)
-"${NATIVE_CC}" -c "${STUB_DIR}/pthread_atfork_stub.c" -o "${STUB_DIR}/pthread_atfork_stub.o"
+create_pthread_atfork_stub "x86_64" "${NATIVE_CC}" "${STUB_DIR}"
 perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${STUB_DIR}/pthread_atfork_stub.o\"|g" \
     "${CMAKE_BUILD}/config.h"
 echo "[build_native] Injected pthread_atfork stub into config.h"
@@ -124,7 +105,7 @@ ZIG_BUILD_ARGS=(
     -Dtarget=x86_64-linux-gnu.2.17
     -Duse-zig-libcxx=false
     -Dversion-string="${PKG_VERSION}"
-    --maxrss 7500000000
+    --maxrss 7800000000
 )
 
 # ==========================================================================

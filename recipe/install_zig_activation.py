@@ -5,7 +5,11 @@ Build script for zig_$cross_target_platform_ activation package.
 Installs:
 1. Activation/deactivation scripts (all builds)
 2. zig-cc wrapper scripts from templates (all Unix builds)
-3. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
+3. Native-triplet compiler suite (cross-compiler builds only) — many
+   downstream cross-compiling recipes invoke the build machine's own
+   triplet-prefixed compiler for build-time tools in addition to the
+   host/target compiler.
+4. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
 
 All wrapper content lives in recipe/scripts/ as templates with @PLACEHOLDER@
 substitution — no script content is generated inline.
@@ -70,12 +74,31 @@ def main():
         is_nonunix=is_nonunix,
     )
 
+
     # 3. Cross-compiler: install triplet-prefixed wrappers
     if cross_compiler == "true":
         native_triplet = os.environ.get("NATIVE_TRIPLET", "x86_64-conda-linux-gnu")
+        native_zig_triplet = os.environ.get("NATIVE_ZIG_TRIPLET", "native")
 
         print(f"Native triplet: {native_triplet}")
+        print(f"Native zig triplet: {native_zig_triplet}")
         print(f"Target triplet: {target_triplet}")
+
+        # Native-triplet compiler suite (zig-cc/cxx/ar/ranlib/asm/rc/lld/
+        # windres/force-load-cc/force-load-cxx targeting the build machine
+        # itself) — reuses install_zig_cc_wrappers with native_triplet/
+        # native_zig_triplet substituted for conda_triplet/zig_triplet, so
+        # the resulting suite is named f"{native_triplet}-{name}" instead
+        # of f"{conda_triplet}-{name}". is_nonunix is shared with the target
+        # suite because this recipe's xc_valid gating (xc_lnx/xc_osx/xc_nlo)
+        # only allows same-OS-family cross builds — native and target are
+        # never on opposite sides of the Unix/non-Unix boundary.
+        install_zig_cc_wrappers(
+            prefix, recipe_dir,
+            zig_triplet=native_zig_triplet,
+            conda_triplet=native_triplet,
+            is_nonunix=is_nonunix,
+        )
 
         if is_nonunix:
             install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
@@ -149,6 +172,7 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
         subprocess.check_call([
             zig_bin, "cc",
             "-O2",
+            f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
             "-lkernel32",
@@ -246,38 +270,76 @@ def install_zig_cc_wrappers(
         "@ZIG_BIN@": zig_bin,
         "@ZIG_TARGET@": cc_target,
         "@ZIG_TARGET_ARCH@": target_arch,
+        "@WRAPPER_PREFIX@": f"{conda_triplet}-",
     }
 
     if is_nonunix:
-        wrapper_dir = prefix / "Library" / "share" / "zig" / "wrappers"
+        wrapper_dir = prefix / "Library" / "bin"
+        # Extract zig binary filename from full %CONDA_PREFIX%\... path once
+        zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
 
         # Compile zig-cc.exe and zig-cxx.exe (native .exe with flag filtering)
         cc_src = recipe_dir / "building" / "zig-cc-nonunix.c"
         if cc_src.exists():
-            # Extract zig binary filename from full %CONDA_PREFIX%\... path
-            zig_bin_name = zig_bin.rsplit("\\", 1)[-1]
+            is_mingw = "mingw32" in conda_triplet
             for mode, exe_name in [("cc", "zig-cc"), ("c++", "zig-cxx")]:
-                mode_replacements = {**replacements, "@ZIG_CC_MODE@": mode, "@ZIG_BIN_NAME@": zig_bin_name}
-                _compile_c_shim(cc_src, wrapper_dir / f"{exe_name}.exe", mode_replacements)
+                mode_replacements = {
+                    **replacements,
+                    "@ZIG_CC_MODE@": mode,
+                    "@ZIG_BIN_NAME@": zig_bin_name,
+                    "@IS_MINGW_TARGET@": "1" if is_mingw else "0",
+                }
+                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
 
-        # Keep .bat for simple pass-through tools (no flag filtering needed)
-        for name in ["zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld"]:
-            src = scripts_dir / f"{name}.bat"
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{name}.bat", replacements)
+        # Compile .exe shims for simple pass-through tools
+        tool_src = recipe_dir / "building" / "zig-tool-nonunix.c"
+        if tool_src.exists():
+            zig_target_for_asm = replacements.get("@ZIG_TARGET@", "native")
+            tool_prefix_args = {
+                "zig-ar":     '"ar"',
+                "zig-ranlib": '"ranlib"',
+                "zig-rc":     '"rc"',
+                "zig-lld":    '"lld-link"',
+                "zig-asm":    f'"cc", "-target", "{zig_target_for_asm}", "-mcpu=baseline"',
+            }
+            for name, prefix_args in tool_prefix_args.items():
+                tool_replacements = {
+                    **replacements,
+                    "@ZIG_BIN_NAME@": zig_bin_name,
+                    "@ZIG_PREFIX_ARGS@": prefix_args,
+                }
+                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
+
+        # Compile zig-windres.exe (dedicated shim with -o -> -fo translation)
+        windres_src = recipe_dir / "building" / "zig-windres-nonunix.c"
+        if windres_src.exists():
+            windres_replacements = {
+                **replacements,
+                "@ZIG_BIN_NAME@": zig_bin_name,
+            }
+            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements)
 
     else:
-        wrapper_dir = prefix / "share" / "zig" / "wrappers"
-        # Install shared helpers (sourced by wrapper scripts, not executed directly)
-        for helper in ["_zig-cc-common.sh", "_zig-force-load-common.sh"]:
-            src = scripts_dir / helper
+        wrapper_dir = prefix / "bin"
+        building_dir = recipe_dir / "building"
+        # Install shared helpers (sourced by wrapper scripts, not executed directly).
+        # _translate.gen.sh is the generated flag-translation fragment (R1-R9);
+        # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
+        # the other two helpers which live in recipe/scripts/ alongside the
+        # wrapper templates that source them.
+        for helper, helper_src_dir in [
+            ("_zig-cc-common.sh", scripts_dir),
+            ("_zig-force-load-common.sh", scripts_dir),
+            ("_translate.gen.sh", building_dir),
+        ]:
+            src = helper_src_dir / helper
             if src.exists():
-                _install_template(src, wrapper_dir / helper, replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-force-load-cc", "zig-force-load-cxx"]
+                _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
+        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-windres", "zig-force-load-cc", "zig-force-load-cxx"]
         for name in wrappers:
             src = scripts_dir / f"{name}.sh"
             if src.exists():
-                _install_template(src, wrapper_dir / name, replacements, executable=True)
+                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
 
 
 def install_unix_cross_wrappers(

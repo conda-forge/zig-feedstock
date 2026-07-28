@@ -1,5 +1,26 @@
---- a/tools/doctest.zig	2026-04-13 20:19:17
-+++ b/tools/doctest.zig	2026-04-22 15:52:42
+--- a/build.zig
++++ b/build.zig
+@@ -1469,6 +1469,8 @@
+ };
+
+ fn generateLangRef(b: *std.Build) std.Build.LazyPath {
++    const doctest_target = b.option([]const u8, "doctest-target",
++        "Default target for langref doctest compilations (e.g., x86_64-linux-gnu.2.17)");
+     const io = b.graph.io;
+
+     const doctest_exe = b.addExecutable(.{
+@@ -1509,6 +1511,9 @@
+
+         cmd.addArgs(&.{"-o"});
+         _ = wf.addCopyFile(cmd.addOutputFileArg(out_basename), out_basename);
++        if (doctest_target) |dt| {
++            cmd.addArgs(&.{ "--default-target", dt });
++        }
+     }
+
+     const docgen_exe = b.addExecutable(.{
+--- a/tools/doctest.zig
++++ b/tools/doctest.zig
 @@ -26,6 +26,7 @@
      \\   --zig zig              Path to the zig compiler
      \\   --zig-lib-dir dir      Override the zig compiler library path
@@ -7,13 +28,13 @@
 +    \\   --default-target t     Default target for doctests without // target=
      \\
  ;
- 
+
 @@ -45,6 +46,7 @@
      var opt_zig: ?[]const u8 = null;
      var opt_zig_lib_dir: ?[]const u8 = null;
      var opt_cache_root: ?[]const u8 = null;
 +    var opt_default_target: ?[]const u8 = null;
- 
+
      while (args_it.next()) |arg| {
          if (mem.startsWith(u8, arg, "-")) {
 @@ -61,6 +63,8 @@
@@ -32,7 +53,7 @@
 +        opt_default_target,
          environ_map,
      );
- 
+
 @@ -127,6 +132,8 @@
      input_path: []const u8,
      /// Relative to `tmp_dir_path`.
@@ -51,12 +72,10 @@
              }
              if (code.use_llvm) |use_llvm| {
                  if (use_llvm) {
-@@ -326,6 +335,21 @@
-                     else => {
-                         try test_args.appendSlice(&[_][]const u8{"--test-no-exec"});
+@@ -328,6 +337,21 @@
                          try shell_out.writeAll("--test-no-exec");
-+                    },
-+                }
+                     },
+                 }
 +            } else if (opt_default_target) |dt| {
 +                try test_args.appendSlice(&[_][]const u8{ "-target", dt });
 +
@@ -70,26 +89,8 @@
 +                    .native => {},
 +                    else => {
 +                        try test_args.appendSlice(&[_][]const u8{"--test-no-exec"});
-                     },
-                 }
++                    },
++                }
              }
---- a/build.zig	2026-04-13 20:19:17
-+++ b/build.zig	2026-04-22 15:52:06
-@@ -1470,6 +1470,7 @@
- 
- fn generateLangRef(b: *std.Build) std.Build.LazyPath {
-     const io = b.graph.io;
-+    const doctest_target = b.option([]const u8, "doctest-target", "Default target for langref doctest compilations (e.g., x86_64-linux-gnu.2.17)");
- 
-     const doctest_exe = b.addExecutable(.{
-         .name = "doctest",
-@@ -1509,6 +1510,9 @@
- 
-         cmd.addArgs(&.{"-o"});
-         _ = wf.addCopyFile(cmd.addOutputFileArg(out_basename), out_basename);
-+        if (doctest_target) |dt| {
-+            cmd.addArgs(&.{ "--default-target", dt });
-+        }
-     }
- 
-     const docgen_exe = b.addExecutable(.{
+             if (code.use_llvm) |use_llvm| {
+                 if (use_llvm) {
