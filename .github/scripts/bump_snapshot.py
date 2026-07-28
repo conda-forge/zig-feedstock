@@ -12,11 +12,18 @@ Two channels:
                       ziglang.org/download/<version>/... source url. There
                       is no snapshot field for this channel.
 
-Edits are scoped to the context: block (for version/snapshot) and to the
-sha256 line immediately following the FIRST matching source url -- never a
-blind file-wide regex, so the recipe's jinja templating elsewhere, and any
-secondary bootstrap-source sha256 entries further down the file, are left
-untouched.
+Both channels also patch a secondary "bootstrap" source block if present
+(recipe.yaml's `- if: bootstrap_via_upstream` source entry, one url+sha256
+per build_platform for zig's own prebuilt binaries at the same
+version/snapshot) -- kept in sync unconditionally, independent of whether
+bootstrap_via_upstream is currently true or false, so the hashes are
+already correct whenever a maintainer flips that flag for a given PR.
+
+Edits are scoped to the context: block (for version/snapshot), to the
+sha256 line immediately following the FIRST matching primary source url,
+and to the sha256 line immediately following each matched bootstrap
+platform url -- never a blind file-wide regex, so the recipe's jinja
+templating elsewhere is untouched.
 """
 import json
 import os
@@ -26,6 +33,16 @@ import urllib.request
 from pathlib import Path
 
 INDEX_URL = "https://ziglang.org/download/index.json"
+
+# conda-forge build_platform -> ziglang.org/download/index.json platform key
+BOOTSTRAP_PLATFORM_MAP = {
+    "osx-arm64": "aarch64-macos",
+    "osx-64": "x86_64-macos",
+    "win-64": "x86_64-windows",
+    "linux-64": "x86_64-linux",
+    "linux-aarch64": "aarch64-linux",
+    "linux-ppc64le": "powerpc64le-linux",
+}
 
 
 def fetch_index():
@@ -39,7 +56,7 @@ def target_master(data):
     base, _, snapshot = version_full.partition("-dev.")
     if not snapshot:
         raise ValueError(f"unexpected master version format: {version_full!r}")
-    return base, snapshot, master["src"]["tarball"], master["src"]["shasum"]
+    return base, snapshot, master
 
 
 def _version_key(v):
@@ -49,8 +66,7 @@ def _version_key(v):
 def target_release(data):
     releases = {k: v for k, v in data.items() if k != "master"}
     latest = max(releases, key=_version_key)
-    entry = releases[latest]
-    return entry["version"], None, entry["src"]["tarball"], entry["src"]["shasum"]
+    return releases[latest]["version"], None, releases[latest]
 
 
 def patch_context_block(lines, key, new_value):
@@ -79,6 +95,32 @@ def patch_sha256(lines, url_substrings, new_sha256):
             lines[i + 1] = f"{m.group(1)}{new_sha256}{m.group(2)}"
             return True
     return False
+
+
+def patch_bootstrap_sha256s(lines, entry):
+    """Patch each bootstrap platform's sha256 if its url block is present.
+    Tolerant of missing blocks (some recipes may not have all platforms, or
+    any bootstrap block at all) -- returns the list of platforms actually
+    patched, does not raise on absence.
+    """
+    patched = []
+    for conda_platform, zig_platform in BOOTSTRAP_PLATFORM_MAP.items():
+        platform_entry = entry.get(zig_platform)
+        if not platform_entry:
+            continue
+        marker = f"zig-{zig_platform}-"
+        for i, line in enumerate(lines):
+            if marker in line and "url:" in line:
+                m = re.match(r"^(\s*sha256:\s*)[0-9a-f]{64}(\s*)$", lines[i + 1])
+                if not m:
+                    raise ValueError(
+                        f"expected sha256 line after {conda_platform} ({zig_platform}) "
+                        f"bootstrap url, got: {lines[i + 1]!r}"
+                    )
+                lines[i + 1] = f"{m.group(1)}{platform_entry['shasum']}{m.group(2)}"
+                patched.append(conda_platform)
+                break
+    return patched
 
 
 def read_current(lines, channel):
@@ -126,13 +168,16 @@ def main():
 
     data = fetch_index()
     if channel == "master":
-        new_version, new_snapshot, tarball_url, shasum = target_master(data)
+        new_version, new_snapshot, entry = target_master(data)
         old_id, new_id = old_snapshot, new_snapshot
         url_substrings = ["ziglang.org/builds/zig-", ".tar.xz"]
     else:
-        new_version, new_snapshot, tarball_url, shasum = target_release(data)
+        new_version, new_snapshot, entry = target_release(data)
         old_id, new_id = old_version, new_version
         url_substrings = ["ziglang.org/download/", "/zig-"]
+
+    tarball_url = entry["src"]["tarball"]
+    shasum = entry["src"]["shasum"]
 
     changed = new_id != old_id
     print(f"channel: {channel}")
@@ -142,19 +187,11 @@ def main():
     print(f"changed: {changed}")
 
     gh_out = os.environ.get("GITHUB_OUTPUT")
-    if gh_out:
-        with open(gh_out, "a") as f:
-            f.write(f"changed={'true' if changed else 'false'}\n")
-            f.write(f"old_version={old_version}\n")
-            f.write(f"old_snapshot={old_snapshot or ''}\n")
-            f.write(f"new_version={new_version}\n")
-            f.write(f"new_snapshot={new_snapshot or ''}\n")
-            f.write(f"old_id={old_id}\n")
-            f.write(f"new_id={new_id}\n")
-            f.write(f"tarball_url={tarball_url}\n")
-            f.write(f"sha256={shasum}\n")
 
     if not changed:
+        if gh_out:
+            with open(gh_out, "a") as f:
+                f.write("changed=false\n")
         return 0
 
     if not patch_context_block(lines, "version", new_version):
@@ -168,8 +205,25 @@ def main():
         print("error: failed to patch sha256 after source url", file=sys.stderr)
         return 1
 
+    bootstrap_patched = patch_bootstrap_sha256s(lines, entry)
+    print(f"bootstrap platforms patched: {', '.join(bootstrap_patched) if bootstrap_patched else '(none found)'}")
+
     recipe_path.write_text("".join(lines))
     print(f"updated {recipe_path}")
+
+    if gh_out:
+        with open(gh_out, "a") as f:
+            f.write("changed=true\n")
+            f.write(f"old_version={old_version}\n")
+            f.write(f"old_snapshot={old_snapshot or ''}\n")
+            f.write(f"new_version={new_version}\n")
+            f.write(f"new_snapshot={new_snapshot or ''}\n")
+            f.write(f"old_id={old_id}\n")
+            f.write(f"new_id={new_id}\n")
+            f.write(f"tarball_url={tarball_url}\n")
+            f.write(f"sha256={shasum}\n")
+            f.write(f"bootstrap_patched={','.join(bootstrap_patched)}\n")
+
     return 0
 
 
