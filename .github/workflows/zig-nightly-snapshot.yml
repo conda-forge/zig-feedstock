@@ -29,10 +29,10 @@ jobs:
             channel: release
     steps:
       - name: Checkout this repo (for the bump script)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout conda-forge/zig-feedstock@${{ matrix.branch }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: conda-forge/zig-feedstock
           ref: ${{ matrix.branch }}
@@ -40,7 +40,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
