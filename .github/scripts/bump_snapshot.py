@@ -9,6 +9,7 @@ following the ziglang.org/builds source url (for sha256) -- never a blind
 file-wide regex, so the recipe's jinja templating elsewhere is untouched.
 """
 import json
+import os
 import re
 import sys
 import urllib.request
@@ -102,7 +103,7 @@ def main():
     print(f"tarball: {tarball_url}")
     print(f"changed: {changed}")
 
-    gh_out = sys.environ.get("GITHUB_OUTPUT")
+    gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
         with open(gh_out, "a") as f:
             f.write(f"changed={'true' if changed else 'false'}\n")
