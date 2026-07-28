@@ -1,33 +1,6 @@
-c_stdlib:
-  - if: linux
-    then:
-      - sysroot
-  - if: osx
-    then:
-      - macosx_deployment_target
-  - if: not unix
-    then:
-      - vs
-c_stdlib_version:
-  - if: linux
-    then:
-      - "2.17"
-  - if: osx
-    then:
-      - "11.0"
-  - if: not unix
-    then:
-      - "2022.14"
-
-c_compiler:
-  - if: not unix
-    then:
-      - vs2022
-cxx_compiler:
-  - if: not unix
-    then:
-      - vs2022
-
+channel_targets:
+  - conda-forge zig_dev
+  
 c_compiler_version:
   - if: osx
     then:
