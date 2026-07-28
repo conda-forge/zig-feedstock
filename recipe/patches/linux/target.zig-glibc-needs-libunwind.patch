@@ -9,7 +9,7 @@
 @@ -32,7 +32,8 @@
  }
 
- pub fn libCNeedsLibUnwind(target: *const std.Target, link_mode: std.builtin.LinkMode) bool {
+ pub fn libCNeedsLibUnwind(target: *const std.Target, link_mode: std.lang.LinkMode) bool {
 -    return target.isGnuLibC() and link_mode == .static;
 +    _ = link_mode;
 +    return target.isGnuLibC();

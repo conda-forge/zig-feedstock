@@ -3,9 +3,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-source "${RECIPE_DIR}/building/_bash_check.sh"
-
 export build_platform="${build_platform:-${target_platform}}"
+
+source "${RECIPE_DIR}/building/_bash_check.sh"
 
 # --- Functions ---
 
@@ -136,7 +136,15 @@ if is_osx; then
   EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
-  EXTRA_ZIG_ARGS+=(--maxrss 7800000000)
+  # --maxrss + the build.zig max_rss patch are linux-only.  Adding
+  # them to osx (commit 22a8ddb) capped zig's build-graph scheduler
+  # at 7 GB → forced more serial task execution → osx_64 native
+  # build wall time grew from ~32 min (historical successes) to
+  # ~58 min, tipping Azure's macOS-15 agents into abandonment.
+  # Reverted to the no-cap default for osx; the heavy link step
+  # uses < 7 GB in practice on osx-arm64 native builds (proven by
+  # repeated successes), and lets zig parallelize across cores.
+  EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
 fi
 
 if is_not_unix; then
@@ -251,6 +259,31 @@ if is_linux; then
 fi
 
 
+# --- Two-stage bootstrap for linux-ppc64le with upstream bootstrap ---
+#
+# When bootstrap_via_upstream=true (proxied by zig-bootstrap/ dir presence),
+# the upstream linux-64 zig bootstrap binary lacks our ppc64le LdScript support
+# and DWARF64 eh_frame skip patches.  Those missing patches cause panics during
+# the ppc64le cross-compile of zig itself.
+#
+# Fix: build a native linux-64 zig from our PATCHED source first (Stage 1),
+# using the upstream bootstrap which works fine for x86_64-linux-gnu.  Then
+# use THAT patched-native zig as the bootstrap for the ppc64le cross-compile
+# (Stage 2).
+#
+# Detection: target_platform==linux-ppc64le + is_cross + zig-bootstrap/ present.
+if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
+   [[ -d "${SRC_DIR}/zig-bootstrap" ]]; then
+  echo "[build.sh] linux-ppc64le + upstream bootstrap detected — engaging two-stage bootstrap"
+  # build_native_zig_bootstrap needs create_glibc217_syscall_stubs; source it if
+  # not already sourced (it's normally sourced later in build.sh only when needed).
+  source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
+  export LLVM_VERSION="${LLVM_VERSION:-22}"
+  build_native_zig_bootstrap
+  BUILD_ZIG="${ZIG_TWO_STAGE_BOOTSTRAP_ZIG}"
+  echo "[build.sh] linux-ppc64le: two-stage bootstrap engaged — Stage 1 native build complete, using patched native zig as bootstrap: ${BUILD_ZIG}"
+fi
+
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
@@ -273,11 +306,11 @@ fi
 
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 _can_run_stage3() {
-  if ! is_cross; then return 0; fi
   if ! is_unix; then return 1; fi
   # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
   # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
   if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
+  if ! is_cross; then return 0; fi
   if is_linux; then
     command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
   fi
@@ -339,4 +372,28 @@ fi
 source "${RECIPE_DIR}/building/_mingw.sh"
 generate_mingw_import_libs
 
+# Strip Python bytecode caches from anywhere under PREFIX (was previously
+# scoped to lib/zig but rattler-build's strict-mode check fired on
+# lib/zig/lldb/__pycache__/pretty_printers.cpython-312.pyc even after a
+# narrower find ran — widening to ${PREFIX} as belt-and-braces, and adding
+# visible echo + -print output so we can confirm the find actually executes
+# on the next iteration. .pyc files are Python-version-locked
+# (cpython-312 tag), auto-regenerate on first import, and serve no purpose
+# in a shipped conda package.
+echo "[build.sh] Stripping __pycache__ dirs from ${PREFIX}..."
+if [[ -d "${PREFIX}" ]]; then
+    find "${PREFIX}" -type d -name __pycache__ -print -exec rm -rf {} + 2>&1 || true
+    echo "[build.sh] __pycache__ strip done"
+else
+    echo "[build.sh] WARNING: ${PREFIX} does not exist — find skipped"
+fi
+
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="
+
+# Cache successful build (saves before rattler-build cleanup)
+if [[ "${ZIG_USE_CACHE:-}" == "0" ]] || [[ "${ZIG_USE_CACHE:-}" == "1" ]]; then
+  # stub_cache.sh already sourced at the top if ZIG_USE_CACHE=1
+  [[ "$(type -t stub_cache_save)" != "function" ]] && source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
+  stub_cache_save
+  dbg echo "=== Build cached for future restoration ==="
+fi

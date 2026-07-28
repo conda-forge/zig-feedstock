@@ -3,6 +3,9 @@ azure:
     swapfile_size: 10GiB
   settings_win:
     swapfile_size: 10GiB
+bot:
+  abi_migration_branches:
+    - dev
 build_platform:
   linux_ppc64le: linux_64
   # No LLVM linux_s390x: linux_64

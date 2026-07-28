@@ -5,7 +5,7 @@
          // it is considered a bug in the Zig project that building the
          // compiler takes more than 8G of memory.
 -        .max_rss = 8_000_000_000,
-+        .max_rss = 7_800_000_000,
++        .max_rss = 8_000_000_000,
          .root_module = addCompilerMod(b, options),
      });
      exe.stack_size = stack_size;

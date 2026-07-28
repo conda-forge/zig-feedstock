@@ -6,10 +6,10 @@
 
 --- a/src/Sema.zig
 +++ b/src/Sema.zig
-@@ -13389,7 +13389,15 @@
-         break :rs rhs_src;
-     };
-     try sema.requireRuntimeBlock(block, src, runtime_src);
+@@ -13192,7 +13192,15 @@
+        break :rs rhs_src;
+    };
+    try sema.requireRuntimeBlock(block, src, runtime_src);
 -    const result = try block.addBinOp(air_tag, lhs, rhs);
 +    // When safety is enabled, downgrade .shr_exact to .shr so the runtime
 +    // back-shift check (`shl(result, rhs) == lhs`) is not eliminated by
@@ -20,6 +20,6 @@
 +    // .shr_exact so LLVM can still exploit the UB promise for optimisation.
 +    const result_tag: Air.Inst.Tag = if (air_tag == .shr_exact and block.wantSafety()) .shr else air_tag;
 +    const result = try block.addBinOp(result_tag, lhs, rhs);
-     if (block.wantSafety()) {
-         const bit_count = scalar_ty.intInfo(zcu).bits;
-         if (!std.math.isPowerOfTwo(bit_count)) {
+    if (block.wantSafety()) {
+        const bit_count = scalar_ty.intInfo(zcu).bits;
+        if (!std.math.isPowerOfTwo(bit_count)) {

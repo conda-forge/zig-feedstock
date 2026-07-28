@@ -25,14 +25,16 @@ if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
     fi
 fi
 
-# --- Source generated flag-translation rules (R1-R9, unix profile) ---
+# --- Source generated flag-translation rules (R1-R13, unix profile) ---
 # Source of truth: recipe/building/flag_rules.py -> _zig_translate_flags()
 # in recipe/building/_translate.gen.sh. Handles R1 (-Map rewrite), R2/R3
 # (-print-search-dirs / -print-file-name= intercepts), R4 (-nostdlib++),
 # R5 (-target/--target= triplet translation), R6 (-mcpu= preserve-or-
 # default), R7 (always-drop -Wl,--color-diagnostics/-rpath-link*/
 # --disable-new-dtags), R8 (-Bsymbolic* keep+trigger), R9 (-Wl,-z,*/
-# -Wl,-O* passthrough+trigger). Reuses _self_dir if the sourcing wrapper
+# -Wl,-O* passthrough+trigger), R10-R13 (-print-multi-os-directory /
+# -print-prog-name= / -print-sysroot / -print-multiarch intercepts).
+# Reuses _self_dir if the sourcing wrapper
 # already computed it (zig-cc.sh/zig-cxx.sh/_zig-force-load-common.sh all
 # do), else derives it from this file's own location.
 _self_dir="${_self_dir:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
