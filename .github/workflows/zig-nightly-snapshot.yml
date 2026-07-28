@@ -37,6 +37,7 @@ jobs:
           repository: conda-forge/zig-feedstock
           ref: ${{ matrix.branch }}
           path: upstream
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
