@@ -260,6 +260,13 @@ source:
 
 build:
   number: ${{ build_number }}
+  # Fold the dev snapshot into the build string so each nightly snapshot of the
+  # same "0.17.0" base version is a DISTINCT conda package. version is hardcoded
+  # and the variant hash does not depend on `snapshot` (a context var, not a
+  # variant), so without this every snapshot would collide at <hash>_<number>.
+  # `+` is illegal in a build string, so sanitize it to `_`. Inherited by all
+  # outputs (per-key merge); bump_snapshot.py only needs to patch context.snapshot.
+  string: ${{ hash }}_${{ snapshot | replace("+", "_") }}_${{ build_number }}
 
 outputs:
   # ==========================================================================
