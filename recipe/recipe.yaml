@@ -5,7 +5,7 @@ context:
   name: zig
   version: "0.17.0"
   api_version: ${{ version | split(".") | last }}
-  snapshot: "1525+91c6d8a09"
+  snapshot: "1543+6db520a4c"
 
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
@@ -149,7 +149,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: c6a9d62b045ede1014a66a58631562f24c4397b1aea7afb884110d6f20e8ee05
+    sha256: 4d47efd0dc00d35833dfa4721a6126da959d2456135693a03a2da0f624079815
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -230,32 +230,32 @@ source:
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 7d9b13b680857133a7886dd0d840d4a9d9d51fbb519110728d02cad7a86b29a4
+            sha256: 226a8168e7823eb402120c327787a75f9dd84b166dc2870c963dfb2cbe735f59
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 45bd74d98b5a18bc206316000aa8067117864f41a12465dc4384dfd370b27886
+            sha256: 5e030726bc5a64fcb072cb1036e21130c7fd0391c464cc0d1fa41dad0c3eea74
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: ce09fe3b129db073ca9f7cce3e841cf6baafc5b66964e2f5b8ea051ae8954917
+            sha256: 439d447aaa1d9087d2aeaf0be922425910f3dec960ff19bd22fc962945d66f84
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 799d9e7f8e304adff896075f017036e62163925fef52458da8e09c0da5ddb5a0
+            sha256: 5fd2d09645a5b9e2a0df8f39ac9c131a84f8f2a4000d2f3fde244ee8ae87b536
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: ee1ae6b62b1276a87db89b60c5b4d3d61f741fc37537f0a1de58ff1bf6ee29f3
+            sha256: 3620b4491276387ab88d42ab6a2403d3d7d1687805fb2c348e5ee61c02252315
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
           - url: https://ziglang.org/builds/zig-powerpc64le-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 8f5c1f0dd09ee4e160dc53c2c0711181238f5c23bf311c4e82a874778f110107
+            sha256: 628624ead46867c226710ce31c6f5189f86f32d3bd7865615df5a453748d2df8
             target_directory: zig-bootstrap
 
 build:
