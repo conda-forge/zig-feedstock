@@ -1,0 +1,4 @@
+zig_compiler:
+  - zig
+zig_compiler_version:
+  - "0.15.2"

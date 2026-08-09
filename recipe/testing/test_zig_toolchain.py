@@ -76,10 +76,48 @@ _build_zig = os.environ.get("CONDA_ZIG_BUILD", "")
 _is_cross_compiler = _build_zig != _host and _build_zig != "" and _host != ""
 
 _prefix = Path(os.environ.get("CONDA_PREFIX", ""))
-if _build_is_win:
-    _wrapper_dir = _prefix / "Library" / "bin"
-else:
-    _wrapper_dir = _prefix / "bin"
+
+
+def _derive_wrapper_dir() -> Path:
+    """Locate the directory holding the zig wrapper executables.
+
+    CONDA_PREFIX resolves to wherever THIS activation package is installed.
+    On a native lane (target_platform == build_platform) the package is also a
+    build dependency, so at test time CONDA_PREFIX can be the BUILD prefix
+    rather than the run/test prefix, and the wrappers are not under it.
+
+    activate.sh builds every ZIG_* wrapper path from ${CONDA_PREFIX}/bin at
+    ACTIVATION time and exports each only when the target is executable
+    ([[ -x ... ]] guard).  Such an export therefore records the prefix as it
+    was when activation ran, which is the prefix the wrappers actually live
+    under -- even if CONDA_PREFIX is re-pointed afterwards.  Prefer it, and
+    fall back to the CONDA_PREFIX-derived path so cross lanes behave exactly
+    as before.
+    """
+    for var in ("ZIG_CC", "ZIG_CXX", "ZIG_FORCE_LOAD_CC", "ZIG_LLD", "ZIG_AR"):
+        val = os.environ.get(var, "")
+        if val and os.path.isabs(val) and os.path.isfile(val):
+            return Path(val).parent
+    if _build_is_win:
+        return _prefix / "Library" / "bin"
+    return _prefix / "bin"
+
+
+_wrapper_dir = _derive_wrapper_dir()
+
+# Diagnostic: the two derivations are expected to AGREE on cross lanes and to
+# DIVERGE on a native lane where CONDA_PREFIX has been re-pointed to the build
+# prefix.  Print both so a failure shows the divergence instead of leaving it
+# to be inferred -- the passing/failing test split previously implied it but
+# no log line ever witnessed it.
+_wrapper_dir_from_prefix = (
+    _prefix / "Library" / "bin" if _build_is_win else _prefix / "bin"
+)
+print(f"wrapper dir (resolved)      = {_wrapper_dir}")
+print(f"wrapper dir (CONDA_PREFIX)  = {_wrapper_dir_from_prefix}")
+if _wrapper_dir != _wrapper_dir_from_prefix:
+    print("NOTE: CONDA_PREFIX does not point at the wrapper prefix; "
+          "using the activation-exported path instead.")
 
 def _env_var(name: str) -> str:
     """Return env var value or empty string."""
@@ -1005,8 +1043,12 @@ def test_flag_filter_content() -> None:
         ("-mtune=* in filter list", "-mtune="),
         ("exported_symbols_list filtered", "exported_symbols_list"),
         ("unexported_symbols_list filtered", "unexported_symbols_list"),
-        ("force_symbols_not_weak_list filtered", "force_symbols_not_weak_list"),
-        ("force_symbols_weak_list filtered", "force_symbols_weak_list"),
+        # NOTE: force_symbols_not_weak_list / force_symbols_weak_list are
+        # deliberately no longer filtered or LLD-promoted (PR#123, 6f0c42e9):
+        # zig's machoLink() never forwards these flags anyway, so they now
+        # pass through untouched to the default macOS linker. The wrapper
+        # only documents them via the "-force_symbols_*_list" shorthand in
+        # a NOTE comment, so no literal substring check applies here.
         ("reexported_symbols_list filtered", "reexported_symbols_list"),
         ("-Wl,-all_load filtered", "all_load"),
         ("-Wl,-force_load filtered", "force_load"),

@@ -3,7 +3,7 @@
 # Regenerate:       python recipe/building/gen_translators.py
 # CI drift guard:   python recipe/building/gen_translators.py --check
 #
-# _zig_translate_flags -- shared flag-translation rules R1-R9 (unix
+# _zig_translate_flags -- shared flag-translation rules R1-R13 (unix
 # profile only -- this fragment is only ever sourced by the bash wrapper,
 # which always runs on the unix profile).
 #
@@ -30,17 +30,18 @@
 #                    "-fuse-ld=lld".
 #     _tr_mode_out : string - possibly downgraded to "cc" by R4.
 #
-# May print R2/R3 output directly and `exit 0` -- this function is meant
+# May print R2/R3/R10-R13 output directly and `exit 0` -- this function is meant
 # to be `source`d (not run in a subshell), so `exit` here really does
 # exit the whole wrapper process, matching the pre-refactor fragment's
 # behavior.
 _zig_translate_flags() {
-    local _a _i _n _dir _name
+    local _a _i _n _dir _name _prog
     local _argc=${#_tr_in_args[@]}
 
-    # R2: -print-search-dirs
+    # R2/R3/R10-R13: intercept rules -- single arg scan, one case dispatch.
     for _a in "${_tr_in_args[@]}"; do
-        if [[ "$_a" == "-print-search-dirs" ]]; then
+        case "$_a" in
+        -print-search-dirs)
             local _zig_lib="${_tr_conda_prefix}/lib/zig"
             local _arch_leaf="lib-x86_64"
             [[ "${_tr_target_arch}" == "aarch64" ]] && _arch_leaf="libarm64"
@@ -48,12 +49,8 @@ _zig_translate_flags() {
             echo "programs: =${_tr_conda_prefix}/bin/"
             echo "libraries: =${_zig_lib}/libc/mingw/lib-common:${_zig_lib}/libc/mingw/${_arch_leaf}:${_zig_lib}"
             exit 0
-        fi
-    done
-
-    # R3: -print-file-name=<name>
-    for _a in "${_tr_in_args[@]}"; do
-        if [[ "$_a" == -print-file-name=* ]]; then
+            ;;
+        -print-file-name=*)
             _name="${_a#-print-file-name=}"
             for _dir in "${_tr_conda_prefix}/lib/zig-llvm/lib" "${_tr_conda_prefix}/lib"; do
                 if [[ -e "${_dir}/${_name}" ]]; then
@@ -63,7 +60,34 @@ _zig_translate_flags() {
             done
             echo "${_name}"
             exit 0
-        fi
+            ;;
+        -print-multi-os-directory)
+            echo "."
+            exit 0
+            ;;
+        -print-prog-name=*)
+            _name="${_a#-print-prog-name=}"
+            _prog="${_tr_conda_prefix}/bin/${_name}"
+            if [[ -e "${_prog}" ]]; then
+                echo "${_prog}"
+            else
+                echo "${_name}"
+            fi
+            exit 0
+            ;;
+        -print-sysroot)
+            echo "${_sr:-}"
+            exit 0
+            ;;
+        -print-multiarch)
+            if (( _tr_is_win_target )); then
+                _zig_tr_translate_target "${_tr_target_arch}-w64-mingw32"
+            else
+                _zig_tr_translate_target "${_tr_target_arch}-conda-linux-gnu"
+            fi
+            exit 0
+            ;;
+        esac
     done
 
     # Pre-scan: use_lld triggers (R8, R9-trigger-subset) + -mcpu= presence (R6).

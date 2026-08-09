@@ -83,14 +83,18 @@ for _a in "$@"; do
         -Wl,-Bsymbolic-functions|-Wl,-Bsymbolic) _use_lld=1; break ;;
         -Bsymbolic-functions|-Bsymbolic) _use_lld=1; break ;;
         -Wl,-O[0-9]*) _use_lld=1; break ;;
-        # Mach-O (macOS) flags -- now supported via LLD MachO pipeline
-        -Wl,-exported_symbols_list|-Wl,-exported_symbols_list,*) _use_lld=1; break ;;
-        -Wl,-unexported_symbols_list|-Wl,-unexported_symbols_list,*) _use_lld=1; break ;;
-        -Wl,-reexported_symbols_list|-Wl,-reexported_symbols_list,*) _use_lld=1; break ;;
-        -Wl,-force_symbols_not_weak_list|-Wl,-force_symbols_not_weak_list,*) _use_lld=1; break ;;
-        -Wl,-force_symbols_weak_list|-Wl,-force_symbols_weak_list,*) _use_lld=1; break ;;
-        -Wl,-all_load|-Wl,-force_load,*) _use_lld=1; break ;;
-        -all_load|-force_load) _use_lld=1; break ;;
+        # NOTE: Mach-O (macOS) flags (-exported_symbols_list, -unexported_symbols_list,
+        # -reexported_symbols_list, -force_symbols_*_list, -all_load, -force_load) are
+        # deliberately NOT in this trigger list. Auto-promoting to -fuse-ld=lld on these
+        # flags makes osx-arm64 `zig cc` fail with "unable to create target: 'Unable to
+        # find target for this triple (no targets are registered)'" (PR#123 CI). This
+        # recipe DOES carry Lld.zig-macho-lld-support.patch, which wires .macho into
+        # hasLldSupport() and adds a machoLink()/ld64.lld path -- but that path only
+        # honors a fixed set of zig-native Compilation.Config link options (rpath,
+        # install_name, headerpad, dead-strip, ...), not arbitrary raw passthrough flags
+        # like -exported_symbols_list forwarded via -Wl,...; routing those through LLD
+        # is unvalidated and observed to break on macOS. Let them pass through to the
+        # default (non-LLD) macOS linker path instead pending further investigation.
     esac
 done
 
@@ -155,6 +159,7 @@ for _fa in "${_tr_out_args[@]}"; do
         # GCC-specific flags that zig's Clang doesn't accept
         -march=*|-mtune=*|-ftree-vectorize) ;;
         -fstack-protector-strong|-fstack-protector|-fno-plt) ;;
+        -fno-partial-inlining|-fno-ipa-cp-clone) ;;
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
         # GCC runtime libraries zig doesn't ship and can't link
