@@ -70,18 +70,34 @@ SYNCHRONIZATION_DEF
                     echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
   esac
   if [[ -d "${_mingw_common}" ]]; then
-    # Use the BUILD machine's zig binary (CONDA_ZIG_BUILD) so this works even
-    # for cross-compilation targets (e.g. win-arm64 built on win-64) where the
-    # installed zig binary is for the wrong architecture and can't execute.
-    # BUILD_ZIG is the binary name (not a full path), so resolve via PATH first,
-    # then fall back to explicit BUILD_PREFIX locations.
-    _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
-    if [[ -z "${_zig_bin}" ]]; then
-      if is_not_unix; then
-        _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
-      else
-        _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+    # Prefer the freshly built zig (${CONDA_TRIPLET}-zig, produced earlier in
+    # build.sh) since it carries this recipe's own mingw patches (e.g.
+    # mingw-arm64-stubs.patch, mingw-include-setjmp-s.patch). Only use it if it
+    # can actually execute on this host: for cross-target outputs (e.g.
+    # linux-ppc64le built on linux-64, or win-arm64 built on win-64) the fresh
+    # binary is the wrong architecture and will fail to run, so a runtime probe
+    # (not a platform-variable guess) decides. Fall back to the BUILD machine's
+    # bootstrap zig (CONDA_ZIG_BUILD / BUILD_ZIG) otherwise -- resolve via PATH
+    # first, then explicit BUILD_PREFIX locations.
+    if is_not_unix; then
+      _fresh_zig_bin="${PREFIX}/Library/bin/${CONDA_TRIPLET}-zig"
+    else
+      _fresh_zig_bin="${PREFIX}/bin/${CONDA_TRIPLET}-zig"
+    fi
+    if [[ -x "${_fresh_zig_bin}" ]] && "${_fresh_zig_bin}" version >/dev/null 2>&1; then
+      _zig_bin="${_fresh_zig_bin}"
+      echo "INFO: using freshly built zig for mingw CRT cache warm: ${_zig_bin}"
+    else
+      _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
+      if [[ -z "${_zig_bin}" ]]; then
+        if is_not_unix; then
+          _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
+        else
+          _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+        fi
       fi
+      echo "INFO: using bootstrap zig for mingw CRT cache warm: ${_zig_bin}"
+      echo "WARN: staged mingw CRT archives will derive from the BOOTSTRAP zig's mingw sources, not this recipe's patched tree"
     fi
     _def_include="${_mingw_common}/../def-include"
     _mingw_libsrc="${_mingw_common}/../libsrc"

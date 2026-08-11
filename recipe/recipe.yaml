@@ -485,16 +485,12 @@ outputs:
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
 
-      # Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common
+      # The mingw cache-warm loop stages all three Windows triples on every
+      # zig_impl build regardless of the output's own target OS, so this test
+      # must run in every output too - otherwise a warm failure for one arch
+      # during another arch's build would go unasserted.
       - script:
-          - if: xc_w64
-            then:
-              - if: unix
-                then: python testing/test_mingw_crt.py
-              - if: not unix
-                then: python testing\test_mingw_crt.py
-            else:
-              - echo "SKIP x86_64-windows-gnu CRT test (non-Windows target)"
+          - python testing/test_mingw_crt.py
         files:
           recipe:
             - testing/test_mingw_crt.py
@@ -651,10 +647,7 @@ outputs:
       - script:
           - if: xc_w64
             then:
-              - if: unix
-                then: python testing/test_windres.py
-              - if: not unix
-                then: python testing\test_windres.py
+              - python testing/test_windres.py
             else:
               - echo "SKIP windres wrapper test (non-Windows target)"
         files:
@@ -667,10 +660,7 @@ outputs:
       - script:
           - if: xc_w64
             then:
-              - if: unix
-                then: python testing/test_wl_entry_translation.py
-              - if: not unix
-                then: python testing\test_wl_entry_translation.py
+              - python testing/test_wl_entry_translation.py
             else:
               - echo "SKIP zig-cc entry point translation test (non-Windows target)"
         files:
@@ -686,17 +676,8 @@ outputs:
       # unix and windows profiles via subprocess/bash-source-capture, so it
       # is NOT gated on xc_w64 and runs once per build.
       - script:
-          - if: unix
-            then: python testing/test_flag_translation_parity.py
-          - if: not unix
-            then: python testing\test_flag_translation_parity.py
-          # Drift guard: the committed generated translators
-          # (_translate.gen.sh / _translate.inc) must stay in sync with the
-          # flag_rules.py manifest they are generated from.
-          - if: unix
-            then: python building/gen_translators.py --check
-          - if: not unix
-            then: python building\gen_translators.py --check
+          - python testing/test_flag_translation_parity.py
+          - python building/gen_translators.py --check
         files:
           recipe:
             - testing/test_flag_translation_parity.py
