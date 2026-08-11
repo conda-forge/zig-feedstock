@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 10
+  build_number: 11
   name: zig
   version: "0.16.0"
   api_version: ${{ version | split(".") | last }}
@@ -159,6 +159,15 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
+      # mingw CRT patches: _mingw.sh warms all three windows-gnu triples on EVERY
+      # lane regardless of the output's own target OS, so these must apply
+      # unconditionally -- gating them to `not unix` / win-32 left the freshly
+      # built zig blind to them everywhere else (undefined __setjmp3, _fpreset).
+      # Order: setjmp-s first (creates lib/libc/mingw/misc/setjmp.S and wires it
+      # into mingw32_x86_32_src), then arm64-stubs (fpreset_arm64.c + .aarch64
+      # dispatch), which assumes the +11 line shift ahead of the setjmp hunk.
+      - patches/non_unix/mingw-include-setjmp-s.patch
+      - patches/non_unix/mingw-arm64-stubs.patch
       - if: linux
         then:
           - patches/build.zig-maxrss.patch
@@ -212,7 +221,6 @@ source:
           - patches/non_unix/Lld.zig-suppress-importeddllmain.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
-          - patches/non_unix/mingw-arm64-stubs.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
@@ -220,9 +228,6 @@ source:
           # flexlink-merged __CTOR_LIST__ (no -1 head / no NULL terminator) cannot
           # run off the end (0xC00000FD STATUS_STACK_OVERFLOW pre-main).
           - patches/non_unix/gccmain-do-global-ctors-guard.patch
-      - if: not unix and cross_target_platform_ == "win-32"
-        then:
-          - patches/non_unix/mingw-include-setjmp-s.patch
     target_directory: zig-source
 
   - if: bootstrap_via_upstream
@@ -485,16 +490,17 @@ outputs:
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
 
-      # Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common
+      # NOTE: the mingw cache-warm loop stages all three Windows triples on every
+      # zig_impl build regardless of the output's own target OS, so a warm failure
+      # for one arch during another arch's build currently goes unasserted here.
+      # Ungating this test to run in every output was tried and reverted: across a
+      # full CI round every lane died in the build phase before the test phase, so
+      # the change was entirely unexercised and only muddied the signal. Revisit
+      # once all three triples warm cleanly.
       - script:
           - if: xc_w64
             then:
-              - if: unix
-                then: python testing/test_mingw_crt.py
-              - if: not unix
-                then: python testing\test_mingw_crt.py
-            else:
-              - echo "SKIP x86_64-windows-gnu CRT test (non-Windows target)"
+              - python testing/test_mingw_crt.py
         files:
           recipe:
             - testing/test_mingw_crt.py
@@ -651,10 +657,7 @@ outputs:
       - script:
           - if: xc_w64
             then:
-              - if: unix
-                then: python testing/test_windres.py
-              - if: not unix
-                then: python testing\test_windres.py
+              - python testing/test_windres.py
             else:
               - echo "SKIP windres wrapper test (non-Windows target)"
         files:
@@ -667,10 +670,7 @@ outputs:
       - script:
           - if: xc_w64
             then:
-              - if: unix
-                then: python testing/test_wl_entry_translation.py
-              - if: not unix
-                then: python testing\test_wl_entry_translation.py
+              - python testing/test_wl_entry_translation.py
             else:
               - echo "SKIP zig-cc entry point translation test (non-Windows target)"
         files:
@@ -686,17 +686,8 @@ outputs:
       # unix and windows profiles via subprocess/bash-source-capture, so it
       # is NOT gated on xc_w64 and runs once per build.
       - script:
-          - if: unix
-            then: python testing/test_flag_translation_parity.py
-          - if: not unix
-            then: python testing\test_flag_translation_parity.py
-          # Drift guard: the committed generated translators
-          # (_translate.gen.sh / _translate.inc) must stay in sync with the
-          # flag_rules.py manifest they are generated from.
-          - if: unix
-            then: python building/gen_translators.py --check
-          - if: not unix
-            then: python building\gen_translators.py --check
+          - python testing/test_flag_translation_parity.py
+          - python building/gen_translators.py --check
         files:
           recipe:
             - testing/test_flag_translation_parity.py

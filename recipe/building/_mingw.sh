@@ -70,18 +70,44 @@ SYNCHRONIZATION_DEF
                     echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
   esac
   if [[ -d "${_mingw_common}" ]]; then
-    # Use the BUILD machine's zig binary (CONDA_ZIG_BUILD) so this works even
-    # for cross-compilation targets (e.g. win-arm64 built on win-64) where the
-    # installed zig binary is for the wrong architecture and can't execute.
-    # BUILD_ZIG is the binary name (not a full path), so resolve via PATH first,
-    # then fall back to explicit BUILD_PREFIX locations.
-    _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
-    if [[ -z "${_zig_bin}" ]]; then
-      if is_not_unix; then
-        _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
-      else
-        _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+    # Prefer the freshly built zig (${CONDA_TRIPLET}-zig, produced earlier in
+    # build.sh) since it carries this recipe's own mingw patches (e.g.
+    # mingw-arm64-stubs.patch, mingw-include-setjmp-s.patch). The `-x` +
+    # `zig version` exec probe below only confirms the binary CAN run -- it
+    # CANNOT detect emulation: on linux-ppc64le CI, GitHub Actions registers
+    # qemu-user via binfmt_misc and the foreign-arch fresh zig runs
+    # transparently under QEMU; on osx-64, Rosetta does the same. Both make
+    # the probe succeed even though execution is emulated (slow). Whether
+    # this is a cross build is determined separately below via is_cross()
+    # (build_platform vs target_platform, from _common.sh), used only to
+    # WARN about the expected emulation slowdown -- NOT to change which zig
+    # is selected: the bootstrap zig lacks this recipe's mingw patches, so
+    # falling back on cross targets would break the build outright. Fall
+    # back to the BUILD machine's bootstrap zig (CONDA_ZIG_BUILD / BUILD_ZIG)
+    # only when the fresh binary genuinely cannot execute at all -- resolve
+    # via PATH first, then explicit BUILD_PREFIX locations.
+    if is_not_unix; then
+      _fresh_zig_bin="${PREFIX}/Library/bin/${CONDA_TRIPLET}-zig"
+    else
+      _fresh_zig_bin="${PREFIX}/bin/${CONDA_TRIPLET}-zig"
+    fi
+    if [[ -x "${_fresh_zig_bin}" ]] && "${_fresh_zig_bin}" version >/dev/null 2>&1; then
+      _zig_bin="${_fresh_zig_bin}"
+      echo "INFO: using freshly built zig for mingw CRT cache warm: ${_zig_bin}"
+      if is_cross; then
+        echo "WARN: build_platform (${build_platform}) != target_platform (${target_platform}) -- the fresh zig is a foreign-arch binary running under emulation (QEMU user-mode via binfmt_misc, or Rosetta on osx). The exec probe above cannot detect this since emulation makes it succeed transparently. Mingw CRT cache-warm links will be SLOW under emulation (observed ~54 min on linux-ppc64le vs ~19 min native); this is expected, not a hang."
       fi
+    else
+      _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
+      if [[ -z "${_zig_bin}" ]]; then
+        if is_not_unix; then
+          _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
+        else
+          _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
+        fi
+      fi
+      echo "INFO: using bootstrap zig for mingw CRT cache warm: ${_zig_bin}"
+      echo "WARN: staged mingw CRT archives will derive from the BOOTSTRAP zig's mingw sources, not this recipe's patched tree"
     fi
     _def_include="${_mingw_common}/../def-include"
     _mingw_libsrc="${_mingw_common}/../libsrc"
@@ -95,6 +121,26 @@ SYNCHRONIZATION_DEF
         "$(command -v llvm-dlltool 2>/dev/null || true)"; do
       if [[ -x "${_cand}" ]]; then
         _dlltool="${_cand}"
+        break
+      fi
+    done
+
+    # llvm-ar, discovered the same way as llvm-dlltool above. Required because
+    # zig 0.16.0's own `ar` frontend deterministically fails to create archives
+    # on the osx-64 lane, where the freshly built x86_64 zig runs under Rosetta
+    # on an arm64 host: `ar: error: unable to open '<path>': No such file or
+    # directory` on a present, non-empty .o in a writable directory. Verified in
+    # CI (PR #143, build 1566883): an identical retry fails, while llvm-ar on the
+    # same .o in the same directory succeeds. Falls back to `zig ar` if absent.
+    _llvm_ar=""
+    for _cand in \
+        "${BUILD_PREFIX}/bin/llvm-ar" \
+        "${BUILD_PREFIX}/bin/llvm-ar.exe" \
+        "${BUILD_PREFIX}/Library/bin/llvm-ar.exe" \
+        "${BUILD_PREFIX}/Library/bin/llvm-ar" \
+        "$(command -v llvm-ar 2>/dev/null || true)"; do
+      if [[ -x "${_cand}" ]]; then
+        _llvm_ar="${_cand}"
         break
       fi
     done
@@ -303,19 +349,68 @@ SYNCHRONIZATION_DEF
         local stub_c="${out_dir}/.zig_${sym_name}_stub.c"
         local stub_o="${out_dir}/.zig_${sym_name}_stub.o"
         printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
-        if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>/dev/null; then
-          rm -f "${stub_c}" "${stub_o}"
+        local log; log=$(mktemp)
+        # DIAG(stub-ar): one compact line per stub; full forensics only on failure below.
+        # TEMPORARY instrumentation for the osx-64 `zig ar` failure -- remove once root-caused.
+        echo "[diag] stub ${lib_name}: dir=${out_dir} d=$([[ -d "${out_dir}" ]] && echo 1 || echo 0) w=$([[ -w "${out_dir}" ]] && echo 1 || echo 0) n=$(ls -1 "${out_dir}" 2>/dev/null | wc -l | tr -d ' ')" >&2
+        if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" >"${log}" 2>&1; then
+          echo "ERROR: failed to compile stub object for lib${lib_name}.a (${target_triple}):" >&2
+          cat "${log}" >&2
+          rm -f "${stub_c}" "${stub_o}" "${log}"
           return 1
         fi
-        if ! "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" 2>/dev/null; then
-          rm -f "${stub_c}" "${stub_o}"
+        local _ar_cmd
+        if [[ -n "${_llvm_ar}" ]]; then
+          _ar_cmd=("${_llvm_ar}")
+        else
+          _ar_cmd=("${_zig_bin}" ar)
+        fi
+        if ! "${_ar_cmd[@]}" rcs "${lib_path}" "${stub_o}" >"${log}" 2>&1; then
+          echo "ERROR: failed to archive lib${lib_name}.a (${target_triple}):" >&2
+          cat "${log}" >&2
+          # === DIAG(stub-ar) TEMPORARY forensics -- remove once root-caused ===
+          echo "[diag] ar FAILED argv: ${_zig_bin} ar rcs ${lib_path} ${stub_o}" >&2
+          echo "[diag]   post-cc stub_o: $([[ -f "${stub_o}" ]] && echo present || echo MISSING)" >&2
+          ls -la "${stub_o}" >&2 2>&1 || true
+          echo "[diag]   lib_path exists now: $([[ -e "${lib_path}" ]] && echo yes || echo no)" >&2
+          echo "[diag]   pwd=$(pwd) uid=$(id -u) umask=$(umask) uname_m=$(uname -m)" >&2
+          echo "[diag]   zig=${_zig_bin} version=$("${_zig_bin}" version 2>&1 || echo FAILED)" >&2
+          echo "[diag]   zig file: $(file "${_zig_bin}" 2>&1 || true)" >&2
+          echo "[diag]   stat out_dir:" >&2; stat "${out_dir}" >&2 2>&1 || true
+          echo "[diag]   leftovers / partial archives:" >&2
+          ls -la "${out_dir}"/*.temp-archive "${out_dir}/lib${lib_name}.a"* >&2 2>&1 || true
+          echo "[diag]   out_dir tail:" >&2
+          ls -la "${out_dir}" 2>&1 | tail -20 >&2 || true
+          # Probe A: identical retry -- distinguishes transient from deterministic.
+          if "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" >&2 2>&1; then
+            echo "[diag]   probe A: RETRY SUCCEEDED (transient)" >&2
+          else
+            echo "[diag]   probe A: retry failed too (deterministic)" >&2
+          fi
+          # Probe B: standalone llvm-ar -- also answers whether llvm-ar is even present.
+          _diag_llvm_ar="$(command -v llvm-ar 2>/dev/null || echo "${BUILD_PREFIX}/bin/llvm-ar")"
+          if [[ -x "${_diag_llvm_ar}" ]]; then
+            echo "[diag]   probe B: llvm-ar=${_diag_llvm_ar}" >&2
+            if "${_diag_llvm_ar}" rcs "${lib_path}.llvmar-probe" "${stub_o}" >&2 2>&1; then
+              echo "[diag]   probe B: llvm-ar SUCCEEDED" >&2
+            else
+              echo "[diag]   probe B: llvm-ar ALSO failed" >&2
+            fi
+            rm -f "${lib_path}.llvmar-probe"
+          else
+            echo "[diag]   probe B: llvm-ar NOT PRESENT (${_diag_llvm_ar})" >&2
+          fi
+          # === end DIAG(stub-ar) ===
+          rm -f "${stub_c}" "${stub_o}" "${log}"
           return 1
         fi
-        rm -f "${stub_c}" "${stub_o}"
+        rm -f "${stub_c}" "${stub_o}" "${log}"
         dbg echo "[_mingw] stub archive: ${lib_path}"
       }
 
       dbg echo "=== Generating stub archives for ${_win_target} in ${_crt_outdir} ==="
+      # DIAG(stub-ar): TEMPORARY -- confirms arch routing (ZIG_TRIPLET drives _win_arch).
+      echo "[diag] ZIG_TRIPLET=${ZIG_TRIPLET} _win_arch=${_win_arch} _crt_outdir=${_crt_outdir}" >&2
       # Real archives ship for all three arches now (cache-warm loop below),
       # so only the toolchain convenience libs need empty stubs.
       local _stub_libs=(gcc gcc_eh stdc++ ssp)
