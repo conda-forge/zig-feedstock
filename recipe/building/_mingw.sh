@@ -350,6 +350,15 @@ WARM_EOF
       : "${_mingw_libarm64:=${_mingw_common}/../libarm64}"
       : "${_mingw_lib32:=${_mingw_common}/../lib32}"
 
+      # A failed warm iteration used to `continue` with only a WARN, which
+      # shipped a package silently missing an entire arch's CRT archives and
+      # surfaced downstream as bogus undefined-symbol errors.  Collect failures
+      # and fail the build after the loop, so one run reports every bad target.
+      # Plain counter + string rather than a bash array: `${#arr[@]}` on an
+      # empty array trips `set -u` under bash 3.2.
+      local _warm_failed_count=0
+      local _warm_failed_list=""
+
       # Map: zig target triple -> staging dir name under lib/libc/mingw/
       for _warm_pair in \
           "x86_64-windows-gnu:${_mingw_common}" \
@@ -366,15 +375,21 @@ WARM_EOF
                   "${_zig_bin}" cc -target "${_warm_tgt}" -pthread \
                   "${_warm_dir}/warm.c" \
                   -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err"; then
-              echo "WARN: cache-warm failed for ${_warm_tgt}; skipping stage. Errors:" >&2
-              tail -5 "${_warm_cache}/warm.err" >&2 || true
+              echo "ERROR: cache-warm link failed for ${_warm_tgt}; no CRT archives can be staged for this arch. Errors:" >&2
+              tail -20 "${_warm_cache}/warm.err" >&2 || true
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list}  - ${_warm_tgt} (warm link failed)
+"
               continue
           fi
 
           local _warm_lib
           _warm_lib="$(find "${_warm_cache}" -name 'libmingw32.lib' -print -quit 2>/dev/null)"
           if [[ -z "${_warm_lib}" || ! -f "${_warm_lib}" ]]; then
-              echo "WARN: libmingw32.lib not found in cache for ${_warm_tgt}; skipping stage" >&2
+              echo "ERROR: libmingw32.lib not found in cache for ${_warm_tgt}; no CRT archives can be staged for this arch" >&2
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list}  - ${_warm_tgt} (libmingw32.lib absent from cache)
+"
               continue
           fi
 
@@ -394,6 +409,16 @@ WARM_EOF
       done
 
       rm -rf "${_warm_dir}"
+
+      if [ "${_warm_failed_count}" -gt 0 ]; then
+          echo "FATAL: mingw CRT cache-warm failed for ${_warm_failed_count} target(s):" >&2
+          printf '%s' "${_warm_failed_list}" >&2
+          echo "Each failed target ships NO libmingw32/libucrt/libmingwex/libwinpthread" >&2
+          echo "archives, which surfaces in downstream consumers as undefined CRT symbols" >&2
+          echo "(e.g. 'undefined symbol: wcstold' or a wall of undefined pthread_*)." >&2
+          echo "Refusing to produce a package that is missing an entire architecture." >&2
+          return 1
+      fi
 
       dbg echo "=== Stub archive generation done ==="
 
