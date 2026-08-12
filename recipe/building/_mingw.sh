@@ -116,6 +116,20 @@ SYNCHRONIZATION_DEF
         _gen_count=$(( _gen_count + 1 ))
       }
 
+      # Silence xtrace across the import-lib loops below. Each .def costs ~14
+      # trace lines (for / [[ -f ]] / basename / the locals inside _gen_implib /
+      # awk / dlltool / counter) and there are ~800 .def and .def.in files, so
+      # this region alone emits several thousand CI log lines with no diagnostic
+      # value: dlltool failures are already swallowed by `2>/dev/null || true`
+      # and the post-loop summaries report the counts. Restored immediately
+      # after the loops so the CRT compile and stub archives -- where the real
+      # failures have occurred -- stay fully traced.
+      _mingw_xt=0
+      if [[ "${DEBUG_ZIG_BUILD:-0}" != "1" ]]; then
+        case $- in *x*) _mingw_xt=1 ;; esac
+        { set +x; } 2>/dev/null
+      fi
+
       # Step 1: plain .def files (shlwapi.def, version.def, synchronization.def, etc.)
       for _def in "${_mingw_common}"/*.def; do
         [[ -f "${_def}" ]] || continue
@@ -198,6 +212,8 @@ SYNCHRONIZATION_DEF
         done
         dbg echo "=== Supplemental import libs done (total ${_gen_count}) ==="
       fi
+
+      if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi
 
       # Step 5: arch-specific stubs and CRT output directory routing.
       # aarch64 emits CRT objects into libarm64/ (arch-specific dir, prevents

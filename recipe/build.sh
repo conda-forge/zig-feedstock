@@ -239,7 +239,7 @@ if is_linux && [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o\"|g" "${cmake_build_dir}/config.h"
 fi
 
-dbg echo "=== DEBUG ===" && dbg cat "${cmake_build_dir}"/config.h && dbg echo "=== DEBUG ==="
+dbg grep -E '^#define (ZIG_|LLVM_)' "${cmake_build_dir}"/config.h
 
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
 
