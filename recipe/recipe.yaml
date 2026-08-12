@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 11
+  build_number: 12
   name: zig
   version: "0.16.0"
   api_version: ${{ version | split(".") | last }}
@@ -318,6 +318,7 @@ outputs:
         # libcxx 20 and pins `libcxx 20.*` as a run dep; pinning libcxx 21.*
         # here would make the build env unsolvable. libcxx 21 is still pulled
         # into the host env below for the new zig to link against.
+        - llvm-tools ${{ llvm_version }}.*  # llvm-ar for mingw stub archives (_mingw.sh)
         - if: (build_platform != target_platform)
           then:
             - llvmdev ${{ llvm_version }}.*  # llvm-config

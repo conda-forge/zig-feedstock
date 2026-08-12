@@ -60,7 +60,13 @@ SYNCHRONIZATION_DEF
   # Only generates files that are missing; safe to re-run.
   #
   # Target arch detection for dlltool machine type and zig cc -target.
-  # ZIG_TRIPLET is e.g. "x86_64-windows-gnu" or "aarch64-windows-gnu".
+  # NOTE: ZIG_TRIPLET is the TARGET triple, NOT a Windows triple -- e.g.
+  # "x86_64-macos.11.0-none" on the osx-64 lane, "aarch64-macos.11.0-none"
+  # on osx-arm64. Only its ARCH component is used here, which is why the
+  # Windows CRT routing below happens to be correct: the arch prefix
+  # (x86_64 / aarch64 / x86) coincides between the target triple and the
+  # Windows triple we want. Do not assume the rest of ZIG_TRIPLET says
+  # anything about Windows.
   _win_arch="${ZIG_TRIPLET%%-*}"
   case "${_win_arch}" in
     x86_64)         _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu" ;;
@@ -350,9 +356,6 @@ SYNCHRONIZATION_DEF
         local stub_o="${out_dir}/.zig_${sym_name}_stub.o"
         printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
         local log; log=$(mktemp)
-        # DIAG(stub-ar): one compact line per stub; full forensics only on failure below.
-        # TEMPORARY instrumentation for the osx-64 `zig ar` failure -- remove once root-caused.
-        echo "[diag] stub ${lib_name}: dir=${out_dir} d=$([[ -d "${out_dir}" ]] && echo 1 || echo 0) w=$([[ -w "${out_dir}" ]] && echo 1 || echo 0) n=$(ls -1 "${out_dir}" 2>/dev/null | wc -l | tr -d ' ')" >&2
         if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" >"${log}" 2>&1; then
           echo "ERROR: failed to compile stub object for lib${lib_name}.a (${target_triple}):" >&2
           cat "${log}" >&2
@@ -368,39 +371,6 @@ SYNCHRONIZATION_DEF
         if ! "${_ar_cmd[@]}" rcs "${lib_path}" "${stub_o}" >"${log}" 2>&1; then
           echo "ERROR: failed to archive lib${lib_name}.a (${target_triple}):" >&2
           cat "${log}" >&2
-          # === DIAG(stub-ar) TEMPORARY forensics -- remove once root-caused ===
-          echo "[diag] ar FAILED argv: ${_zig_bin} ar rcs ${lib_path} ${stub_o}" >&2
-          echo "[diag]   post-cc stub_o: $([[ -f "${stub_o}" ]] && echo present || echo MISSING)" >&2
-          ls -la "${stub_o}" >&2 2>&1 || true
-          echo "[diag]   lib_path exists now: $([[ -e "${lib_path}" ]] && echo yes || echo no)" >&2
-          echo "[diag]   pwd=$(pwd) uid=$(id -u) umask=$(umask) uname_m=$(uname -m)" >&2
-          echo "[diag]   zig=${_zig_bin} version=$("${_zig_bin}" version 2>&1 || echo FAILED)" >&2
-          echo "[diag]   zig file: $(file "${_zig_bin}" 2>&1 || true)" >&2
-          echo "[diag]   stat out_dir:" >&2; stat "${out_dir}" >&2 2>&1 || true
-          echo "[diag]   leftovers / partial archives:" >&2
-          ls -la "${out_dir}"/*.temp-archive "${out_dir}/lib${lib_name}.a"* >&2 2>&1 || true
-          echo "[diag]   out_dir tail:" >&2
-          ls -la "${out_dir}" 2>&1 | tail -20 >&2 || true
-          # Probe A: identical retry -- distinguishes transient from deterministic.
-          if "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" >&2 2>&1; then
-            echo "[diag]   probe A: RETRY SUCCEEDED (transient)" >&2
-          else
-            echo "[diag]   probe A: retry failed too (deterministic)" >&2
-          fi
-          # Probe B: standalone llvm-ar -- also answers whether llvm-ar is even present.
-          _diag_llvm_ar="$(command -v llvm-ar 2>/dev/null || echo "${BUILD_PREFIX}/bin/llvm-ar")"
-          if [[ -x "${_diag_llvm_ar}" ]]; then
-            echo "[diag]   probe B: llvm-ar=${_diag_llvm_ar}" >&2
-            if "${_diag_llvm_ar}" rcs "${lib_path}.llvmar-probe" "${stub_o}" >&2 2>&1; then
-              echo "[diag]   probe B: llvm-ar SUCCEEDED" >&2
-            else
-              echo "[diag]   probe B: llvm-ar ALSO failed" >&2
-            fi
-            rm -f "${lib_path}.llvmar-probe"
-          else
-            echo "[diag]   probe B: llvm-ar NOT PRESENT (${_diag_llvm_ar})" >&2
-          fi
-          # === end DIAG(stub-ar) ===
           rm -f "${stub_c}" "${stub_o}" "${log}"
           return 1
         fi
@@ -409,8 +379,6 @@ SYNCHRONIZATION_DEF
       }
 
       dbg echo "=== Generating stub archives for ${_win_target} in ${_crt_outdir} ==="
-      # DIAG(stub-ar): TEMPORARY -- confirms arch routing (ZIG_TRIPLET drives _win_arch).
-      echo "[diag] ZIG_TRIPLET=${ZIG_TRIPLET} _win_arch=${_win_arch} _crt_outdir=${_crt_outdir}" >&2
       # Real archives ship for all three arches now (cache-warm loop below),
       # so only the toolchain convenience libs need empty stubs.
       local _stub_libs=(gcc gcc_eh stdc++ ssp)

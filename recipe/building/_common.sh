@@ -11,7 +11,21 @@ is_unix()     { [[ "${target_platform}" == "linux-"* || "${target_platform}" == 
 is_not_unix() { ! is_unix; }
 is_cross()    { [[ "${build_platform}" != "${target_platform}" ]]; }
 
-dbg() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]] && "$@" || true; }
+# Debug helper. Gated on DEBUG_ZIG_BUILD=1.
+# Disables xtrace inside the body and restores it afterwards: conda-build runs
+# build scripts under `set -x`, and without this each DISABLED dbg call still
+# emits 3 trace lines (invocation + `[[ 0 == \1 ]]` + `true`). The caller-level
+# `+ dbg echo ...` line is unavoidable; this removes the other two.
+dbg() {
+  local _dbg_x=0
+  case $- in *x*) _dbg_x=1 ;; esac
+  { set +x; } 2>/dev/null
+  if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
+    "$@"
+  fi
+  if [[ "${_dbg_x}" == "1" ]]; then { set -x; } 2>/dev/null; fi
+  return 0
+}
 
 # sanitize_cross_cflags TARGET_ARCH FLAGS...
 # Strips arch-incompatible -march/-mtune/-mcpu/-mfeat flags injected by
