@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common."""
+"""Verify the mingw32 CRT bootstrap for ALL staged Windows targets.
+
+recipe/building/_mingw.sh cache-warms x86_64-windows-gnu, aarch64-windows-gnu
+and x86-windows-gnu, staging the real archives into lib-common/, libarm64/ and
+lib32/ respectively.  A failed warm iteration only WARNs and skips its stage,
+so an entire architecture can go missing from the package silently; this test
+checks all three.
+"""
 
 from __future__ import annotations
 
@@ -26,29 +33,50 @@ def main() -> None:
     if not prefix.exists():
         sys.exit("FAIL: CONDA_PREFIX not set or missing")
 
-    # lib-common path differs between Windows-layout and Unix-layout conda envs
+    # mingw root differs between Windows-layout and Unix-layout conda envs
     if _build_is_win:
-        lib_dir = prefix / "Library" / "lib" / "zig" / "libc" / "mingw" / "lib-common"
+        mingw_dir = prefix / "Library" / "lib" / "zig" / "libc" / "mingw"
     else:
-        lib_dir = prefix / "lib" / "zig" / "libc" / "mingw" / "lib-common"
+        mingw_dir = prefix / "lib" / "zig" / "libc" / "mingw"
 
-    # 1. All 8 staged real archives exist with size > 1MB
+    # Staging dir per warm target, matching _mingw.sh's cache-warm loop.
+    staged = [
+        ("x86_64-windows-gnu", mingw_dir / "lib-common"),
+        ("aarch64-windows-gnu", mingw_dir / "libarm64"),
+        ("x86-windows-gnu", mingw_dir / "lib32"),
+    ]
+    lib_common = staged[0][1]
+
+    # 1. All 8 staged real archives exist with size > 1MB, for every target.
+    #    Observed sizes are ~10.8MB (x86_64), ~11.0MB (aarch64), ~11.4MB (x86).
     expected_libs = [
         "libmingw32.lib", "libmingw32.a",
         "libucrt.lib", "libucrt.a",
         "libmingwex.lib", "libmingwex.a",
         "libwinpthread.lib", "libwinpthread.a",
     ]
-    for lib in expected_libs:
-        p = lib_dir / lib
-        if not p.is_file():
-            sys.exit(f"FAIL: missing {p}")
-        size = p.stat().st_size
-        if size < 1_000_000:
-            sys.exit(f"FAIL: {p} is {size} bytes (expected >1MB real archive)")
+    for target, lib_dir in staged:
+        if not lib_dir.is_dir():
+            sys.exit(
+                f"FAIL: missing staging dir {lib_dir} for {target} "
+                f"(cache-warm failed for this target -- it only WARNs, so the "
+                f"package would ship with no CRT archives for this arch)"
+            )
+        for lib in expected_libs:
+            p = lib_dir / lib
+            if not p.is_file():
+                sys.exit(f"FAIL: missing {p} ({target})")
+            size = p.stat().st_size
+            if size < 1_000_000:
+                sys.exit(
+                    f"FAIL: {p} is {size} bytes for {target} "
+                    f"(expected >1MB real archive)"
+                )
 
-    # 2. libpthread.a preserved as small import lib (NOT overwritten by alias)
-    pthread_a = lib_dir / "libpthread.a"
+    # 2. libpthread.a preserved as small import lib (NOT overwritten by alias).
+    #    Generated from mingw-defs into lib-common only -- the cache-warm loop
+    #    does not stage it into libarm64/ or lib32/, so scope this to lib-common.
+    pthread_a = lib_common / "libpthread.a"
     if not pthread_a.is_file():
         sys.exit(f"FAIL: missing import lib {pthread_a}")
     pthread_size = pthread_a.stat().st_size
@@ -77,7 +105,10 @@ def main() -> None:
     if zig_exe is None:
         sys.exit("FAIL: no <arch>-w64-mingw32-zig wrapper found on PATH")
 
-    libmingw32 = lib_dir / "libmingw32.lib"
+    # Member check stays on lib-common: ucrt_* member names are verified there.
+    # thread/mutex come from winpthreads and are present for aarch64 too, but
+    # the ucrt_* members have not been confirmed across all three arches.
+    libmingw32 = lib_common / "libmingw32.lib"
     result = subprocess.run(
         [str(zig_exe), "ar", "t", str(libmingw32)],
         capture_output=True, text=True, check=False,
@@ -99,7 +130,10 @@ def main() -> None:
             print(members)
             sys.exit(1)
 
-    print("x86_64-windows-gnu CRT bootstrap: OK")
+    print(
+        "mingw CRT bootstrap OK: x86_64 (lib-common), "
+        "aarch64 (libarm64), x86 (lib32)"
+    )
 
 
 if __name__ == "__main__":
