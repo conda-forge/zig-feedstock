@@ -6,11 +6,15 @@
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -138,1 +138,7 @@ find_package(clang 21)
- find_package(lld 21)
-+
+@@ -137,6 +137,11 @@
+ find_package(clang 22)
+ find_package(lld 22)
+ 
 +if(DEFINED ZIG_LLD_BUNDLE_SO)
 +    set(LLD_LIBRARIES "${ZIG_LLD_BUNDLE_SO}")
 +    message(STATUS "ZIG: overriding LLD_LIBRARIES with bundle: ${ZIG_LLD_BUNDLE_SO}")
 +endif()
 +
+ if(ZIG_STATIC_ZLIB)
+     if (MSVC)
+         list(REMOVE_ITEM LLVM_LIBRARIES "z.lib")

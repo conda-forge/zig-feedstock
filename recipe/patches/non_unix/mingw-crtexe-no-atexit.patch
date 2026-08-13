@@ -6,18 +6,18 @@
 
 --- a/lib/libc/mingw/crt/crtexe.c
 +++ b/lib/libc/mingw/crt/crtexe.c
-@@ -324,6 +324,7 @@
- 	*av = n;
+@@ -347,6 +347,7 @@
+ 	return 0;
  }
-
+ 
 +#if 0 /* suppressed: atexit provided via UCRT import lib (api-ms-win-crt-runtime-l1-1-0) on all Windows arches */
  int __cdecl atexit (_PVFV func)
  {
      /*
-@@ -333,5 +334,6 @@
+@@ -356,5 +357,6 @@
       */
      return _crt_atexit(func);
  }
 +#endif /* 0 */
-
+ 
  char __mingw_module_is_dll = 0;

@@ -1,9 +1,9 @@
 --- a/build.zig
 +++ b/build.zig
 @@ -225,7 +225,18 @@
-    exe.use_new_linker = b.option(bool, "new-linker", "Use the new linker");
-
-    const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
+     exe.use_new_linker = b.option(bool, "new-linker", "Use the new linker");
+ 
+     const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
 -    exe.use_llvm = use_llvm;
 +
 +    // PowerPC64LE: LLVM backend + system linker (not LLD).
@@ -17,13 +17,13 @@
 +    } else {
 +        exe.use_llvm = use_llvm;
 +    }
-
-    if (no_bin) {
-        b.getInstallStep().dependOn(&exe.step);
+ 
+     if (no_bin) {
+         b.getInstallStep().dependOn(&exe.step);
 @@ -390,6 +401,13 @@
-        }
-    }
-
+         }
+     }
+ 
 +    // PowerPC64LE needs libgcc for GPR save/restore functions (_savegpr0_*, _restgpr0_*, etc.)
 +    // __libc_csu_init/fini (GCC 14 + glibc 2.28 compat) is handled by
 +    // _libc_tuning.sh patching crt1.o in-place — no separate library needed.
@@ -31,13 +31,13 @@
 +        exe.root_module.linkSystemLibrary("gcc", .{});
 +    }
 +
-    const semver = try std.SemanticVersion.parse(version);
-    exe_options.addOption(std.SemanticVersion, "semver", semver);
-
-@@ -924,6 +942,13 @@
-    mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
-    mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });
-    mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
+     const semver = try std.SemanticVersion.parse(version);
+     exe_options.addOption(std.SemanticVersion, "semver", semver);
+ 
+@@ -952,6 +970,13 @@
+     mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
+     mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });
+     mod.addLibraryPath(.{ .cwd_relative = cfg.llvm_lib_dir });
 +
 +    // Add PREFIX/lib for conda-forge cross-compilation (zlib, zstd, pthread, etc.)
 +    if (b.graph.environ_map.get("PREFIX")) |prefix| {
@@ -45,6 +45,6 @@
 +        mod.addLibraryPath(.{ .cwd_relative = prefix_lib });
 +    }
 +
-    addCMakeLibraryList(mod, cfg.clang_libraries);
-    addCMakeLibraryList(mod, cfg.lld_libraries);
-    addCMakeLibraryList(mod, cfg.llvm_libraries);
+     addCMakeLibraryList(mod, cfg.clang_libraries);
+     addCMakeLibraryList(mod, cfg.lld_libraries);
+     addCMakeLibraryList(mod, cfg.llvm_libraries);

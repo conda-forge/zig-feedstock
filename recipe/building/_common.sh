@@ -11,7 +11,16 @@ is_unix()     { [[ "${target_platform}" == "linux-"* || "${target_platform}" == 
 is_not_unix() { ! is_unix; }
 is_cross()    { [[ "${build_platform}" != "${target_platform}" ]]; }
 
-dbg() { [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]] && "$@" || true; }
+# xtrace-quiet: conda-build/rattler-build runs the build script under `set -x`
+# from outside recipe/, so a DISABLED dbg call still emitted three trace lines
+# (the invocation, the gate test, and the `true`). Suppress xtrace across the
+# body and restore it, leaving only the caller-level invocation line.
+dbg() {
+  { local _x; case $- in *x*) _x=1;; *) _x=0;; esac; set +x; } 2>/dev/null
+  [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]] && "$@"
+  [[ ${_x} == 1 ]] && { set -x; } 2>/dev/null
+  return 0
+}
 
 # sanitize_cross_cflags TARGET_ARCH FLAGS...
 # Strips arch-incompatible -march/-mtune/-mcpu/-mfeat flags injected by

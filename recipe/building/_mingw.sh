@@ -60,7 +60,13 @@ SYNCHRONIZATION_DEF
   # Only generates files that are missing; safe to re-run.
   #
   # Target arch detection for dlltool machine type and zig cc -target.
-  # ZIG_TRIPLET is e.g. "x86_64-windows-gnu" or "aarch64-windows-gnu".
+  # NOTE: ZIG_TRIPLET is this lane's TARGET triple, never a Windows triple --
+  # e.g. "x86_64-linux-gnu", "aarch64-linux-gnu", "powerpc64le-linux-gnu",
+  # "x86_64-macos". Only its ARCH prefix is consumed (via ${ZIG_TRIPLET%%-*}
+  # just below), so the Windows CRT directory chosen further down follows the
+  # LANE'S TARGET PLATFORM. That is correct only because the arch component
+  # coincides with the intended Windows arch -- nothing else in ZIG_TRIPLET
+  # says anything about Windows.
   _win_arch="${ZIG_TRIPLET%%-*}"
   case "${_win_arch}" in
     x86_64)         _dlltool_machine="i386:x86-64"; _win_target="x86_64-windows-gnu" ;;
@@ -115,6 +121,20 @@ SYNCHRONIZATION_DEF
         "${_dlltool}" -m "${_dlltool_machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null || true
         _gen_count=$(( _gen_count + 1 ))
       }
+
+      # Silence xtrace across the import-lib loops below. Each .def costs ~14
+      # trace lines (for / [[ -f ]] / basename / the locals inside _gen_implib /
+      # awk / dlltool / counter) and there are ~800 .def and .def.in files, so
+      # this region alone emits several thousand CI log lines with no diagnostic
+      # value: dlltool failures are already swallowed by `2>/dev/null || true`
+      # and the post-loop summaries report the counts. Restored immediately
+      # after the loops so the CRT compile and stub archives -- where the real
+      # failures have occurred -- stay fully traced.
+      _mingw_xt=0
+      if [[ "${DEBUG_ZIG_BUILD:-0}" != "1" ]]; then
+        case $- in *x*) _mingw_xt=1 ;; esac
+        { set +x; } 2>/dev/null
+      fi
 
       # Step 1: plain .def files (shlwapi.def, version.def, synchronization.def, etc.)
       for _def in "${_mingw_common}"/*.def; do
@@ -198,6 +218,8 @@ SYNCHRONIZATION_DEF
         done
         dbg echo "=== Supplemental import libs done (total ${_gen_count}) ==="
       fi
+
+      if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi
 
       # Step 5: arch-specific stubs and CRT output directory routing.
       # aarch64 emits CRT objects into libarm64/ (arch-specific dir, prevents
@@ -303,15 +325,20 @@ SYNCHRONIZATION_DEF
         local stub_c="${out_dir}/.zig_${sym_name}_stub.c"
         local stub_o="${out_dir}/.zig_${sym_name}_stub.o"
         printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
-        if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>/dev/null; then
-          rm -f "${stub_c}" "${stub_o}"
+        local stub_log="${out_dir}/.zig_${sym_name}_stub.log"
+        if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>"${stub_log}"; then
+          echo "ERROR: [_mingw] failed to compile stub for lib${lib_name}.a (${target_triple}):" >&2
+          cat "${stub_log}" >&2 || true
+          rm -f "${stub_c}" "${stub_o}" "${stub_log}"
           return 1
         fi
-        if ! "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" 2>/dev/null; then
-          rm -f "${stub_c}" "${stub_o}"
+        if ! "${_zig_bin}" ar rcs "${lib_path}" "${stub_o}" 2>"${stub_log}"; then
+          echo "ERROR: [_mingw] failed to archive ${lib_path} (${target_triple}):" >&2
+          cat "${stub_log}" >&2 || true
+          rm -f "${stub_c}" "${stub_o}" "${stub_log}"
           return 1
         fi
-        rm -f "${stub_c}" "${stub_o}"
+        rm -f "${stub_c}" "${stub_o}" "${stub_log}"
         dbg echo "[_mingw] stub archive: ${lib_path}"
       }
 
@@ -330,7 +357,8 @@ SYNCHRONIZATION_DEF
       # and caches it; we trigger materialization with a real link of a tiny program
       # that references snprintf + pthread_self, then harvest the cached artifact.
       # Each target gets its own ZIG_GLOBAL_CACHE_DIR to avoid cross-arch contamination.
-      # Soft-fail on missing libmingw32.lib: WARN + continue (not a hard error).
+      # Failures are recorded per target and aggregated; if ANY target fails,
+      # the function fails after the loop (see the FATAL check below).
       local _warm_dir
       _warm_dir="$(mktemp -d 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/zig-warm-$$")"
       mkdir -p "${_warm_dir}"
@@ -350,6 +378,11 @@ WARM_EOF
       : "${_mingw_libarm64:=${_mingw_common}/../libarm64}"
       : "${_mingw_lib32:=${_mingw_common}/../lib32}"
 
+      # Aggregate cache-warm failures so a Windows arch whose CRT archives go
+      # missing fails the build loudly instead of shipping silently.
+      local _warm_failed_count=0
+      local _warm_failed_list=""
+
       # Map: zig target triple -> staging dir name under lib/libc/mingw/
       for _warm_pair in \
           "x86_64-windows-gnu:${_mingw_common}" \
@@ -366,15 +399,19 @@ WARM_EOF
                   "${_zig_bin}" cc -target "${_warm_tgt}" -pthread \
                   "${_warm_dir}/warm.c" \
                   -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err"; then
-              echo "WARN: cache-warm failed for ${_warm_tgt}; skipping stage. Errors:" >&2
+              echo "ERROR: cache-warm link failed for ${_warm_tgt}; CRT archives will be missing. Errors:" >&2
               tail -5 "${_warm_cache}/warm.err" >&2 || true
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(link)"
               continue
           fi
 
           local _warm_lib
           _warm_lib="$(find "${_warm_cache}" -name 'libmingw32.lib' -print -quit 2>/dev/null)"
           if [[ -z "${_warm_lib}" || ! -f "${_warm_lib}" ]]; then
-              echo "WARN: libmingw32.lib not found in cache for ${_warm_tgt}; skipping stage" >&2
+              echo "ERROR: libmingw32.lib not found in cache for ${_warm_tgt}; CRT archives will be missing" >&2
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(no-libmingw32)"
               continue
           fi
 
@@ -394,6 +431,15 @@ WARM_EOF
       done
 
       rm -rf "${_warm_dir}"
+
+      # Fail loudly rather than shipping a zig_impl whose libarm64/ or lib32/
+      # CRT archives are silently absent -- that is the published-build-10
+      # failure mode, and it surfaces downstream at LINK time for win-arm64 /
+      # win-32 consumers rather than here.
+      if [[ "${_warm_failed_count}" -gt 0 ]]; then
+        echo "FATAL: ${_warm_failed_count} Windows target(s) failed to cache-warm:${_warm_failed_list}" >&2
+        return 1
+      fi
 
       dbg echo "=== Stub archive generation done ==="
 
