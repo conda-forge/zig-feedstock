@@ -439,7 +439,13 @@ outputs:
               - echo "Skip test on non-emulated archs"
         files:
           source:
-            - zig-source/test
+            # Only what `zig test zig-source/test/behavior.zig` above actually
+            # needs. Staging the whole `zig-source/test` tree pulled ~3,022
+            # extra files (test/cases 2,552 + test/standalone 470) into
+            # etc/conda/test-files/, which the files: list at the top of this
+            # output then ships inside the package.
+            - zig-source/test/behavior.zig
+            - zig-source/test/behavior/**
 
       # Verify zig cc compile+run works (MSYS2 UCRT DLL resolution on Windows)
       - script:
