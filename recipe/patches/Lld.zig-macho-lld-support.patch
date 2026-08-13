@@ -6,11 +6,11 @@
  ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
 +ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
 
- ZIG_EXTERN_C bool ZigLLVMWriteArchive(const char *archive_name, const char **file_names, size_t file_name_count,
-     ZigLLVMArchiveKind archive_kind);
+ // On error, populates `*err_file_index_out` and `*err_msg_out` and returns `true`. The caller is
+ // responsible for freeing `*err_msg_out` using `free`.
 --- a/src/zig_llvm.cpp
 +++ b/src/zig_llvm.cpp
-@@ -505,6 +505,10 @@
+@@ -518,6 +518,10 @@
          bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
                  llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
      }
@@ -21,7 +21,7 @@
  }
 
  bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
-@@ -522,6 +526,11 @@
+@@ -535,6 +539,11 @@
      return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
  }
 
@@ -43,7 +43,7 @@
  },
 
  const Coff = struct {
-@@ -197,6 +198,31 @@
+@@ -195,6 +196,31 @@
      }
  };
 
@@ -75,7 +75,7 @@
  pub fn createEmpty(
      arena: Allocator,
      comp: *Compilation,
-@@ -210,6 +236,7 @@
+@@ -208,6 +234,7 @@
      const gc_sections: bool = options.gc_sections orelse switch (target.ofmt) {
          .coff => optimize_mode != .debug,
          .elf => optimize_mode != .debug and output_mode != .Obj,
@@ -83,7 +83,7 @@
          .wasm => output_mode != .Obj,
          else => unreachable,
      };
-@@ -236,6 +263,7 @@
+@@ -234,6 +261,7 @@
              .coff => .{ .coff = try .init(comp, options) },
              .elf => .{ .elf = try .init(comp, options) },
              .wasm => .{ .wasm = try .init(comp, options) },
@@ -91,15 +91,15 @@
              else => unreachable,
          },
      };
-@@ -269,6 +297,7 @@
+@@ -267,6 +295,7 @@
          .coff => coffLink(lld, arena),
          .elf => elfLink(lld, arena),
          .wasm => wasmLink(lld, arena),
 +        .macho => machoLink(lld, arena),
      };
      result catch |err| switch (err) {
-         error.OutOfMemory, error.AlreadyReported => |e| return e,
-@@ -1598,6 +1627,178 @@
+         error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
+@@ -1613,6 +1642,178 @@
      }
  }
 
@@ -280,7 +280,7 @@
      const gpa = comp.gpa;
 --- a/src/target.zig
 +++ b/src/target.zig
-@@ -270,7 +270,7 @@
+@@ -278,7 +278,7 @@
  /// The set of targets that Zig supports using LLD to link for.
  pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
      return switch (ofmt) {
