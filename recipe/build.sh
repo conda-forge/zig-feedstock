@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -uo pipefail
+# errexit is on by default. DEBUG_ZIG_BUILD=1 turns it OFF so a local debug run
+# continues past the first failing command instead of aborting. CI always takes
+# the `set -e` branch because DEBUG_ZIG_BUILD defaults to 0 in recipe.yaml.
+if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then set +e; else set -e; fi
 IFS=$'\n\t'
 
 source "${RECIPE_DIR}/building/_bash_check.sh"

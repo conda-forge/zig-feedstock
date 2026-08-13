@@ -295,6 +295,12 @@ outputs:
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
+
+          # Local debug switch. rattler-build gives the build script a controlled
+          # environment, so this must be declared here or an exported
+          # DEBUG_ZIG_BUILD never reaches build.sh. Defaults to 0 -> CI unchanged.
+          # Usage: DEBUG_ZIG_BUILD=1 rattler-build ...
+          DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
