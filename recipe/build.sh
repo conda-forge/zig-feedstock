@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
 
 set -uo pipefail
-# errexit is on by default. DEBUG_ZIG_BUILD=1 turns it OFF so a local debug run
-# continues past the first failing command instead of aborting. CI always takes
-# the `set -e` branch because DEBUG_ZIG_BUILD defaults to 0 in recipe.yaml.
-if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then set +e; else set -e; fi
+# DEBUG_ZIG_BUILD=1 switches this script into debug mode:
+#   - errexit OFF, so a run continues past the first failing command
+#   - xtrace ON, restoring the `+ cmd` tracing conda-build/rattler-build applies
+# Default (0) is the CI mode: strict errexit, no xtrace.
+#
+# RECOVERY: conda-forge has NO per-run environment override. To trace a failing
+# CI lane you must change the default in recipe.yaml's zig_impl script env: block
+# from "0" to "1" and push a round. Do that before investigating a build-script
+# failure -- xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
+if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
+  set +e
+  set -x
+else
+  set -e
+  { set +x; } 2>/dev/null
+fi
 IFS=$'\n\t'
 
 source "${RECIPE_DIR}/building/_bash_check.sh"
