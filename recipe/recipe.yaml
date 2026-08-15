@@ -4,7 +4,11 @@ context:
   build_number: 12
   name: zig
   version: "0.16.0"
-  api_version: ${{ version | split(".") | last }}
+  # Minor series ("0.16" from "0.16.0") — computed, so no manual bump on version changes.
+  # Must be the first TWO segments: `| first` and `| last` BOTH yield "0" for a 0.x version,
+  # which pinned zig_impl to 0.* and could match a 0.17 dev-label build.
+  # NB `| slice(n)` is Jinja2 batch semantics (split into n groups), NOT range slicing.
+  api_version: ${{ (version | split("."))[:2] | join(".") }}
 
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}

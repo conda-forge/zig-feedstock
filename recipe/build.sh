@@ -10,6 +10,9 @@ set -uo pipefail
 # CI lane you must change the default in recipe.yaml's zig_impl script env: block
 # from "0" to "1" and push a round. Do that before investigating a build-script
 # failure -- xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
+# Plumbing probe: prints whether the var ARRIVED, independent of its value. The guard
+# below cannot show this -- an absent var and a var set to 0 both trace as [[ 0 == 1 ]].
+echo "DBG_PLUMBING:DEBUG_ZIG_BUILD:${DEBUG_ZIG_BUILD+SET}:${DEBUG_ZIG_BUILD-UNSET}" >&2
 if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
   set +e
   set -x
