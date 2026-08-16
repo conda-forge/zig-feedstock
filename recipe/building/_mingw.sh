@@ -472,6 +472,21 @@ WARM_EOF
               continue
           fi
 
+          # Size floor: a truncated or zero-byte archive would otherwise be staged as 8
+          # empty files and pass silently. Mirrors the 1MB floor in
+          # recipe/testing/test_mingw_crt.py, whose invocation is gated `if: xc_w64` and so
+          # never runs on non-w64 lanes -- this check covers every lane.
+          local _warm_size
+          _warm_size="$(wc -c < "${_warm_lib}" 2>/dev/null | tr -d '[:space:]')"
+          : "${_warm_size:=0}"
+          if [ "${_warm_size}" -lt 1000000 ]; then
+              echo "ERROR: libmingw32.lib for ${_warm_tgt} is only ${_warm_size} bytes (expected >1MB); refusing to stage a truncated archive" >&2
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list}  - ${_warm_tgt} (libmingw32.lib truncated: ${_warm_size} bytes)
+"
+              continue
+          fi
+
           mkdir -p "${_warm_stage}"
           # Stage under conventional library names + both .lib (Windows MSVC) and
           # .a (Unix toolchain) extensions so consumers spelling -lucrt /

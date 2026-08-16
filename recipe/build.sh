@@ -10,9 +10,6 @@ set -uo pipefail
 # CI lane you must change the default in recipe.yaml's zig_impl script env: block
 # from "0" to "1" and push a round. Do that before investigating a build-script
 # failure -- xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
-# Plumbing probe: prints whether the var ARRIVED, independent of its value. The guard
-# below cannot show this -- an absent var and a var set to 0 both trace as [[ 0 == 1 ]].
-echo "DBG_PLUMBING:DEBUG_ZIG_BUILD:${DEBUG_ZIG_BUILD+SET}:${DEBUG_ZIG_BUILD-UNSET}" >&2
 if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
   set +e
   set -x
@@ -181,16 +178,43 @@ if is_linux && is_cross; then
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
-  # TODO: drop once qemu-execve-ppc64le ships qemu-powerpc64le upstream.
-  if [[ "${target_platform}" == "linux-ppc64le" ]] \
-     && ! command -v qemu-powerpc64le &>/dev/null \
-     && command -v qemu-ppc64le &>/dev/null; then
-    ln -sf "$(command -v qemu-ppc64le)" "${BUILD_PREFIX}/bin/qemu-powerpc64le"
+  # Resolve the qemu-user emulator ONCE, before anything consults it.
+  #
+  # Four spellings are in play and none is interchangeable:
+  #   package  qemu-execve-<conda-arch>  e.g. qemu-execve-ppc64le
+  #   binary   qemu-<conda-arch>         e.g. qemu-ppc64le
+  #   zig      qemu-<llvm-arch>          e.g. qemu-powerpc64le  <- what -fqemu execs
+  #   handle   $QEMU_EXECVE              absolute path, exported by the package
+  #
+  # Prefer $QEMU_EXECVE: a bare `command -v` can pick up the CI image's
+  # /usr/bin/qemu-<arch>-static binfmt interpreter, which is unpinned and, before
+  # qemu 11, SIGSEGVs on rseq under glibc >=2.35.  Exporting it also turns on
+  # qemu's execve() redirect so child processes stay emulated.
+  _zig_qemu=""
+  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+    _zig_qemu="${QEMU_EXECVE}"
+  else
+    _zig_qemu="$(command -v "qemu-${target_platform#linux-}" 2>/dev/null \
+                 || command -v "qemu-${ZIG_QEMU_ARCH}" 2>/dev/null || true)"
   fi
-  # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
-  # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
-  if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
+
+  # zig hardcodes a qemu-<llvm-arch> PATH lookup for -fqemu, a different spelling
+  # from the one the package installs.  Shadow it BEFORE -fqemu is decided just
+  # below.  This used to happen only inside the Phase 2 langref block far below --
+  # too late for -fqemu -- with an ad-hoc ppc64le-only BUILD_PREFIX symlink
+  # papering over the gap.  Torn down by the existing _qemu_shadow_dir cleanup
+  # after Phase 2.
+  _qemu_shadow_dir=""
+  if [ -n "${_zig_qemu}" ]; then
+    export QEMU_EXECVE="${_zig_qemu}"
+    _qemu_shadow_dir="$(mktemp -d)"
+    ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
+    ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${target_platform#linux-}"
+    export PATH="${_qemu_shadow_dir}:${PATH}"
+    dbg echo "qemu: ${_zig_qemu} (shadowed as qemu-${ZIG_QEMU_ARCH} and qemu-${target_platform#linux-})"
     EXTRA_ZIG_ARGS+=(-fqemu)
+  else
+    dbg echo "qemu: none found for ${ZIG_QEMU_ARCH}; -fqemu disabled"
   fi
 fi
 
@@ -314,14 +338,8 @@ elif _can_run_stage3; then
     _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
   fi
 
-  # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
-  _qemu_shadow_dir=""
-  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
-    _qemu_shadow_dir=$(mktemp -d)
-    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
-    export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
-  fi
+  # PATH already carries the qemu-<llvm-arch> shadow set up before -fqemu was
+  # decided; _stage3_runner below resolves through it.
 
   (
     cd "${cmake_source_dir}" &&

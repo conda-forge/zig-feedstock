@@ -9,21 +9,12 @@
 
 _ZIG_MODE="${_ZIG_MODE:-cc}"
 
-# --- Ensure zig can resolve its cache directory ---
-# zig's global cache resolves as: ZIG_GLOBAL_CACHE_DIR (explicit) >
-# std.fs.getAppDataDir("zig")/zig-cache, where getAppDataDir on Linux checks
-# XDG_DATA_HOME then HOME/.local/share.  If neither is set, zig panics with
-# AppDataDirUnavailable.  Always set ZIG_GLOBAL_CACHE_DIR if unset, mirroring
-# zig's own resolution so the variable is always populated before exec.
-if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
-    if [[ -n "${XDG_DATA_HOME:-}" ]]; then
-        export ZIG_GLOBAL_CACHE_DIR="${XDG_DATA_HOME}/zig/zig-cache"
-    elif [[ -n "${HOME:-}" ]]; then
-        export ZIG_GLOBAL_CACHE_DIR="${HOME}/.local/share/zig/zig-cache"
-    else
-        export ZIG_GLOBAL_CACHE_DIR="${TMPDIR:-/tmp}/zig-cache-$(id -u 2>/dev/null || echo 0)"
-    fi
-fi
+# Reuse _self_dir if the sourcing wrapper already computed it
+# (zig-cc.sh/zig-cxx.sh/_zig-force-load-common.sh all do), else derive it
+# from this file's own location.  Must precede the first source below.
+_self_dir="${_self_dir:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
+source "${_self_dir}/@WRAPPER_PREFIX@_zig-cache-common.sh"
 
 # --- Source generated flag-translation rules (R1-R9, unix profile) ---
 # Source of truth: recipe/building/flag_rules.py -> _zig_translate_flags()
@@ -32,10 +23,7 @@ fi
 # R5 (-target/--target= triplet translation), R6 (-mcpu= preserve-or-
 # default), R7 (always-drop -Wl,--color-diagnostics/-rpath-link*/
 # --disable-new-dtags), R8 (-Bsymbolic* keep+trigger), R9 (-Wl,-z,*/
-# -Wl,-O* passthrough+trigger). Reuses _self_dir if the sourcing wrapper
-# already computed it (zig-cc.sh/zig-cxx.sh/_zig-force-load-common.sh all
-# do), else derives it from this file's own location.
-_self_dir="${_self_dir:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+# -Wl,-O* passthrough+trigger).
 source "${_self_dir}/@WRAPPER_PREFIX@_translate.gen.sh"
 
 # --- Sysroot detection (Linux only) ---

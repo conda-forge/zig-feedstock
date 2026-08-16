@@ -234,6 +234,7 @@ int main(int argc, char *argv[]) {
     profile.is_win_target = IS_MINGW_TARGET;
     profile.conda_prefix = conda_prefix;
     profile.zig_target_arch = ZIG_TARGET_ARCH;
+    profile.sysroot = NULL;  /* R12 is unix-only; the win shim has no sysroot concept. */
 
     int mode_is_cxx = str_eq(ZIG_CC_MODE, "c++");
     char **out_argv = NULL;

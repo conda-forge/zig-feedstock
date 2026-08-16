@@ -1,0 +1,398 @@
+/*
+ * unix compiler wrapper: invokes zig cc/c++ with flag filtering.
+ *
+ * Compiled twice at install time with different @ZIG_CC_MODE@:
+ *   zig-cc  (mode = "cc")
+ *   zig-cxx (mode = "c++")
+ *
+ * Filters out GCC/GNU ld flags that conda-build injects but zig's
+ * lld-based linker rejects (-march, -fstack-protector, -Wl,-z,defs, etc),
+ * detects sysroot / auto-promotes to LLD, and execs zig.
+ *
+ * Port of recipe/scripts/_zig-cc-common.sh (sourced by zig-cc.sh /
+ * zig-cxx.sh) to compiled C. Every numbered STEP below cites the bash
+ * line range it replaces so the two stay auditable until the bash
+ * wrappers are retired. The R1-R9 de-dup rules (see
+ * recipe/building/flag_rules.py) are delegated to the generated,
+ * portable zig_translate_flags() (_translate.inc); only the
+ * out-of-scope hand-written logic (sysroot, the extra LLD-trigger
+ * scan, the -Xlinker general pre-filter, the ppc64le hard error, the
+ * GCC-only post-translation drops, and the macOS deployment-target
+ * rewrite) remains below.
+ *
+ * Placeholders replaced at install time:
+ *   ZIG_CC_MODE      - "cc" or "c++"
+ *   ZIG_BIN          - full path to the zig binary (e.g.
+ *                      $CONDA_PREFIX/bin/x86_64-conda-linux-gnu-zig)
+ *   ZIG_TARGET       - zig target triplet (e.g. x86_64-linux-gnu)
+ *   ZIG_TARGET_ARCH  - zig target arch (e.g. "x86_64", "aarch64")
+ *
+ * Compiled during package build with zig cc.
+ */
+
+#include "unix_common.h"
+#include "_translate.inc"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#define ZIG_CC_MODE "@ZIG_CC_MODE@"
+#define ZIG_BIN "@ZIG_BIN@"
+#define ZIG_TARGET "@ZIG_TARGET@"
+#define ZIG_TARGET_ARCH "@ZIG_TARGET_ARCH@"
+
+/* --- small string helpers --- */
+static int starts_with(const char *s, const char *prefix) {
+    return strncmp(s, prefix, strlen(prefix)) == 0;
+}
+
+static int str_eq(const char *a, const char *b) {
+    return strcmp(a, b) == 0;
+}
+
+/* -Wl,-O[0-9]* glob: literal "-Wl,-O" followed by at least one digit,
+ * then anything. _zig-cc-common.sh:73 -- this is a shell glob, not a
+ * literal string; ported the same way _translate.inc:63-75 ports the
+ * sibling -Wl,-O* case for R9. */
+static int is_wl_o_digit(const char *arg) {
+    if (!starts_with(arg, "-Wl,-O")) return 0;
+    const char *suffix = arg + 6; /* strlen("-Wl,-O") */
+    return suffix[0] != '\0' && isdigit((unsigned char)suffix[0]);
+}
+
+/*
+ * Raw single-token LLD-trigger scan. Mirrors the outer `case "$_a" in`
+ * arms at _zig-cc-common.sh:61-82, EXCLUDING the "-Xlinker) ..." arm
+ * itself (line 62, handled separately by the -Xlinker lookahead below)
+ * and EXCLUDING "-fuse-ld=lld" (checked by the caller directly, same
+ * as bash line 63, folded in here for a single call site).
+ */
+static int is_lld_trigger(const char *arg) {
+    if (str_eq(arg, "-fuse-ld=lld")) return 1;                                   /* :63 */
+    if (str_eq(arg, "-Wl,--version-script") ||
+        starts_with(arg, "-Wl,--version-script,")) return 1;                     /* :65 */
+    if (str_eq(arg, "-Wl,--dynamic-list") ||
+        starts_with(arg, "-Wl,--dynamic-list,") ||
+        starts_with(arg, "-Wl,--dynamic-list=")) return 1;                       /* :66 */
+    if (str_eq(arg, "-Wl,-z,defs") || str_eq(arg, "-Wl,-z,nodelete")) return 1;   /* :67 */
+    if (str_eq(arg, "-Wl,--gc-sections") || str_eq(arg, "-Wl,--no-gc-sections")) return 1; /* :68 */
+    if (str_eq(arg, "-Wl,--build-id") || starts_with(arg, "-Wl,--build-id=")) return 1;     /* :69 */
+    if (str_eq(arg, "-Wl,--allow-shlib-undefined") ||
+        str_eq(arg, "-Wl,--no-allow-shlib-undefined")) return 1;                 /* :70 */
+    if (str_eq(arg, "-Wl,-Bsymbolic-functions") || str_eq(arg, "-Wl,-Bsymbolic")) return 1; /* :71 */
+    if (str_eq(arg, "-Bsymbolic-functions") || str_eq(arg, "-Bsymbolic")) return 1;         /* :72 */
+    if (is_wl_o_digit(arg)) return 1;                                            /* :73 */
+    if (str_eq(arg, "-Wl,-exported_symbols_list") ||
+        starts_with(arg, "-Wl,-exported_symbols_list,")) return 1;               /* :75 */
+    if (str_eq(arg, "-Wl,-unexported_symbols_list") ||
+        starts_with(arg, "-Wl,-unexported_symbols_list,")) return 1;             /* :76 */
+    if (str_eq(arg, "-Wl,-reexported_symbols_list") ||
+        starts_with(arg, "-Wl,-reexported_symbols_list,")) return 1;             /* :77 */
+    if (str_eq(arg, "-Wl,-force_symbols_not_weak_list") ||
+        starts_with(arg, "-Wl,-force_symbols_not_weak_list,")) return 1;         /* :78 */
+    if (str_eq(arg, "-Wl,-force_symbols_weak_list") ||
+        starts_with(arg, "-Wl,-force_symbols_weak_list,")) return 1;             /* :79 */
+    if (str_eq(arg, "-Wl,-all_load") || starts_with(arg, "-Wl,-force_load,")) return 1;     /* :80 */
+    if (str_eq(arg, "-all_load") || str_eq(arg, "-force_load")) return 1;        /* :81 */
+    return 0;
+}
+
+/*
+ * LLD-trigger set checked against the token immediately following a
+ * literal "-Xlinker". Mirrors _zig-cc-common.sh:52-57. Note this list
+ * is NOT identical to is_lld_trigger(): e.g. bare "--gc-sections" only
+ * triggers here (as an -Xlinker argument), never as a standalone token.
+ */
+static int is_xlinker_lld_trigger(const char *arg) {
+    if (str_eq(arg, "--dynamic-list") || starts_with(arg, "--dynamic-list=") ||
+        str_eq(arg, "--version-script") || starts_with(arg, "--version-script=")) return 1; /* :52 */
+    if (str_eq(arg, "--gc-sections") || str_eq(arg, "--no-gc-sections") ||
+        str_eq(arg, "--build-id") || starts_with(arg, "--build-id=")) return 1;  /* :53 */
+    if (str_eq(arg, "--allow-shlib-undefined") ||
+        str_eq(arg, "--no-allow-shlib-undefined")) return 1;                     /* :54 */
+    if (str_eq(arg, "-exported_symbols_list") ||
+        starts_with(arg, "-exported_symbols_list,")) return 1;                   /* :55 */
+    if (str_eq(arg, "-unexported_symbols_list") ||
+        starts_with(arg, "-unexported_symbols_list,")) return 1;                 /* :56 */
+    if (str_eq(arg, "-all_load") || str_eq(arg, "-force_load") ||
+        starts_with(arg, "-force_load,")) return 1;                              /* :57 */
+    return 0;
+}
+
+/* -Xlinker <arg> pairs to drop entirely (both tokens). _zig-cc-common.sh:104. */
+static int is_xlinker_drop(const char *arg) {
+    return str_eq(arg, "--color-diagnostics") || starts_with(arg, "--dependency-file=");
+}
+
+/* -l:libpthread.so* prefix match (GNU ld colon-exact-filename syntax). */
+static int is_l_libpthread_so(const char *arg) {
+    return starts_with(arg, "-l:libpthread.so");
+}
+
+/*
+ * Post-translation drop filter: unix-only drops NOT covered by the
+ * generated R1-R9 manifest (GCC-specific flags Clang rejects, GCC
+ * runtime libs zig doesn't ship / can't link). Mirrors the `case "$_fa"
+ * in` arms at _zig-cc-common.sh:142-159; everything not matched here is
+ * kept (bash's `*) _final_args+=("$_fa") ;;` at :159).
+ */
+static int is_post_translate_drop(const char *arg) {
+    return starts_with(arg, "-march=") || starts_with(arg, "-mtune=") ||
+           str_eq(arg, "-ftree-vectorize") ||                                     /* :144 */
+           str_eq(arg, "-fstack-protector-strong") ||
+           str_eq(arg, "-fstack-protector") || str_eq(arg, "-fno-plt") ||         /* :145 */
+           str_eq(arg, "-fno-partial-inlining") ||
+           str_eq(arg, "-fno-ipa-cp-clone") ||                                    /* :146 */
+           starts_with(arg, "-fdebug-prefix-map=") ||                             /* :147 */
+           starts_with(arg, "-stdlib=") ||                                        /* :148 */
+           str_eq(arg, "-lgcc_eh") || str_eq(arg, "-lgcc_s") ||                   /* :152 */
+           str_eq(arg, "-l:libpthread.a") || is_l_libpthread_so(arg);             /* :158 */
+}
+
+/* Build a malloc'd "-L<sysroot><suffix>" flag. Exits the process on OOM
+ * (no graceful unwind path exists this early in main()). */
+static char *build_l_flag(const char *sysroot, const char *suffix) {
+    size_t len = strlen("-L") + strlen(sysroot) + strlen(suffix) + 1;
+    char *buf = (char *)malloc(len);
+    if (!buf) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        exit(1);
+    }
+    snprintf(buf, len, "-L%s%s", sysroot, suffix);
+    return buf;
+}
+
+int main(int argc, char *argv[]) {
+    int i;
+
+    init_zig_global_cache_dir();
+
+    const char *conda_prefix = getenv("CONDA_PREFIX");
+
+    /* ---- STEP 1 (_zig-cc-common.sh:29-38): sysroot detection ----
+     * zig_resolve_sysroot() already encodes bash's `uname -s == Linux`
+     * gate via #ifdef __linux__ (returns "" on other platforms), and
+     * the CONDA_BUILD_SYSROOT fallback + is-a-directory probe are
+     * folded into it. The returned string feeds profile.sysroot
+     * REGARDLESS of whether it is a directory (R12 prints it verbatim,
+     * see _translate.inc's zig_tr_print_sysroot); the -isysroot/-L
+     * flag group below is gated separately on zig_sysroot_is_dir(). */
+    int target_is_native = str_eq(ZIG_TARGET, "native");
+    const char *sysroot = zig_resolve_sysroot(conda_prefix, ZIG_TARGET_ARCH, target_is_native);
+
+    /* Exactly 6 slots: -isysroot, <sr>, and 4 -L flags -- a fixed,
+     * known count (not a guessed bound), mirroring bash's fixed
+     * 6-element _sysroot_flags group at :36. */
+    const char *sysroot_flags[6];
+    int n_sysroot_flags = 0;
+    if (zig_sysroot_is_dir(sysroot)) {
+        sysroot_flags[n_sysroot_flags++] = "-isysroot";
+        sysroot_flags[n_sysroot_flags++] = sysroot;
+        sysroot_flags[n_sysroot_flags++] = build_l_flag(sysroot, "/usr/lib64");
+        sysroot_flags[n_sysroot_flags++] = build_l_flag(sysroot, "/usr/lib");
+        sysroot_flags[n_sysroot_flags++] = build_l_flag(sysroot, "/lib64");
+        sysroot_flags[n_sysroot_flags++] = build_l_flag(sysroot, "/lib");
+    }
+
+    /* ---- STEP 2+3 (_zig-cc-common.sh:45-83, :93-113): raw LLD-trigger
+     * scan fused with the -Xlinker general pre-filter. Both are
+     * independent passes over the SAME raw argv in bash (two separate
+     * loops that don't share state), so fusing them into one loop is
+     * behaviorally equivalent and mirrors zig-cc-nonunix.c's style.
+     * bash's `break` on first LLD-trigger match is dropped (harmless:
+     * OR-ing a boolean flag repeatedly is idempotent).
+     *
+     * grab_next is checked BEFORE the trigger checks (unlike
+     * zig-cc-nonunix.c, which checks triggers first): bash's
+     * _xlinker_next branch `continue`s immediately after matching
+     * against the lookahead-only list, so a token that is itself being
+     * CONSUMED as an -Xlinker value is never reprocessed as a fresh
+     * "-Xlinker" trigger point even if it happens to equal the literal
+     * string "-Xlinker" (e.g. pathological input "-Xlinker -Xlinker
+     * foo"). This ordering is a deliberate deviation from
+     * zig-cc-nonunix.c for exactness against the bash source -- see
+     * report caveat (c). */
+    int raw_argc = argc - 1;
+    char **raw_argv = argv + 1;
+    const char **pre_args = (const char **)malloc(sizeof(char *) * (size_t)(raw_argc + 1));
+    if (!pre_args) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        return 1;
+    }
+    int pi = 0;
+    int use_lld_raw = 0;
+    {
+        int grab_next = 0;
+        for (i = 0; i < raw_argc; i++) {
+            const char *arg = raw_argv[i];
+
+            if (grab_next) {
+                grab_next = 0;
+                if (is_xlinker_lld_trigger(arg)) use_lld_raw = 1;
+                if (!is_xlinker_drop(arg)) {
+                    pre_args[pi++] = "-Xlinker";
+                    pre_args[pi++] = arg;
+                }
+                continue;
+            }
+
+            if (is_lld_trigger(arg)) use_lld_raw = 1;
+
+            if (str_eq(arg, "-Xlinker")) {
+                grab_next = 1;
+                continue;
+            }
+
+            pre_args[pi++] = arg;
+        }
+        /* A trailing "-Xlinker" with no following token leaves
+         * grab_next == 1 with the loop exhausted: it is simply never
+         * appended, matching bash's dropped-trailing-token edge case
+         * at :101 (the `if` guarding the next-token lookup fails). */
+    }
+
+    /* ---- STEP 4 (_zig-cc-common.sh:116-123): fill the translate
+     * profile and delegate the R1-R9 de-dup rules to the generated
+     * translator. ---- */
+    zig_translate_profile profile;
+    profile.is_win = 0;
+    profile.is_win_target = strstr(ZIG_TARGET, "-windows-") != NULL; /* :120 */
+    profile.conda_prefix = conda_prefix;
+    profile.zig_target_arch = ZIG_TARGET_ARCH;
+    profile.sysroot = sysroot;
+
+    int mode_is_cxx = str_eq(ZIG_CC_MODE, "c++"); /* :122, caller-owns-init per _translate.inc */
+    char **out_argv = NULL;
+    int out_argc = 0;
+    int use_lld_gen = 0;
+    int tr_rc = zig_translate_flags(pi, (char *const *)pre_args, &profile,
+                                     &out_argv, &out_argc, &use_lld_gen, &mode_is_cxx);
+    free(pre_args);
+
+    /* R2/R3/etc intercepts already printed to stdout; bash's
+     * intercepts `exit 0`. */
+    if (tr_rc == 2)
+        return 0;
+    if (tr_rc != 0) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        return 1;
+    }
+
+    /* ---- STEP 5 (_zig-cc-common.sh:128): merge the generated fn's
+     * own R8/R9 trigger scan with the hand-written out-of-scope scan
+     * above. ---- */
+    int use_lld = use_lld_raw || use_lld_gen;
+
+    /* ---- STEP 6 (_zig-cc-common.sh:130-135): ppc64le hard error.
+     * Both stderr lines below are VERBATIM from :132-133, including
+     * the "zig cc:" prefix even in c++ mode -- the bash source hardcodes
+     * it that way regardless of _ZIG_MODE, so it is reproduced as-is. */
+    if (use_lld && str_eq(ZIG_TARGET_ARCH, "powerpc64le")) {
+        fprintf(stderr, "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)\n");
+        fprintf(stderr, "  Remove -fuse-ld=lld or any LLD-only flags (--dynamic-list, --version-script, etc.)\n");
+        free(out_argv);
+        return 1;
+    }
+
+    /* ---- STEP 7 (_zig-cc-common.sh:140-161): post-translation drop
+     * filter over the translated args. ---- */
+    const char **filtered = (const char **)malloc(sizeof(char *) * (size_t)(out_argc + 1));
+    if (!filtered) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        free(out_argv);
+        return 1;
+    }
+    int fi = 0;
+    for (i = 0; i < out_argc; i++) {
+        const char *arg = out_argv[i];
+        if (is_post_translate_drop(arg))
+            continue;
+        filtered[fi++] = arg;
+    }
+    free(out_argv);
+
+    /* ---- STEP 8 (_zig-cc-common.sh:163-171): final mode + macOS
+     * deployment-target rewrite of the target triple. ---- */
+    const char *mode = mode_is_cxx ? "c++" : "cc"; /* :163 */
+
+    const char *macos_dep = getenv("MACOSX_DEPLOYMENT_TARGET");
+    const char *zig_target_final = ZIG_TARGET;
+    char rewritten_target[512];
+    if (macos_dep && *macos_dep && strstr(ZIG_TARGET, "-macos") != NULL) {
+        /* bash :170 -- ${_zig_target%%-macos*} removes the LONGEST
+         * matching suffix of the pattern "-macos*", which (since the
+         * trailing "*" matches everything to end-of-string) is
+         * equivalent to truncating at the FIRST occurrence of
+         * "-macos". ${_zig_target##*macos*-} removes the LONGEST
+         * matching prefix of "*macos*-", i.e. everything through the
+         * LAST "-" in the string (any "-" qualifies since "macos"
+         * necessarily appears earlier in the string, having already
+         * been gated on by the `[[ == *-macos* ]]` check above) --
+         * equivalent to "everything after the last '-'". */
+        const char *macos_pos = strstr(ZIG_TARGET, "-macos");
+        size_t head_len = (size_t)(macos_pos - ZIG_TARGET);
+        const char *last_dash = strrchr(ZIG_TARGET, '-');
+        const char *tail = last_dash ? last_dash + 1 : ZIG_TARGET;
+        snprintf(rewritten_target, sizeof(rewritten_target), "%.*s-macos.%s-%s",
+                 (int)head_len, ZIG_TARGET, macos_dep, tail);
+        zig_target_final = rewritten_target;
+    }
+
+    /* ---- STEP 9 (_zig-cc-common.sh:173-181): inject -fuse-ld=lld
+     * only if promoted and not already present. ---- */
+    int has_lld_flag = 0;
+    for (i = 0; i < fi; i++) {
+        if (str_eq(filtered[i], "-fuse-ld=lld")) { has_lld_flag = 1; break; }
+    }
+    int inject_lld = use_lld && !has_lld_flag;
+
+    /* ---- STEP 10 (_zig-cc-common.sh:183-190): inject a default
+     * -target only if the filtered args contain neither -target nor
+     * any --target= prefixed token. ---- */
+    int has_target = 0;
+    for (i = 0; i < fi; i++) {
+        if (str_eq(filtered[i], "-target") || starts_with(filtered[i], "--target=")) {
+            has_target = 1;
+            break;
+        }
+    }
+    int inject_target = !has_target;
+
+    /* ---- STEP 11 (_zig-cc-common.sh:192): assemble the final argv
+     * and exec. argv[0] is the zig binary path itself, matching
+     * zig-cc.sh/zig-cxx.sh's `exec "@ZIG_BIN@" "${_exec_args[@]}"`
+     * (bash sets argv[0] to the exec'd command name, here @ZIG_BIN@).
+     * Order: argv0, mode, [lld], [target x2], sysroot flags, filtered
+     * args, NULL -- matching bash's
+     * _exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}"
+     * "${_sysroot_flags[@]}" "${_final_args[@]}"). */
+    int max_args = fi + n_sysroot_flags + 6;
+    const char **new_argv = (const char **)malloc(sizeof(char *) * (size_t)max_args);
+    if (!new_argv) {
+        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        free(filtered);
+        return 1;
+    }
+
+    int ni = 0;
+    new_argv[ni++] = ZIG_BIN;
+    new_argv[ni++] = mode;
+    if (inject_lld)
+        new_argv[ni++] = "-fuse-ld=lld";
+    if (inject_target) {
+        new_argv[ni++] = "-target";
+        new_argv[ni++] = zig_target_final;
+    }
+    for (i = 0; i < n_sysroot_flags; i++)
+        new_argv[ni++] = sysroot_flags[i];
+    for (i = 0; i < fi; i++)
+        new_argv[ni++] = filtered[i];
+    new_argv[ni] = NULL;
+
+    /* exec_zig() replaces this process on success and returns only on
+     * failure (it prints its own error). filtered/new_argv are
+     * intentionally not freed on the success path -- the process image
+     * is about to be replaced. */
+    return exec_zig(ZIG_BIN, (char *const *)new_argv);
+}

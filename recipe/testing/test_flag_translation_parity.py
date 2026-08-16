@@ -529,6 +529,24 @@ def _gen_intercept_assert(unix_res: GenResult, win_res: GenResult) -> tuple[bool
     )
 
 
+def _gen_sysroot_assert(unix_res: GenResult, win_res: GenResult) -> tuple[bool, str]:
+    # R12 is unix-only. Asserted on the unix result ONLY, deliberately:
+    # the generated-BASH dispatch is built from rules_for_profile("unix")
+    # unconditionally (the bash wrapper never runs the win profile), so its
+    # win leg also intercepts -- while generated-C's win profile passes
+    # -print-sysroot through. That divergence is by design and the assertion
+    # cannot tell the two legs apart, so win_res is not constrained here.
+    # Mirror-image of _gen_map_assert, which asserts on win_res only.
+    def _intercepted_empty(r: GenResult) -> bool:
+        if r.returncode == 2:            # C harness convention
+            return r.stdout.strip() == ""
+        # bash convention: `exit 0` after echoing "${_sr:-}" (empty here)
+        return r.returncode == 0 and r.stdout.strip() == ""
+
+    ok = _intercepted_empty(unix_res)
+    return ok, f"unix.rc={unix_res.returncode} unix.stdout={unix_res.stdout[:200]!r}"
+
+
 def _gen_mode_downgrade_assert(unix_res: GenResult, win_res: GenResult) -> tuple[bool, str]:
     ok = (
         unix_res.returncode == 0
@@ -624,6 +642,10 @@ GEN_CASES: list[GenCase] = [
             and r.use_lld == 1
             and not any(t.startswith("-Wl,-rpath-link") for t in r.tokens)
         ),
+    ),
+    GenCase(
+        14, "-print-sysroot intercepted on unix profile, prints empty _sr",
+        "cc", ["-print-sysroot"], _gen_sysroot_assert,
     ),
 ]
 

@@ -32,7 +32,9 @@ def main():
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
     zig_triplet = os.environ.get("ZIG_TRIPLET", "native")
     conda_triplet = os.environ.get("CONDA_TRIPLET", "")
-    cross_compiler = os.environ.get("CROSS_COMPILER", "false")
+    # rattler-build renders Jinja booleans capitalized ("True"/"False"), so
+    # normalize before comparing against "true" below
+    cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
 
     # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
     target_triplet = os.environ.get("CONDA_TRIPLET", "")
@@ -157,8 +159,23 @@ def _find_zig_compiler() -> str:
     )
 
 
-def _compile_c_shim(src: Path, dst: Path, replacements: dict):
-    """Compile a C shim with @PLACEHOLDER@ substitution using zig cc."""
+def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple = (), target: str | None = None):
+    """Compile a C shim with @PLACEHOLDER@ substitution using zig cc.
+
+    extra_args carries platform-specific link flags (e.g. "-lkernel32" for
+    non-Unix targets) appended to the compile command.
+
+    target controls the architecture the shim is compiled for. It defaults
+    to None, which means "compile natively for the build machine" — this is
+    correct both for native builds and for HOSTED cross-compilers (where
+    build_platform == target_platform and the resulting wrapper executes on
+    the build machine, e.g. win-64 -> win-arm64). Set target to the target
+    triple ONLY for an UNHOSTED cross-compiler (target_platform !=
+    build_platform), where the wrapper executes on the TARGET machine and a
+    natively-compiled shim would be the wrong architecture. The bash
+    wrappers this C port replaces were architecture-neutral text scripts,
+    so this concern is introduced by the C port itself.
+    """
     content = src.read_text()
     for placeholder, value in replacements.items():
         content = content.replace(placeholder, value)
@@ -169,13 +186,15 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_src = Path(tmpdir) / src.name
         tmp_src.write_text(content)
+        target_args = ["-target", target] if target else []
         subprocess.check_call([
             zig_bin, "cc",
+            *target_args,
             "-O2",
             f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
-            "-lkernel32",
+            *extra_args,
         ])
 
     pdb = dst.with_suffix(".pdb")
@@ -183,7 +202,7 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
         pdb.unlink()
         print(f"  Removed: {pdb}")
 
-    print(f"  Compiled: {dst}")
+    print(f"  Compiled: {dst}" + (f" (-target {target})" if target else ""))
 
 
 def _strip_glibc_version(triplet: str) -> str:
@@ -289,7 +308,7 @@ def install_zig_cc_wrappers(
                     "@ZIG_BIN_NAME@": zig_bin_name,
                     "@IS_MINGW_TARGET@": "1" if is_mingw else "0",
                 }
-                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
+                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements, extra_args=("-lkernel32",))
 
         # Compile .exe shims for simple pass-through tools
         tool_src = recipe_dir / "building" / "zig-tool-nonunix.c"
@@ -308,7 +327,7 @@ def install_zig_cc_wrappers(
                     "@ZIG_BIN_NAME@": zig_bin_name,
                     "@ZIG_PREFIX_ARGS@": prefix_args,
                 }
-                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
+                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements, extra_args=("-lkernel32",))
 
         # Compile zig-windres.exe (dedicated shim with -o -> -fo translation)
         windres_src = recipe_dir / "building" / "zig-windres-nonunix.c"
@@ -317,7 +336,7 @@ def install_zig_cc_wrappers(
                 **replacements,
                 "@ZIG_BIN_NAME@": zig_bin_name,
             }
-            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements)
+            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements, extra_args=("-lkernel32",))
 
     else:
         wrapper_dir = prefix / "bin"
@@ -325,9 +344,10 @@ def install_zig_cc_wrappers(
         # Install shared helpers (sourced by wrapper scripts, not executed directly).
         # _translate.gen.sh is the generated flag-translation fragment (R1-R9);
         # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
-        # the other two helpers which live in recipe/scripts/ alongside the
+        # the other three helpers which live in recipe/scripts/ alongside the
         # wrapper templates that source them.
         for helper, helper_src_dir in [
+            ("_zig-cache-common.sh", scripts_dir),
             ("_zig-cc-common.sh", scripts_dir),
             ("_zig-force-load-common.sh", scripts_dir),
             ("_translate.gen.sh", building_dir),
@@ -394,6 +414,7 @@ def install_nonunix_cross_wrappers(
         recipe_dir / "building" / "cross-zig-shim.c",
         bin_dir / f"{target_triplet}-zig.exe",
         replacements,
+        extra_args=("-lkernel32",),
     )
 
 

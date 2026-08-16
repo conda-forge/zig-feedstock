@@ -4,11 +4,7 @@ context:
   build_number: 12
   name: zig
   version: "0.16.0"
-  # Minor series ("0.16" from "0.16.0") — computed, so no manual bump on version changes.
-  # Must be the first TWO segments: `| first` and `| last` BOTH yield "0" for a 0.x version,
-  # which pinned zig_impl to 0.* and could match a 0.17 dev-label build.
-  # NB `| slice(n)` is Jinja2 batch semantics (split into n groups), NOT range slicing.
-  api_version: ${{ (version | split("."))[:2] | join(".") }}
+  abi_version: ${{ (version | split("."))[:2] | join(".") }}
 
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
@@ -129,6 +125,30 @@ context:
       "x86-windows-gnu"                 if target_platform == "win-32"         else
       "native"
     }}
+
+  # Emulator wiring for cross-target linux lanes.  THREE different strings are in
+  # play and none is interchangeable with another:
+  #   qemu_pkg      package spec    qemu-execve-ppc64le >=11  -- requirements ONLY.
+  #                 The >=11 floor is carried INSIDE this variable, not appended at
+  #                 the use sites: qemu_pkg is the empty string on every non-emulated
+  #                 lane, and `${{ qemu_pkg }} >=11` would render there as a bare
+  #                 `>=11`.  Below qemu 11 the emulator SIGSEGVs on rseq under
+  #                 glibc >=2.35 (see recipe/build.sh).
+  #   qemu_arch     binary on PATH  qemu-ppc64le         -- conda arch spelling
+  #   $QEMU_EXECVE  absolute path exported by that package's activation.  This is
+  #                 the authoritative handle: `command -v` can instead resolve to
+  #                 the CI image's own /usr/bin qemu-<arch>-static, which is
+  #                 unpinned.  Setting it also enables qemu-user's execve()
+  #                 redirect, so processes the wrappers spawn stay emulated rather
+  #                 than falling through to build-arch binaries.
+  # zig's -fqemu wants a FOURTH spelling, qemu-<llvm-arch> (qemu-powerpc64le);
+  # recipe/build.sh shadows that name onto PATH from $QEMU_EXECVE.
+  qemu_arch: ${{ target_platform | replace("linux-", "") }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11" if linux and build_platform != target_platform else "" }}
+  # target_triplet, NOT conda_triplet: the latter is keyed on cross_target_platform_
+  # and so names the CROSS target, a different arch on the hosted-xcompiler lanes.
+  # QEMU_LD_PREFIX must match the arch actually being executed.
+  sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
   is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -329,7 +349,7 @@ outputs:
             - llvmdev ${{ llvm_version }}.*  # llvm-config
             - if: linux
               then:
-                - qemu-execve-${{ target_platform | replace("linux-", "") }}
+                - ${{ qemu_pkg }}
             - if: osx
               then:
                 - libxml2-devel
@@ -337,7 +357,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ build_platform }} ${{ abi_version }}.*
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -550,7 +570,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -564,7 +584,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -595,6 +615,7 @@ outputs:
             - if: unix
               then:
                 - bin/${{ conda_triplet }}-_zig-cc-common.sh
+                - bin/${{ conda_triplet }}-_zig-cache-common.sh
                 - bin/${{ conda_triplet }}-_zig-force-load-common.sh
                 - bin/${{ conda_triplet }}-_translate.gen.sh
                 - bin/${{ conda_triplet }}-zig-force-load-cc
@@ -615,12 +636,14 @@ outputs:
             - if: is_cross_compiler and unix
               then:
                 - bin/${{ xc_build_triplet }}-_zig-cc-common.sh
+                - bin/${{ xc_build_triplet }}-_zig-cache-common.sh
                 - bin/${{ xc_build_triplet }}-_zig-force-load-common.sh
                 - bin/${{ xc_build_triplet }}-_translate.gen.sh
                 - bin/${{ xc_build_triplet }}-zig-force-load-cc
                 - bin/${{ xc_build_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
+
       - script:
           # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
           - if: unix
@@ -635,36 +658,61 @@ outputs:
               - if not defined CONDA_ZIG_HOST exit /b 1
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
-          # Wrapper + functional validation tests (Python, cross-platform)
+          # Wrapper + functional validation tests (Python, cross-platform).
+          #
+          # On an emulated cross target the interpreter itself must run under
+          # qemu-user.  conda-forge.yml sets `test: native_and_emulated`, so binfmt
+          # would route it -- but binfmt uses whatever qemu the CI image ships, and
+          # local Docker iteration frequently has no binfmt registration at all.
+          # Driving $QEMU_EXECVE explicitly pins the emulator to qemu-execve-<arch>
+          # (>=11, see requirements below) and behaves the same in both places.
+          #
+          # QEMU_LD_PREFIX is required either way: without it qemu looks for the
+          # target loader at the bare literal path (ppc64le: /lib64/ld64.so.2) and
+          # dies before pytest is ever reached.
           - if: unix
-            then: PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
-          - if: not unix
-            then: set PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
+            then:
+              - if: linux and build_platform != target_platform
+                then:
+                  - 'export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-${{ qemu_arch }} || true)}"'
+                  - 'export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"'
+                  - 'echo "QEMU_EXECVE=${QEMU_EXECVE} QEMU_LD_PREFIX=${QEMU_LD_PREFIX}"'
+                  - 'test -x "${QEMU_EXECVE}"'
+                  - 'test -d "${QEMU_LD_PREFIX}"'
+                  - 'PYTHONIOENCODING=utf-8 "${QEMU_EXECVE}" "$(command -v python)" testing/test_zig_toolchain.py'
+                else:
+                  - PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
+            else:
+              - set PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
           # Cross-compiler .exe shim test (non-Unix only)
-          - if: is_cross_compiler and not unix
-            then:
-              - set "CONDA_TRIPLET=${{ conda_triplet }}" && testing\test-cross-shim.bat
-          # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
-          # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
-          # the cc wrapper must filter them before forwarding to zig cc.
           - if: not unix
             then:
+              - if: is_cross_compiler
+                then:
+                  - set "CONDA_TRIPLET=${{ conda_triplet }}" && testing\test-cross-shim.bat
               - echo void f(void){} > %TEMP%\test_manifest.c
               - ${{ conda_triplet }}-zig-cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o %TEMP%\test_manifest.dll %TEMP%\test_manifest.c
               - if not exist %TEMP%\test_manifest.dll exit /b 1
               - echo PASS zig cc /MANIFEST* filter
         requirements:
+          build:
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
           run:
             - python >=3.10
+            - if: (build_platform != target_platform) and linux
+              then:
+                - ${{ stdlib("c") }}
             - if: ppc64le
               then:
-                - bash >=5.2
                 - libclang-cpp ${{ llvm_version }}.*
         files:
           recipe:
             - testing/_test_utils.py
             - testing/test-cross-shim.bat
             - testing/test_zig_toolchain.py
+
       # Verify <triplet>-zig-windres wrapper: -o flag translation works
       - script:
           - if: xc_w64
@@ -678,6 +726,7 @@ outputs:
         requirements:
           run:
             - python >=3.10
+
       # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
       - script:
           - if: xc_w64
