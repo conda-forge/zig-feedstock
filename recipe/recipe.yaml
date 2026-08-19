@@ -1,10 +1,10 @@
 schema_version: 1
 
 context:
-  build_number: 1
+  build_number: 0
   name: zig
   version: "0.17.0"
-  api_version: ${{ version | split(".") | last }}
+  abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "1811+6716bf52e"
 
   llvm_src_version: "22.1.6"
@@ -341,7 +341,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ build_platform }} ${{ abi_version }}.*
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -558,7 +558,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -572,7 +572,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
