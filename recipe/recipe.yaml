@@ -568,8 +568,15 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
-        # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
-        - if: is_cross_compiler and not unix
+        # The C shims are compiled at package-build time (unix multiplexer
+        # zig-cc-unix.c; .exe shims on non-unix) and must RUN on the build
+        # machine, so the compiling zig must be the BUILD-platform one. The
+        # same-lane zig_impl_<cross_target_platform_> targets
+        # cross_target_platform_ and therefore cannot serve here. Was gated
+        # `and not unix` until the Phase 4 C switchover put a compile on the
+        # unix path too, which broke every unix cross-compiler lane with
+        # "No zig binary found to compile C shim".
+        - if: is_cross_compiler
           then:
             - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
         - if: not unix
