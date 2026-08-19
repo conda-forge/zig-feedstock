@@ -1,31 +1,42 @@
 /*
- * unix compiler wrapper: invokes zig cc/c++ with flag filtering.
+ * unix toolchain wrapper: a busybox-style multiplexer.
  *
- * Compiled twice at install time with different @ZIG_CC_MODE@:
- *   zig-cc  (mode = "cc")
- *   zig-cxx (mode = "c++")
+ * ONE binary, compiled once at install time and cp -f'd to each wrapper name.
+ * The tool is selected by basename(argv[0]) with @WRAPPER_PREFIX@ stripped:
  *
- * Filters out GCC/GNU ld flags that conda-build injects but zig's
- * lld-based linker rejects (-march, -fstack-protector, -Wl,-z,defs, etc),
- * detects sysroot / auto-promotes to LLD, and execs zig.
+ *   zig-cc       -> zig cc   + full flag filtering  (see run_cc)
+ *   zig-cxx      -> zig c++  + full flag filtering  (see run_cc)
+ *   zig-ar       -> zig ar,     thin-archive 'T' modifier stripped
+ *   zig-ranlib   -> zig ranlib, passthrough
+ *   zig-rc       -> zig rc,     passthrough
+ *   zig-lld      -> zig ld.lld / ld64.lld by platform
+ *   zig-windres  -> zig rc,     -o/-o<x> rewritten to -fo/-fo<x>
+ *   zig-asm      -> zig cc -target <t> -mcpu=baseline [-isysroot <sr>]
  *
- * Port of recipe/scripts/_zig-cc-common.sh (sourced by zig-cc.sh /
- * zig-cxx.sh) to compiled C. Every numbered STEP below cites the bash
- * line range it replaces so the two stay auditable until the bash
- * wrappers are retired. The R1-R9 de-dup rules (see
- * recipe/building/flag_rules.py) are delegated to the generated,
- * portable zig_translate_flags() (_translate.inc); only the
- * out-of-scope hand-written logic (sysroot, the extra LLD-trigger
- * scan, the -Xlinker general pre-filter, the ppc64le hard error, the
- * GCC-only post-translation drops, and the macOS deployment-target
- * rewrite) remains below.
+ * NOT handled here: zig-force-load-cc / zig-force-load-cxx.  Those are
+ * inventory item 9 (Phase 3c) and remain bash until the force-load port lands.
+ *
+ * Replaces recipe/scripts/{zig-cc,zig-cxx,zig-ar,zig-ranlib,zig-rc,zig-lld,
+ * zig-windres,zig-asm}.sh.  Each runner below cites the bash file:line it
+ * replaces so the two stay auditable until the bash wrappers are retired.
+ *
+ * run_cc() is a port of recipe/scripts/_zig-cc-common.sh (sourced by
+ * zig-cc.sh / zig-cxx.sh).  Every numbered STEP inside it cites the bash line
+ * range it replaces.  The R1-R13 de-dup rules (see recipe/building/
+ * flag_rules.py) are delegated to the generated, portable
+ * zig_translate_flags() (_translate.inc); only the out-of-scope hand-written
+ * logic (sysroot, the extra LLD-trigger scan, the -Xlinker general pre-filter,
+ * the ppc64le hard error, the GCC-only post-translation drops, and the macOS
+ * deployment-target rewrite) remains there.
  *
  * Placeholders replaced at install time:
- *   ZIG_CC_MODE      - "cc" or "c++"
- *   ZIG_BIN          - full path to the zig binary (e.g.
- *                      $CONDA_PREFIX/bin/x86_64-conda-linux-gnu-zig)
+ *   ZIG_BIN          - baked zig path.  NOTE: install bakes the LITERAL
+ *                      "${CONDA_PREFIX}/bin/<triplet>-zig"; C cannot expand
+ *                      that, so it is resolved via zig_resolve_zig_bin(),
+ *                      which prefers self-location.  See unix_common.h.
  *   ZIG_TARGET       - zig target triplet (e.g. x86_64-linux-gnu)
  *   ZIG_TARGET_ARCH  - zig target arch (e.g. "x86_64", "aarch64")
+ *   WRAPPER_PREFIX   - installed-name prefix (e.g. "x86_64-conda-linux-gnu-")
  *
  * Compiled during package build with zig cc.
  */
@@ -37,10 +48,10 @@
 #include <string.h>
 #include <ctype.h>
 
-#define ZIG_CC_MODE "@ZIG_CC_MODE@"
 #define ZIG_BIN "@ZIG_BIN@"
 #define ZIG_TARGET "@ZIG_TARGET@"
 #define ZIG_TARGET_ARCH "@ZIG_TARGET_ARCH@"
+#define WRAPPER_PREFIX "@WRAPPER_PREFIX@"
 
 /* --- small string helpers --- */
 static int starts_with(const char *s, const char *prefix) {
@@ -156,17 +167,19 @@ static char *build_l_flag(const char *sysroot, const char *suffix) {
     size_t len = strlen("-L") + strlen(sysroot) + strlen(suffix) + 1;
     char *buf = (char *)malloc(len);
     if (!buf) {
-        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        fprintf(stderr, "ERROR: zig-wrapper: malloc failed\n");
         exit(1);
     }
     snprintf(buf, len, "-L%s%s", sysroot, suffix);
     return buf;
 }
 
-int main(int argc, char *argv[]) {
+/* zig-cc / zig-cxx.  Port of recipe/scripts/_zig-cc-common.sh.
+ * argv is the FULL argv (argv[0] is the wrapper name); raw args start at 1,
+ * exactly as before the multiplexer refactor. */
+static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
+                  int argc, char *argv[]) {
     int i;
-
-    init_zig_global_cache_dir();
 
     const char *conda_prefix = getenv("CONDA_PREFIX");
 
@@ -217,7 +230,7 @@ int main(int argc, char *argv[]) {
     char **raw_argv = argv + 1;
     const char **pre_args = (const char **)malloc(sizeof(char *) * (size_t)(raw_argc + 1));
     if (!pre_args) {
-        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         return 1;
     }
     int pi = 0;
@@ -262,7 +275,8 @@ int main(int argc, char *argv[]) {
     profile.zig_target_arch = ZIG_TARGET_ARCH;
     profile.sysroot = sysroot;
 
-    int mode_is_cxx = str_eq(ZIG_CC_MODE, "c++"); /* :122, caller-owns-init per _translate.inc */
+    /* mode_is_cxx is the caller's parameter (:122, caller-owns-init per
+     * _translate.inc); zig_translate_flags may flip it. */
     char **out_argv = NULL;
     int out_argc = 0;
     int use_lld_gen = 0;
@@ -275,7 +289,7 @@ int main(int argc, char *argv[]) {
     if (tr_rc == 2)
         return 0;
     if (tr_rc != 0) {
-        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         return 1;
     }
 
@@ -299,7 +313,7 @@ int main(int argc, char *argv[]) {
      * filter over the translated args. ---- */
     const char **filtered = (const char **)malloc(sizeof(char *) * (size_t)(out_argc + 1));
     if (!filtered) {
-        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         free(out_argv);
         return 1;
     }
@@ -370,13 +384,13 @@ int main(int argc, char *argv[]) {
     int max_args = fi + n_sysroot_flags + 6;
     const char **new_argv = (const char **)malloc(sizeof(char *) * (size_t)max_args);
     if (!new_argv) {
-        fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         free(filtered);
         return 1;
     }
 
     int ni = 0;
-    new_argv[ni++] = ZIG_BIN;
+    new_argv[ni++] = zig_bin;
     new_argv[ni++] = mode;
     if (inject_lld)
         new_argv[ni++] = "-fuse-ld=lld";
@@ -394,5 +408,239 @@ int main(int argc, char *argv[]) {
      * failure (it prints its own error). filtered/new_argv are
      * intentionally not freed on the success path -- the process image
      * is about to be replaced. */
-    return exec_zig(ZIG_BIN, (char *const *)new_argv);
+    return exec_zig(zig_bin, (char *const *)new_argv);
+}
+
+/* ================= simple tool runners ================= */
+
+/* Item 14: trivial exec passthrough.  zig-ranlib.sh:4, zig-rc.sh:4.
+ * Also the tail of run_ar / run_lld. */
+static int run_passthrough(const char *zig_bin, const char *prog,
+                           const char *subcmd, int argc, char *argv[]) {
+    const char **new_argv =
+        (const char **)malloc(sizeof(char *) * (size_t)(argc + 2));
+    if (!new_argv) {
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+        return 1;
+    }
+    int ni = 0, i;
+    new_argv[ni++] = zig_bin;
+    new_argv[ni++] = subcmd;
+    for (i = 1; i < argc; i++)
+        new_argv[ni++] = argv[i];
+    new_argv[ni] = NULL;
+    return exec_zig(zig_bin, (char *const *)new_argv);
+}
+
+/* Item 10 (zig-ar.sh:6-13): strip the 'T' (thin archive) modifier.
+ * zig's linker frontend cannot parse thin archives even though zig ar
+ * (llvm-ar) can create them, and Meson unconditionally passes csrDT on Linux.
+ *
+ * Faithful to bash: the guard is `${#_args[@]} -eq 0`, and every branch
+ * appends, so the rewrite applies to the FIRST argument ONLY.  The arg must
+ * match ^[a-zA-Z]+$ and contain a T; ALL T's are then removed
+ * (`${_a//T/}`), which can legitimately yield an empty string -- bash appends
+ * that empty positional arg, so we do too. */
+static int is_ar_modifier_with_T(const char *a) {
+    int has_T = 0;
+    const char *p;
+    if (!*a) return 0;
+    for (p = a; *p; p++) {
+        if (!isalpha((unsigned char)*p)) return 0;
+        if (*p == 'T') has_T = 1;
+    }
+    return has_T;
+}
+
+static int run_ar(const char *zig_bin, const char *prog, int argc, char *argv[]) {
+    const char **new_argv =
+        (const char **)malloc(sizeof(char *) * (size_t)(argc + 2));
+    if (!new_argv) {
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+        return 1;
+    }
+    int ni = 0, i;
+    new_argv[ni++] = zig_bin;
+    new_argv[ni++] = "ar";
+    for (i = 1; i < argc; i++) {
+        if (i == 1 && is_ar_modifier_with_T(argv[i])) {
+            char *stripped = (char *)malloc(strlen(argv[i]) + 1);
+            if (!stripped) {
+                fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+                free(new_argv);
+                return 1;
+            }
+            char *w = stripped;
+            const char *r;
+            for (r = argv[i]; *r; r++)
+                if (*r != 'T') *w++ = *r;
+            *w = '\0';
+            new_argv[ni++] = stripped;
+        } else {
+            new_argv[ni++] = argv[i];
+        }
+    }
+    new_argv[ni] = NULL;
+    return exec_zig(zig_bin, (char *const *)new_argv);
+}
+
+/* Item 11 (zig-lld.sh:6-9): ld.lld for ELF, ld64.lld for Mach-O.
+ * bash branches on `uname -s` at RUNTIME; this branches at COMPILE time.
+ * Equivalent here because the shim is compiled for the machine it will run on
+ * (natively, or with -target for an unhosted cross), which is the same
+ * assumption zig_resolve_sysroot's #ifdef __linux__ already makes. */
+static int run_lld(const char *zig_bin, const char *prog, int argc, char *argv[]) {
+#if defined(__APPLE__)
+    const char *lld = "ld64.lld";
+#else
+    const char *lld = "ld.lld";
+#endif
+    return run_passthrough(zig_bin, prog, lld, argc, argv);
+}
+
+/* Item 12 (zig-windres.sh:7-13): rewrite -o <out> to -fo <out> and -o<out>
+ * to -fo<out>, then hand off to zig rc.
+ *
+ * The exact "-o" arm is checked before the "-o*" prefix arm, matching bash's
+ * case-order.  A trailing bare "-o" makes bash's `shift 2` fail under
+ * `set -e`, exiting non-zero WITHOUT exec'ing; we mirror that with an explicit
+ * error rather than silently forwarding a dangling flag. */
+static int run_windres(const char *zig_bin, const char *prog, int argc, char *argv[]) {
+    const char **new_argv =
+        (const char **)malloc(sizeof(char *) * (size_t)(2 * argc + 2));
+    if (!new_argv) {
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+        return 1;
+    }
+    int ni = 0, i;
+    new_argv[ni++] = zig_bin;
+    new_argv[ni++] = "rc";
+    for (i = 1; i < argc; i++) {
+        if (str_eq(argv[i], "-o")) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "%s: -o requires an argument\n", prog);
+                free(new_argv);
+                return 1;
+            }
+            new_argv[ni++] = "-fo";
+            new_argv[ni++] = argv[++i];
+        } else if (starts_with(argv[i], "-o")) {
+            const char *tail = argv[i] + 2;
+            size_t len = strlen("-fo") + strlen(tail) + 1;
+            char *buf = (char *)malloc(len);
+            if (!buf) {
+                fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+                free(new_argv);
+                return 1;
+            }
+            snprintf(buf, len, "-fo%s", tail);
+            new_argv[ni++] = buf;
+        } else {
+            new_argv[ni++] = argv[i];
+        }
+    }
+    new_argv[ni] = NULL;
+    return exec_zig(zig_bin, (char *const *)new_argv);
+}
+
+/* zig-asm.sh:5-14.  Note this is inventory item 2's DUPLICATED sysroot block:
+ * unlike run_cc it injects -isysroot ONLY (no -L group).  Preserved as-is --
+ * unifying it is a behavior change and belongs in its own commit. */
+static int run_asm(const char *zig_bin, const char *prog, int argc, char *argv[]) {
+    int target_is_native = str_eq(ZIG_TARGET, "native");
+    const char *sysroot = zig_resolve_sysroot(getenv("CONDA_PREFIX"),
+                                              ZIG_TARGET_ARCH, target_is_native);
+    int have_sysroot = zig_sysroot_is_dir(sysroot);
+
+    /* zig_bin, "cc", "-target", <t>, "-mcpu=baseline", [-isysroot, <sr>],
+     * args..., NULL */
+    const char **new_argv =
+        (const char **)malloc(sizeof(char *) * (size_t)(argc + 8));
+    if (!new_argv) {
+        fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+        return 1;
+    }
+    int ni = 0, i;
+    new_argv[ni++] = zig_bin;
+    new_argv[ni++] = "cc";
+    new_argv[ni++] = "-target";
+    new_argv[ni++] = ZIG_TARGET;
+    new_argv[ni++] = "-mcpu=baseline";
+    if (have_sysroot) {
+        new_argv[ni++] = "-isysroot";
+        new_argv[ni++] = sysroot;
+    }
+    for (i = 1; i < argc; i++)
+        new_argv[ni++] = argv[i];
+    new_argv[ni] = NULL;
+    return exec_zig(zig_bin, (char *const *)new_argv);
+}
+
+/* ================= dispatch ================= */
+
+typedef enum {
+    MODE_UNKNOWN = 0,
+    MODE_CC, MODE_CXX, MODE_AR, MODE_RANLIB,
+    MODE_ASM, MODE_RC, MODE_LLD, MODE_WINDRES
+} zig_mode;
+
+/* Hand-rolled rather than <libgen.h> basename(): the POSIX version may modify
+ * its argument and the GNU version has different semantics for trailing
+ * slashes.  argv[0] never has a trailing slash in practice, and this keeps the
+ * behavior identical on both. */
+static const char *base_name(const char *path) {
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
+static zig_mode mode_from_argv0(const char *argv0, const char **out_prog) {
+    const char *base = base_name(argv0);
+    *out_prog = base;
+
+    /* Item 13: self-location is moot under dispatch -- the wrapper no longer
+     * needs to find a sibling helper script, it IS the helper. */
+    size_t plen = strlen(WRAPPER_PREFIX);
+    if (plen && strncmp(base, WRAPPER_PREFIX, plen) == 0)
+        base += plen;
+
+    if (str_eq(base, "zig-cc"))      return MODE_CC;
+    if (str_eq(base, "zig-cxx"))     return MODE_CXX;
+    if (str_eq(base, "zig-ar"))      return MODE_AR;
+    if (str_eq(base, "zig-ranlib"))  return MODE_RANLIB;
+    if (str_eq(base, "zig-asm"))     return MODE_ASM;
+    if (str_eq(base, "zig-rc"))      return MODE_RC;
+    if (str_eq(base, "zig-lld"))     return MODE_LLD;
+    if (str_eq(base, "zig-windres")) return MODE_WINDRES;
+    return MODE_UNKNOWN;
+}
+
+int main(int argc, char *argv[]) {
+    /* Uniform across every tool -- this is the Phase 0 cache-dir fix that the
+     * bash side achieves by having all ten wrappers source
+     * _zig-cache-common.sh. */
+    init_zig_global_cache_dir();
+
+    const char *prog = NULL;
+    zig_mode mode = mode_from_argv0(argv[0] ? argv[0] : "zig-cc", &prog);
+    if (mode == MODE_UNKNOWN) {
+        fprintf(stderr,
+                "%s: not a recognized zig wrapper name.\n"
+                "  Expected " WRAPPER_PREFIX "zig-{cc,cxx,ar,ranlib,asm,rc,lld,windres}.\n",
+                prog);
+        return 127;
+    }
+
+    const char *zig_bin = zig_resolve_zig_bin(ZIG_BIN, WRAPPER_PREFIX);
+
+    switch (mode) {
+    case MODE_CC:      return run_cc(zig_bin, prog, 0, argc, argv);
+    case MODE_CXX:     return run_cc(zig_bin, prog, 1, argc, argv);
+    case MODE_AR:      return run_ar(zig_bin, prog, argc, argv);
+    case MODE_RANLIB:  return run_passthrough(zig_bin, prog, "ranlib", argc, argv);
+    case MODE_RC:      return run_passthrough(zig_bin, prog, "rc", argc, argv);
+    case MODE_LLD:     return run_lld(zig_bin, prog, argc, argv);
+    case MODE_WINDRES: return run_windres(zig_bin, prog, argc, argv);
+    case MODE_ASM:     return run_asm(zig_bin, prog, argc, argv);
+    default:           return 127;   /* unreachable; silences -Wswitch */
+    }
 }

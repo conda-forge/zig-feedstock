@@ -35,6 +35,12 @@ def main():
     # rattler-build renders Jinja booleans capitalized ("True"/"False"), so
     # normalize before comparing against "true" below
     cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
+    # An UNHOSTED cross-compiler (target_platform != build_platform) produces
+    # wrappers that execute on the TARGET machine, so the compiled C shim must
+    # be built for the target arch rather than natively. CROSS_COMPILER cannot
+    # answer this: it is the OR of hosted and unhosted. Same capitalization
+    # normalization applies.
+    unhosted = os.environ.get("UNHOSTED_XCOMPILER", "false").strip().lower() == "true"
 
     # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
     target_triplet = os.environ.get("CONDA_TRIPLET", "")
@@ -74,6 +80,7 @@ def main():
         zig_triplet=zig_triplet,
         conda_triplet=conda_triplet,
         is_nonunix=is_nonunix,
+        unhosted=unhosted,
     )
 
 
@@ -100,6 +107,7 @@ def main():
             zig_triplet=native_zig_triplet,
             conda_triplet=native_triplet,
             is_nonunix=is_nonunix,
+            unhosted=unhosted,
         )
 
         if is_nonunix:
@@ -274,6 +282,7 @@ def install_zig_cc_wrappers(
     zig_triplet: str,
     conda_triplet: str,
     is_nonunix: bool = False,
+    unhosted: bool = False,
 ):
     """Install zig-cc/cxx/ar/ranlib/asm/rc wrapper scripts from templates."""
     scripts_dir = recipe_dir / "scripts"
@@ -346,6 +355,11 @@ def install_zig_cc_wrappers(
         # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
         # the other three helpers which live in recipe/scripts/ alongside the
         # wrapper templates that source them.
+        #
+        # All four are still required: the two force-load wrappers below remain
+        # bash (see below) and reach _zig-cc-common.sh via
+        # _zig-force-load-common.sh, and the parity test reads _translate.gen.sh
+        # from disk.
         for helper, helper_src_dir in [
             ("_zig-cache-common.sh", scripts_dir),
             ("_zig-cc-common.sh", scripts_dir),
@@ -355,8 +369,40 @@ def install_zig_cc_wrappers(
             src = helper_src_dir / helper
             if src.exists():
                 _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-windres", "zig-force-load-cc", "zig-force-load-cxx"]
-        for name in wrappers:
+
+        # The C multiplexer: ONE binary compiled once, then copied to each
+        # wrapper name. It dispatches on basename(argv[0]) with the
+        # @WRAPPER_PREFIX@ stripped, so every copy behaves as its own tool.
+        #
+        # It covers 8 of the 10 names. zig-force-load-cc / zig-force-load-cxx
+        # are inventory item 9 (Phase 3c: mktemp -d, `ar x`, .o globbing, trap
+        # cleanup) and stay bash until that port lands, so
+        # test_wrapper_shebang_portability drops to 2 WARNs, not 0.
+        mux_names = [
+            "zig-cc", "zig-cxx", "zig-ar", "zig-ranlib",
+            "zig-asm", "zig-rc", "zig-lld", "zig-windres",
+        ]
+        bash_names = ["zig-force-load-cc", "zig-force-load-cxx"]
+
+        mux_src = building_dir / "zig-cc-unix.c"
+        if mux_src.exists():
+            # Compile natively unless this is an UNHOSTED cross-compiler, in
+            # which case the wrapper runs on the target machine and a natively
+            # compiled shim would be the wrong architecture. See _compile_c_shim.
+            shim_target = cc_target if unhosted else None
+            first = wrapper_dir / f"{conda_triplet}-{mux_names[0]}"
+            _compile_c_shim(mux_src, first, replacements, target=shim_target)
+            for name in mux_names[1:]:
+                dst = wrapper_dir / f"{conda_triplet}-{name}"
+                shutil.copyfile(first, dst)
+                shutil.copymode(first, dst)
+                print(f"  Installed (multiplexer copy): {dst}")
+        else:
+            # No C source present — fall back to the bash templates for
+            # everything, preserving the pre-port behavior.
+            bash_names = mux_names + bash_names
+
+        for name in bash_names:
             src = scripts_dir / f"{name}.sh"
             if src.exists():
                 _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)

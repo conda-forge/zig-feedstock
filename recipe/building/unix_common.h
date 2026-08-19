@@ -12,6 +12,31 @@
 #ifndef UNIX_COMMON_H
 #define UNIX_COMMON_H
 
+/* setenv() is POSIX, not ISO C.  Under a strict -std=cNN build glibc sets
+ * __STRICT_ANSI__ and hides it behind a feature macro, producing an implicit
+ * declaration -- a hard ERROR on clang >= 16, which zig cc is built on.
+ * Production currently compiles without -std= (gnu dialect, _DEFAULT_SOURCE
+ * implied) so only strict builds bite, but request POSIX 2008 explicitly so
+ * both work.  getuid() needs no such request: glibc guards it under
+ * __USE_POSIX, which stays on.
+ *
+ * This MUST precede every system header, so this header is deliberately
+ * included FIRST in zig-cc-unix.c (:33).  Keep it that way.
+ * _DARWIN_C_SOURCE restores the BSD extras that _POSIX_C_SOURCE alone hides
+ * on macOS. */
+#if !defined(_POSIX_C_SOURCE) && !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE)
+#  define _POSIX_C_SOURCE 200809L
+#endif
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#  define _DARWIN_C_SOURCE
+#endif
+
+/* zig_self_path() needs uint32_t and _NSGetExecutablePath on macOS. */
+#include <stdint.h>
+#if defined(__APPLE__)
+#  include <mach-o/dyld.h>
+#endif
+
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -41,16 +66,30 @@ static inline void init_zig_global_cache_dir(void) {
     char base[PATH_MAX];
     const char *xdg = getenv("XDG_DATA_HOME");
     const char *home = getenv("HOME");
+    int n = -1;
 
     if (xdg && *xdg) {
-        snprintf(base, sizeof base, "%s/zig/zig-cache", xdg);
+        n = snprintf(base, sizeof base, "%s/zig/zig-cache", xdg);
     } else if (home && *home) {
-        snprintf(base, sizeof base, "%s/.local/share/zig/zig-cache", home);
-    } else {
+        n = snprintf(base, sizeof base, "%s/.local/share/zig/zig-cache", home);
+    }
+
+    /* Either no XDG_DATA_HOME/HOME, or the path truncated.  Fall back to
+     * TMPDIR, which is short enough that truncation is not a practical
+     * concern.  A TRUNCATED path must never be exported: it would silently
+     * point zig's cache at the wrong directory, which is worse than the
+     * AppDataDirUnavailable panic this function exists to prevent.  Matches
+     * the checked idiom already used by zig_resolve_sysroot below.
+     *
+     * Note this is a deliberate divergence from _zig-cache-common.sh: bash has
+     * no fixed-size buffers and so cannot truncate. */
+    if (n <= 0 || (size_t)n >= sizeof base) {
         const char *tmp = getenv("TMPDIR");
         if (!tmp || !*tmp)
             tmp = "/tmp";
-        snprintf(base, sizeof base, "%s/zig-cache-%u", tmp, (unsigned)getuid());
+        n = snprintf(base, sizeof base, "%s/zig-cache-%u", tmp, (unsigned)getuid());
+        if (n <= 0 || (size_t)n >= sizeof base)
+            return;
     }
 
     setenv("ZIG_GLOBAL_CACHE_DIR", base, 0);
@@ -102,6 +141,94 @@ static inline const char *zig_resolve_sysroot(const char *conda_prefix,
     (void)target_is_native;
     return "";
 #endif
+}
+
+/* Absolute path of the running executable, written to buf.  Returns 0 on
+ * success, -1 if unavailable on this platform or the lookup failed.
+ *
+ * Model: zig-feedstock-0.15.2/recipe/building/zig-wrapper.c:303-345.  Only the
+ * two POSIX arms are needed here (the Windows arm lives in nonunix_common.h).
+ * On platforms with neither (e.g. the BSDs) this returns -1 and the caller
+ * falls back to the install-time-baked path. */
+static inline int zig_self_path(char *buf, size_t bufsz) {
+#if defined(__linux__)
+    ssize_t n = readlink("/proc/self/exe", buf, bufsz - 1);
+    if (n <= 0 || (size_t)n >= bufsz - 1)
+        return -1;
+    buf[n] = '\0';
+    return 0;
+#elif defined(__APPLE__)
+    /* _NSGetExecutablePath may return a non-canonical path (symlinks, "..",
+     * or a relative argv[0]-derived path), so canonicalize it. */
+    char raw[PATH_MAX];
+    uint32_t sz = (uint32_t)sizeof raw;
+    if (_NSGetExecutablePath(raw, &sz) != 0)
+        return -1;
+    char resolved[PATH_MAX];
+    if (!realpath(raw, resolved))
+        return -1;
+    size_t len = strlen(resolved);
+    if (len >= bufsz)
+        return -1;
+    memcpy(buf, resolved, len + 1);
+    return 0;
+#else
+    (void)buf;
+    (void)bufsz;
+    return -1;
+#endif
+}
+
+/* Resolve the zig binary to exec.
+ *
+ * WHY THIS EXISTS.  install_zig_activation.py's _find_zig_bin() bakes the
+ * LITERAL string "${CONDA_PREFIX}/bin/<triplet>-zig" into @ZIG_BIN@.  That
+ * works for the bash wrappers because bash expands ${CONDA_PREFIX} at exec
+ * time; a C shim gets no such expansion and would execv() a path containing a
+ * literal "${CONDA_PREFIX}" component.  The baked value therefore can never be
+ * used verbatim -- a latent bug that went unnoticed only because the unix shim
+ * was dead code until now.
+ *
+ * Resolution order:
+ *   1. SELF-LOCATION (preferred, and relocation-proof).  Every wrapper is
+ *      installed alongside zig itself as <dir>/<prefix>zig-<tool>, so zig is
+ *      at <dir>/<prefix>zig.  This needs no environment at all and survives
+ *      conda's prefix rewriting -- what the Relocation section of
+ *      WRAPPER_C_PORT_SCOPE.md asks for.
+ *   2. ${CONDA_PREFIX} expansion of the baked template, for platforms where
+ *      zig_self_path() is unavailable.
+ *   3. The template verbatim -- reachable only if it never contained the
+ *      placeholder, i.e. a future install path baking a real absolute path.
+ *      Kept so that change needs no edit here.
+ *
+ * Returns a pointer to static storage; never NULL. */
+static inline const char *zig_resolve_zig_bin(const char *baked,
+                                              const char *wrapper_prefix) {
+    static char buf[PATH_MAX];
+
+    char self[PATH_MAX];
+    if (zig_self_path(self, sizeof self) == 0) {
+        char *slash = strrchr(self, '/');
+        if (slash) {
+            *slash = '\0';   /* self is now the containing directory */
+            int n = snprintf(buf, sizeof buf, "%s/%szig", self, wrapper_prefix);
+            if (n > 0 && (size_t)n < sizeof buf && access(buf, X_OK) == 0)
+                return buf;
+        }
+    }
+
+    static const char kPlaceholder[] = "${CONDA_PREFIX}";
+    size_t plen = sizeof kPlaceholder - 1;
+    if (strncmp(baked, kPlaceholder, plen) == 0) {
+        const char *cp = getenv("CONDA_PREFIX");
+        if (cp && *cp) {
+            int n = snprintf(buf, sizeof buf, "%s%s", cp, baked + plen);
+            if (n > 0 && (size_t)n < sizeof buf)
+                return buf;
+        }
+    }
+
+    return baked;
 }
 
 /* Replace this process with zig.  Returns only on failure. */

@@ -555,6 +555,7 @@ outputs:
           ZIG_TRIPLET: ${{ zig_triplet }}
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
+          UNHOSTED_XCOMPILER: ${{ is_unhosted_xcompiler }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
           NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
           # Zig toolchain identification (independent of gcc TOOLCHAIN)
@@ -759,6 +760,11 @@ outputs:
             - building/gen_translators.py
             - building/_translate.gen.sh
             - building/_translate.inc
+            # Leg (C) syntax-checks the unix shim. Both are needed: the .c
+            # #includes unix_common.h. Without these two the leg SKIPs and the
+            # shim can silently rot uncompiled again.
+            - building/zig-cc-unix.c
+            - building/unix_common.h
         requirements:
           run:
             - python >=3.10
