@@ -786,9 +786,9 @@ def run_generated_bash_leg() -> None:
 def run_unix_shim_compile_leg() -> None:
     """Leg (C): syntax-check the unix C shim sources.
 
-    zig-cc-unix.c is not yet wired into any install path -- the bash templates
-    in recipe/scripts/ still ship -- so nothing else in the tree compiles it.
-    Without this leg it silently accumulated ~400 lines of never-compiled C.
+    zig-cc-unix.c IS now compiled by install_zig_activation.py (the unix
+    multiplexer), but only on unix build hosts; this leg is the strict
+    syntax gate that keeps it warning-clean everywhere else.
     Syntax-only: nothing is linked and no artifact is produced.
 
     -std=c11 is deliberately STRICTER than production, which passes no -std=
@@ -808,6 +808,14 @@ def run_unix_shim_compile_leg() -> None:
         SKIP(name, f"{_UNIX_SHIM_C.name} not staged in this environment")
         return
 
+    # POSIX-only sources (unix_common.h pulls errno.h/unistd.h), and this recipe
+    # installs only triplet-prefixed compilers -- so on a Windows host the bare
+    # which() below can only find an unrelated runner-image binary whose headers
+    # will not resolve. Nothing to syntax-check here.
+    if sys.platform == "win32":
+        SKIP(name, "unix shim sources are POSIX-only (Windows host)")
+        return
+
     cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
     if not cc:
         SKIP(name, "no C compiler on PATH")
@@ -820,9 +828,9 @@ def run_unix_shim_compile_leg() -> None:
     )
     diagnostics = proc.stderr.strip()
     if proc.returncode != 0:
-        FAIL(name, f"compile FAILED (rc={proc.returncode}):\n{diagnostics}")
+        FAIL(name, f"compile FAILED (cc={cc}, rc={proc.returncode}):\n{diagnostics}")
     elif diagnostics:
-        FAIL(name, f"compiled but emitted diagnostics:\n{diagnostics}")
+        FAIL(name, f"compiled but emitted diagnostics (cc={cc}):\n{diagnostics}")
     else:
         PASS(name)
 

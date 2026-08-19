@@ -126,28 +126,8 @@ context:
       "native"
     }}
 
-  # Emulator wiring for cross-target linux lanes.  THREE different strings are in
-  # play and none is interchangeable with another:
-  #   qemu_pkg      package spec    qemu-execve-ppc64le >=11  -- requirements ONLY.
-  #                 The >=11 floor is carried INSIDE this variable, not appended at
-  #                 the use sites: qemu_pkg is the empty string on every non-emulated
-  #                 lane, and `${{ qemu_pkg }} >=11` would render there as a bare
-  #                 `>=11`.  Below qemu 11 the emulator SIGSEGVs on rseq under
-  #                 glibc >=2.35 (see recipe/build.sh).
-  #   qemu_arch     binary on PATH  qemu-ppc64le         -- conda arch spelling
-  #   $QEMU_EXECVE  absolute path exported by that package's activation.  This is
-  #                 the authoritative handle: `command -v` can instead resolve to
-  #                 the CI image's own /usr/bin qemu-<arch>-static, which is
-  #                 unpinned.  Setting it also enables qemu-user's execve()
-  #                 redirect, so processes the wrappers spawn stay emulated rather
-  #                 than falling through to build-arch binaries.
-  # zig's -fqemu wants a FOURTH spelling, qemu-<llvm-arch> (qemu-powerpc64le);
-  # recipe/build.sh shadows that name onto PATH from $QEMU_EXECVE.
   qemu_arch: ${{ target_platform | replace("linux-", "") }}
   qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11" if linux and build_platform != target_platform else "" }}
-  # target_triplet, NOT conda_triplet: the latter is keyed on cross_target_platform_
-  # and so names the CROSS target, a different arch on the hosted-xcompiler lanes.
-  # QEMU_LD_PREFIX must match the arch actually being executed.
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -165,6 +145,10 @@ context:
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
   is_cross_target: ${{ build_platform != target_platform and cross_target_platform_ == target_platform }}
+
+  # C shims run where the package installs, so build them for target_platform
+  # whenever it differs from the build machine. See LLVM_LLM_REFERENCE.md
+  shim_runs_on_target: ${{ target_platform != build_platform }}
 
 recipe:
   name: zig-package
@@ -556,11 +540,17 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
           UNHOSTED_XCOMPILER: ${{ is_unhosted_xcompiler }}
+          SHIM_RUNS_ON_TARGET: ${{ shim_runs_on_target }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
           NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
           # Zig toolchain identification (independent of gcc TOOLCHAIN)
           # Includes -zig suffix so value is directly usable as binary name
-          CONDA_ZIG_BUILD: ${{ xc_build_triplet ~ "-zig" }}
+          # NATIVE build_triplet, not xc_build_triplet: this names the zig used to
+          # COMPILE the C shims on the build machine right now, so it must be the
+          # build machine's own zig. xc_build_triplet resolves to target_triplet on
+          # unhosted lanes, which named a compiler that cannot exist here. Matches
+          # the zig_impl_ output's own CONDA_ZIG_BUILD (build_triplet, see above).
+          CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
           LLVM_VERSION: ${{ llvm_version }}
@@ -568,22 +558,31 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
-        # The C shims are compiled at package-build time (unix multiplexer
-        # zig-cc-unix.c; .exe shims on non-unix) and must RUN on the build
-        # machine, so the compiling zig must be the BUILD-platform one. The
-        # same-lane zig_impl_<cross_target_platform_> targets
-        # cross_target_platform_ and therefore cannot serve here. Was gated
-        # `and not unix` until the Phase 4 C switchover put a compile on the
-        # unix path too, which broke every unix cross-compiler lane with
-        # "No zig binary found to compile C shim".
+        # The C shims (unix multiplexer zig-cc-unix.c; .exe shims on non-unix) are
+        # compiled at package-build time, so we need a zig that RUNS HERE, on the
+        # build machine. That is always the NATIVE zig_impl_<build_platform> — a
+        # cross-compiler is just the native compiler invoked with -target, which
+        # _compile_c_shim() already passes when unhosted.
+        #
+        # MUST be build_platform, never xc_build_platform: zig_impl_ carries
+        # `skip: not (is_native or is_cross_target)` and is_cross_target requires
+        # cross_target_platform_ == target_platform, so zig_impl_<X> only ever
+        # exists in subdir <X>. Requesting zig_impl_<xc_build_platform> when that
+        # differs from build_platform (i.e. on unhosted lanes) can NEVER resolve.
+        # Same spec the zig_impl_ output uses for its own self-hosting.
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
+            - zig_impl_${{ build_platform }} ${{ abi_version }}.*
         - if: not unix
           then:
             - ${{ compiler('c') }}
             - ${{ stdlib("c") }}
       host:
+        # The C shim links via gcc/ld.bfd on ppc64le, so GCC's sysroot — not
+        # zig's -target — sets its glibc. Match the build/test sysroot.
+        - if: linux
+          then:
+            - sysroot_${{ target_platform }} ${{ _c_v }}.*
         - if: not is_cross_compiler
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}

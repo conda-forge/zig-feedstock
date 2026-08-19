@@ -35,12 +35,12 @@ def main():
     # rattler-build renders Jinja booleans capitalized ("True"/"False"), so
     # normalize before comparing against "true" below
     cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
-    # An UNHOSTED cross-compiler (target_platform != build_platform) produces
-    # wrappers that execute on the TARGET machine, so the compiled C shim must
-    # be built for the target arch rather than natively. CROSS_COMPILER cannot
-    # answer this: it is the OR of hosted and unhosted. Same capitalization
-    # normalization applies.
-    unhosted = os.environ.get("UNHOSTED_XCOMPILER", "false").strip().lower() == "true"
+    # Wrappers execute where the package installs (target_platform), so the C
+    # shim must be built for that arch whenever it differs from the build
+    # machine. This covers unhosted cross-compilers AND is_cross_target lanes;
+    # UNHOSTED_XCOMPILER missed the latter (its cross_target_platform_ !=
+    # target_platform clause is false there). Same capitalization normalization.
+    shim_on_target = os.environ.get("SHIM_RUNS_ON_TARGET", "false").strip().lower() == "true"
 
     # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
     target_triplet = os.environ.get("CONDA_TRIPLET", "")
@@ -80,7 +80,7 @@ def main():
         zig_triplet=zig_triplet,
         conda_triplet=conda_triplet,
         is_nonunix=is_nonunix,
-        unhosted=unhosted,
+        shim_on_target=shim_on_target,
     )
 
 
@@ -107,7 +107,7 @@ def main():
             zig_triplet=native_zig_triplet,
             conda_triplet=native_triplet,
             is_nonunix=is_nonunix,
-            unhosted=unhosted,
+            shim_on_target=shim_on_target,
         )
 
         if is_nonunix:
@@ -178,8 +178,9 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
     correct both for native builds and for HOSTED cross-compilers (where
     build_platform == target_platform and the resulting wrapper executes on
     the build machine, e.g. win-64 -> win-arm64). Set target to the target
-    triple ONLY for an UNHOSTED cross-compiler (target_platform !=
-    build_platform), where the wrapper executes on the TARGET machine and a
+    triple whenever target_platform != build_platform — that is, for UNHOSTED
+    cross-compilers AND for is_cross_target lanes such as ppc64le built on an
+    x86_64 runner — where the wrapper executes on the TARGET machine and a
     natively-compiled shim would be the wrong architecture. The bash
     wrappers this C port replaces were architecture-neutral text scripts,
     so this concern is introduced by the C port itself.
@@ -222,6 +223,20 @@ def _strip_glibc_version(triplet: str) -> str:
     """
     m = re.match(r'^(.*-gnu[a-z]*)\.\d+\.\d+', triplet)
     return m.group(1) if m else triplet
+
+
+_SHIM_GLIBC_FLOOR = "2.17"
+_SHIM_GLIBC_FLOOR_BY_ARCH = {"riscv64": "2.39"}
+
+
+def _with_glibc_floor(triplet: str, arch: str) -> str:
+    # A bash wrapper had no glibc floor; a compiled ELF does.  Pin it low enough to
+    # run on any conda-forge sysroot, not just the one that built it.  riscv64 is
+    # higher by necessity: glibc gained riscv64 support long after 2.17.
+    if "-linux-gnu" not in triplet:
+        return triplet
+    floor = _SHIM_GLIBC_FLOOR_BY_ARCH.get(arch, _SHIM_GLIBC_FLOOR)
+    return f"{_strip_glibc_version(triplet)}.{floor}"
 
 
 def _find_zig_bin(conda_triplet: str, is_nonunix: bool = False) -> str:
@@ -282,7 +297,7 @@ def install_zig_cc_wrappers(
     zig_triplet: str,
     conda_triplet: str,
     is_nonunix: bool = False,
-    unhosted: bool = False,
+    shim_on_target: bool = False,
 ):
     """Install zig-cc/cxx/ar/ranlib/asm/rc wrapper scripts from templates."""
     scripts_dir = recipe_dir / "scripts"
@@ -386,12 +401,15 @@ def install_zig_cc_wrappers(
 
         mux_src = building_dir / "zig-cc-unix.c"
         if mux_src.exists():
-            # Compile natively unless this is an UNHOSTED cross-compiler, in
-            # which case the wrapper runs on the target machine and a natively
-            # compiled shim would be the wrong architecture. See _compile_c_shim.
-            shim_target = cc_target if unhosted else None
+            # Compile natively unless the wrapper will run on the target machine
+            # (target_platform != build_platform), where a natively compiled shim
+            # would be the wrong architecture. See _compile_c_shim.
+            shim_target = _with_glibc_floor(cc_target, target_arch) if shim_on_target else None
+            # macOS: reserve Mach-O header padding, else conda's post-build
+            # install_name_tool rpath rewrite fails ("load commands do not fit").
+            mux_extra = ("-Wl,-headerpad_max_install_names",) if "darwin" in conda_triplet else ()
             first = wrapper_dir / f"{conda_triplet}-{mux_names[0]}"
-            _compile_c_shim(mux_src, first, replacements, target=shim_target)
+            _compile_c_shim(mux_src, first, replacements, extra_args=mux_extra, target=shim_target)
             for name in mux_names[1:]:
                 dst = wrapper_dir / f"{conda_triplet}-{name}"
                 shutil.copyfile(first, dst)
