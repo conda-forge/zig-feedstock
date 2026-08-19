@@ -32,14 +32,19 @@ def main():
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
     zig_triplet = os.environ.get("ZIG_TRIPLET", "native")
     conda_triplet = os.environ.get("CONDA_TRIPLET", "")
-    cross_compiler = os.environ.get("CROSS_COMPILER", "false")
+    # recipe.yaml passes CROSS_COMPILER as a jinja boolean; rattler-build's
+    # serialization of it is version-dependent ("true" <=0.73, "True" >=0.74),
+    # so normalize instead of comparing against a literal. A mismatch is silent:
+    # the triplet-prefixed wrapper suite below is simply never installed.
+    cross_compiler_raw = os.environ.get("CROSS_COMPILER", "false")
+    cross_compiler = cross_compiler_raw.strip().lower() in ("true", "1", "yes", "on")
 
     # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
     target_triplet = os.environ.get("CONDA_TRIPLET", "")
     is_nonunix = "mingw32" in target_triplet
 
     # Cross-target triplet: only set for cross-compiler builds
-    cross_target_triplet = target_triplet if cross_compiler == "true" else ""
+    cross_target_triplet = target_triplet if cross_compiler else ""
 
     # Zig toolchain identification — compute from collision-free recipe env vars
     # (CONDA_ZIG_BUILD/HOST in os.environ may be polluted by activation of
@@ -51,7 +56,7 @@ def main():
     print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
     print(f"zig_triplet: {zig_triplet}")
     print(f"conda_triplet: {conda_triplet}")
-    print(f"CROSS_COMPILER: {cross_compiler}")
+    print(f"CROSS_COMPILER: {cross_compiler_raw}")
     print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
     print(f"CONDA_ZIG_HOST: {conda_zig_host}")
     print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
@@ -76,7 +81,7 @@ def main():
 
 
     # 3. Cross-compiler: install triplet-prefixed wrappers
-    if cross_compiler == "true":
+    if cross_compiler:
         native_triplet = os.environ.get("NATIVE_TRIPLET", "x86_64-conda-linux-gnu")
         native_zig_triplet = os.environ.get("NATIVE_ZIG_TRIPLET", "native")
 
