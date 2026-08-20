@@ -80,6 +80,11 @@ def main() -> None:
     if not pthread_a.is_file():
         sys.exit(f"FAIL: missing import lib {pthread_a}")
     pthread_size = pthread_a.stat().st_size
+    if pthread_size == 0:
+        sys.exit(
+            f"FAIL: {pthread_a} is 0 bytes (dlltool failed to generate a "
+            f"real import lib -- see _mingw.sh WARNING output)"
+        )
     if pthread_size > 5000:
         sys.exit(
             f"FAIL: libpthread.a is {pthread_size} bytes "

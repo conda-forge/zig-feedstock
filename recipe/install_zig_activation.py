@@ -26,7 +26,8 @@ from pathlib import Path
 
 
 def main():
-    print("=== Installing Zig Activation Package ===")
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print("=== Installing Zig Activation Package ===")
 
     prefix = Path(os.environ.get("PREFIX", sys.prefix))
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
@@ -56,14 +57,15 @@ def main():
     conda_zig_build = f"{native_triplet}-zig"
     conda_zig_host = f"{conda_triplet}-zig"
 
-    print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
-    print(f"zig_triplet: {zig_triplet}")
-    print(f"conda_triplet: {conda_triplet}")
-    print(f"CROSS_COMPILER: {cross_compiler}")
-    print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
-    print(f"CONDA_ZIG_HOST: {conda_zig_host}")
-    print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
-    print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
+        print(f"zig_triplet: {zig_triplet}")
+        print(f"conda_triplet: {conda_triplet}")
+        print(f"CROSS_COMPILER: {cross_compiler}")
+        print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
+        print(f"CONDA_ZIG_HOST: {conda_zig_host}")
+        print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
+        print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
 
     # 1. Install activation/deactivation scripts
     install_activation_scripts(
@@ -391,29 +393,20 @@ def install_zig_cc_wrappers(
         ]
 
         mux_src = building_dir / "zig-cc-unix.c"
-        if mux_src.exists():
-            # Compile natively unless the wrapper will run on the target machine
-            # (target_platform != build_platform), where a natively compiled shim
-            # would be the wrong architecture. See _compile_c_shim.
-            shim_target = _with_glibc_floor(cc_target, target_arch) if shim_on_target else None
-            # macOS: reserve Mach-O header padding, else conda's post-build
-            # install_name_tool rpath rewrite fails ("load commands do not fit").
-            mux_extra = ("-Wl,-headerpad_max_install_names",) if "darwin" in conda_triplet else ()
-            first = wrapper_dir / f"{conda_triplet}-{mux_names[0]}"
-            _compile_c_shim(mux_src, first, replacements, extra_args=mux_extra, target=shim_target)
-            for name in mux_names[1:]:
-                dst = wrapper_dir / f"{conda_triplet}-{name}"
-                shutil.copyfile(first, dst)
-                shutil.copymode(first, dst)
-                print(f"  Installed (multiplexer copy): {dst}")
-        else:
-            # No C source present — fall back to the bash templates for the
-            # 8 names that still have one. zig-force-load-cc/cxx have no bash
-            # fallback anymore (their .sh templates were retired with the port).
-            for name in mux_names[:8]:
-                src = scripts_dir / f"{name}.sh"
-                if src.exists():
-                    _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
+        # Compile natively unless the wrapper will run on the target machine
+        # (target_platform != build_platform), where a natively compiled shim
+        # would be the wrong architecture. See _compile_c_shim.
+        shim_target = _with_glibc_floor(cc_target, target_arch) if shim_on_target else None
+        # macOS: reserve Mach-O header padding, else conda's post-build
+        # install_name_tool rpath rewrite fails ("load commands do not fit").
+        mux_extra = ("-Wl,-headerpad_max_install_names",) if "darwin" in conda_triplet else ()
+        first = wrapper_dir / f"{conda_triplet}-{mux_names[0]}"
+        _compile_c_shim(mux_src, first, replacements, extra_args=mux_extra, target=shim_target)
+        for name in mux_names[1:]:
+            dst = wrapper_dir / f"{conda_triplet}-{name}"
+            shutil.copyfile(first, dst)
+            shutil.copymode(first, dst)
+            print(f"  Installed (multiplexer copy): {dst}")
 
 
 def install_unix_cross_wrappers(

@@ -804,11 +804,11 @@ outputs:
           bin:
             - zig
       - script:
-          - if: not arm64
+          - if: build_platform != target_platform
             then:
-              - zig version
-            else:
               - echo "Skip on cross-compiled platform"
+            else:
+              - zig version
 
   # ==========================================================================
   # TOOLCHAIN META-PACKAGE: zig-compiler (toolchain metapackage)

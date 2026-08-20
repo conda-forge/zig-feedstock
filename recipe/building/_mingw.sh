@@ -155,8 +155,15 @@ SYNCHRONIZATION_DEF
     if [[ -n "${_dlltool}" ]] && [[ -x "${_zig_bin}" ]]; then
       dbg echo "=== Generating MinGW import libs (dlltool=${_dlltool}) ==="
       _gen_count=0
+      _gen_ok=0
+      _gen_fail=0
 
-      # Helper: generate .a from a processed .def file
+      # Helper: generate .a from a processed .def file.
+      # Captures dlltool's real exit status (was previously discarded via
+      # `2>/dev/null || true`, so a failed dlltool run left no trace beyond
+      # the attempt counter). set -e safe: a single failure must not abort
+      # the ~800-iteration loop, so the failure branch is handled explicitly
+      # rather than left to propagate.
       function _gen_implib() {
         local stem="$1" def="$2"
         local lib="${_mingw_common}/lib${stem}.a"
@@ -164,7 +171,12 @@ SYNCHRONIZATION_DEF
         local dll
         dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
         [[ -z "${dll}" ]] && dll="${stem}.dll"
-        "${_dlltool}" -m "${_dlltool_machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null || true
+        if "${_dlltool}" -m "${_dlltool_machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null; then
+          _gen_ok=$(( _gen_ok + 1 ))
+        else
+          _gen_fail=$(( _gen_fail + 1 ))
+          echo "WARNING: dlltool failed to generate lib${stem}.a from ${def}" >&2
+        fi
         _gen_count=$(( _gen_count + 1 ))
       }
 
@@ -172,7 +184,7 @@ SYNCHRONIZATION_DEF
       # trace lines (for / [[ -f ]] / basename / the locals inside _gen_implib /
       # awk / dlltool / counter) and there are ~800 .def and .def.in files, so
       # this region alone emits several thousand CI log lines with no diagnostic
-      # value: dlltool failures are already swallowed by `2>/dev/null || true`
+      # value: dlltool failures now emit a WARNING each (see _gen_implib above)
       # and the post-loop summaries report the counts. Restored immediately
       # after the loops so Step 5 onward (CRT compile, stub archives -- where
       # the real failures have occurred) stays fully traced.
@@ -214,14 +226,19 @@ SYNCHRONIZATION_DEF
       _uuid_src="${_mingw_libsrc}/uuid.c"
       if [[ ! -f "${_uuid_lib}" ]] && [[ -f "${_uuid_src}" ]]; then
         _uuid_obj="${_mingw_common}/_uuid.o"
-        "${_zig_bin}" cc -target "${_win_target}" -c "${_uuid_src}" \
+        if "${_zig_bin}" cc -target "${_win_target}" -c "${_uuid_src}" \
             -o "${_uuid_obj}" 2>/dev/null && \
-          "${_zig_bin}" ar rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null || true
+          "${_zig_bin}" ar rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null; then
+          _gen_ok=$(( _gen_ok + 1 ))
+        else
+          _gen_fail=$(( _gen_fail + 1 ))
+          echo "WARNING: failed to compile/archive libuuid.a from ${_uuid_src}" >&2
+        fi
         rm -f "${_uuid_obj}"
         _gen_count=$(( _gen_count + 1 ))
       fi
 
-      dbg echo "=== Generated ${_gen_count} import libs in ${_mingw_common} ==="
+      dbg echo "=== Generated ${_gen_count} import lib attempts (${_gen_ok} ok, ${_gen_fail} failed) in ${_mingw_common} ==="
 
       # Step 4: Supplemental import libs from mingw-w64 .def.in templates.
       # Zig doesn't ship msvcrt.def -- we provide a complete mingw-w64 version
@@ -262,10 +279,34 @@ SYNCHRONIZATION_DEF
           [[ -f "${_supp_lib}" ]] && continue
           _gen_implib "${_supp_stem}" "${_supp_def}"
         done
-        dbg echo "=== Supplemental import libs done (total ${_gen_count}) ==="
+        dbg echo "=== Supplemental import libs done (total ${_gen_count} attempts, ${_gen_ok} ok, ${_gen_fail} failed) ==="
       fi
 
       if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi
+
+      # Post-loop check: a successful dlltool/ar exit does not guarantee a
+      # usable archive. Sweep every *.a produced above and flag zero-byte
+      # files, which would otherwise ship silently and only surface as an
+      # undefined symbol at a downstream Windows link. WARN (not FATAL): each
+      # .def covers one specific Windows DLL's API surface out of ~800, most
+      # of which a given downstream consumer never links against -- unlike
+      # the CRT startup objects and cache-warm libmingw32/libucrt/libmingwex/
+      # libwinpthread below (Step 5/6, FATAL at :507-513), which every mingw
+      # target unconditionally needs. This subsystem is already best-effort:
+      # a totally absent dlltool/zig only WARNs and skips pre-generation
+      # entirely (see the final `else` branch of this function), so a single
+      # empty import lib among hundreds should not be build-fatal either.
+      _gen_empty=0
+      for _lib in "${_mingw_common}"/*.a; do
+        [[ -f "${_lib}" ]] || continue
+        if [[ ! -s "${_lib}" ]]; then
+          echo "WARNING: zero-byte import lib: ${_lib}" >&2
+          _gen_empty=$(( _gen_empty + 1 ))
+        fi
+      done
+      if [[ "${_gen_empty}" -gt 0 ]]; then
+        echo "WARNING: ${_gen_empty} zero-byte import lib(s) in ${_mingw_common}; downstream Windows links referencing these will fail with undefined symbols." >&2
+      fi
 
       # Step 5: arch-specific stubs and CRT output directory routing.
       # aarch64 emits CRT objects into libarm64/ (arch-specific dir, prevents
