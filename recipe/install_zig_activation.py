@@ -368,17 +368,11 @@ def install_zig_cc_wrappers(
         # Install shared helpers (sourced by wrapper scripts, not executed directly).
         # _translate.gen.sh is the generated flag-translation fragment (R1-R9);
         # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
-        # the other three helpers which live in recipe/scripts/ alongside the
+        # the other two helpers which live in recipe/scripts/ alongside the
         # wrapper templates that source them.
-        #
-        # All four are still required: the two force-load wrappers below remain
-        # bash (see below) and reach _zig-cc-common.sh via
-        # _zig-force-load-common.sh, and the parity test reads _translate.gen.sh
-        # from disk.
         for helper, helper_src_dir in [
             ("_zig-cache-common.sh", scripts_dir),
             ("_zig-cc-common.sh", scripts_dir),
-            ("_zig-force-load-common.sh", scripts_dir),
             ("_translate.gen.sh", building_dir),
         ]:
             src = helper_src_dir / helper
@@ -388,16 +382,13 @@ def install_zig_cc_wrappers(
         # The C multiplexer: ONE binary compiled once, then copied to each
         # wrapper name. It dispatches on basename(argv[0]) with the
         # @WRAPPER_PREFIX@ stripped, so every copy behaves as its own tool.
-        #
-        # It covers 8 of the 10 names. zig-force-load-cc / zig-force-load-cxx
-        # are inventory item 9 (Phase 3c: mktemp -d, `ar x`, .o globbing, trap
-        # cleanup) and stay bash until that port lands, so
-        # test_wrapper_shebang_portability drops to 2 WARNs, not 0.
+        # Covers all 10 names, including zig-force-load-cc / zig-force-load-cxx
+        # (formerly bash, now dispatch arms in zig-cc-unix.c).
         mux_names = [
             "zig-cc", "zig-cxx", "zig-ar", "zig-ranlib",
             "zig-asm", "zig-rc", "zig-lld", "zig-windres",
+            "zig-force-load-cc", "zig-force-load-cxx",
         ]
-        bash_names = ["zig-force-load-cc", "zig-force-load-cxx"]
 
         mux_src = building_dir / "zig-cc-unix.c"
         if mux_src.exists():
@@ -416,14 +407,13 @@ def install_zig_cc_wrappers(
                 shutil.copymode(first, dst)
                 print(f"  Installed (multiplexer copy): {dst}")
         else:
-            # No C source present — fall back to the bash templates for
-            # everything, preserving the pre-port behavior.
-            bash_names = mux_names + bash_names
-
-        for name in bash_names:
-            src = scripts_dir / f"{name}.sh"
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
+            # No C source present — fall back to the bash templates for the
+            # 8 names that still have one. zig-force-load-cc/cxx have no bash
+            # fallback anymore (their .sh templates were retired with the port).
+            for name in mux_names[:8]:
+                src = scripts_dir / f"{name}.sh"
+                if src.exists():
+                    _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
 
 
 def install_unix_cross_wrappers(

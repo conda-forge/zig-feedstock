@@ -623,10 +623,10 @@ outputs:
               then:
                 - bin/${{ conda_triplet }}-_zig-cc-common.sh
                 - bin/${{ conda_triplet }}-_zig-cache-common.sh
-                - bin/${{ conda_triplet }}-_zig-force-load-common.sh
                 - bin/${{ conda_triplet }}-_translate.gen.sh
-                - bin/${{ conda_triplet }}-zig-force-load-cc
-                - bin/${{ conda_triplet }}-zig-force-load-cxx
+                # Compiled multiplexer copies, unix-only (no Windows arm).
+                - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc${{ exe }}
+                - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx${{ exe }}
             # Native-triplet compiler suite (cross-compiler builds only) —
             # the build machine's own zig-cc/cxx/etc, mirroring the target
             # suite above but keyed on xc_build_triplet instead of conda_triplet.
@@ -644,10 +644,9 @@ outputs:
               then:
                 - bin/${{ xc_build_triplet }}-_zig-cc-common.sh
                 - bin/${{ xc_build_triplet }}-_zig-cache-common.sh
-                - bin/${{ xc_build_triplet }}-_zig-force-load-common.sh
                 - bin/${{ xc_build_triplet }}-_translate.gen.sh
-                - bin/${{ xc_build_triplet }}-zig-force-load-cc
-                - bin/${{ xc_build_triplet }}-zig-force-load-cxx
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cc${{ exe }}
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cxx${{ exe }}
             # Post-install tests
             - etc/conda/test-files/zig*
 

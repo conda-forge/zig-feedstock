@@ -18,7 +18,11 @@
  * Production currently compiles without -std= (gnu dialect, _DEFAULT_SOURCE
  * implied) so only strict builds bite, but request POSIX 2008 explicitly so
  * both work.  getuid() needs no such request: glibc guards it under
- * __USE_POSIX, which stays on.
+ * __USE_POSIX, which stays on.  realpath() is guarded differently -- glibc
+ * requires __USE_MISC or __USE_XOPEN_EXTENDED, neither of which
+ * _POSIX_C_SOURCE alone implies, so it hits the same warning-on-gcc /
+ * hard-error-on-clang>=16 class as setenv() unless _XOPEN_SOURCE 700 is
+ * also requested (XSI extras plus POSIX.1-2008).
  *
  * This MUST precede every system header, so this header is deliberately
  * included FIRST in zig-cc-unix.c (:33).  Keep it that way.
@@ -26,6 +30,9 @@
  * on macOS. */
 #if !defined(_POSIX_C_SOURCE) && !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE)
 #  define _POSIX_C_SOURCE 200809L
+#endif
+#if !defined(_XOPEN_SOURCE) && !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE)
+#  define _XOPEN_SOURCE 700
 #endif
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
 #  define _DARWIN_C_SOURCE
@@ -233,6 +240,15 @@ static inline const char *zig_resolve_zig_bin(const char *baked,
 
 /* Replace this process with zig.  Returns only on failure. */
 static inline int exec_zig(const char *zig_bin, char *const argv[]) {
+    /* Test-observability hook: print the final argv instead of exec'ing. */
+    const char *print_argv = getenv("ZIG_WRAPPER_PRINT_ARGV");
+    if (print_argv && *print_argv && strcmp(print_argv, "0") != 0) {
+        int i;
+        for (i = 0; argv[i]; i++)
+            printf("%s\n", argv[i]);
+        exit(0);
+    }
+
     execv(zig_bin, argv);
     fprintf(stderr, "%s: failed to exec %s: %s\n",
             argv[0] ? argv[0] : "zig-wrapper", zig_bin, strerror(errno));

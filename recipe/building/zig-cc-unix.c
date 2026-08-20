@@ -12,13 +12,13 @@
  *   zig-lld      -> zig ld.lld / ld64.lld by platform
  *   zig-windres  -> zig rc,     -o/-o<x> rewritten to -fo/-fo<x>
  *   zig-asm      -> zig cc -target <t> -mcpu=baseline [-isysroot <sr>]
- *
- * NOT handled here: zig-force-load-cc / zig-force-load-cxx.  Those are
- * inventory item 9 (Phase 3c) and remain bash until the force-load port lands.
+ *   zig-force-load-cc  -> alias of zig-cc   (see STEP 10b in run_cc)
+ *   zig-force-load-cxx -> alias of zig-cxx  (see STEP 10b in run_cc)
  *
  * Replaces recipe/scripts/{zig-cc,zig-cxx,zig-ar,zig-ranlib,zig-rc,zig-lld,
- * zig-windres,zig-asm}.sh.  Each runner below cites the bash file:line it
- * replaces so the two stay auditable until the bash wrappers are retired.
+ * zig-windres,zig-asm,zig-force-load-cc,zig-force-load-cxx}.sh.  Each runner
+ * below cites the bash file:line it replaces so the two stay auditable until
+ * the bash wrappers are retired.
  *
  * run_cc() is a port of recipe/scripts/_zig-cc-common.sh (sourced by
  * zig-cc.sh / zig-cxx.sh).  Every numbered STEP inside it cites the bash line
@@ -56,6 +56,19 @@
 /* --- small string helpers --- */
 static int starts_with(const char *s, const char *prefix) {
     return strncmp(s, prefix, strlen(prefix)) == 0;
+}
+
+static int ends_with(const char *s, const char *suffix) {
+    size_t ls = strlen(s), lx = strlen(suffix);
+    return ls >= lx && strcmp(s + (ls - lx), suffix) == 0;
+}
+
+/* -all_load applies to archives actually present on the link line; mirrors
+ * bash's `[[ "$_a" == *.a ]] && [[ -f "$_a" ]]`
+ * (_zig-force-load-common.sh:66). */
+static int is_regular_file(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
 
 static int str_eq(const char *a, const char *b) {
@@ -373,6 +386,77 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
     }
     int inject_target = !has_target;
 
+    /* ---- STEP 10b (replaces recipe/scripts/_zig-force-load-common.sh:29-96):
+     * -all_load rewrite.
+     *
+     * zig's CLI already turns `-force_load <archive>` into a link input with
+     * must_link = true (upstream src/main.zig, since PR #10584), and our
+     * Mach-O LLD patch emits -force_load back out for must_link archives
+     * (recipe/patches/Lld.zig-macho-lld-support.patch:234).  Both the bare
+     * and the -Wl,-force_load,<a> spellings reach that handler, so -force_load
+     * round-trips untouched and needs nothing from us.
+     *
+     * -all_load has no handler at all: it falls through to main.zig's terminal
+     * `fatal("unsupported linker arg: {s}")` and kills the link.  It is the
+     * only spelling needing a rewrite, and the rewrite is one -force_load per
+     * archive on the line -- which is what -all_load means.  The bash
+     * version's mktemp -d + `ar x` extraction existed only because it assumed
+     * zig understood neither flag. */
+    int has_all_load = 0;
+    for (i = 0; i < fi; i++) {
+        if (str_eq(filtered[i], "-all_load") || str_eq(filtered[i], "-Wl,-all_load")) {
+            has_all_load = 1;
+            break;
+        }
+    }
+
+    const char **force_load_extra = NULL;
+    int n_force_load_extra = 0;
+    if (has_all_load) {
+        force_load_extra = (const char **)malloc(sizeof(char *) * (size_t)(2 * fi + 1));
+        if (!force_load_extra) {
+            fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+            free(filtered);
+            return 1;
+        }
+        /* Drop every -all_load token.  A bare one may have come from
+         * `-Xlinker -all_load`, whose now-orphaned -Xlinker would otherwise
+         * consume the following argument, so drop that too. */
+        int wi = 0;
+        for (i = 0; i < fi; i++) {
+            const char *arg = filtered[i];
+            if (str_eq(arg, "-Wl,-all_load"))
+                continue;
+            if (str_eq(arg, "-all_load")) {
+                if (wi > 0 && str_eq(filtered[wi - 1], "-Xlinker"))
+                    wi--;
+                continue;
+            }
+            filtered[wi++] = arg;
+        }
+        fi = wi;
+
+        /* Emit -force_load per archive, skipping any already named by an
+         * explicit -force_load so the same input is not marked must_link
+         * twice. */
+        for (i = 0; i < fi; i++) {
+            const char *arg = filtered[i];
+            if (str_eq(arg, "-force_load")) { i++; continue; }
+            if (starts_with(arg, "-Wl,-force_load,")) continue;
+            if (!ends_with(arg, ".a") || !is_regular_file(arg)) continue;
+            int dup = 0, j;
+            for (j = 0; j < fi; j++) {
+                if (str_eq(filtered[j], "-force_load") && j + 1 < fi
+                    && str_eq(filtered[j + 1], arg)) { dup = 1; break; }
+                if (starts_with(filtered[j], "-Wl,-force_load,")
+                    && str_eq(filtered[j] + strlen("-Wl,-force_load,"), arg)) { dup = 1; break; }
+            }
+            if (dup) continue;
+            force_load_extra[n_force_load_extra++] = "-force_load";
+            force_load_extra[n_force_load_extra++] = arg;
+        }
+    }
+
     /* ---- STEP 11 (_zig-cc-common.sh:192): assemble the final argv
      * and exec. argv[0] is the zig binary path itself, matching
      * zig-cc.sh/zig-cxx.sh's `exec "@ZIG_BIN@" "${_exec_args[@]}"`
@@ -381,11 +465,12 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
      * args, NULL -- matching bash's
      * _exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}"
      * "${_sysroot_flags[@]}" "${_final_args[@]}"). */
-    int max_args = fi + n_sysroot_flags + 6;
+    int max_args = fi + n_sysroot_flags + n_force_load_extra + 6;
     const char **new_argv = (const char **)malloc(sizeof(char *) * (size_t)max_args);
     if (!new_argv) {
         fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         free(filtered);
+        free(force_load_extra);
         return 1;
     }
 
@@ -402,6 +487,8 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
         new_argv[ni++] = sysroot_flags[i];
     for (i = 0; i < fi; i++)
         new_argv[ni++] = filtered[i];
+    for (i = 0; i < n_force_load_extra; i++)
+        new_argv[ni++] = force_load_extra[i];
     new_argv[ni] = NULL;
 
     /* exec_zig() replaces this process on success and returns only on
@@ -581,7 +668,8 @@ static int run_asm(const char *zig_bin, const char *prog, int argc, char *argv[]
 typedef enum {
     MODE_UNKNOWN = 0,
     MODE_CC, MODE_CXX, MODE_AR, MODE_RANLIB,
-    MODE_ASM, MODE_RC, MODE_LLD, MODE_WINDRES
+    MODE_ASM, MODE_RC, MODE_LLD, MODE_WINDRES,
+    MODE_FORCE_LOAD_CC, MODE_FORCE_LOAD_CXX
 } zig_mode;
 
 /* Hand-rolled rather than <libgen.h> basename(): the POSIX version may modify
@@ -611,6 +699,11 @@ static zig_mode mode_from_argv0(const char *argv0, const char **out_prog) {
     if (str_eq(base, "zig-rc"))      return MODE_RC;
     if (str_eq(base, "zig-lld"))     return MODE_LLD;
     if (str_eq(base, "zig-windres")) return MODE_WINDRES;
+    /* Aliases of cc/c++: zig honours -force_load itself and STEP 10b rewrites
+     * -all_load, so these need no distinct runner.  The names are kept because
+     * build systems invoke them by name. */
+    if (str_eq(base, "zig-force-load-cc"))  return MODE_FORCE_LOAD_CC;
+    if (str_eq(base, "zig-force-load-cxx")) return MODE_FORCE_LOAD_CXX;
     return MODE_UNKNOWN;
 }
 
@@ -625,7 +718,8 @@ int main(int argc, char *argv[]) {
     if (mode == MODE_UNKNOWN) {
         fprintf(stderr,
                 "%s: not a recognized zig wrapper name.\n"
-                "  Expected " WRAPPER_PREFIX "zig-{cc,cxx,ar,ranlib,asm,rc,lld,windres}.\n",
+                "  Expected " WRAPPER_PREFIX "zig-{cc,cxx,ar,ranlib,asm,rc,lld,windres,"
+                "force-load-cc,force-load-cxx}.\n",
                 prog);
         return 127;
     }
@@ -641,6 +735,8 @@ int main(int argc, char *argv[]) {
     case MODE_LLD:     return run_lld(zig_bin, prog, argc, argv);
     case MODE_WINDRES: return run_windres(zig_bin, prog, argc, argv);
     case MODE_ASM:     return run_asm(zig_bin, prog, argc, argv);
+    case MODE_FORCE_LOAD_CC:  return run_cc(zig_bin, prog, 0, argc, argv);
+    case MODE_FORCE_LOAD_CXX: return run_cc(zig_bin, prog, 1, argc, argv);
     default:           return 127;   /* unreachable; silences -Wswitch */
     }
 }
