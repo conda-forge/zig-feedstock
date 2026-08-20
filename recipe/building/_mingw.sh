@@ -157,6 +157,23 @@ SYNCHRONIZATION_DEF
       _gen_count=0
       _gen_ok=0
       _gen_fail=0
+      _gen_skipped=0
+
+      # Pre-generation census: how many .a archives already existed in
+      # ${_mingw_common} before any generation ran. Distinguishes "zig's
+      # tarball already shipped everything, our loop is a no-op" from "our
+      # loop failed to produce anything" -- both show up as generated=0,
+      # skipped=N otherwise, with opposite implications. `|| true` guards
+      # the pipe under `set -o pipefail` (recipe/build.sh): when the glob
+      # matches nothing, `ls` exits non-zero (2) even though `wc -l` itself
+      # still succeeds and prints 0, so without `|| true` pipefail would
+      # propagate ls's failure and set -e would abort the build. The
+      # `+ 0` arithmetic re-normalizes in case `wc -l` pads its output
+      # (e.g. leading spaces on some platforms). Plain counter, not a bash
+      # array: `${#arr[@]}` on an empty array trips `set -u` under bash 3.2
+      # (see _warm_failed_count above).
+      _gen_pre=$(ls -1 "${_mingw_common}"/*.a 2>/dev/null | wc -l || true)
+      _gen_pre=$(( _gen_pre + 0 ))
 
       # Helper: generate .a from a processed .def file.
       # Captures dlltool's real exit status (was previously discarded via
@@ -167,7 +184,10 @@ SYNCHRONIZATION_DEF
       function _gen_implib() {
         local stem="$1" def="$2"
         local lib="${_mingw_common}/lib${stem}.a"
-        [[ -f "${lib}" ]] && return 0
+        if [[ -f "${lib}" ]]; then
+          _gen_skipped=$(( _gen_skipped + 1 ))
+          return 0
+        fi
         local dll
         dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
         [[ -z "${dll}" ]] && dll="${stem}.dll"
@@ -207,6 +227,10 @@ SYNCHRONIZATION_DEF
       for _def_in in "${_mingw_common}"/*.def.in; do
         [[ -f "${_def_in}" ]] || continue
         _stem="$(basename "${_def_in%.def.in}")"
+        # Skip include-only fragments (no LIBRARY/EXPORTS; macros defined externally)
+        case "${_stem}" in
+          ucrtbase-common|vcruntime140-common) continue ;;
+        esac
         _lib="${_mingw_common}/lib${_stem}.a"
         [[ -f "${_lib}" ]] && continue
         _def="${_mingw_common}/${_stem}.def"
@@ -238,7 +262,7 @@ SYNCHRONIZATION_DEF
         _gen_count=$(( _gen_count + 1 ))
       fi
 
-      dbg echo "=== Generated ${_gen_count} import lib attempts (${_gen_ok} ok, ${_gen_fail} failed) in ${_mingw_common} ==="
+      echo "=== Generated ${_gen_count} import lib attempts (${_gen_pre} pre-existing, ${_gen_ok} ok, ${_gen_fail} failed, ${_gen_skipped} skipped-present) in ${_mingw_common} [win_arch=${_win_arch}] ==="
 
       # Step 4: Supplemental import libs from mingw-w64 .def.in templates.
       # Zig doesn't ship msvcrt.def -- we provide a complete mingw-w64 version
@@ -279,7 +303,7 @@ SYNCHRONIZATION_DEF
           [[ -f "${_supp_lib}" ]] && continue
           _gen_implib "${_supp_stem}" "${_supp_def}"
         done
-        dbg echo "=== Supplemental import libs done (total ${_gen_count} attempts, ${_gen_ok} ok, ${_gen_fail} failed) ==="
+        echo "=== Supplemental import libs done (${_gen_pre} pre-existing, total ${_gen_count} attempts, ${_gen_ok} ok, ${_gen_fail} failed, ${_gen_skipped} skipped-present) [win_arch=${_win_arch}] ==="
       fi
 
       if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi

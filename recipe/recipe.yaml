@@ -472,13 +472,14 @@ outputs:
 
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
+      # ppc64le stays excluded (unhosted lane); arm64 runs natively so it is included.
       - script:
           - if: unix
             then:
               - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
             else:
               - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
-          - if: linux and not ppc64le and not arm64
+          - if: linux and not ppc64le
             then:
               # Linux: test with ELF --dynamic-list
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
@@ -804,11 +805,7 @@ outputs:
           bin:
             - zig
       - script:
-          - if: build_platform != target_platform
-            then:
-              - echo "Skip on cross-compiled platform"
-            else:
-              - zig version
+          - zig version
 
   # ==========================================================================
   # TOOLCHAIN META-PACKAGE: zig-compiler (toolchain metapackage)
