@@ -1,11 +1,11 @@
 schema_version: 1
 
 context:
-  build_number: 1
+  build_number: 0
   name: zig
   version: "0.17.0"
-  api_version: ${{ version | split(".") | last }}
-  snapshot: "1786+75044cb04"
+  abi_version: ${{ (version | split("."))[:2] | join(".") }}
+  snapshot: "1811+6716bf52e"
 
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
@@ -149,7 +149,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: 06248bbfdbfc9c94d536b32f0009ae63292fdb43ff73bb45e4ae4dcd1e9809c8
+    sha256: 0ee8f2ef68655e502c377668f231270deff08ab1bc1ef950a832dbd0e5389ea5
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -235,32 +235,32 @@ source:
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: bd1fd490de61d8daed578433d482b1f40715bd3a03f7eab0cef8772d617135a5
+            sha256: db1ce237e0303233421e5b6be7c4c767844bb67077c1b7f605f626705ab43060
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 44b3a60b9e401bf8c8f582111f6844be711c20aba961833ba3f6df26883ce1d8
+            sha256: 2f768f27561b1af4ad4720051f771f912f6b0284d856ee2f6aaa3fffc74a9304
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 025779ca7d52484765f1cbd4f4a846b24d4172d1e08bdf54c7492ce75151b874
+            sha256: f435acda73357c27105fd1ad3057d2f8e5f23d5b6ed1035de8460a0220c43d2e
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 842bfc37b6415941fa31a5344fed8d8209411e87c8643cd5edf15862c2593690
+            sha256: d95fbbfc6c1cd2409c2c48f6f9ac54d249c4239f2202bc33d5001c660a80776f
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 6bafad4cbb2235ada9bbcb7d71f0f7de644f3fcad953a281a0584f5e7d3351b1
+            sha256: 145a9f0169bf9d76e44e3a0373e33fcf9ed88343357dd52ce17b91ca8c66ad6c
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
           - url: https://ziglang.org/builds/zig-powerpc64le-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: c5989192d3e1e259f834114a045f56a0fb41ac6b046e2cf00eb8e4484a239b4d
+            sha256: f9f850f811d14c43e668fc15e2e328c5ab3f8349e6c472ca86466af7229a8fb6
             target_directory: zig-bootstrap
 
 build:
@@ -341,7 +341,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ build_platform }} ${{ abi_version }}.*
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -558,7 +558,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -572,7 +572,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ api_version }}.*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le

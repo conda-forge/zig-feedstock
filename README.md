@@ -72,27 +72,6 @@ Current build status
                   <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-arm64" alt="variant">
                 </a>
               </td>
-            </tr><tr>
-              <td>win_64_cross_target_platform_win-32</td>
-              <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=win&configuration=win%20win_64_cross_target_platform_win-32" alt="variant">
-                </a>
-              </td>
-            </tr><tr>
-              <td>win_64_cross_target_platform_win-64</td>
-              <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=win&configuration=win%20win_64_cross_target_platform_win-64" alt="variant">
-                </a>
-              </td>
-            </tr><tr>
-              <td>win_64_cross_target_platform_win-arm64</td>
-              <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=win&configuration=win%20win_64_cross_target_platform_win-arm64" alt="variant">
-                </a>
-              </td>
             </tr>
           </tbody>
         </table>
@@ -135,31 +114,73 @@ conda config --add channels conda-forge/label/zig_dev
 conda config --set channel_priority strict
 ```
 
-Once the `conda-forge/label/zig_dev` channel has been enabled, `zig, zig-compiler, zig_impl_linux-64, zig_impl_linux-aarch64, zig_impl_linux-ppc64le, zig_impl_osx-64, zig_impl_osx-arm64, zig_impl_win-64, zig_linux-64, zig_linux-aarch64, zig_linux-ppc64le, zig_linux-riscv64, zig_linux-s390x, zig_osx-64, zig_osx-arm64, zig_win-32, zig_win-64, zig_win-arm64` can be installed with `conda`:
+How to use
+----------
+
+<details>
+<summary>With conda</summary>
 
 ```
 conda install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
 ```
 
-or with `mamba`:
+</details>
+
+<details>
+<summary>With mamba</summary>
 
 ```
 mamba install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
 ```
 
-It is possible to list all of the versions of `zig` available on your platform with `conda`:
+</details>
+
+<details>
+<summary>With pixi</summary>
+
+```
+# for adding to your local project
+pixi add zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
+# for installing globally
+pixi global install zig zig-compiler zig_impl_linux-64 zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_impl_osx-64 zig_impl_osx-arm64 zig_impl_win-64 zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x zig_osx-64 zig_osx-arm64 zig_win-32 zig_win-64 zig_win-arm64
+```
+
+</details>
+
+Search package versions
+-----------------------
+
+It is possible to list all of the versions of `zig` available on your platform:
+
+<details>
+<summary>With conda</summary>
 
 ```
 conda search zig --channel conda-forge/label/zig_dev
 ```
 
-or with `mamba`:
+</details>
+
+<details>
+<summary>With mamba</summary>
 
 ```
 mamba search zig --channel conda-forge/label/zig_dev
 ```
 
-Alternatively, `mamba repoquery` may provide more information:
+</details>
+
+<details>
+<summary>With pixi</summary>
+
+```
+pixi search zig --channel conda-forge/label/zig_dev
+```
+
+</details>
+
+<details>
+<summary>With mamba repoquery, which may provide more information</summary>
 
 ```
 # Search all versions available on your platform:
@@ -171,6 +192,8 @@ mamba repoquery whoneeds zig --channel conda-forge/label/zig_dev
 # List dependencies of `zig`:
 mamba repoquery depends zig --channel conda-forge/label/zig_dev
 ```
+
+</details>
 
 
 About conda-forge
