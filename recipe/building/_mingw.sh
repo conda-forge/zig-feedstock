@@ -292,21 +292,33 @@ SYNCHRONIZATION_DEF
       done
 
       # Step 3: uuid -- compiled from C source (no DLL, no import lib needed).
-      # zig compiles libsrc/uuid.c into a static archive.
-      _uuid_lib="${_mingw_common}/libuuid.a"
+      # Per-arch: the object is COFF, so an x86_64 libuuid.a cannot link into
+      # an aarch64 or i386 binary.
       _uuid_src="${_mingw_libsrc}/uuid.c"
-      if [[ ! -f "${_uuid_lib}" ]] && [[ -f "${_uuid_src}" ]]; then
-        _uuid_obj="${_mingw_common}/_uuid.o"
-        if "${_zig_bin}" cc -target "${_win_target}" -c "${_uuid_src}" \
-            -o "${_uuid_obj}" 2>/dev/null && \
-          "${_ar_cmd[@]}" rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null; then
-          _gen_ok=$(( _gen_ok + 1 ))
-        else
-          _gen_fail=$(( _gen_fail + 1 ))
-          echo "WARNING: failed to compile/archive libuuid.a from ${_uuid_src}" >&2
-        fi
-        rm -f "${_uuid_obj}"
-        _gen_count=$(( _gen_count + 1 ))
+      if [[ -f "${_uuid_src}" ]]; then
+        for _spec in "${_mingw_arch_specs[@]}"; do
+          _spec_arch="${_spec%%|*}"
+          _spec_rest="${_spec#*|}"
+          _spec_triple="${_spec_rest#*|}"
+          case "${_spec_arch}" in
+            aarch64) _spec_outdir="${_mingw_libarm64}" ;;
+            x86)     _spec_outdir="${_mingw_lib32}" ;;
+            *)       _spec_outdir="${_mingw_common}" ;;
+          esac
+          _uuid_lib="${_spec_outdir}/libuuid.a"
+          [[ -f "${_uuid_lib}" ]] && continue
+          _uuid_obj="${_spec_outdir}/_uuid.o"
+          if "${_zig_bin}" cc -target "${_spec_triple}" -c "${_uuid_src}" \
+              -o "${_uuid_obj}" 2>/dev/null && \
+            "${_ar_cmd[@]}" rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null; then
+            _gen_ok=$(( _gen_ok + 1 ))
+          else
+            _gen_fail=$(( _gen_fail + 1 ))
+            echo "WARNING: failed to compile/archive libuuid.a for ${_spec_triple}" >&2
+          fi
+          rm -f "${_uuid_obj}"
+          _gen_count=$(( _gen_count + 1 ))
+        done
       fi
 
       _gen_common_a=$(ls -1 "${_mingw_common}"/*.a 2>/dev/null | wc -l || true); _gen_common_a=$(( _gen_common_a + 0 ))

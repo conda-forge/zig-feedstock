@@ -33,7 +33,7 @@ def test_bundled_setjmp_h_undecorated(mingw_dir: Path) -> None:
     """Canary: guards against zig snapshot bumps that decorate the bundled
     mingw setjmp.h's `_setjmp3`/`_setjmp` with `_CRTIMP` (fuse = snapshot bump).
     """
-    header = mingw_dir / "include" / "setjmp.h"
+    header = mingw_dir.parent / "include" / "any-windows-any" / "setjmp.h"
     if not header.is_file():
         print(f"SKIP: bundled setjmp.h not found at {header}")
         return
@@ -89,12 +89,13 @@ def test_bundled_setjmp_h_undecorated(mingw_dir: Path) -> None:
         if "_CRTIMP" in decl_text:
             sys.exit(
                 f"FAIL: bundled zig snapshot's mingw setjmp.h now declares "
-                f"{symbol} with _CRTIMP (dllimport). This breaks the mingw "
-                f"CRT cache-warm link for x86_64/x86 windows-gnu targets at "
-                f"winpthreads/thread.c pthread_create_wrapper. Fix by "
-                f"stripping _CRTIMP from the bundled header (keep the "
-                f"setjmp.S patch) -- do NOT build or wire up import "
-                f"libraries. Offending declaration: {decl_text!r}"
+                f"{symbol} with _CRTIMP (dllimport). The zig 0.16.0 baseline is "
+                f"undecorated for both _setjmp and _setjmp3 (only longjmp carries "
+                f"_CRTIMP), so this is a snapshot change. Do NOT assume stripping "
+                f"it is the fix: _CRTIMP was measured and eliminated as the cause "
+                f"of the x86_64-windows-gnu winpthreads/thread.c "
+                f"pthread_create_wrapper link failure. Investigate before acting. "
+                f"Offending declaration: {decl_text!r}"
             )
 
 
@@ -143,9 +144,8 @@ def main() -> None:
                     f"(expected >1MB real archive)"
                 )
 
-    # 1b. Pre-generated import libs per arch (_mingw.sh Steps 1/2/4). Asserted
-    #     here, on the lane that generates them. libuuid.a is lib-common only
-    #     (Step 3 compiles it from C source, not a .def).
+    # 1b. Pre-generated import libs per arch (_mingw.sh Steps 1/2/3/4). Asserted
+    #     here, on the lane that generates them.
     per_arch_implibs = [
         "libws2_32.a",
         "libkernel32.a",
@@ -155,6 +155,7 @@ def main() -> None:
         "libsynchronization.a",
         "libshlwapi.a",
         "libversion.a",
+        "libuuid.a",
     ]
     implib_failures = []
     for target, lib_dir in staged:
@@ -164,11 +165,6 @@ def main() -> None:
                 implib_failures.append(f"  - {p} missing ({target})")
             elif p.stat().st_size == 0:
                 implib_failures.append(f"  - {p} is 0 bytes ({target})")
-    uuid_a = lib_common / "libuuid.a"
-    if not uuid_a.is_file():
-        implib_failures.append(f"  - {uuid_a} missing (x86_64-windows-gnu)")
-    elif uuid_a.stat().st_size == 0:
-        implib_failures.append(f"  - {uuid_a} is 0 bytes (x86_64-windows-gnu)")
     if implib_failures:
         sys.exit(
             "FAIL: pre-generated mingw import libs missing or empty:\n"
