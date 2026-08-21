@@ -913,27 +913,9 @@ def test_mingw_prebuilt_import_libs() -> None:
             FAIL(f"pre-generated {fname}",
                  f"{lib} {'missing' if not lib.exists() else 'is empty (0 bytes)'}")
 
-    # Per-arch sibling dirs (libarm64/, lib32/) hold the same set of import
-    # libs, generated for the aarch64-windows-gnu / x86-windows-gnu targets
-    # respectively (see recipe/building/_mingw.sh _mingw_arch_specs). We
-    # cannot validate these locally this round, so a missing dir is a SKIP,
-    # not a FAIL -- only assert on dirs that actually exist. The every-lane
-    # hard guarantee (dir must exist with a non-empty machine-correct import
-    # lib) lives in _mingw.sh's accumulate-then-FATAL sweep, not here.
-    mingw_root = lib_common.parent
-    for arch_dirname in ("libarm64", "lib32"):
-        arch_dir = mingw_root / arch_dirname
-        if not arch_dir.is_dir():
-            SKIP(f"pre-generated import libs ({arch_dirname})",
-                 f"{arch_dir} does not exist on this lane")
-            continue
-        for fname in required:
-            lib = arch_dir / fname
-            if lib.exists() and lib.stat().st_size > 0:
-                PASS(f"pre-generated {arch_dirname}/{fname}")
-            else:
-                FAIL(f"pre-generated {arch_dirname}/{fname}",
-                     f"{lib} {'missing' if not lib.exists() else 'is empty (0 bytes)'}")
+    # Per-arch dirs (libarm64/, lib32/) are asserted in test_mingw_crt.py, on
+    # the zig_impl_* lane that generates them. A cross package only inherits
+    # the published zig_impl's tree and cannot fix a gap in it.
 
 
 # ===================================================================
