@@ -11,6 +11,7 @@ checks all three.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,75 @@ if hasattr(sys.stderr, "reconfigure"):
 # Build-side platform: rattler-build sets CONDA_BUILD_SYSROOT on macOS/Linux;
 # on native Windows runners the OS reports itself directly.
 _build_is_win = sys.platform == "win32" or os.environ.get("MSYSTEM") is not None
+
+
+def test_bundled_setjmp_h_undecorated(mingw_dir: Path) -> None:
+    """Canary: guards against zig snapshot bumps that decorate the bundled
+    mingw setjmp.h's `_setjmp3`/`_setjmp` with `_CRTIMP` (fuse = snapshot bump).
+    """
+    header = mingw_dir / "include" / "setjmp.h"
+    if not header.is_file():
+        print(f"SKIP: bundled setjmp.h not found at {header}")
+        return
+
+    text = header.read_text(encoding="utf-8", errors="replace")
+    for symbol in ("_setjmp3", "_setjmp"):
+        # A symbol can appear on a preprocessor-directive line (e.g. the
+        # macro `#define setjmp(BUF) _setjmp((BUF))`); that is not a
+        # declaration, so skip such occurrences and keep looking for one
+        # that actually is a declaration.
+        match = None
+        for candidate in re.finditer(rf"(?<!\w){re.escape(symbol)}\s*\(", text):
+            line_start = text.rfind("\n", 0, candidate.start()) + 1
+            newline_idx = text.find("\n", candidate.start())
+            line_end = len(text) if newline_idx == -1 else newline_idx
+            line = text[line_start:line_end]
+            if line.lstrip().startswith("#"):
+                continue
+            match = candidate
+            break
+        if match is None:
+            print(f"SKIP: no declaration of {symbol} found in {header}")
+            continue
+        # Expand to the full statement so multi-line declarations and
+        # attributes between the type and the symbol name are captured.
+        # The backward boundary is bounded by whichever of these sits
+        # closest (nearest/highest index) to the match: a previous ';',
+        # a previous '}', the end of a previous '*/' block comment, or
+        # the end of the nearest preceding preprocessor directive line
+        # (so long #define/#include/#if stretches with no semicolon
+        # can't smuggle unrelated text like a `_CRTIMP` macro definition
+        # into the captured declaration).
+        semi = text.rfind(";", 0, match.start()) + 1
+        brace = text.rfind("}", 0, match.start()) + 1
+        comment_end = text.rfind("*/", 0, match.start())
+        comment_end = comment_end + 2 if comment_end != -1 else 0
+        directive_end = 0
+        for directive in re.finditer(r"^[ \t]*#.*$", text, re.MULTILINE):
+            if directive.start() >= match.start():
+                break
+            directive_end = directive.end()
+        start = max(semi, brace, comment_end, directive_end, 0)
+        # Belt and braces: whatever the boundary logic above computes,
+        # never let the window start past the symbol itself.
+        start = min(start, match.start())
+        end = text.find(";", match.end())
+        end = len(text) if end == -1 else end + 1
+        decl_text = text[start:end].strip()
+        # Strip comments so a comment merely mentioning _CRTIMP (rather
+        # than an actual decorator on the declaration) can't trip this.
+        decl_text = re.sub(r"/\*.*?\*/", "", decl_text, flags=re.DOTALL)
+        decl_text = re.sub(r"//.*", "", decl_text).strip()
+        if "_CRTIMP" in decl_text:
+            sys.exit(
+                f"FAIL: bundled zig snapshot's mingw setjmp.h now declares "
+                f"{symbol} with _CRTIMP (dllimport). This breaks the mingw "
+                f"CRT cache-warm link for x86_64/x86 windows-gnu targets at "
+                f"winpthreads/thread.c pthread_create_wrapper. Fix by "
+                f"stripping _CRTIMP from the bundled header (keep the "
+                f"setjmp.S patch) -- do NOT build or wire up import "
+                f"libraries. Offending declaration: {decl_text!r}"
+            )
 
 
 def main() -> None:
@@ -134,6 +204,9 @@ def main() -> None:
             print("--- full ar t output ---")
             print(members)
             sys.exit(1)
+
+    # 4. Canary for a zig-snapshot regression -- see helper docstring.
+    test_bundled_setjmp_h_undecorated(mingw_dir)
 
     print(
         "mingw CRT bootstrap OK: x86_64 (lib-common), "

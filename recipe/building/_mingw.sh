@@ -262,7 +262,7 @@ SYNCHRONIZATION_DEF
         _gen_count=$(( _gen_count + 1 ))
       fi
 
-      echo "=== Generated ${_gen_count} import lib attempts (${_gen_pre} pre-existing, ${_gen_ok} ok, ${_gen_fail} failed, ${_gen_skipped} skipped-present) in ${_mingw_common} [win_arch=${_win_arch}] ==="
+      dbg echo "=== Generated ${_gen_count} import lib attempts (${_gen_pre} pre-existing, ${_gen_ok} ok, ${_gen_fail} failed, ${_gen_skipped} skipped-present) in ${_mingw_common} [win_arch=${_win_arch}] ==="
 
       # Step 4: Supplemental import libs from mingw-w64 .def.in templates.
       # Zig doesn't ship msvcrt.def -- we provide a complete mingw-w64 version
@@ -303,7 +303,7 @@ SYNCHRONIZATION_DEF
           [[ -f "${_supp_lib}" ]] && continue
           _gen_implib "${_supp_stem}" "${_supp_def}"
         done
-        echo "=== Supplemental import libs done (${_gen_pre} pre-existing, total ${_gen_count} attempts, ${_gen_ok} ok, ${_gen_fail} failed, ${_gen_skipped} skipped-present) [win_arch=${_win_arch}] ==="
+        dbg echo "=== Supplemental import libs done (${_gen_pre} pre-existing, total ${_gen_count} attempts, ${_gen_ok} ok, ${_gen_fail} failed, ${_gen_skipped} skipped-present) [win_arch=${_win_arch}] ==="
       fi
 
       if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi
