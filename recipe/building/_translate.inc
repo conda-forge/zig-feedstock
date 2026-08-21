@@ -105,7 +105,15 @@ static void zig_tr_print_search_dirs(const zig_translate_profile *profile) {
     char programs[512];
     char mingw_common[512];
     char mingw_arch[512];
-    const char *arch_leaf = zig_tr_streq(profile->zig_target_arch, "aarch64") ? "libarm64" : "lib-x86_64";
+    const char *arch_leaf;
+    if (zig_tr_streq(profile->zig_target_arch, "aarch64"))
+        arch_leaf = "libarm64";
+    else if (zig_tr_streq(profile->zig_target_arch, "x86") ||
+             zig_tr_streq(profile->zig_target_arch, "i386") ||
+             zig_tr_streq(profile->zig_target_arch, "i686"))
+        arch_leaf = "lib32";
+    else
+        arch_leaf = "lib-x86_64";
     if (profile->is_win) {
         snprintf(zig_lib, sizeof(zig_lib), "%s\\Library\\lib\\zig", profile->conda_prefix);
         snprintf(programs, sizeof(programs), "%s\\Library\\bin\\", profile->conda_prefix);

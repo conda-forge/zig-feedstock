@@ -507,13 +507,8 @@ outputs:
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
 
-      # NOTE: the mingw cache-warm loop stages all three Windows triples on every
-      # zig_impl build regardless of the output's own target OS, so a warm failure
-      # for one arch during another arch's build currently goes unasserted here.
-      # Ungating this test to run in every output was tried and reverted: across a
-      # full CI round every lane died in the build phase before the test phase, so
-      # the change was entirely unexercised and only muddied the signal. Revisit
-      # once all three triples warm cleanly.
+      # NOTE: test_mingw_crt.py's deep content checks are win-64-only (xc_w64 below);
+      # presence/size for all three targets is asserted inside _mingw.sh itself.
       - script:
           - if: xc_w64
             then:
