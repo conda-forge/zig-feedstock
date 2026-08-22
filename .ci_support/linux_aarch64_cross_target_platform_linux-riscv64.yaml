@@ -19,7 +19,7 @@ cxx_compiler_version:
 docker_image:
 - quay.io/condaforge/linux-anvil-aarch64:alma10
 libxml2_devel:
-- '2.14'
+- '2.15'
 target_platform:
 - linux-aarch64
 zip_keys:

@@ -1,16 +1,21 @@
-# Purpose: Add misc/setjmp.S to i386-only mingw source list to fix __setjmp3 undefined symbol
+# Purpose: Add misc/setjmp.S to the shared x86 mingw source list to fix
+#   __setjmp3/setjmp undefined symbol on i386 and x86_64 mingw targets
 # Affects: src/libs/mingw.zig, lib/libc/mingw/misc/setjmp.S (new file, vendored)
 # Upstream: https://github.com/ziglang/zig/issues/TBD
-# Drop-when: zig upstream lists setjmp.S in mingw32_x86_32_src and includes it in the tarball
-# Last-verified: 2026-06-04
+# Drop-when: zig upstream lists setjmp.S in mingw32_x86_src and includes it in the tarball
+# Last-verified: 2026-08-22
 #
-# Background: lib/libc/mingw/misc/setjmp.S defines __setjmp3 and __intrinsic_setjmp for i386.
-# These symbols are referenced by winpthreads/thread.c (via setjmp()) when compiling for
-# i386-windows-gnu. Without this file in the build, lld-link reports:
-#   lld-link: error: undefined symbol: __setjmp3
-# The file is declared in ucrtbase-common.def.in via F_NON_ARM64(__intrinsic_setjmp) but
-# was stripped from the 0.16.0 tarball. Vendored from 0.15.2.
-# The i386-only guard (x86 arch) ensures it belongs in mingw32_x86_32_src.
+# Background: lib/libc/mingw/misc/setjmp.S defines __intrinsic_setjmp plus its
+# arch-specific wrappers: _setjmp3 for i386, setjmp for x86_64 (and arm/aarch64
+# variants). winpthreads/thread.c calls setjmp() on both i386-windows-gnu and
+# x86_64-windows-gnu, so without this file lld-link reports:
+#   lld-link: error: undefined symbol: __setjmp3   (i386)
+#   lld-link: error: undefined symbol: setjmp      (x86_64)
+# The file is declared in ucrtbase-common.def.in via F_NON_ARM64(__intrinsic_setjmp)
+# but was stripped from the 0.16.0 tarball. Vendored from 0.15.2.
+# It belongs in mingw32_x86_src (mingw.zig:831-892), the array shared by both
+# i386 and x86_64 mingw targets -- not the i386-only mingw32_x86_32_src array
+# (mingw.zig:894-900), which the original version of this patch mistakenly used.
 
 --- /dev/null
 +++ b/lib/libc/mingw/misc/setjmp.S
@@ -137,11 +142,11 @@
 
 --- a/src/libs/mingw.zig
 +++ b/src/libs/mingw.zig
-@@ -897,6 +897,7 @@
-     "math" ++ path.sep_str ++ "sinhf.c",
-     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "asinf.c",
-     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "atan2f.c",
+@@ -889,6 +889,7 @@
+     "math" ++ path.sep_str ++ "nextafterl.c",
+     "math" ++ path.sep_str ++ "nexttoward.c",
+     "math" ++ path.sep_str ++ "nexttowardf.c",
 +    "misc" ++ path.sep_str ++ "setjmp.S",
  };
 
- const mingw32_arm_src = [_][]const u8{
+ const mingw32_x86_32_src = [_][]const u8{
