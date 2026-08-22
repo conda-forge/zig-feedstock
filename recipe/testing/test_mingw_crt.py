@@ -23,7 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from _test_utils import PASS, FAIL, WARN, SKIP, _results
+from _test_utils import PASS, FAIL, WARN, SKIP, _results, _run
 
 # Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
 # rattler-build's UTF-8 stream reader even when tests pass).
@@ -318,18 +318,17 @@ def test_cross_target_link_probes() -> None:
         for target in targets:
             name = f"link probe ({target})"
             out = Path(td) / f"probe_{target}.exe"
+            # _run, not subprocess.run: on timeout it kills the whole process tree.
+            # A surviving zig keeps burning CPU and pushes the NEXT probe over its budget.
             t0 = time.monotonic()
-            try:
-                result = subprocess.run(
-                    [zig_exe, "cc", "-target", target, "-o", str(out), str(src)],
-                    capture_output=True, text=True, timeout=probe_timeout_s, check=False,
-                )
-            except subprocess.TimeoutExpired:
-                elapsed = time.monotonic() - t0
-                FAIL(f"{name} [{elapsed:.1f}s]", f"TIMEOUT ({probe_timeout_s}s)")
-                continue
+            result = _run(
+                [zig_exe, "cc", "-target", target, "-o", str(out), str(src)],
+                timeout=probe_timeout_s,
+            )
             elapsed = time.monotonic() - t0
-            if result.returncode == 0 and out.is_file():
+            if result.returncode == -1 and result.stderr == "TIMEOUT":
+                FAIL(f"{name} [{elapsed:.1f}s]", f"TIMEOUT ({probe_timeout_s}s)")
+            elif result.returncode == 0 and out.is_file():
                 PASS(f"{name} [{elapsed:.1f}s]")
             else:
                 FAIL(f"{name} [{elapsed:.1f}s]", f"rc={result.returncode} stderr={result.stderr[:400]!r}")

@@ -112,6 +112,8 @@ def _run(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd,
+            # own session+pgid: the killpg below must not target our own group
+            start_new_session=True,
         )
     except FileNotFoundError:
         return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="NOTFOUND")
