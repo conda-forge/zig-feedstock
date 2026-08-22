@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 12
+  build_number: 13
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -515,6 +515,7 @@ outputs:
               - python testing/test_mingw_crt.py
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_mingw_crt.py
         requirements:
           run:
