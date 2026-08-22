@@ -41,7 +41,7 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
 
 --- a/src/libs/mingw.zig
 +++ b/src/libs/mingw.zig
-@@ -125,6 +125,17 @@
+@@ -122,6 +122,17 @@
                              .owner = undefined,
                          });
                      }
@@ -59,7 +59,7 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
                  } else {
                      @panic("unsupported arch");
                  }
-@@ -905,6 +916,10 @@
+@@ -918,6 +929,10 @@
      "math" ++ path.sep_str ++ "arm-common" ++ path.sep_str ++ "ldexpl.c",
  };
 

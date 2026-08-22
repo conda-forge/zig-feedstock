@@ -1,0 +1,37 @@
+# Purpose: Strip _CRTIMP from _setjmp/_setjmp3 declarations in the bundled mingw-w64 setjmp.h
+# Affects: lib/libc/include/any-windows-any/setjmp.h
+# Upstream: https://github.com/ziglang/zig/issues/TBD
+# Drop-when: zig's mingw import-lib generation reads static archives (.a) instead of .def files,
+#            or upstream stops declaring these symbols as dllimport in the bundled header.
+# Last-verified: 2026-08-20
+#
+# Background: _CRTIMP marks a declaration as dllimport, i.e. "this symbol lives in a runtime
+# DLL (msvcrt/ucrtbase), link against it via an import thunk". zig's generate_mingw_import_libs()
+# builds its .lib/.a files by reading the emitted .def file, not by scanning the static archive
+# that actually defines these symbols (lib/libc/mingw/misc/setjmp.S, see
+# mingw-include-setjmp-s.patch). With _CRTIMP left in place, callers compiled against this header
+# emit references to the dllimport thunk (__imp__setjmp / __imp___setjmp3) instead of the plain
+# symbol, so lld-link reports "undefined symbol: _setjmp" (x86_64-windows-gnu) or
+# "undefined symbol: __setjmp3" (x86-windows-gnu) even though setjmp.S defines them locally.
+# Stripping _CRTIMP makes these three declarations ordinary extern symbols, matching how they
+# are actually provided by zig's statically-linked mingw runtime.
+# Only _setjmp/_setjmp3 are touched; _setjmpex and longjmp/_longjmpex are left as dllimport
+# since they are not the symbols setjmp.S provides for these targets.
+
+--- a/lib/libc/include/any-windows-any/setjmp.h
++++ b/lib/libc/include/any-windows-any/setjmp.h
+@@ -209,11 +209,11 @@
+ #endif
+
+ #ifdef __i386__
+-_CRTIMP int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmp(jmp_buf _Buf); /* old i386 crtdll setjmp.h */
+-_CRTIMP int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmp3(jmp_buf _Buf, int _Count, ...); /* new i386 msvcrt20+ setjmp.h and setjmpex.h */
++int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmp(jmp_buf _Buf); /* old i386 crtdll setjmp.h */
++int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmp3(jmp_buf _Buf, int _Count, ...); /* new i386 msvcrt20+ setjmp.h and setjmpex.h */
+ #else
+ #ifndef __aarch64__
+-_CRTIMP int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmp(jmp_buf _Buf, void *_Frame); /* for non-i386 and non-aarch64 setjmp.h */
++int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmp(jmp_buf _Buf, void *_Frame); /* for non-i386 and non-aarch64 setjmp.h */
+ #endif
+ _CRTIMP int __cdecl __attribute__ ((__nothrow__,__returns_twice__)) _setjmpex(jmp_buf _Buf, void *_Frame); /* for non-i386 setjmpex.h and aarch64 setjmp.h */
+ #endif

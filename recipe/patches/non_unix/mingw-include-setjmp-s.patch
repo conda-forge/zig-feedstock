@@ -1,16 +1,25 @@
-# Purpose: Add misc/setjmp.S to i386-only mingw source list to fix __setjmp3 undefined symbol
+# Purpose: Add misc/setjmp.S to the mingw source list to fix __setjmp3/setjmp undefined symbols
 # Affects: src/libs/mingw.zig, lib/libc/mingw/misc/setjmp.S (new file, vendored)
 # Upstream: https://github.com/ziglang/zig/issues/TBD
-# Drop-when: zig upstream lists setjmp.S in mingw32_x86_32_src and includes it in the tarball
-# Last-verified: 2026-06-04
+# Drop-when: zig upstream lists setjmp.S in mingw32_x86_src and includes it in the tarball
+# Last-verified: 2026-08-21
 #
-# Background: lib/libc/mingw/misc/setjmp.S defines __setjmp3 and __intrinsic_setjmp for i386.
-# These symbols are referenced by winpthreads/thread.c (via setjmp()) when compiling for
-# i386-windows-gnu. Without this file in the build, lld-link reports:
-#   lld-link: error: undefined symbol: __setjmp3
+# Background: lib/libc/mingw/misc/setjmp.S defines __setjmp3/__intrinsic_setjmp for i386
+# (via #if defined(__i386__)) and setjmp/__intrinsic_setjmp for x86_64 (via
+# #elif defined(__x86_64__)) -- both arches are handled by the same file. These symbols are
+# referenced by winpthreads/thread.c (via setjmp()) when compiling for i386-windows-gnu AND
+# x86_64-windows-gnu. Without this file in the build, lld-link reports:
+#   lld-link: error: undefined symbol: __setjmp3       (i386)
+#   lld-link: error: undefined symbol: _setjmp          (x86_64)
 # The file is declared in ucrtbase-common.def.in via F_NON_ARM64(__intrinsic_setjmp) but
 # was stripped from the 0.16.0 tarball. Vendored from 0.15.2.
-# The i386-only guard (x86 arch) ensures it belongs in mingw32_x86_32_src.
+#
+# Array placement: src/libs/mingw.zig has two sibling arrays here -- mingw32_x86_src, which
+# is shared between i386 and x86_64 builds, and mingw32_x86_32_src, which is i386-only (only
+# referenced when target.cpu.arch == .x86). setjmp.S must build for BOTH arches, so the
+# source-file entry belongs in mingw32_x86_src, not mingw32_x86_32_src (a previous revision
+# of this patch mistakenly appended to mingw32_x86_32_src, which silently dropped the x86_64
+# symbols and only surfaced as a separate __setjmp3/_CRTIMP failure downstream).
 
 --- /dev/null
 +++ b/lib/libc/mingw/misc/setjmp.S
@@ -137,11 +146,11 @@
 
 --- a/src/libs/mingw.zig
 +++ b/src/libs/mingw.zig
-@@ -897,6 +897,7 @@
-     "math" ++ path.sep_str ++ "sinhf.c",
-     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "asinf.c",
-     "math" ++ path.sep_str ++ "x86" ++ path.sep_str ++ "atan2f.c",
+@@ -902,6 +902,7 @@
+     "math" ++ path.sep_str ++ "nextafterl.c",
+     "math" ++ path.sep_str ++ "nexttoward.c",
+     "math" ++ path.sep_str ++ "nexttowardf.c",
 +    "misc" ++ path.sep_str ++ "setjmp.S",
  };
 
- const mingw32_arm_src = [_][]const u8{
+ const mingw32_x86_32_src = [_][]const u8{

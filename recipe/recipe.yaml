@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 1
+  build_number: 2
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -10,7 +10,7 @@ context:
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -162,6 +162,7 @@ source:
       - patches/build.zig-02-doctest-forward-target.patch
       # order load-bearing: setjmp-s must precede arm64-stubs
       - patches/non_unix/mingw-include-setjmp-s.patch
+      - patches/non_unix/mingw-setjmp-no-crtimp.patch
       - patches/non_unix/mingw-arm64-stubs.patch
       - if: linux
         then:
@@ -312,6 +313,7 @@ outputs:
         - ${{ stdlib("c") }}
         - ${{ m2 }}bash >=5.2
         - ${{ m2 }}file
+        - llvm-tools ${{ llvm_version }}.*
         - cmake >=3.5
         - ninja
         - perl 5.32.*
@@ -341,7 +343,7 @@ outputs:
         # Pin build string to snapshot: version alone lets the solver pick a higher build number from an older snapshot.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_*
+            - zig_impl_${{ build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_1
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -558,7 +560,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_1
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -572,7 +574,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_*
+            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_1
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
