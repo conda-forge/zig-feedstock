@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from _test_utils import PASS, FAIL, WARN, SKIP, _results
@@ -317,18 +318,21 @@ def test_cross_target_link_probes() -> None:
         for target in targets:
             name = f"link probe ({target})"
             out = Path(td) / f"probe_{target}.exe"
+            t0 = time.monotonic()
             try:
                 result = subprocess.run(
                     [zig_exe, "cc", "-target", target, "-o", str(out), str(src)],
                     capture_output=True, text=True, timeout=probe_timeout_s, check=False,
                 )
             except subprocess.TimeoutExpired:
-                FAIL(name, f"TIMEOUT ({probe_timeout_s}s)")
+                elapsed = time.monotonic() - t0
+                FAIL(f"{name} [{elapsed:.1f}s]", f"TIMEOUT ({probe_timeout_s}s)")
                 continue
+            elapsed = time.monotonic() - t0
             if result.returncode == 0 and out.is_file():
-                PASS(name)
+                PASS(f"{name} [{elapsed:.1f}s]")
             else:
-                FAIL(name, f"rc={result.returncode} stderr={result.stderr[:400]!r}")
+                FAIL(f"{name} [{elapsed:.1f}s]", f"rc={result.returncode} stderr={result.stderr[:400]!r}")
 
 
 def main() -> int:
