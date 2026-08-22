@@ -83,6 +83,11 @@ SYNCHRONIZATION_DEF
     if [[ -x "${_fresh_zig_bin}" ]] && "${_fresh_zig_bin}" version >/dev/null 2>&1; then
       _zig_bin="${_fresh_zig_bin}"
       echo "INFO: using freshly built zig for mingw CRT: ${_zig_bin}"
+      if is_cross; then
+        echo "WARN: build_platform (${build_platform}) != target_platform (${target_platform}): the fresh zig is a foreign-arch binary running under emulation (Rosetta 2 on osx-arm64, QEMU user-mode via binfmt_misc on linux)."
+        echo "WARN: the exec probe above cannot detect this, because emulation makes it succeed transparently."
+        echo "WARN: mingw CRT cache-warm links will be SLOW under emulation; this is expected, NOT a hang."
+      fi
     else
       _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
       if [[ -z "${_zig_bin}" ]]; then
