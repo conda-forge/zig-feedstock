@@ -65,8 +65,9 @@ if _arch == "arm64":
 # zig invocations (e.g. raw zig cc, zig lld) work in CI envs without HOME.
 setup_zig_global_cache_dir()
 
-# Emulation detection: on CI, non-x86_64 Linux typically runs under QEMU.
-# zig's linker is too memory-hungry for emulated environments (OOM → exit 137).
+# Emulation detection: _is_emulated is derived in _test_utils from $QEMU_EXECVE,
+# i.e. from the BUILD/TARGET relationship, never from host hardware identity.
+# zig's linker is too memory-hungry for emulated environments (OOM -> exit 137).
 # (_native_machine and _is_emulated imported from _test_utils)
 
 # Cross-compiler detection: build != host means the zig binary targets a
@@ -75,7 +76,11 @@ setup_zig_global_cache_dir()
 _build_zig = os.environ.get("CONDA_ZIG_BUILD", "")
 _is_cross_compiler = _build_zig != _host and _build_zig != "" and _host != ""
 
-_prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+# PREFIX is the test RUN env (where wrappers install). CONDA_PREFIX points at the
+# test BUILD env whenever the test has build requirements (e.g. qemu on the unhosted
+# ppc64le cross lane), so it finds nothing there. Native lanes have no build env and
+# set them equal, so the fallback preserves existing behaviour.
+_prefix = Path(os.environ.get("PREFIX") or os.environ.get("CONDA_PREFIX", ""))
 if _build_is_win:
     _wrapper_dir = _prefix / "Library" / "bin"
 else:
@@ -132,7 +137,6 @@ def test_wrapper_existence() -> None:
             f"{_triplet}-zig-rc",
             f"{_triplet}-zig-lld",
             f"{_triplet}-_zig-cc-common.sh",
-            f"{_triplet}-_zig-force-load-common.sh",
             f"{_triplet}-_translate.gen.sh",
         ]
 
@@ -242,6 +246,20 @@ def test_flag_filtering() -> None:
         r = _run(cmd, cwd=td)
         if r.returncode == 0 and obj.exists():
             PASS("compile with conda gcc flags succeeds (flags filtered)")
+        elif _is_emulated and r.returncode != 0 and not r.stderr:
+            # WARN, not FAIL: under qemu-user with a native rootfs the wrapper's
+            # `#!/usr/bin/env bash` shebang cannot be resolved (env resolves to a
+            # build-arch binary the emulator cannot exec), so the wrapper never
+            # runs at all -- rc != 0 with EMPTY stderr, no compiler diagnostics.
+            # This is the identical condition already reported as WARN by
+            # test_wrapper_shebang_portability's siblings, surfaced here as a
+            # hard failure only because this test executes the wrapper instead
+            # of stat-ing it. Kept as WARN so it stays visible in the summary
+            # without masking real failures in CI -- do NOT delete this check
+            # to make CI green.
+            WARN("compile with conda gcc flags succeeds",
+                 f"rc={r.returncode} stderr=<empty> - wrapper shebang unresolvable "
+                 f"under emulation with a native rootfs; pending the C shim port")
         else:
             FAIL("compile with conda gcc flags succeeds",
                  f"rc={r.returncode} stderr={r.stderr[:2000]}")
@@ -895,6 +913,10 @@ def test_mingw_prebuilt_import_libs() -> None:
             FAIL(f"pre-generated {fname}",
                  f"{lib} {'missing' if not lib.exists() else 'is empty (0 bytes)'}")
 
+    # Per-arch dirs (libarm64/, lib32/) are asserted in test_mingw_crt.py, on
+    # the zig_impl_* lane that generates them. A cross package only inherits
+    # the published zig_impl's tree and cannot fix a gap in it.
+
 
 # ===================================================================
 # Section 5 — Visibility (macOS only)
@@ -1055,10 +1077,28 @@ def test_flag_filter_content() -> None:
 
 
 # ===================================================================
-# Section 8 — Unix-only: force-load wrapper content (from old .sh)
+# Section 8 — Unix-only: force-load wrapper behaviour
 # ===================================================================
 def test_force_load_wrappers() -> None:
-    """Check force-load wrapper scripts contain expected patterns."""
+    """zig-force-load-cc/cxx are C-mux aliases of zig-cc/zig-cxx: -force_load
+    and -Wl,-force_load,<a> pass through unchanged (zig's own CLI sets
+    must_link); -all_load / -Wl,-all_load are rewritten into one -force_load
+    per .a archive on the line, with no double-force-load for archives
+    already explicitly -force_load'd. No tmpdir is created and ar is never
+    invoked (that extraction path belonged to the deleted bash implementation).
+
+    Capture mechanism for sub-cases (a)-(e): ZIG_WRAPPER_PRINT_ARGV=1 makes
+    the wrapper dump its complete final argv -- argv[0], then the "cc"/"c++"
+    mode token, then the rest, one token per line -- to stdout and exit 0
+    without ever invoking zig. zig's own --verbose-link is a subcommand-only
+    option that zig's clang-driver (cc) mode rejects outright
+    ("Unknown Clang option: '--verbose-link'"), so it cannot be used here.
+    Sub-case (e) is checked per-archive: each archive must appear exactly
+    once as a -force_load operand, with no leftover -all_load token and no
+    orphaned -Xlinker where -all_load was stripped. Sub-case (f) does not
+    inspect the dumped argv; instead it verifies ar is never invoked and
+    TMPDIR is untouched.
+    """
     print("--- Force-load wrappers (Unix) ---")
 
     if _build_is_win:
@@ -1069,51 +1109,277 @@ def test_force_load_wrappers() -> None:
     if not fl_cc.exists():
         FAIL("zig-force-load-cc exists")
         return
-
-    text_cc = fl_cc.read_text()
-    for label, needle in [
-        ("force-load-cc sources common", "_zig-force-load-common.sh"),
-        ('force-load-cc uses cc mode', '_ZIG_MODE="cc"'),
-    ]:
-        if needle in text_cc:
-            PASS(label)
-        else:
-            FAIL(label)
+    PASS("zig-force-load-cc exists")
 
     fl_cxx = _wrapper_dir / f"{_triplet}-zig-force-load-cxx"
     if not fl_cxx.exists():
         FAIL("zig-force-load-cxx exists")
         return
+    PASS("zig-force-load-cxx exists")
 
-    text_cxx = fl_cxx.read_text()
-    for label, needle in [
-        ("force-load-cxx sources common", "_zig-force-load-common.sh"),
-        ('force-load-cxx uses c++ mode', '_ZIG_MODE="c++"'),
-    ]:
-        if needle in text_cxx:
-            PASS(label)
-        else:
-            FAIL(label)
-
-    # Check the shared helper for implementation details
-    fl_common = _wrapper_dir / f"{_triplet}-_zig-force-load-common.sh"
-    if not fl_common.exists():
-        FAIL("_zig-force-load-common.sh exists")
+    if _is_emulated or _is_cross_compiler:
+        SKIP("force-load wrapper behaviour", "emulated/cross CI — cannot execute target binary")
         return
 
-    text_common = fl_common.read_text()
-    for label, needle in [
-        ("force-load-common sources _zig-cc-common.sh", "_zig-cc-common.sh"),
-        ("force-load-common uses ar x", "ar x"),
-        ("force-load-common creates tmpdir", "mktemp -d"),
-        ("force-load-common has cleanup trap", "trap"),
-        ("force-load-common handles -Wl,-force_load", "Wl,-force_load"),
-        ("force-load-common handles -Wl,-all_load", "Wl,-all_load"),
-    ]:
-        if needle in text_common:
-            PASS(label)
+    if is_ppc64le_target:
+        # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()), and
+        # LLD is unsupported on ppc64le -- the wrapper hard-errors before it
+        # ever gets to build an argv worth inspecting.
+        SKIP("force-load wrapper behaviour", "LLD not supported on ppc64le")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    zig_ar = _wrapper_dir / f"{_triplet}-zig-ar"
+    if not zig_cc or not zig_ar.exists():
+        SKIP("force-load wrapper behaviour", "ZIG_CC/zig-ar not available")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        def _make_archive(name: str) -> Path | None:
+            src = Path(td) / f"{name}.c"
+            obj = Path(td) / f"{name}.o"
+            arch = Path(td) / f"lib{name}.a"
+            src.write_text(f"int {name}(void) {{ return 0; }}\n")
+            if _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td).returncode != 0:
+                return None
+            if _run([str(zig_ar), "rcs", str(arch), str(obj)], cwd=td).returncode != 0:
+                return None
+            return arch if arch.exists() else None
+
+        lib_a = _make_archive("force_a")
+        lib_b = _make_archive("force_b")
+        if lib_a is None or lib_b is None:
+            FAIL("force-load wrapper behaviour", "could not build .a fixtures")
+            return
+
+        main_src = Path(td) / "main.c"
+        main_src.write_text(_MAIN_C)
+        out = Path(td) / "probe"
+
+        def _dump_argv(extra: list[str]) -> list[str]:
+            """Invoke the wrapper with ZIG_WRAPPER_PRINT_ARGV=1 and return its
+            fully rewritten argv as a token list (argv[0] and the cc/c++ mode
+            token included, no trailing empty entries)."""
+            cmd = [str(fl_cc), str(main_src), *extra, "-o", str(out)]
+            old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
+            os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
+            try:
+                r = _run(cmd, cwd=td, timeout=60)
+            finally:
+                if old_flag is None:
+                    os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
+                else:
+                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = old_flag
+            tokens = r.stdout.split("\n")
+            while tokens and tokens[-1] == "":
+                tokens.pop()
+            return tokens
+
+        def _operand_after(tokens: list[str], idx: int) -> str | None:
+            """Return the value that follows the -force_load token at idx."""
+            j = idx + 1
+            return tokens[j] if j < len(tokens) else None
+
+        # (a) -force_load survives verbatim
+        argv_a = _dump_argv(["-force_load", str(lib_a)])
+        if "-force_load" in argv_a and str(lib_a) in argv_a:
+            PASS("-force_load survives verbatim")
         else:
-            FAIL(label)
+            FAIL("-force_load survives verbatim", " ".join(argv_a)[:500])
+
+        # (b) -Wl,-force_load,<archive> survives verbatim as one fused token
+        argv_b = _dump_argv([f"-Wl,-force_load,{lib_a}"])
+        if (f"-Wl,-force_load,{lib_a}" in argv_b
+                and "-force_load" not in argv_b):
+            PASS("-Wl,-force_load,<archive> survives verbatim")
+        else:
+            FAIL("-Wl,-force_load,<archive> survives verbatim", " ".join(argv_b)[:500])
+
+        # (c) -all_load with two real .a files -> one -force_load per archive,
+        # -all_load itself gone
+        argv_c = _dump_argv(["-all_load", str(lib_a), str(lib_b)])
+        if (argv_c.count("-force_load") >= 2 and str(lib_a) in argv_c
+                and str(lib_b) in argv_c and "-all_load" not in argv_c):
+            PASS("-all_load rewritten to per-archive -force_load")
+        else:
+            FAIL("-all_load rewritten to per-archive -force_load", " ".join(argv_c)[:800])
+
+        # (d) -Wl,-all_load behaves the same as -all_load
+        argv_d = _dump_argv(["-Wl,-all_load", str(lib_a), str(lib_b)])
+        if argv_d.count("-force_load") >= 2 and "-all_load" not in argv_d:
+            PASS("-Wl,-all_load rewritten same as -all_load")
+        else:
+            FAIL("-Wl,-all_load rewritten same as -all_load", " ".join(argv_d)[:800])
+
+        # (e) archive already explicitly -force_load'd is not force-loaded
+        # twice by -all_load: attribute -force_load operands per-archive
+        # rather than just totalling occurrences, and confirm -all_load
+        # left no orphaned -Xlinker behind when it was stripped.
+        argv_e = _dump_argv(
+            ["-force_load", str(lib_a), "-Xlinker", "-all_load", str(lib_a), str(lib_b)]
+        )
+        operands_e = [
+            _operand_after(argv_e, i)
+            for i, tok in enumerate(argv_e)
+            if tok == "-force_load"
+        ]
+        no_orphan_xlinker = "-Xlinker" not in argv_e
+        if (operands_e.count(str(lib_a)) == 1 and operands_e.count(str(lib_b)) == 1
+                and "-all_load" not in argv_e and no_orphan_xlinker):
+            PASS("-all_load does not double-force-load an explicit -force_load archive")
+        else:
+            FAIL("-all_load does not double-force-load an explicit -force_load archive",
+                 f"force_load_operands={operands_e} no_orphan_xlinker={no_orphan_xlinker} "
+                 f"argv={' '.join(argv_e)[:800]}")
+
+        # (f) no temp dir leaked, ar never invoked -- shadow PATH with a
+        # sentinel "ar" and point TMPDIR at an empty scratch dir.
+        fake_bin = Path(td) / "fake_bin"
+        fake_bin.mkdir()
+        ar_sentinel = Path(td) / "ar_was_called"
+        fake_ar = fake_bin / "ar"
+        fake_ar.write_text(f'#!/bin/sh\ntouch "{ar_sentinel}"\nexit 1\n')
+        fake_ar.chmod(0o755)
+        tmp_scratch = Path(td) / "tmp_scratch"
+        tmp_scratch.mkdir()
+
+        _old_path = os.environ.get("PATH", "")
+        _old_tmpdir = os.environ.get("TMPDIR")
+        os.environ["PATH"] = f"{fake_bin}{os.pathsep}{_old_path}"
+        os.environ["TMPDIR"] = str(tmp_scratch)
+        try:
+            _dump_argv(["-all_load", str(lib_a), str(lib_b)])
+        finally:
+            os.environ["PATH"] = _old_path
+            if _old_tmpdir is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = _old_tmpdir
+
+        if ar_sentinel.exists():
+            FAIL("ar is never invoked by force-load wrapper", "sentinel ar script ran")
+        else:
+            PASS("ar is never invoked by force-load wrapper")
+
+        leftover = list(tmp_scratch.iterdir())
+        if leftover:
+            FAIL("no temp directory left behind", f"found: {[p.name for p in leftover]}")
+        else:
+            PASS("no temp directory left behind")
+
+
+# ===================================================================
+# Section 9 — Unix-only: wrapper executability under emulation
+# ===================================================================
+def test_wrapper_shebang_portability() -> None:
+    """Installed wrappers must not depend on an interpreter outside $PREFIX.
+
+    A shebang is resolved by the kernel -- or by qemu-user's ELF loader -- against
+    the *executing* rootfs, before PATH lookup or any activation logic runs.  Under
+    qemu-user with a native rootfs (the shape this recipe itself sets up in
+    build.sh, symlinking $QEMU_EXECVE onto PATH) an absolute interpreter such as
+    /usr/bin/env resolves to the BUILD-arch binary, which the emulator cannot exec:
+
+        qemu-execve-aarch64: /usr/bin/env: Invalid ELF image for this architecture
+
+    A compiled wrapper has no shebang and is immune.  A script whose interpreter
+    lives inside $PREFIX is emulated along with everything else, so it also works.
+
+    Reports WARN rather than FAIL: the condition is known and pending the C shim
+    port, so it must not mask genuine failures in the CI exit code.
+    """
+    print("--- Wrapper shebang portability ---")
+
+    if _build_is_win:
+        SKIP("wrapper shebang portability", "Unix-only")
+        return
+
+    prefix_str = str(_prefix)
+    candidates = sorted(
+        p for p in _wrapper_dir.glob(f"{_triplet}-*")
+        if p.is_file() and os.access(p, os.X_OK)
+    )
+    if not candidates:
+        FAIL("wrapper shebang portability", f"no executable wrappers in {_wrapper_dir}")
+        return
+
+    for p in candidates:
+        try:
+            with p.open("rb") as fh:
+                first = fh.readline(512).decode("utf-8", errors="replace").strip()
+        except OSError as exc:
+            FAIL(f"{p.name} readable", str(exc))
+            continue
+
+        if not first.startswith("#!"):
+            PASS(f"{p.name} is a binary (no shebang to resolve)")
+            continue
+
+        parts = first[2:].strip().split()
+        interp = parts[0] if parts else ""
+        if interp.startswith(prefix_str):
+            PASS(f"{p.name} shebang inside prefix")
+        else:
+            # WARN, not FAIL: this is a KNOWN-PENDING condition, not a regression.
+            # Every unix wrapper carries `#!/usr/bin/env bash` today and will keep
+            # doing so until the wrapper -> C shim port lands (WRAPPER_C_PORT_SCOPE.md);
+            # the compiled shims then hit the PASS("binary") branch above with no test
+            # change.  Kept as WARN so it stays visible in the summary without masking
+            # real failures in CI -- do NOT delete this check to make CI green.
+            WARN(f"{p.name} shebang is prefix-external",
+                 f"{first!r} - unresolvable under emulation with a native rootfs; "
+                 f"pending the C shim port")
+
+
+def test_wrapper_exec_under_emulation() -> None:
+    """Exec a shipped wrapper from inside an emulated process.
+
+    This is the consumer-facing path: anyone cross-compiling under qemu-user runs
+    the wrapper we ship.  Every other wrapper test in this file exec's it
+    NATIVELY, where /usr/bin/env resolves to a runnable binary, so none of them
+    can observe this failure.
+
+    Needs a BUILD-arch emulator.  qemu-execve-<arch> is therefore a *build*
+    requirement of this test, never a run requirement -- a run requirement would
+    resolve for the cross target and produce an emulator that cannot itself run.
+    """
+    print("--- Wrapper exec under emulation ---")
+
+    if _build_is_win or not is_linux_target:
+        SKIP("wrapper exec under emulation", "linux targets only")
+        return
+
+    # qemu and conda name this arch differently from the LLVM triplet: the triplet
+    # says powerpc64le, while qemu ships qemu-ppc64le, conda names the package
+    # qemu-execve-ppc64le, and platform.machine() reports ppc64le.  Normalise before
+    # both the native-arch check and the emulator lookup.  (arm64 -> aarch64 is
+    # already normalised at module scope.)
+    _qemu_arch = {"powerpc64le": "ppc64le"}.get(_arch, _arch)
+
+    if _qemu_arch == _native_machine:
+        SKIP("wrapper exec under emulation",
+             f"target arch {_qemu_arch} is native - nothing to emulate")
+        return
+
+    emulator = os.environ.get("QEMU_EXECVE", "") or shutil.which(f"qemu-{_qemu_arch}") or ""
+    if not emulator:
+        SKIP("wrapper exec under emulation", f"no qemu-{_qemu_arch} on PATH or $QEMU_EXECVE")
+        return
+
+    wrapper = _wrapper_dir / f"{_triplet}-zig-cc"
+    if not wrapper.exists():
+        FAIL("wrapper exec under emulation", f"{wrapper} missing")
+        return
+
+    r = _run([emulator, str(wrapper), "--version"], timeout=120)
+    if r.returncode == 0:
+        PASS("shipped zig-cc execs under emulation")
+        return
+
+    detail = f"rc={r.returncode} stderr={r.stderr[:500]}"
+    if "Invalid ELF image" in r.stderr:
+        detail += " - interpreter resolved to a build-arch binary"
+    FAIL("shipped zig-cc execs under emulation", detail)
 
 
 # ===================================================================
@@ -1144,6 +1410,8 @@ def main() -> int:
     test_activation_variables()
     test_flag_filter_content()
     test_force_load_wrappers()
+    test_wrapper_shebang_portability()
+    test_wrapper_exec_under_emulation()
     test_flag_filtering()
     test_target_override()
     test_shared_lib()

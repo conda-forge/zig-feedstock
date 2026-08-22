@@ -39,8 +39,7 @@ function fix_sysroot_libc_scripts() {
             -e "s|( /lib/ld-|( ../../lib/ld-|g" \
             "${script_file}"
 
-          dbg echo "      Before: $(cat "${script_file}.orig")"
-          dbg echo "      After:  $(cat "${script_file}")"
+          dbg echo "  patched $(basename "${script_file}") ($(wc -c < "${script_file}" | tr -d ' ') bytes)"
           rm -f "${script_file}.orig"
         fi
       done

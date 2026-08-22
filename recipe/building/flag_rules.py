@@ -192,6 +192,16 @@ PROFILE_DATA: dict[str, dict] = {
         mingw_common="{zig_lib}/libc/mingw/lib-common",
         arch_dirs={
             "aarch64": "{zig_lib}/libc/mingw/libarm64",
+            # x86/i386/i686: all three are aliases the 32-bit-x86 arch
+            # normaliser can produce (mirrors _mingw.sh's own
+            # `case "${_win_arch}" in x86|i386|i686)` -- see _mingw.sh).
+            # Only "x86" is actually reachable today via
+            # install_zig_activation.py's `zig_triplet.split("-")[0]`
+            # derivation (zig_triplet == "x86-windows-msvc" for win-32),
+            # but all three are added here for parity/robustness.
+            "x86": "{zig_lib}/libc/mingw/lib32",
+            "i386": "{zig_lib}/libc/mingw/lib32",
+            "i686": "{zig_lib}/libc/mingw/lib32",
             "*": "{zig_lib}/libc/mingw/lib-x86_64",
         },
         print_file_name_probe_dirs=[
@@ -207,6 +217,11 @@ PROFILE_DATA: dict[str, dict] = {
         mingw_common="{zig_lib}\\libc\\mingw\\lib-common",
         arch_dirs={
             "aarch64": "{zig_lib}\\libc\\mingw\\libarm64",
+            # x86/i386/i686: see the matching comment in the "unix" profile
+            # above -- same aliases, same rationale.
+            "x86": "{zig_lib}\\libc\\mingw\\lib32",
+            "i386": "{zig_lib}\\libc\\mingw\\lib32",
+            "i686": "{zig_lib}\\libc\\mingw\\lib32",
             "*": "{zig_lib}\\libc\\mingw\\lib-x86_64",
         },
         print_file_name_probe_dirs=[

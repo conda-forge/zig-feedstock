@@ -26,13 +26,22 @@ from pathlib import Path
 
 
 def main():
-    print("=== Installing Zig Activation Package ===")
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print("=== Installing Zig Activation Package ===")
 
     prefix = Path(os.environ.get("PREFIX", sys.prefix))
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
     zig_triplet = os.environ.get("ZIG_TRIPLET", "native")
     conda_triplet = os.environ.get("CONDA_TRIPLET", "")
-    cross_compiler = os.environ.get("CROSS_COMPILER", "false")
+    # rattler-build renders Jinja booleans capitalized ("True"/"False"), so
+    # normalize before comparing against "true" below
+    cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
+    # Wrappers execute where the package installs (target_platform), so the C
+    # shim must be built for that arch whenever it differs from the build
+    # machine. This covers unhosted cross-compilers AND is_cross_target lanes;
+    # UNHOSTED_XCOMPILER missed the latter (its cross_target_platform_ !=
+    # target_platform clause is false there). Same capitalization normalization.
+    shim_on_target = os.environ.get("SHIM_RUNS_ON_TARGET", "false").strip().lower() == "true"
 
     # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
     target_triplet = os.environ.get("CONDA_TRIPLET", "")
@@ -48,14 +57,15 @@ def main():
     conda_zig_build = f"{native_triplet}-zig"
     conda_zig_host = f"{conda_triplet}-zig"
 
-    print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
-    print(f"zig_triplet: {zig_triplet}")
-    print(f"conda_triplet: {conda_triplet}")
-    print(f"CROSS_COMPILER: {cross_compiler}")
-    print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
-    print(f"CONDA_ZIG_HOST: {conda_zig_host}")
-    print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
-    print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print(f"PKG_NAME: {os.environ.get('PKG_NAME', 'unknown')}")
+        print(f"zig_triplet: {zig_triplet}")
+        print(f"conda_triplet: {conda_triplet}")
+        print(f"CROSS_COMPILER: {cross_compiler}")
+        print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
+        print(f"CONDA_ZIG_HOST: {conda_zig_host}")
+        print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
+        print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
 
     # 1. Install activation/deactivation scripts
     install_activation_scripts(
@@ -72,6 +82,7 @@ def main():
         zig_triplet=zig_triplet,
         conda_triplet=conda_triplet,
         is_nonunix=is_nonunix,
+        shim_on_target=shim_on_target,
     )
 
 
@@ -98,6 +109,7 @@ def main():
             zig_triplet=native_zig_triplet,
             conda_triplet=native_triplet,
             is_nonunix=is_nonunix,
+            shim_on_target=shim_on_target,
         )
 
         if is_nonunix:
@@ -157,8 +169,24 @@ def _find_zig_compiler() -> str:
     )
 
 
-def _compile_c_shim(src: Path, dst: Path, replacements: dict):
-    """Compile a C shim with @PLACEHOLDER@ substitution using zig cc."""
+def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple = (), target: str | None = None):
+    """Compile a C shim with @PLACEHOLDER@ substitution using zig cc.
+
+    extra_args carries platform-specific link flags (e.g. "-lkernel32" for
+    non-Unix targets) appended to the compile command.
+
+    target controls the architecture the shim is compiled for. It defaults
+    to None, which means "compile natively for the build machine" — this is
+    correct both for native builds and for HOSTED cross-compilers (where
+    build_platform == target_platform and the resulting wrapper executes on
+    the build machine, e.g. win-64 -> win-arm64). Set target to the target
+    triple whenever target_platform != build_platform — that is, for UNHOSTED
+    cross-compilers AND for is_cross_target lanes such as ppc64le built on an
+    x86_64 runner — where the wrapper executes on the TARGET machine and a
+    natively-compiled shim would be the wrong architecture. The bash
+    wrappers this C port replaces were architecture-neutral text scripts,
+    so this concern is introduced by the C port itself.
+    """
     content = src.read_text()
     for placeholder, value in replacements.items():
         content = content.replace(placeholder, value)
@@ -169,13 +197,15 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_src = Path(tmpdir) / src.name
         tmp_src.write_text(content)
+        target_args = ["-target", target] if target else []
         subprocess.check_call([
             zig_bin, "cc",
+            *target_args,
             "-O2",
             f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
-            "-lkernel32",
+            *extra_args,
         ])
 
     pdb = dst.with_suffix(".pdb")
@@ -183,7 +213,7 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
         pdb.unlink()
         print(f"  Removed: {pdb}")
 
-    print(f"  Compiled: {dst}")
+    print(f"  Compiled: {dst}" + (f" (-target {target})" if target else ""))
 
 
 def _strip_glibc_version(triplet: str) -> str:
@@ -195,6 +225,20 @@ def _strip_glibc_version(triplet: str) -> str:
     """
     m = re.match(r'^(.*-gnu[a-z]*)\.\d+\.\d+', triplet)
     return m.group(1) if m else triplet
+
+
+_SHIM_GLIBC_FLOOR = "2.17"
+_SHIM_GLIBC_FLOOR_BY_ARCH = {"riscv64": "2.39"}
+
+
+def _with_glibc_floor(triplet: str, arch: str) -> str:
+    # A bash wrapper had no glibc floor; a compiled ELF does.  Pin it low enough to
+    # run on any conda-forge sysroot, not just the one that built it.  riscv64 is
+    # higher by necessity: glibc gained riscv64 support long after 2.17.
+    if "-linux-gnu" not in triplet:
+        return triplet
+    floor = _SHIM_GLIBC_FLOOR_BY_ARCH.get(arch, _SHIM_GLIBC_FLOOR)
+    return f"{_strip_glibc_version(triplet)}.{floor}"
 
 
 def _find_zig_bin(conda_triplet: str, is_nonunix: bool = False) -> str:
@@ -255,6 +299,7 @@ def install_zig_cc_wrappers(
     zig_triplet: str,
     conda_triplet: str,
     is_nonunix: bool = False,
+    shim_on_target: bool = False,
 ):
     """Install zig-cc/cxx/ar/ranlib/asm/rc wrapper scripts from templates."""
     scripts_dir = recipe_dir / "scripts"
@@ -289,7 +334,7 @@ def install_zig_cc_wrappers(
                     "@ZIG_BIN_NAME@": zig_bin_name,
                     "@IS_MINGW_TARGET@": "1" if is_mingw else "0",
                 }
-                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements)
+                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements, extra_args=("-lkernel32",))
 
         # Compile .exe shims for simple pass-through tools
         tool_src = recipe_dir / "building" / "zig-tool-nonunix.c"
@@ -308,7 +353,7 @@ def install_zig_cc_wrappers(
                     "@ZIG_BIN_NAME@": zig_bin_name,
                     "@ZIG_PREFIX_ARGS@": prefix_args,
                 }
-                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements)
+                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements, extra_args=("-lkernel32",))
 
         # Compile zig-windres.exe (dedicated shim with -o -> -fo translation)
         windres_src = recipe_dir / "building" / "zig-windres-nonunix.c"
@@ -317,7 +362,7 @@ def install_zig_cc_wrappers(
                 **replacements,
                 "@ZIG_BIN_NAME@": zig_bin_name,
             }
-            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements)
+            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements, extra_args=("-lkernel32",))
 
     else:
         wrapper_dir = prefix / "bin"
@@ -328,18 +373,40 @@ def install_zig_cc_wrappers(
         # the other two helpers which live in recipe/scripts/ alongside the
         # wrapper templates that source them.
         for helper, helper_src_dir in [
+            ("_zig-cache-common.sh", scripts_dir),
             ("_zig-cc-common.sh", scripts_dir),
-            ("_zig-force-load-common.sh", scripts_dir),
             ("_translate.gen.sh", building_dir),
         ]:
             src = helper_src_dir / helper
             if src.exists():
                 _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
-        wrappers = ["zig-cc", "zig-cxx", "zig-ar", "zig-ranlib", "zig-asm", "zig-rc", "zig-lld", "zig-windres", "zig-force-load-cc", "zig-force-load-cxx"]
-        for name in wrappers:
-            src = scripts_dir / f"{name}.sh"
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{conda_triplet}-{name}", replacements, executable=True)
+
+        # The C multiplexer: ONE binary compiled once, then copied to each
+        # wrapper name. It dispatches on basename(argv[0]) with the
+        # @WRAPPER_PREFIX@ stripped, so every copy behaves as its own tool.
+        # Covers all 10 names, including zig-force-load-cc / zig-force-load-cxx
+        # (formerly bash, now dispatch arms in zig-cc-unix.c).
+        mux_names = [
+            "zig-cc", "zig-cxx", "zig-ar", "zig-ranlib",
+            "zig-asm", "zig-rc", "zig-lld", "zig-windres",
+            "zig-force-load-cc", "zig-force-load-cxx",
+        ]
+
+        mux_src = building_dir / "zig-cc-unix.c"
+        # Compile natively unless the wrapper will run on the target machine
+        # (target_platform != build_platform), where a natively compiled shim
+        # would be the wrong architecture. See _compile_c_shim.
+        shim_target = _with_glibc_floor(cc_target, target_arch) if shim_on_target else None
+        # macOS: reserve Mach-O header padding, else conda's post-build
+        # install_name_tool rpath rewrite fails ("load commands do not fit").
+        mux_extra = ("-Wl,-headerpad_max_install_names",) if "darwin" in conda_triplet else ()
+        first = wrapper_dir / f"{conda_triplet}-{mux_names[0]}"
+        _compile_c_shim(mux_src, first, replacements, extra_args=mux_extra, target=shim_target)
+        for name in mux_names[1:]:
+            dst = wrapper_dir / f"{conda_triplet}-{name}"
+            shutil.copyfile(first, dst)
+            shutil.copymode(first, dst)
+            print(f"  Installed (multiplexer copy): {dst}")
 
 
 def install_unix_cross_wrappers(
@@ -394,6 +461,7 @@ def install_nonunix_cross_wrappers(
         recipe_dir / "building" / "cross-zig-shim.c",
         bin_dir / f"{target_triplet}-zig.exe",
         replacements,
+        extra_args=("-lkernel32",),
     )
 
 

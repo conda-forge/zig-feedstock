@@ -45,6 +45,7 @@ _zig_translate_flags() {
             local _zig_lib="${_tr_conda_prefix}/lib/zig"
             local _arch_leaf="lib-x86_64"
             [[ "${_tr_target_arch}" == "aarch64" ]] && _arch_leaf="libarm64"
+            case "${_tr_target_arch}" in x86|i386|i686) _arch_leaf="lib32" ;; esac
             echo "install: ${_zig_lib}/"
             echo "programs: =${_tr_conda_prefix}/bin/"
             echo "libraries: =${_zig_lib}/libc/mingw/lib-common:${_zig_lib}/libc/mingw/${_arch_leaf}:${_zig_lib}"

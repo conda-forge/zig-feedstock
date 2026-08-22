@@ -189,7 +189,15 @@ static void zig_tr_print_search_dirs(const zig_translate_profile *profile) {
     char programs[512];
     char mingw_common[512];
     char mingw_arch[512];
-    const char *arch_leaf = zig_tr_streq(profile->zig_target_arch, "aarch64") ? "libarm64" : "lib-x86_64";
+    const char *arch_leaf;
+    if (zig_tr_streq(profile->zig_target_arch, "aarch64"))
+        arch_leaf = "libarm64";
+    else if (zig_tr_streq(profile->zig_target_arch, "x86") ||
+             zig_tr_streq(profile->zig_target_arch, "i386") ||
+             zig_tr_streq(profile->zig_target_arch, "i686"))
+        arch_leaf = "lib32";
+    else
+        arch_leaf = "lib-x86_64";
     if (profile->is_win) {
         snprintf(zig_lib, sizeof(zig_lib), "%s\\\\Library\\\\lib\\\\zig", profile->conda_prefix);
         snprintf(programs, sizeof(programs), "%s\\\\Library\\\\bin\\\\", profile->conda_prefix);
@@ -270,6 +278,14 @@ static void zig_tr_print_prog_name(const char *name, const zig_translate_profile
 }"""
 
 
+def _c_print_sysroot_fn() -> str:
+    return """/* R12: print the caller-resolved sysroot verbatim (unix profile only).
+ * NULL degrades to the empty string, matching bash's "${_sr:-}". */
+static void zig_tr_print_sysroot(const zig_translate_profile *profile) {
+    printf("%s\\n", profile->sysroot ? profile->sysroot : "");
+}"""
+
+
 def _c_print_multiarch_fn() -> str:
     # NOTE (flagged in report): the C profile struct carries only
     # zig_target_arch + is_win/is_win_target (no full conda-triplet field),
@@ -292,43 +308,65 @@ static void zig_tr_print_multiarch(const zig_translate_profile *profile) {
 
 
 # Maps action["op"] (intercept rules only) -> the C call expression used by
-# _c_intercept_dispatch_fn(). Rules whose op is not listed here are not
-# emitted into the C/win dispatch (currently just R12, filtered out earlier
-# via rules_for_profile("win") since it is unix-only).
+# _c_intercept_dispatch_fn(). Every intercept rule's op is listed here (R1-13
+# has no other intercept ops); R12 is unix-only and is emitted by
+# _c_intercept_dispatch_fn() under a runtime `!profile->is_win` guard rather
+# than being filtered out (rules_for_profile("win") still excludes it from
+# the unconditional/win-applicable loop).
 _C_INTERCEPT_CALL: dict[str, str] = {
     "intercept_print_search_dirs": "zig_tr_print_search_dirs(profile)",
     "intercept_print_file_name": "zig_tr_print_file_name(value, profile)",
     "intercept_print_multi_os_directory": "zig_tr_print_multi_os_directory()",
     "intercept_print_prog_name": "zig_tr_print_prog_name(value, profile)",
+    "intercept_print_sysroot": "zig_tr_print_sysroot(profile)",
     "intercept_print_multiarch": "zig_tr_print_multiarch(profile)",
 }
 
 
-def _c_intercept_dispatch_fn() -> str:
-    """Single-pass dispatch over ALL intercept rules applicable to the win
-    profile (R2, R3, R10, R11, R13 -- R12 is unix-only and is filtered out
-    by rules_for_profile("win"), since zig-cc-nonunix.c has no sysroot
-    concept). Replaces the old one-dedicated-for-loop-per-rule shape with a
-    single loop, one arg scan, table-driven from RULES.
-    """
-    lines = [
-        "    for (i = 0; i < argc; i++) {",
-        "        const char *a = argv[i];",
-    ]
-    for rule in rules_for_profile("win"):
+def _c_intercept_arm_lines(rules: list[dict], indent: str) -> list[str]:
+    """Render one `if (...) { call; return 2; }` line per intercept-rule
+    match value, table-driven from RULES. Shared by the win-applicable loop
+    and the unix-only guarded block in _c_intercept_dispatch_fn()."""
+    lines = []
+    for rule in rules:
         if rule["kind"] != "intercept":
             continue
         form = rule["match"]["form"]
         call_template = _C_INTERCEPT_CALL[rule["action"]["op"]]
         for value in rule["match"]["values"]:
             if form == "exact":
-                lines.append(f'        if (zig_tr_streq(a, "{value}")) {{ {call_template}; return 2; }}')
+                lines.append(f'{indent}if (zig_tr_streq(a, "{value}")) {{ {call_template}; return 2; }}')
             elif form == "prefix":
                 value_expr = f'a + strlen("{value}")'
                 call = call_template.replace("value", value_expr)
-                lines.append(f'        if (zig_tr_starts_with(a, "{value}")) {{ {call}; return 2; }}')
+                lines.append(f'{indent}if (zig_tr_starts_with(a, "{value}")) {{ {call}; return 2; }}')
             else:
                 raise ValueError(f"unsupported intercept match form for C: {form!r}")
+    return lines
+
+
+def _c_intercept_dispatch_fn() -> str:
+    """Single-pass dispatch over ALL intercept rules applicable to the win
+    profile (R2, R3, R10, R11, R13), followed by the unix-only intercept
+    rules (R12) emitted under a runtime `!profile->is_win` guard -- the win
+    shim (zig-cc-nonunix.c) has no sysroot concept, so R12 must not fire
+    there even though it is compiled into the same zig_translate_flags().
+    Replaces the old one-dedicated-for-loop-per-rule shape with a single
+    loop, one arg scan, table-driven from RULES.
+    """
+    lines = [
+        "    for (i = 0; i < argc; i++) {",
+        "        const char *a = argv[i];",
+    ]
+    lines.extend(_c_intercept_arm_lines(rules_for_profile("win"), "        "))
+
+    win_ids = {r["id"] for r in rules_for_profile("win")}
+    unix_only_rules = [r for r in rules_for_profile("unix") if r["id"] not in win_ids]
+    if unix_only_rules:
+        lines.append("        if (!profile->is_win) {")
+        lines.extend(_c_intercept_arm_lines(unix_only_rules, "            "))
+        lines.append("        }")
+
     lines.append("    }")
     return "\n".join(lines)
 
@@ -338,10 +376,11 @@ def generate_c() -> str:
         "/*",
         f" * {_GEN_BANNER}".rstrip().replace("\n", "\n * "),
         " *",
-        " * Encodes rules R1-R11 and R13 from flag_rules.py (R12 is unix-only,",
-        " * omitted here -- see flag_rules.rules_for_profile). Pure portable C: no",
-        " * windows.h, no spawn/exec, no platform calls beyond the fields",
-        " * already resolved into zig_translate_profile by the caller.",
+        " * Encodes rules R1-R13 from flag_rules.py. R12 (-print-sysroot) is",
+        " * unix-only and is gated at runtime on !profile->is_win -- see",
+        " * _c_intercept_dispatch_fn / flag_rules.rules_for_profile. Pure",
+        " * portable C: no windows.h, no spawn/exec, no platform calls beyond",
+        " * the fields already resolved into zig_translate_profile by the caller.",
         " */",
         "",
         "#ifndef ZIG_TRANSLATE_INC",
@@ -358,6 +397,11 @@ def generate_c() -> str:
         "                          * windows/mingw (gates R1's -Map rewrite) */",
         "    const char *conda_prefix;",
         "    const char *zig_target_arch; /* e.g. \"x86_64\" / \"aarch64\" */",
+        "    const char *sysroot;        /* R12: caller-resolved sysroot string,",
+        "                                 * post -d/CONDA_BUILD_SYSROOT fallback.",
+        "                                 * May be NULL or \"\" -- printed verbatim",
+        "                                 * even when not a directory, mirroring",
+        "                                 * bash's unconditional echo \"${_sr:-}\". */",
         "} zig_translate_profile;",
         "",
         "static int zig_tr_streq(const char *a, const char *b) { return strcmp(a, b) == 0; }",
@@ -389,6 +433,8 @@ def generate_c() -> str:
         _c_print_multi_os_directory_fn(),
         "",
         _c_print_prog_name_fn(),
+        "",
+        _c_print_sysroot_fn(),
         "",
         _c_print_multiarch_fn(),
         "",
@@ -459,10 +505,10 @@ static int zig_tr_rewrite_map(const char *arg, const char *next_arg, int has_nex
  *                          upgraded.
  *
  * Return value: 0 on success (*out_argv populated). 2 if any intercept
- * rule matched (R2, R3, R10, R11, R13 -- see zig_tr_streq/starts_with
- * dispatch below): output was already printed to stdout and the caller
- * must exit(0) immediately WITHOUT touching *out_argv (left unset). 1 on
- * allocation failure.
+ * rule matched (R2, R3, R10, R11, R13 unconditionally; R12 on the unix
+ * profile only -- see zig_tr_streq/starts_with dispatch below): output
+ * was already printed to stdout and the caller must exit(0) immediately
+ * WITHOUT touching *out_argv (left unset). 1 on allocation failure.
  *
  * No spawn, no platform calls beyond the fields already resolved into
  * profile by the caller.
@@ -623,6 +669,7 @@ def _sh_intercept_body(rule: dict, unix: dict) -> str:
         return f"""            local _zig_lib="{zig_lib}"
             local _arch_leaf="lib-x86_64"
             [[ "${{_tr_target_arch}}" == "aarch64" ]] && _arch_leaf="libarm64"
+            case "${{_tr_target_arch}}" in x86|i386|i686) _arch_leaf="lib32" ;; esac
             echo "install: ${{_zig_lib}}/"
             echo "programs: ={programs}"
             echo "libraries: =${{_zig_lib}}/libc/mingw/lib-common:${{_zig_lib}}/libc/mingw/${{_arch_leaf}}:${{_zig_lib}}"

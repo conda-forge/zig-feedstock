@@ -80,11 +80,20 @@ def setup_zig_global_cache_dir() -> None:
 # Emulation detection
 # ---------------------------------------------------------------------------
 _native_machine = _platform.machine()
-_is_emulated = (
-    sys.platform == "linux"
-    and _native_machine not in ("x86_64", "i686")
-    and os.environ.get("CI", "") != ""
-)
+# QEMU_EXECVE is exported by recipe.yaml only under
+# `linux and build_platform != target_platform`, i.e. exactly the unhosted
+# cross lane where target binaries must run under qemu-user. Deriving from it
+# keys emulation off the BUILD/TARGET RELATIONSHIP rather than off host
+# hardware identity.
+#
+# The previous definition tested `_platform.machine() not in ("x86_64","i686")`,
+# which was wrong twice over: it reported True on the NATIVE linux_aarch64
+# runners (no emulation at all), and it would silently invert the day a lane
+# builds x86-64 on aarch64 hardware. Never reintroduce a machine allowlist here.
+#
+# Note recipe.yaml assigns `${QEMU_EXECVE:-$(command -v qemu-<arch> || true)}`,
+# so the variable can legitimately be the empty string -- test for non-empty.
+_is_emulated = bool(os.environ.get("QEMU_EXECVE", ""))
 
 
 # ---------------------------------------------------------------------------

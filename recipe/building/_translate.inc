@@ -4,10 +4,11 @@
  * Regenerate:       python recipe/building/gen_translators.py
  * CI drift guard:   python recipe/building/gen_translators.py --check
  *
- * Encodes rules R1-R11 and R13 from flag_rules.py (R12 is unix-only,
- * omitted here -- see flag_rules.rules_for_profile). Pure portable C: no
- * windows.h, no spawn/exec, no platform calls beyond the fields
- * already resolved into zig_translate_profile by the caller.
+ * Encodes rules R1-R13 from flag_rules.py. R12 (-print-sysroot) is
+ * unix-only and is gated at runtime on !profile->is_win -- see
+ * _c_intercept_dispatch_fn / flag_rules.rules_for_profile. Pure
+ * portable C: no windows.h, no spawn/exec, no platform calls beyond
+ * the fields already resolved into zig_translate_profile by the caller.
  */
 
 #ifndef ZIG_TRANSLATE_INC
@@ -24,6 +25,11 @@ typedef struct {
                           * windows/mingw (gates R1's -Map rewrite) */
     const char *conda_prefix;
     const char *zig_target_arch; /* e.g. "x86_64" / "aarch64" */
+    const char *sysroot;        /* R12: caller-resolved sysroot string,
+                                 * post -d/CONDA_BUILD_SYSROOT fallback.
+                                 * May be NULL or "" -- printed verbatim
+                                 * even when not a directory, mirroring
+                                 * bash's unconditional echo "${_sr:-}". */
 } zig_translate_profile;
 
 static int zig_tr_streq(const char *a, const char *b) { return strcmp(a, b) == 0; }
@@ -99,7 +105,15 @@ static void zig_tr_print_search_dirs(const zig_translate_profile *profile) {
     char programs[512];
     char mingw_common[512];
     char mingw_arch[512];
-    const char *arch_leaf = zig_tr_streq(profile->zig_target_arch, "aarch64") ? "libarm64" : "lib-x86_64";
+    const char *arch_leaf;
+    if (zig_tr_streq(profile->zig_target_arch, "aarch64"))
+        arch_leaf = "libarm64";
+    else if (zig_tr_streq(profile->zig_target_arch, "x86") ||
+             zig_tr_streq(profile->zig_target_arch, "i386") ||
+             zig_tr_streq(profile->zig_target_arch, "i686"))
+        arch_leaf = "lib32";
+    else
+        arch_leaf = "lib-x86_64";
     if (profile->is_win) {
         snprintf(zig_lib, sizeof(zig_lib), "%s\\Library\\lib\\zig", profile->conda_prefix);
         snprintf(programs, sizeof(programs), "%s\\Library\\bin\\", profile->conda_prefix);
@@ -164,6 +178,12 @@ static void zig_tr_print_prog_name(const char *name, const zig_translate_profile
         return;
     }
     printf("%s\n", name);
+}
+
+/* R12: print the caller-resolved sysroot verbatim (unix profile only).
+ * NULL degrades to the empty string, matching bash's "${_sr:-}". */
+static void zig_tr_print_sysroot(const zig_translate_profile *profile) {
+    printf("%s\n", profile->sysroot ? profile->sysroot : "");
 }
 
 /* R13: -print-multiarch intercept. Synthesizes this profile/arch's
@@ -245,10 +265,10 @@ static int zig_tr_rewrite_map(const char *arg, const char *next_arg, int has_nex
  *                          upgraded.
  *
  * Return value: 0 on success (*out_argv populated). 2 if any intercept
- * rule matched (R2, R3, R10, R11, R13 -- see zig_tr_streq/starts_with
- * dispatch below): output was already printed to stdout and the caller
- * must exit(0) immediately WITHOUT touching *out_argv (left unset). 1 on
- * allocation failure.
+ * rule matched (R2, R3, R10, R11, R13 unconditionally; R12 on the unix
+ * profile only -- see zig_tr_streq/starts_with dispatch below): output
+ * was already printed to stdout and the caller must exit(0) immediately
+ * WITHOUT touching *out_argv (left unset). 1 on allocation failure.
  *
  * No spawn, no platform calls beyond the fields already resolved into
  * profile by the caller.
@@ -264,6 +284,9 @@ int zig_translate_flags(int argc, char *const argv[], const zig_translate_profil
         if (zig_tr_streq(a, "-print-multi-os-directory")) { zig_tr_print_multi_os_directory(); return 2; }
         if (zig_tr_starts_with(a, "-print-prog-name=")) { zig_tr_print_prog_name(a + strlen("-print-prog-name="), profile); return 2; }
         if (zig_tr_streq(a, "-print-multiarch")) { zig_tr_print_multiarch(profile); return 2; }
+        if (!profile->is_win) {
+            if (zig_tr_streq(a, "-print-sysroot")) { zig_tr_print_sysroot(profile); return 2; }
+        }
     }
 
     {

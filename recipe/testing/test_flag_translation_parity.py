@@ -89,6 +89,7 @@ _WINDOWS_TARGET = "x86_64-windows-gnu"  # needed to trigger the -Map rewrite bra
 _BUILDING_DIR = _RECIPE_DIR / "building"
 _TRANSLATE_GEN_SH = _BUILDING_DIR / "_translate.gen.sh"
 _HARNESS_C = _RECIPE_DIR / "testing" / "_translate_harness.c"
+_UNIX_SHIM_C = _BUILDING_DIR / "zig-cc-unix.c"
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +530,24 @@ def _gen_intercept_assert(unix_res: GenResult, win_res: GenResult) -> tuple[bool
     )
 
 
+def _gen_sysroot_assert(unix_res: GenResult, win_res: GenResult) -> tuple[bool, str]:
+    # R12 is unix-only. Asserted on the unix result ONLY, deliberately:
+    # the generated-BASH dispatch is built from rules_for_profile("unix")
+    # unconditionally (the bash wrapper never runs the win profile), so its
+    # win leg also intercepts -- while generated-C's win profile passes
+    # -print-sysroot through. That divergence is by design and the assertion
+    # cannot tell the two legs apart, so win_res is not constrained here.
+    # Mirror-image of _gen_map_assert, which asserts on win_res only.
+    def _intercepted_empty(r: GenResult) -> bool:
+        if r.returncode == 2:            # C harness convention
+            return r.stdout.strip() == ""
+        # bash convention: `exit 0` after echoing "${_sr:-}" (empty here)
+        return r.returncode == 0 and r.stdout.strip() == ""
+
+    ok = _intercepted_empty(unix_res)
+    return ok, f"unix.rc={unix_res.returncode} unix.stdout={unix_res.stdout[:200]!r}"
+
+
 def _gen_mode_downgrade_assert(unix_res: GenResult, win_res: GenResult) -> tuple[bool, str]:
     ok = (
         unix_res.returncode == 0
@@ -624,6 +643,10 @@ GEN_CASES: list[GenCase] = [
             and r.use_lld == 1
             and not any(t.startswith("-Wl,-rpath-link") for t in r.tokens)
         ),
+    ),
+    GenCase(
+        14, "-print-sysroot intercepted on unix profile, prints empty _sr",
+        "cc", ["-print-sysroot"], _gen_sysroot_assert,
     ),
 ]
 
@@ -757,6 +780,61 @@ def run_generated_bash_leg() -> None:
         PASS(name) if ok else FAIL(name, detail)
 
 
+# ---------------------------------------------------------------------------
+# Leg (C): the unix shim must COMPILE (zig-cc-unix.c + unix_common.h)
+# ---------------------------------------------------------------------------
+def run_unix_shim_compile_leg() -> None:
+    """Leg (C): syntax-check the unix C shim sources.
+
+    zig-cc-unix.c IS now compiled by install_zig_activation.py (the unix
+    multiplexer), but only on unix build hosts; this leg is the strict
+    syntax gate that keeps it warning-clean everywhere else.
+    Syntax-only: nothing is linked and no artifact is produced.
+
+    -std=c11 is deliberately STRICTER than production, which passes no -std=
+    at all (_compile_c_shim in install_zig_activation.py).  Strict mode forces
+    the POSIX feature-test-macro question, which is exactly how the setenv()
+    implicit-declaration bug was caught; keeping it strict here keeps that
+    class of bug visible instead of depending on a gnu-dialect default.
+
+    Any diagnostic at all is a FAIL: the sources are currently warning-clean,
+    and -Wimplicit-function-declaration is a hard error on clang >= 16 (which
+    zig cc is built on), so warnings here are not cosmetic.
+    """
+    print("--- Unix shim compile leg (zig-cc-unix.c + unix_common.h) ---")
+    name = "[unix-shim] zig-cc-unix.c syntax-clean (-std=c11 -Wall -Wextra)"
+
+    if not _UNIX_SHIM_C.exists():
+        SKIP(name, f"{_UNIX_SHIM_C.name} not staged in this environment")
+        return
+
+    # POSIX-only sources (unix_common.h pulls errno.h/unistd.h), and this recipe
+    # installs only triplet-prefixed compilers -- so on a Windows host the bare
+    # which() below can only find an unrelated runner-image binary whose headers
+    # will not resolve. Nothing to syntax-check here.
+    if sys.platform == "win32":
+        SKIP(name, "unix shim sources are POSIX-only (Windows host)")
+        return
+
+    cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+    if not cc:
+        SKIP(name, "no C compiler on PATH")
+        return
+
+    proc = subprocess.run(
+        [cc, "-std=c11", "-Wall", "-Wextra", "-fsyntax-only", str(_UNIX_SHIM_C)],
+        capture_output=True,
+        text=True,
+    )
+    diagnostics = proc.stderr.strip()
+    if proc.returncode != 0:
+        FAIL(name, f"compile FAILED (cc={cc}, rc={proc.returncode}):\n{diagnostics}")
+    elif diagnostics:
+        FAIL(name, f"compiled but emitted diagnostics (cc={cc}):\n{diagnostics}")
+    else:
+        PASS(name)
+
+
 # ===================================================================
 # Main
 # ===================================================================
@@ -781,6 +859,9 @@ def main() -> int:
     run_generated_bash_leg()
 
     print()
+    run_unix_shim_compile_leg()
+
+    print()
     n_pass = len(_results["PASS"])
     n_fail = len(_results["FAIL"])
     n_warn = len(_results["WARN"])
@@ -803,14 +884,23 @@ def main() -> int:
 
     genc_counts = _leg_counts("genC")
     genb_counts = _leg_counts("genB")
+    shim_counts = _leg_counts("unix-shim")
     total_counts = (n_pass, n_fail, n_warn, n_skip)
-    actual_bash_counts = tuple(t - c - b for t, c, b in zip(total_counts, genc_counts, genb_counts))
+    # actual-bash is derived by SUBTRACTION -- it is whatever is left after the
+    # explicitly tagged legs.  EVERY new leg must be subtracted here too, or its
+    # results silently inflate the actual-bash column (the unix-shim leg did
+    # exactly that when first added: actual-bash read 14 for 13 golden cases).
+    actual_bash_counts = tuple(
+        t - c - b - s
+        for t, c, b, s in zip(total_counts, genc_counts, genb_counts, shim_counts)
+    )
 
     print()
     print("=== Per-leg breakdown (pass/fail/warn/skip) ===")
     print(f"  actual-bash    : {actual_bash_counts}")
     print(f"  generated-C    : {genc_counts}")
     print(f"  generated-bash : {genb_counts}")
+    print(f"  unix-shim      : {shim_counts}")
 
     if n_fail:
         print("\nFailed tests (clean-lock regressions or capture errors):")
