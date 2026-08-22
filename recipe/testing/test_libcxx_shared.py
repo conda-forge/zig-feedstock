@@ -47,13 +47,15 @@ from _test_utils import (
     FAIL,
     WARN,
     SKIP,
+    check_emulation_env,
+    resolve_test_prefix,
     setup_zig_global_cache_dir,
 )
 
 # --------------------------------------------------------------------------
 # Platform detection
 # --------------------------------------------------------------------------
-_prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+_prefix = resolve_test_prefix("Library/lib/zig" if _build_is_win else "lib/zig")
 _conda_triplet = sys.argv[1] if len(sys.argv) > 1 else ""
 
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
@@ -133,7 +135,7 @@ def _find_zig_binary() -> str | None:
 
 def _find_zig_cache_dir(zig: str) -> Path | None:
     """Get zig's global cache directory from 'zig env'."""
-    r = _run([zig, "env"], timeout=10)
+    r = _run([zig, "env"], timeout=10, target=_conda_triplet)
     if r.returncode != 0:
         return None
     try:
@@ -157,7 +159,7 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
     )
 
     r = _run([zig, "c++", "-shared", "-o", str(out), str(src)],
-             cwd=str(td), timeout=120)
+             cwd=str(td), timeout=120, target=_conda_triplet)
     if r.returncode != 0:
         return None
 
@@ -236,7 +238,7 @@ def test_libcxx_fallback_static() -> None:
             return
 
         r = _run([zig, "c++", "-shared", "-o", str(out), str(src)],
-                 cwd=td, timeout=120)
+                 cwd=td, timeout=120, target=_conda_triplet)
         if r.stderr == "TIMEOUT":
             WARN("libcxx-static-fallback", "timed out (120s)")
             return
@@ -380,7 +382,7 @@ def test_libcxx_probe_paths() -> None:
         # Run with --verbose-link to see actual linker args
         out = Path(td) / "libprobe.so"
         r_vl = _run([zig, "c++", "-shared", "--verbose-link",
-                      "-o", str(out), str(src)], cwd=td, timeout=120)
+                      "-o", str(out), str(src)], cwd=td, timeout=120, target=_conda_triplet)
         if r_vl.returncode == 0 or r_vl.stderr:
             # Look for libc++ in verbose output (both stdout and stderr)
             verbose = r_vl.stdout + "\n" + r_vl.stderr
@@ -476,7 +478,7 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
         )
 
         r = _run([zig, "c++", "-shared", "-o", str(cxx_out), str(cxx_src)],
-                 cwd=td, timeout=120)
+                 cwd=td, timeout=120, target=_conda_triplet)
 
         if r.returncode != 0:
             FAIL(f"{label}: C++ compilation failed",
@@ -607,7 +609,7 @@ def _build_shared_libcxx(
     else:
         return None
 
-    r = _run(cmd, cwd=str(td_path), timeout=120)
+    r = _run(cmd, cwd=str(td_path), timeout=120, target=_conda_triplet)
     if r.returncode != 0 or not shared_build.exists():
         FAIL("libcxx-simulation: build shared libc++ from static .a",
              f"rc={r.returncode}\n{r.stderr[:2000]}")
@@ -744,7 +746,7 @@ def test_libcxx_shared_simulation() -> None:
 # ===================================================================
 def main() -> int:
     print("=== Shared libc++ Discovery Tests (patch 0008) ===")
-    print(f"  CONDA_PREFIX  = {_prefix}")
+    print(f"  test prefix   = {_prefix}")
     print(f"  CONDA_TRIPLET = {_conda_triplet}")
     print(f"  zig binary    = {_zig_bin_name}")
     print(f"  platform key  = {_get_platform_key()}")
@@ -753,6 +755,9 @@ def main() -> int:
     print(f"  ppc64le       = {is_ppc64le}")
     print(f"  emulated      = {_is_emulated}")
     print()
+
+    if not check_emulation_env(_conda_triplet):
+        return 1
 
     test_libcxx_fallback_static()
     test_libcxx_probe_paths()

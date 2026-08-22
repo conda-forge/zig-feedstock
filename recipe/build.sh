@@ -170,12 +170,6 @@ if is_linux && is_cross; then
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
-  # TODO: drop once qemu-execve-ppc64le ships qemu-powerpc64le upstream.
-  if [[ "${target_platform}" == "linux-ppc64le" ]] \
-     && ! command -v qemu-powerpc64le &>/dev/null \
-     && command -v qemu-ppc64le &>/dev/null; then
-    ln -sf "$(command -v qemu-ppc64le)" "${BUILD_PREFIX}/bin/qemu-powerpc64le"
-  fi
   # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
   # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
   if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
@@ -251,6 +245,8 @@ if is_linux; then
   # Fix sysroot libc.so linker scripts 2.17 to use relative paths
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
 
+  ls -ld "${CONDA_BUILD_SYSROOT:-/nonexistent}"/{usr/lib,lib64,lib64/lp64d} 2>&1 | sed 's/^/[sysroot-layout] /' || true
+
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
@@ -307,12 +303,12 @@ fi
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 _can_run_stage3() {
   if ! is_unix; then return 1; fi
-  # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
-  # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
+  # Skip Phase 2 langref on ppc64le (glibc 2.17 cross-link lacks -lpthread) and on
+  # riscv64 (qemu-emulated docgen is prohibitively slow); docs come from other platforms.
+  case "${target_platform}" in linux-ppc64le|linux-riscv64) return 1 ;; esac
   if ! is_cross; then return 0; fi
   if is_linux; then
-    command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
+    [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ] && return 0
   fi
   return 1
 }
@@ -323,10 +319,11 @@ elif _can_run_stage3; then
   dbg echo "=== PHASE 2: building langref via stage3 zig ==="
   _stage3_runner=()
   if is_cross && is_linux; then
-    _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
+    _stage3_runner=("${QEMU_EXECVE}")
   fi
 
-  # Zig hardcodes qemu-<arch> lookup. The regular qemu-powerpc64le variant
+  # bare qemu-<arch> already exists on PATH (regular variant); this shadow
+  # makes zig's internal -fqemu lookup resolve to the execve variant instead.
   _qemu_shadow_dir=""
   if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
     _qemu_shadow_dir=$(mktemp -d)

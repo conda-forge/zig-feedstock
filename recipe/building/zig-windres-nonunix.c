@@ -22,13 +22,7 @@
 
 /* --- Find zig binary --- */
 static int find_zig(char *out, size_t out_size) {
-    const char *conda = getenv("CONDA_PREFIX");
-    if (conda && conda[0]) {
-        snprintf(out, out_size, "%s\\Library\\bin\\%s", conda, ZIG_BIN_NAME);
-        if (GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES)
-            return 1;
-    }
-    return 0;
+    return zig_find_in_prefixes(out, out_size, ZIG_BIN_NAME) != NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -38,6 +32,8 @@ int main(int argc, char *argv[]) {
     char zig_path[MAX_PATH];
     if (!find_zig(zig_path, MAX_PATH)) {
         fprintf(stderr, "ERROR: zig-windres: zig binary not found (%s)\n", ZIG_BIN_NAME);
+        fprintf(stderr, "  PREFIX=%s\n",
+                getenv("PREFIX") ? getenv("PREFIX") : "(unset)");
         fprintf(stderr, "  CONDA_PREFIX=%s\n",
                 getenv("CONDA_PREFIX") ? getenv("CONDA_PREFIX") : "(unset)");
         return 1;

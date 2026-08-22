@@ -6,11 +6,16 @@ channel_targets:
 c_compiler_version:
   - if: osx
     then:
-      - "22"
+      - 22
 cxx_compiler_version:
   - if: osx
     then:
-      - "22"
+      - 22
+
+c_stdlib_version:
+  - if: linux and not (aarch64 or ppc64le or s390x or x86_64)
+    then:
+      - 2.39
 
 zig_compiler:
   - zig

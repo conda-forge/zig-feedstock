@@ -205,16 +205,19 @@ def _strip_glibc_version(triplet: str) -> str:
 def _find_zig_bin(conda_triplet: str, is_nonunix: bool = False) -> str:
     """Return the zig binary reference for wrappers.
 
-    Uses %CONDA_PREFIX% (NonUnix) or $CONDA_PREFIX (Unix) relative path
-    so wrappers work after installation.
+    Uses %CONDA_PREFIX% (NonUnix) relative path, or ${_self_dir} (Unix,
+    the wrapper's own directory) so wrappers work after installation.
+    Unix wrappers must NOT anchor on $CONDA_PREFIX: it reflects whichever
+    env is active at invocation time, not where the wrapper lives (e.g.
+    a cross-compiler wrapper invoked with a build env active).
     """
     if is_nonunix:
         if conda_triplet:
             return f"%CONDA_PREFIX%\\Library\\bin\\{conda_triplet}-zig.exe"
         return "%CONDA_PREFIX%\\Library\\bin\\zig.exe"
     if conda_triplet:
-        return f"${{CONDA_PREFIX}}/bin/{conda_triplet}-zig"
-    return "${CONDA_PREFIX}/bin/zig"
+        return f"${{_self_dir}}/{conda_triplet}-zig"
+    return "${_self_dir}/zig"
 
 
 def install_activation_scripts(
