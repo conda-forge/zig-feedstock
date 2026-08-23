@@ -1,19 +1,7 @@
 c_stdlib_version:
-  - if: riscv64
+  - if: linux and not (aarch64 or ppc64le or s390x or x86_64)
     then:
-      - "2.39"
-  - if: osx
-    then:
-      - "11.0"
-
-c_compiler:
-  - if: not unix
-    then:
-      - vs2022
-cxx_compiler:
-  - if: not unix
-    then:
-      - vs2022
+      - 2.39
 
 c_compiler_version:
   - if: osx

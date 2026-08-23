@@ -59,6 +59,33 @@ int main(void) {
 }
 """
 
+# GUI-subsystem counterpart. Carries a constructor so the __main/__CTOR_LIST__
+# path (governed by patches/non_unix/gccmain-do-global-ctors-guard.patch) is
+# exercised in the same link; the exit code witnesses the ctor if this is ever
+# run rather than only linked.
+_GUI_PROBE_C = """\
+#include <windows.h>
+
+static int _gui_ctor_ran = 0;
+
+__attribute__((constructor))
+static void _gui_mark_ctor(void) {
+    _gui_ctor_ran = 1;
+}
+
+int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show) {
+    (void)inst;
+    (void)prev;
+    (void)cmd;
+    (void)show;
+    return _gui_ctor_ran ? 0 : 3;
+}
+"""
+
+# Shared by the console and GUI probes so the two cannot drift apart.
+_PROBE_TARGETS = ["x86_64-windows-gnu", "aarch64-windows-gnu", "x86-windows-gnu"]
+_PROBE_TIMEOUT_S = 600
+
 
 def _find_zig_exe() -> tuple[str | None, str | None]:
     """Discover the build machine's <arch>-w64-mingw32-zig binary on PATH.
@@ -310,8 +337,8 @@ def test_cross_target_link_probes() -> None:
         SKIP("cross-target link probes", "no <arch>-w64-mingw32-zig binary found on PATH")
         return
 
-    probe_timeout_s = 600
-    targets = ["x86_64-windows-gnu", "aarch64-windows-gnu", "x86-windows-gnu"]
+    probe_timeout_s = _PROBE_TIMEOUT_S
+    targets = _PROBE_TARGETS
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "probe.c"
         src.write_text(_LINK_PROBE_C)
@@ -332,6 +359,44 @@ def test_cross_target_link_probes() -> None:
                 PASS(f"{name} [{elapsed:.1f}s]")
             else:
                 FAIL(f"{name} [{elapsed:.1f}s]", f"rc={result.returncode} stderr={result.stderr[:400]!r}")
+
+
+def test_gui_subsystem_link_probes() -> None:
+    """Diagnostic: does the GUI-subsystem startup path link?
+
+    We stage crt2win.o (built from mingw crtexewin.c with -D_WINDOWS) but
+    nothing has ever exercised it -- the console probes above pull crt2.o.
+    This links a minimal WinMain with -mwindows.
+
+    First diagnostic round (PR #157) confirmed all three targets link fine;
+    this now asserts PASS/FAIL instead of WARN-only reporting.
+    """
+    print("--- GUI-subsystem (crt2win.o) link probes ---")
+    zig_exe, _triplet = _find_zig_exe()
+    if zig_exe is None:
+        SKIP("gui link probes", "no <arch>-w64-mingw32-zig binary found on PATH")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "gui_probe.c"
+        src.write_text(_GUI_PROBE_C)
+        for target in _PROBE_TARGETS:
+            name = f"gui link probe ({target})"
+            out = Path(td) / f"gui_probe_{target}.exe"
+            t0 = time.monotonic()
+            result = _run(
+                [zig_exe, "cc", "-target", target, "-mwindows",
+                 "-o", str(out), str(src)],
+                timeout=_PROBE_TIMEOUT_S,
+            )
+            elapsed = time.monotonic() - t0
+            if result.returncode == -1 and result.stderr == "TIMEOUT":
+                WARN(f"{name} [{elapsed:.1f}s]", f"TIMEOUT ({_PROBE_TIMEOUT_S}s)")
+            elif result.returncode == 0 and out.is_file():
+                PASS(f"{name} [{elapsed:.1f}s]")
+            else:
+                FAIL(f"{name} [{elapsed:.1f}s]",
+                     f"rc={result.returncode} stderr={result.stderr[:400]!r}")
 
 
 def main() -> int:
@@ -358,6 +423,7 @@ def main() -> int:
     test_libpthread_import_lib(lib_common)
     test_libmingw32_members(staged)
     test_cross_target_link_probes()
+    test_gui_subsystem_link_probes()
     test_bundled_setjmp_h_undecorated(mingw_dir)
 
     print()
