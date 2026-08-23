@@ -2,8 +2,6 @@ c_compiler:
 - vs2022
 c_stdlib:
 - vs
-c_stdlib_version:
-- '2022.14'
 channel_sources:
 - conda-forge
 channel_targets:
@@ -13,7 +11,7 @@ cross_target_platform_:
 cxx_compiler:
 - vs2022
 libxml2_devel:
-- '2.14'
+- '2.15'
 target_platform:
 - win-64
 zlib:

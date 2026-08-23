@@ -5,10 +5,10 @@ azure:
     swapfile_size: 10GiB
 build_platform:
   linux_ppc64le: linux_64
+  # No clangdev linux_riscv64: linux_64
   osx_64: osx_arm64
   # No LLVM linux_s390x: linux_64
   # No LLVM win_32: win_64
-  # No LLVM linux_riscv64: linux_64
 conda_build_tool: rattler-build
 conda_forge_output_validation: true
 conda_install_tool: pixi
