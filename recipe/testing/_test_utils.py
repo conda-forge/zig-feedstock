@@ -149,3 +149,32 @@ def _run(
                     except OSError:
                         pass
         return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
+
+
+# ---------------------------------------------------------------------------
+# Test-env prefix resolution
+# ---------------------------------------------------------------------------
+def resolve_test_prefix(marker: str = "bin") -> Path:
+    """Resolve the prefix that actually holds the package under test.
+
+    rattler-build spins up a separate BUILD env whenever a test block declares
+    `requirements: build:`.  CONDA_PREFIX then resolves to that test BUILD env
+    while the package under test is installed in the RUN env (PREFIX).
+
+    Pass the subpath the CALLER actually consumes as `marker`: it is used purely
+    to discriminate which env is the right one, and is never appended to the
+    return value -- callers keep computing their own subpaths from the prefix.
+    Using a marker the caller does not consume can return an env that satisfies
+    the marker but not the real lookup, reproducing the silent skip this exists
+    to prevent.
+
+    Falls back to CONDA_PREFIX unchanged when neither candidate matches, so a
+    lane that works today cannot regress.
+    """
+    for var in ("PREFIX", "CONDA_PREFIX"):
+        candidate = os.environ.get(var, "")
+        if candidate and (Path(candidate) / marker).is_dir():
+            print(f"  prefix source = {var} (marker {marker!r})")
+            return Path(candidate)
+    print(f"  prefix source = CONDA_PREFIX (fallback, no env had {marker!r})")
+    return Path(os.environ.get("CONDA_PREFIX", ""))

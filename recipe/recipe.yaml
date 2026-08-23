@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 13
+  build_number: 14
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -146,6 +146,8 @@ context:
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
   is_cross_target: ${{ build_platform != target_platform and cross_target_platform_ == target_platform }}
+  # x86_64 runs on the arm64 macOS runners via Rosetta 2; not symmetric.
+  is_rosetta: ${{ build_platform == "osx-arm64" and target_platform == "osx-64" }}
 
   # C shims run where the package installs, so build them for target_platform
   # whenever it differs from the build machine. See LLVM_LLM_REFERENCE.md
@@ -366,7 +368,7 @@ outputs:
             - libcxx ${{ llvm_version }}.*
       ignore_run_exports:
         by_name:
-          - if: linux
+          - if: linux and not ppc64le
             then:
               - libxml2-16
           - if: not unix
@@ -444,7 +446,7 @@ outputs:
             - testing/test_dtneeded.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: linux or is_native
+          - if: linux or is_native or is_rosetta
             then:
               - if: unix
                 then:
@@ -500,7 +502,7 @@ outputs:
               - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
               - '%TEMP%\test_lld.exe'
               - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx and is_native
+          - if: osx and (is_native or is_rosetta)
             then:
               # macOS: test with Mach-O -exported_symbols_list via LLD
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c

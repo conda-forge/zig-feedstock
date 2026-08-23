@@ -47,13 +47,14 @@ from _test_utils import (
     FAIL,
     WARN,
     SKIP,
+    resolve_test_prefix,
     setup_zig_global_cache_dir,
 )
 
 # --------------------------------------------------------------------------
 # Platform detection
 # --------------------------------------------------------------------------
-_prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+_prefix = resolve_test_prefix("Library/lib/zig" if _build_is_win else "lib/zig")
 _conda_triplet = sys.argv[1] if len(sys.argv) > 1 else ""
 
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
@@ -744,7 +745,7 @@ def test_libcxx_shared_simulation() -> None:
 # ===================================================================
 def main() -> int:
     print("=== Shared libc++ Discovery Tests (patch 0008) ===")
-    print(f"  CONDA_PREFIX  = {_prefix}")
+    print(f"  test prefix   = {_prefix}")
     print(f"  CONDA_TRIPLET = {_conda_triplet}")
     print(f"  zig binary    = {_zig_bin_name}")
     print(f"  platform key  = {_get_platform_key()}")
