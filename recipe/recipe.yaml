@@ -11,6 +11,9 @@ context:
 
   bootstrap_via_upstream: false
 
+  # TEMPORARY: default "1" skips the ~2h Phase 2 langref build. Revert to "0" before merge.
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
+
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
   xc_aarch64:    ${{ cross_target_platform_ == "linux-aarch64" }}
@@ -312,6 +315,12 @@ outputs:
           # DEBUG_ZIG_BUILD never reaches build.sh. Defaults to 0 -> CI unchanged.
           # Usage: DEBUG_ZIG_BUILD=1 rattler-build ...
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
+
+          # auto = absolute GROUP paths for the riscv64 sysroot only. legacy/abs force one form.
+          ZIG_SYSROOT_MODE: ${{ env.get("ZIG_SYSROOT_MODE", default="auto") }}
+
+          # TEMPORARY: "1" skips Phase 2 langref (~2h on emulated lanes). Revert to "0" before merge.
+          SKIP_LANGREF: ${{ env.get("SKIP_LANGREF", default="1") }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -387,7 +396,7 @@ outputs:
                 - zig-lld-bundle
           files:
             # qemu-ppc64le doesn't faithfully emulate traps
-            - if: is_native or (linux and not xc_ppc64le)
+            - if: (is_native or (linux and not xc_ppc64le)) and not skip_langref
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -411,12 +420,21 @@ outputs:
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
+          - if: linux
+            then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
           - ${{ "PYTHONIOENCODING=utf-8" if unix else "set PYTHONIOENCODING=utf-8 &&" }} python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
         requirements:
           build:
             - python >=3.10
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
           run:
-            - libcxx
+            - if: not riscv64
+              then:
+                - libcxx
         files:
           recipe:
             - testing/_test_utils.py
@@ -427,7 +445,7 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-              - python testing/test_dtneeded.py ${{ conda_triplet }}
+              - python testing/test_dtneeded.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
               - echo "SKIP DT_NEEDED test (non-linux)"
         requirements:
@@ -526,7 +544,7 @@ outputs:
             - testing/_test_utils.py
             - testing/test_mingw_crt.py
         requirements:
-          run:
+          build:
             - python >=3.10
 
   # ==========================================================================
@@ -671,10 +689,10 @@ outputs:
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper + functional validation tests (Python, cross-platform).
           #
-          # On an emulated cross target the interpreter itself must run under
-          # qemu-user.  conda-forge.yml sets `test: native_and_emulated`, so binfmt
-          # would route it -- but binfmt uses whatever qemu the CI image ships, and
-          # local Docker iteration frequently has no binfmt registration at all.
+          # On an emulated cross target the interpreter runs natively (it's the
+          # build-platform python); only the target-arch binaries it subprocesses
+          # need qemu-user, and _test_utils.py wraps those itself from the
+          # QEMU_EXECVE/QEMU_LD_PREFIX env vars exported below.
           # Driving $QEMU_EXECVE explicitly pins the emulator to qemu-execve-<arch>
           # (>=11, see requirements below) and behaves the same in both places.
           #
@@ -685,12 +703,12 @@ outputs:
             then:
               - if: linux and build_platform != target_platform
                 then:
-                  - 'export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-${{ qemu_arch }} || true)}"'
+                  - 'export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"'
                   - 'export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"'
                   - 'echo "QEMU_EXECVE=${QEMU_EXECVE} QEMU_LD_PREFIX=${QEMU_LD_PREFIX}"'
                   - 'test -x "${QEMU_EXECVE}"'
                   - 'test -d "${QEMU_LD_PREFIX}"'
-                  - 'PYTHONIOENCODING=utf-8 "${QEMU_EXECVE}" "$(command -v python)" testing/test_zig_toolchain.py'
+                  - PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
                 else:
                   - PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
             else:
@@ -707,11 +725,11 @@ outputs:
               - echo PASS zig cc /MANIFEST* filter
         requirements:
           build:
+            - python >=3.10
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
           run:
-            - python >=3.10
             - if: (build_platform != target_platform) and linux
               then:
                 - ${{ stdlib("c") }}
@@ -735,7 +753,7 @@ outputs:
           recipe:
             - testing/test_windres.py
         requirements:
-          run:
+          build:
             - python >=3.10
 
       # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
@@ -749,7 +767,7 @@ outputs:
           recipe:
             - testing/test_wl_entry_translation.py
         requirements:
-          run:
+          build:
             - python >=3.10
       # Golden/characterization parity tests for the zig-cc wrapper flag
       # translation fragment (recipe/scripts/_zig-cc-common.sh) and its
@@ -776,7 +794,7 @@ outputs:
             - building/zig-cc-unix.c
             - building/unix_common.h
         requirements:
-          run:
+          build:
             - python >=3.10
 
   # ==========================================================================

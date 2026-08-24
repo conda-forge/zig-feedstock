@@ -13,6 +13,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -35,6 +36,8 @@ from _test_utils import (
     _record,
     _results,
     _run,
+    can_execute_target,
+    timed_out,
     PASS,
     FAIL,
     WARN,
@@ -58,6 +61,10 @@ is_aarch64_win = is_win_target and _arch == "aarch64"
 # Normalise: arm64 == aarch64
 if _arch == "arm64":
     _arch = "aarch64"
+
+# Emulated compiles are far slower than native; measured budget unknown, so
+# this is deliberately generous rather than tuned.
+_COMPILE_TIMEOUT_S = 300
 
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
@@ -243,23 +250,17 @@ def test_flag_filtering() -> None:
             "-fno-plt",
         ]
         cmd = [zig_cc] + gcc_flags + ["-c", "-o", str(obj), str(src)]
-        r = _run(cmd, cwd=td)
+        r = _run(cmd, cwd=td, target=_triplet, timeout=_COMPILE_TIMEOUT_S)
         if r.returncode == 0 and obj.exists():
             PASS("compile with conda gcc flags succeeds (flags filtered)")
         elif _is_emulated and r.returncode != 0 and not r.stderr:
-            # WARN, not FAIL: under qemu-user with a native rootfs the wrapper's
-            # `#!/usr/bin/env bash` shebang cannot be resolved (env resolves to a
-            # build-arch binary the emulator cannot exec), so the wrapper never
-            # runs at all -- rc != 0 with EMPTY stderr, no compiler diagnostics.
-            # This is the identical condition already reported as WARN by
-            # test_wrapper_shebang_portability's siblings, surfaced here as a
-            # hard failure only because this test executes the wrapper instead
-            # of stat-ing it. Kept as WARN so it stays visible in the summary
-            # without masking real failures in CI -- do NOT delete this check
-            # to make CI green.
+            # DEFENSIVE, not expected: passed on the emulated ppc64le lane at
+            # build 13 (PR #157). Remaining shebang-under-emulation risk is the
+            # c89/c99 wrappers, not zig-cc. Do NOT delete this check to make CI
+            # green.
             WARN("compile with conda gcc flags succeeds",
-                 f"rc={r.returncode} stderr=<empty> - wrapper shebang unresolvable "
-                 f"under emulation with a native rootfs; pending the C shim port")
+                 f"rc={r.returncode} stderr=<empty> - wrapper never ran; shebang "
+                 f"unresolvable under emulation with a native rootfs")
         else:
             FAIL("compile with conda gcc flags succeeds",
                  f"rc={r.returncode} stderr={r.stderr[:2000]}")
@@ -267,8 +268,8 @@ def test_flag_filtering() -> None:
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.
         # The wrapper should silently filter them so compilation succeeds.
-        if _is_emulated or _is_cross_compiler:
-            SKIP("linker flag filtering", "emulated/cross CI — cannot execute target binary")
+        if not can_execute_target(_triplet, zig_cc):
+            SKIP("linker flag filtering", "target binaries are not executable on this runner")
         else:
             # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
             # Verifies the full pipeline:
@@ -344,8 +345,8 @@ def test_target_override() -> None:
         SKIP("target override", "ZIG_CC not set")
         return
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("target override", "emulated/cross CI — cannot execute target binary")
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("target override", "target binaries are not executable on this runner")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -381,13 +382,13 @@ def test_target_override() -> None:
 def test_shared_lib() -> None:
     print("--- Shared library creation ---")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("shared lib creation", "emulated/cross CI — cannot execute target binary")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("shared lib creation", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("shared lib creation", "target binaries are not executable on this runner")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -493,13 +494,13 @@ def test_exe_linking() -> None:
     pthread_atfork_stub.o) are required at runtime."""
     print("--- Executable linking ---")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("exe linking", "emulated/cross CI — cannot execute target binary")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("exe linking", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("exe linking", "target binaries are not executable on this runner")
         return
 
     # Cross-compilation to a different OS can't run the result, but
@@ -533,13 +534,13 @@ def test_libc_linking() -> None:
     that crashes with TODO panic in zig's doctest examples using -lc."""
     print("--- Libc linking ---")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("libc linking", "emulated/cross CI — cannot execute target binary")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("libc linking", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("libc linking", "target binaries are not executable on this runner")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -818,13 +819,13 @@ def test_print_search_dirs() -> None:
         SKIP("print-search-dirs", "Windows target only")
         return
 
-    if _is_cross_compiler:
-        SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("print-search-dirs", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("print-search-dirs", "target binaries are not executable on this runner")
         return
 
     r = _run([zig_cc, "-print-search-dirs"], cwd=tempfile.gettempdir(), timeout=15)
@@ -1117,10 +1118,6 @@ def test_force_load_wrappers() -> None:
         return
     PASS("zig-force-load-cxx exists")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("force-load wrapper behaviour", "emulated/cross CI — cannot execute target binary")
-        return
-
     if is_ppc64le_target:
         # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()), and
         # LLD is unsupported on ppc64le -- the wrapper hard-errors before it
@@ -1134,22 +1131,223 @@ def test_force_load_wrappers() -> None:
         SKIP("force-load wrapper behaviour", "ZIG_CC/zig-ar not available")
         return
 
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("force-load wrapper behaviour", "target binaries are not executable on this runner")
+        return
+
     with tempfile.TemporaryDirectory() as td:
+        _archive_error: str | None = None
+
         def _make_archive(name: str) -> Path | None:
+            nonlocal _archive_error
             src = Path(td) / f"{name}.c"
             obj = Path(td) / f"{name}.o"
             arch = Path(td) / f"lib{name}.a"
             src.write_text(f"int {name}(void) {{ return 0; }}\n")
-            if _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td).returncode != 0:
+            r = _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td)
+            if r.returncode != 0:
+                detail = "TIMEOUT" if timed_out(r) else f"rc={r.returncode} stderr={r.stderr[:500]}"
+                _archive_error = f"compile {name}.c: {detail}"
                 return None
-            if _run([str(zig_ar), "rcs", str(arch), str(obj)], cwd=td).returncode != 0:
+
+            def _diag_evidence(
+                zig_ar_path: Path, ar_shim: Path | None, native_zig: Path | None
+            ) -> None:
+                """One-shot Rosetta/arch evidence; every probe is independently guarded."""
+                if sys.platform != "darwin":
+                    return
+
+                try:
+                    if zig_ar_path.exists():
+                        fr = _run(["file", str(zig_ar_path)], timeout=15)
+                        print(f"    DIAG rosetta_file_zig_ar={fr.stdout.strip()!r}")
+                    else:
+                        print("    DIAG rosetta_file_zig_ar=MISSING")
+                except Exception as exc:
+                    print(f"    DIAG rosetta_file_zig_ar=EXC:{exc}")
+
+                try:
+                    if ar_shim is not None and ar_shim.exists():
+                        fr2 = _run(["file", str(ar_shim)], timeout=15)
+                        print(f"    DIAG rosetta_file_shim={fr2.stdout.strip()!r}")
+                    else:
+                        print("    DIAG rosetta_file_shim=MISSING")
+                except Exception as exc:
+                    print(f"    DIAG rosetta_file_shim=EXC:{exc}")
+
+                try:
+                    lr = _run(["lipo", "-archs", str(zig_ar_path)], timeout=15)
+                    print(f"    DIAG rosetta_lipo_archs={lr.stdout.strip()!r}")
+                except Exception as exc:
+                    print(f"    DIAG rosetta_lipo_archs=EXC:{exc}")
+
+                try:
+                    sr = _run(["sysctl", "-n", "sysctl.proc_translated"], timeout=15)
+                    print(f"    DIAG rosetta_proc_translated={sr.stdout.strip()!r}")
+                except Exception as exc:
+                    print(f"    DIAG rosetta_proc_translated=EXC:{exc}")
+
+                try:
+                    ar_r = _run(["/usr/bin/arch", "-x86_64", "/usr/bin/true"], timeout=15)
+                    print(f"    DIAG rosetta_arch_x86_64_true_rc={ar_r.returncode}")
+                except Exception as exc:
+                    print(f"    DIAG rosetta_arch_x86_64_true_rc=EXC:{exc}")
+
+                try:
+                    if ar_shim is not None and ar_shim.exists():
+                        zr = _run([str(ar_shim), "env"], timeout=30)
+                        for ln in (zr.stdout or zr.stderr).splitlines()[:20]:
+                            print(f"    DIAG zig_env_shim| {ln}")
+                    else:
+                        print("    DIAG zig_env_shim=MISSING")
+                except Exception as exc:
+                    print(f"    DIAG zig_env_shim=EXC:{exc}")
+
+                try:
+                    if native_zig is not None and native_zig != ar_shim and native_zig.exists():
+                        zr2 = _run([str(native_zig), "env"], timeout=30)
+                        for ln in (zr2.stdout or zr2.stderr).splitlines()[:20]:
+                            print(f"    DIAG zig_env_native| {ln}")
+                    else:
+                        print("    DIAG zig_env_native=MISSING")
+                except Exception as exc:
+                    print(f"    DIAG zig_env_native=EXC:{exc}")
+
+            # One-shot evidence: probe every archiver candidate unconditionally
+            # (own output path per tag), pick first success after. Outcome is
+            # unchanged; only collected diagnostics differ.
+            _matrix: list[str] = []
+            _any_failed = False
+            _winner: tuple[str, Path] | None = None
+
+            def _probe(
+                tag: str, argv: list[str] | None, cwd: Path, out_dir: Path | None = None
+            ) -> None:
+                nonlocal _any_failed, _winner
+                if argv is None:
+                    print(f"    DIAG archiver_candidate={tag} exists=False")
+                    _matrix.append(f"{tag}:rc=MISSING:exists=False")
+                    return
+                _out_dir = out_dir if out_dir is not None else Path(td)
+                out = _out_dir / f"lib{name}.{tag}.a"
+                try:
+                    pr = _run([*argv, "rcs", str(out), str(obj)], cwd=cwd, timeout=60)
+                except Exception as exc:
+                    print(f"    DIAG archiver_try={tag}=EXC:{exc}")
+                    _matrix.append(f"{tag}:rc=EXC:exists=False")
+                    _any_failed = True
+                    return
+                ok = pr.returncode == 0 and out.exists()
+                print(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
+                      f"exists={out.exists()} stderr={pr.stderr[:300]}")
+                _matrix.append(f"{tag}:rc={pr.returncode}:exists={out.exists()}")
+                if pr.returncode != 0:
+                    _any_failed = True
+                if ok and _winner is None:
+                    _winner = (tag, out)
+                elif not ok:
+                    try:
+                        out.unlink()
+                    except OSError:
+                        pass
+
+            # Candidate: llvm-ar (search order mirrors _mingw.sh's probe)
+            _llvm_ar = None
+            for _cand in (
+                os.environ.get("BUILD_PREFIX", "") and str(Path(os.environ["BUILD_PREFIX"]) / "bin" / "llvm-ar"),
+                os.environ.get("PREFIX", "") and str(Path(os.environ["PREFIX"]) / "bin" / "llvm-ar"),
+                os.environ.get("CONDA_PREFIX", "") and str(Path(os.environ["CONDA_PREFIX"]) / "bin" / "llvm-ar"),
+                shutil.which("llvm-ar"),
+            ):
+                if _cand:
+                    _llvm_ar = _cand
+                    break
+            _probe("llvm_ar", [_llvm_ar] if _llvm_ar and Path(_llvm_ar).exists() else None, Path(td))
+
+            # Candidate: /usr/bin/ar -- native arm64 system ar, expected
+            # winner on the failing osx-64/Rosetta lanes.
+            if sys.platform == "darwin":
+                _probe("usr_bin_ar", ["/usr/bin/ar"] if Path("/usr/bin/ar").exists() else None, Path(td))
+
+            # Candidate: any ar on PATH
+            _which_ar = shutil.which("ar")
+            _probe("which_ar", [_which_ar] if _which_ar else None, Path(td))
+
+            # Candidates: the three existing zig-ar attempts, unchanged
+            # behaviour, now recorded into the same matrix.
+            _probe("zig_ar_primary", [str(zig_ar)], Path(td))
+
+            alt_dir = Path.cwd()
+            _probe("zig_ar_retry_cwd", [str(zig_ar)], alt_dir, out_dir=alt_dir)
+
+            shim = Path(str(zig_ar)[:-3]) if str(zig_ar).endswith("-ar") else None
+            native: Path | None = None
+            if shim is not None and shim.exists():
+                try:
+                    shim_lines = shim.read_text(errors="replace").splitlines()
+                except OSError as exc:
+                    shim_lines = []
+                    print(f"    DIAG shim_read_failed={exc}")
+                for ln in shim_lines[:40]:
+                    if ln.strip().startswith("native_zig=") and "/bin/" in ln:
+                        native_name = ln.split("/bin/")[-1].strip().strip('"').strip("'")
+                        native = shim.parent / native_name
+            print(f"    DIAG shim={shim} exists={bool(shim and shim.exists())}")
+            print(f"    DIAG native={native} exists={bool(native and native.exists())}")
+            _probe(
+                "zig_ar_native",
+                [str(native), "ar"] if native is not None and native.exists() else None,
+                alt_dir,
+                out_dir=alt_dir,
+            )
+
+            print(f"    DIAG archiver_matrix={','.join(_matrix)}")
+
+            # Independent probe, unconditional every run: dump the wrapper's
+            # expanded argv (no archive produced, zero cost) -- the only
+            # evidence that -zig-ar dispatches into `<zig> ar rcs ...` rather
+            # than something else. Distinct hypothesis from "zig ar failed".
+            try:
+                if zig_ar.exists():
+                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
+                    try:
+                        rp = _run(
+                            [str(zig_ar), "rcs",
+                             str(alt_dir / f"lib{name}.wrapper_argv.a"), str(obj)],
+                            cwd=str(alt_dir),
+                            timeout=15,
+                        )
+                    finally:
+                        os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
+                    print(f"    DIAG wrapper_argv rc={rp.returncode} out={rp.stdout[:400]!r}")
+                else:
+                    print("    DIAG wrapper_argv=MISSING")
+            except Exception as exc:
+                print(f"    DIAG wrapper_argv=EXC:{exc}")
+
+            # Diagnostics fire whenever ANY candidate failed -- even when a
+            # later one succeeded -- because /usr/bin/ar is expected to PASS
+            # on the failing lanes and would otherwise hide the arch evidence.
+            if _any_failed:
+                _diag_evidence(zig_ar, shim, native)
+
+            if _winner is not None:
+                tag, out = _winner
+                print(f"    DIAG archiver_selected={tag}")
+                shutil.move(str(out), str(arch))
+                if arch.exists():
+                    return arch
+                _archive_error = f"ar rcs lib{name}.a: {tag} succeeded but move to {arch.name} failed"
                 return None
-            return arch if arch.exists() else None
+
+            _archive_error = f"ar rcs lib{name}.a: all archiver candidates failed ({','.join(_matrix)})"
+            return None
 
         lib_a = _make_archive("force_a")
-        lib_b = _make_archive("force_b")
+        lib_b = _make_archive("force_b") if lib_a is not None else None
         if lib_a is None or lib_b is None:
-            FAIL("force-load wrapper behaviour", "could not build .a fixtures")
+            FAIL("force-load wrapper behaviour",
+                 f"could not build .a fixtures: {_archive_error}")
             return
 
         main_src = Path(td) / "main.c"
@@ -1271,6 +1469,41 @@ def test_force_load_wrappers() -> None:
 # ===================================================================
 # Section 9 — Unix-only: wrapper executability under emulation
 # ===================================================================
+def _owned_bin_basenames() -> set[str] | None:
+    """Basenames under bin/ (Library/bin on win) owned by this feedstock's outputs.
+
+    Reads ${PREFIX}/conda-meta/*.json rather than hardcoding output names from
+    recipe.yaml, so it can't drift out of sync with it. Matches on the manifest's
+    "name" field: zig, zig-compiler, and the platform-suffixed zig_/zig_impl_
+    variants all start with "zig_" except the two exact names.
+
+    Returns None if no matching manifest was found at all (conda-meta missing,
+    or none of this feedstock's outputs are installed) -- callers must not treat
+    that the same as "found manifests but they own nothing".
+    """
+    conda_meta = _prefix / "conda-meta"
+    if not conda_meta.is_dir():
+        return None
+
+    bin_prefix = "Library/bin/" if _build_is_win else "bin/"
+    owned: set[str] = set()
+    found_manifest = False
+    for meta_file in conda_meta.glob("*.json"):
+        try:
+            data = json.loads(meta_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        name = data.get("name", "")
+        if name not in ("zig", "zig-compiler") and not name.startswith("zig_"):
+            continue
+        found_manifest = True
+        for rel in data.get("files", []):
+            if rel.startswith(bin_prefix):
+                owned.add(Path(rel).name)
+
+    return owned if found_manifest else None
+
+
 def test_wrapper_shebang_portability() -> None:
     """Installed wrappers must not depend on an interpreter outside $PREFIX.
 
@@ -1295,13 +1528,27 @@ def test_wrapper_shebang_portability() -> None:
         return
 
     prefix_str = str(_prefix)
-    candidates = sorted(
+    all_matches = sorted(
         p for p in _wrapper_dir.glob(f"{_triplet}-*")
         if p.is_file() and os.access(p, os.X_OK)
     )
-    if not candidates:
-        FAIL("wrapper shebang portability", f"no executable wrappers in {_wrapper_dir}")
-        return
+    owned = _owned_bin_basenames()
+    if owned is None:
+        WARN("wrapper ownership filtering unavailable",
+             "no conda-meta manifest for this feedstock's outputs was found; "
+             f"examining all {_triplet}-* wrappers in {_wrapper_dir}, "
+             "results may include foreign wrappers from other packages")
+        candidates = all_matches
+        if not candidates:
+            FAIL("wrapper shebang portability", f"no executable wrappers in {_wrapper_dir}")
+            return
+    else:
+        candidates = [p for p in all_matches if p.name in owned]
+        if not candidates:
+            FAIL("wrapper shebang portability",
+                 f"ownership filtering resolved but found zero owned {_triplet}-* wrappers "
+                 f"in {_wrapper_dir} -- expected at least one; ownership logic is likely broken")
+            return
 
     for p in candidates:
         try:

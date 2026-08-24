@@ -16,19 +16,20 @@ import sys
 import tempfile
 
 
-def _build(triplet: str, src: str, binary: str,
+def _build(triplet: str, src: str, binary: str, zig_target: str,
            *, verbose: bool = False, extra: list[str] | None = None) -> subprocess.CompletedProcess:
     cmd = [f"{triplet}-zig", "cc"]
     if verbose:
         cmd += ["-v", "-Wl,--verbose"]
     if extra:
         cmd += extra
-    zig_target = triplet.replace("-conda", "") + ".2.17"
     cmd += ["-target", zig_target, "-Wl,--no-as-needed", "-lm", src, "-o", binary]
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-def main(triplet: str) -> int:
+def main(triplet: str, zig_target: str = "") -> int:
+    if not zig_target:
+        zig_target = triplet.replace("-conda", "") + ".2.17"
     with tempfile.TemporaryDirectory() as tmpdir:
         src = os.path.join(tmpdir, "foo.c")
         binary = os.path.join(tmpdir, "foo")
@@ -36,7 +37,7 @@ def main(triplet: str) -> int:
             f.write("int main(void) { return 0; }\n")
 
         # Quiet first attempt.
-        result = _build(triplet, src, binary)
+        result = _build(triplet, src, binary, zig_target)
         if result.returncode != 0:
             print("FAIL: zig cc failed to compile/link", file=sys.stderr)
             print(result.stdout, file=sys.stderr)
@@ -71,7 +72,7 @@ def main(triplet: str) -> int:
 
         # Diagnostic re-run 1: bare, with -v (zig cc default linker path)
         print("--- re-running with -v -Wl,--verbose (default linker) ---", file=sys.stderr)
-        verbose1 = _build(triplet, src, binary + ".v1", verbose=True)
+        verbose1 = _build(triplet, src, binary + ".v1", zig_target, verbose=True)
         print("[exit_code]", verbose1.returncode, file=sys.stderr)
         print("[stdout]", file=sys.stderr)
         print(verbose1.stdout, file=sys.stderr)
@@ -80,7 +81,7 @@ def main(triplet: str) -> int:
 
         # Diagnostic re-run 2: with -fuse-ld=lld forced, -v -Wl,--verbose
         print("--- re-running with -v -Wl,--verbose -fuse-ld=lld (forced LLD) ---", file=sys.stderr)
-        verbose2 = _build(triplet, src, binary + ".v2", verbose=True, extra=["-fuse-ld=lld"])
+        verbose2 = _build(triplet, src, binary + ".v2", zig_target, verbose=True, extra=["-fuse-ld=lld"])
         print("[exit_code]", verbose2.returncode, file=sys.stderr)
         print("[stdout]", file=sys.stderr)
         print(verbose2.stdout, file=sys.stderr)
@@ -90,6 +91,6 @@ def main(triplet: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit(f"usage: {sys.argv[0]} <conda_triplet>")
-    sys.exit(main(sys.argv[1]))
+    if len(sys.argv) not in (2, 3):
+        sys.exit(f"usage: {sys.argv[0]} <conda_triplet> [zig_target]")
+    sys.exit(main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else ""))

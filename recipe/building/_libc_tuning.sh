@@ -50,7 +50,12 @@ function patch_crt_object() {
       stub_obj="${stub_dir}/libc_csu_stubs_aarch64.o"
       ;;
     *)
-      # Unknown architecture - restore original and skip
+      # Unrecognized arch: only warn if the object actually needs the stubs
+      if ! grep -qa '__libc_csu_init' "${crt_path}.backup"; then
+        dbg echo "_libc_tuning: ${crt_path} does not reference __libc_csu_init, no patch needed"
+        cp "${crt_path}.backup" "${crt_path}"
+        return 0
+      fi
       echo "WARNING: _libc_tuning: unrecognized architecture: ${file_output} for ${crt_path}" >&2
       cp "${crt_path}.backup" "${crt_path}"
       return 1

@@ -284,9 +284,12 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
   source "${RECIPE_DIR}/building/_sysroot_fix.sh"
+  source "${RECIPE_DIR}/building/_riscv64_diag.sh"
 
   # Fix sysroot libc.so linker scripts 2.17 to use relative paths
+  sysroot_diag before
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
+  sysroot_diag after
 
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"

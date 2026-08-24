@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import platform as _platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -104,8 +105,16 @@ def _run(
     *,
     timeout: int = 30,
     cwd: str | Path | None = None,
+    target: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a command, return CompletedProcess. Never raises on non-zero rc."""
+    """Run a command, return CompletedProcess. Never raises on non-zero rc.
+
+    When `target` is a conda triplet whose arch is foreign to this machine,
+    the command is prefixed with the qemu-execve emulator. Default None
+    preserves prior behaviour exactly.
+    """
+    if target is not None:
+        cmd = emulation_prefix(target) + cmd
     try:
         proc = subprocess.Popen(
             cmd,
@@ -151,6 +160,49 @@ def _run(
         return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
 
 
+def timed_out(proc: subprocess.CompletedProcess[str]) -> bool:
+    """True when `proc` is _run's timeout sentinel."""
+    return proc.stderr == "TIMEOUT"
+
+
+# ---------------------------------------------------------------------------
+# Target executability probe (measured, not inferred)
+# ---------------------------------------------------------------------------
+_can_execute_cache: dict[tuple[str, str | None], bool] = {}
+
+
+def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
+    """Measure -- don't infer -- whether a `triplet` binary can run here.
+
+    Compiles a trivial program with `zig_cc` and executes it through `_run`'s
+    `target=` routing (qemu-execve when foreign). Cached per (triplet, zig_cc).
+    """
+    key = (triplet, zig_cc)
+    if key in _can_execute_cache:
+        return _can_execute_cache[key]
+    if not zig_cc:
+        _can_execute_cache[key] = False
+        return False
+    result = False
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "probe.c"
+            exe = Path(td) / "probe"
+            src.write_text("int main(void) { return 0; }\n")
+            # target= on the compile too: on an unhosted lane zig_cc is itself a
+            # target-arch binary and needs the emulator.
+            r_compile = _run([zig_cc, "-o", str(exe), str(src)], cwd=td,
+                             target=triplet, timeout=120)
+            produced = exe if exe.exists() else exe.with_suffix(".exe")
+            if r_compile.returncode == 0 and produced.exists():
+                r_exec = _run([str(produced)], target=triplet, timeout=120)
+                result = r_exec.returncode == 0
+    except Exception:
+        result = False
+    _can_execute_cache[key] = result
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Test-env prefix resolution
 # ---------------------------------------------------------------------------
@@ -178,3 +230,92 @@ def resolve_test_prefix(marker: str = "bin") -> Path:
             return Path(candidate)
     print(f"  prefix source = CONDA_PREFIX (fallback, no env had {marker!r})")
     return Path(os.environ.get("CONDA_PREFIX", ""))
+
+
+# ---------------------------------------------------------------------------
+# Target emulation (qemu-execve)
+# ---------------------------------------------------------------------------
+def _canonical_arch(arch: str) -> str:
+    """Normalise arch aliases (amd64/arm64/ppc64le) to their triplet spelling."""
+    aliases = {
+        "amd64": "x86_64",
+        "arm64": "aarch64",
+        "ppc64le": "powerpc64le",
+    }
+    return aliases.get(arch.lower(), arch.lower())
+
+
+def target_arch_from_triplet(triplet: str) -> str:
+    """'powerpc64le-conda-linux-gnu' -> 'powerpc64le'."""
+    return triplet.split("-", 1)[0] if triplet else ""
+
+
+def is_foreign_target(triplet: str) -> bool:
+    """True when triplet's arch differs from the native machine (alias-aware).
+
+    Linux-only: the qemu-user + QEMU_LD_PREFIX mechanism this feeds is
+    Linux-ELF-specific, mirroring recipe.yaml's `if: linux` gating. Windows and
+    macOS cross targets are never run under it.
+
+    This predicate is correct under BOTH interpreter models. While the whole
+    interpreter runs under qemu, _native_machine already reports the target
+    arch, so nothing is reported foreign and no second prefix is added. Once
+    the harness runs natively, the target reads foreign and the prefix applies.
+    """
+    if "linux" not in triplet:
+        return False
+    arch = target_arch_from_triplet(triplet)
+    if not arch:
+        return False
+    return _canonical_arch(arch) != _canonical_arch(_native_machine)
+
+
+def _qemu_binary_arch(arch: str) -> str:
+    """Canonical triplet arch -> qemu-execve-<arch> package naming."""
+    canonical = _canonical_arch(arch)
+    return "ppc64le" if canonical == "powerpc64le" else canonical
+
+
+def emulation_prefix(triplet: str) -> list[str]:
+    """Emulator argv prefix for running a `triplet` binary, or [] if native."""
+    if not is_foreign_target(triplet):
+        return []
+    arch = _qemu_binary_arch(target_arch_from_triplet(triplet))
+    qemu_execve = os.environ.get("QEMU_EXECVE", "")
+    # $QEMU_EXECVE is target_platform-keyed and there is one per lane, so it is
+    # honoured only when it names the arch actually requested; otherwise fall
+    # through to the triplet-keyed lookup. Using it unconditionally would
+    # silently emulate with the wrong arch, which is harder to debug than a
+    # missing emulator.
+    if qemu_execve and os.access(qemu_execve, os.X_OK) and arch in Path(qemu_execve).name:
+        return [qemu_execve]
+    found = shutil.which(f"qemu-execve-{arch}")
+    return [found] if found else []
+
+
+def check_emulation_env(triplet: str) -> bool:
+    """Preflight emulation setup. True if safe to proceed (native is a no-op).
+
+    Not yet called anywhere in this tree; present so the mechanism matches the
+    0.17 track.
+    """
+    if not is_foreign_target(triplet):
+        return True
+
+    arch = _qemu_binary_arch(target_arch_from_triplet(triplet))
+    if not emulation_prefix(triplet):
+        WARN(
+            "qemu emulation binary",
+            f"qemu-execve-{arch} not found -- relying on binfmt_misc",
+        )
+
+    ld_prefix = os.environ.get("QEMU_LD_PREFIX", "")
+    if not ld_prefix:
+        FAIL("QEMU_LD_PREFIX is set", "unset -- loader resolves against the host root")
+        return False
+    if not Path(ld_prefix).is_dir():
+        FAIL("QEMU_LD_PREFIX directory exists", f"{ld_prefix} does not exist")
+        return False
+    if not list(Path(ld_prefix).glob("lib*/ld*.so*")):
+        WARN("QEMU_LD_PREFIX loader glob", f"no lib*/ld*.so* under {ld_prefix}")
+    return True

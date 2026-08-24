@@ -10,8 +10,8 @@ directly (no activation wrappers). Verifies that the zig binary:
   3. Uses shared libc++ when a real .so is placed at the probe path
 
 Usage:
-  python test_libcxx_shared.py <conda_triplet>
-  e.g. python test_libcxx_shared.py x86_64-conda-linux-gnu
+  python test_libcxx_shared.py <conda_triplet> [zig_triplet]
+  e.g. python test_libcxx_shared.py x86_64-conda-linux-gnu x86_64-linux-gnu
 
 Exit codes:
   0 = all passed (warnings are OK)
@@ -49,6 +49,7 @@ from _test_utils import (
     SKIP,
     resolve_test_prefix,
     setup_zig_global_cache_dir,
+    timed_out,
 )
 
 # --------------------------------------------------------------------------
@@ -56,6 +57,11 @@ from _test_utils import (
 # --------------------------------------------------------------------------
 _prefix = resolve_test_prefix("Library/lib/zig" if _build_is_win else "lib/zig")
 _conda_triplet = sys.argv[1] if len(sys.argv) > 1 else ""
+_zig_triplet = sys.argv[2] if len(sys.argv) > 2 else ""
+
+# Spliced into compile argv right after the "c++"/"cc" subcommand; empty when
+# no zig triplet was passed (preserves prior single-argument behaviour).
+_target_args = ["-target", _zig_triplet] if _zig_triplet else []
 
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
@@ -75,6 +81,9 @@ is_arm64 = _arch in ("aarch64", "arm64")
 is_ppc64le = _arch == "powerpc64le"
 
 # Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
+
+# Cold-cache libc++ build under emulation exceeds 120s; give it real headroom.
+_COMPILE_TIMEOUT_S = 900
 
 
 # --------------------------------------------------------------------------
@@ -157,8 +166,8 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
         'extern "C" int f() { std::string s("x"); return (int)s.size(); }\n'
     )
 
-    r = _run([zig, "c++", "-shared", "-o", str(out), str(src)],
-             cwd=str(td), timeout=120)
+    r = _run([zig, "c++", *_target_args, "-shared", "-o", str(out), str(src)],
+             cwd=str(td), timeout=_COMPILE_TIMEOUT_S)
     if r.returncode != 0:
         return None
 
@@ -236,10 +245,21 @@ def test_libcxx_fallback_static() -> None:
             SKIP("libcxx-static-fallback", "unknown output format")
             return
 
-        r = _run([zig, "c++", "-shared", "-o", str(out), str(src)],
-                 cwd=td, timeout=120)
-        if r.stderr == "TIMEOUT":
-            WARN("libcxx-static-fallback", "timed out (120s)")
+        # Precondition: static libc++.a must exist to fall back to
+        libcxx_a = _find_libcxx_static(zig, Path(td))
+        if not libcxx_a:
+            zig_lib_candidates = list(zig_lib.rglob("libc++.a")) if zig_lib else []
+            if zig_lib_candidates:
+                libcxx_a = zig_lib_candidates[0]
+            else:
+                SKIP("libcxx-static-fallback",
+                     "could not find libc++.a in zig cache or lib dir")
+                return
+
+        r = _run([zig, "c++", *_target_args, "-shared", "-o", str(out), str(src)],
+                 cwd=td, timeout=_COMPILE_TIMEOUT_S)
+        if timed_out(r):
+            FAIL("libcxx-static-fallback", f"timed out ({_COMPILE_TIMEOUT_S}s)")
             return
         if r.returncode != 0:
             FAIL("libcxx-static-fallback: compile C++ shared lib",
@@ -256,6 +276,9 @@ def test_libcxx_fallback_static() -> None:
             readelf = shutil.which("readelf")
             if readelf:
                 r2 = _run([readelf, "-d", str(out)], cwd=td)
+                if timed_out(r2):
+                    FAIL("readelf -d timed out", "30s limit")
+                    return
                 if r2.returncode == 0:
                     needed = [l for l in r2.stdout.splitlines() if "NEEDED" in l]
                     libcxx_needed = [l for l in needed if "libc++" in l]
@@ -274,6 +297,9 @@ def test_libcxx_fallback_static() -> None:
             nm = shutil.which("nm")
             if nm:
                 r3 = _run([nm, "-D", str(out)], cwd=td)
+                if timed_out(r3):
+                    FAIL("nm -D timed out", "30s limit")
+                    return
                 if r3.returncode == 0:
                     cxx_syms = [l for l in r3.stdout.splitlines()
                                 if "basic_string" in l or "runtime_error" in l]
@@ -288,6 +314,9 @@ def test_libcxx_fallback_static() -> None:
             otool = shutil.which("otool")
             if otool:
                 r2 = _run([otool, "-L", str(out)], cwd=td)
+                if timed_out(r2):
+                    FAIL("otool -L timed out", "30s limit")
+                    return
                 if r2.returncode == 0:
                     libcxx_deps = [l for l in r2.stdout.splitlines()
                                    if "libc++" in l]
@@ -347,6 +376,9 @@ def test_libcxx_probe_paths() -> None:
         strings_bin = shutil.which("strings")
         if strings_bin:
             r_str = _run([strings_bin, zig], timeout=10)
+            if timed_out(r_str):
+                FAIL("strings timed out", "10s limit")
+                return
             if r_str.returncode == 0:
                 has_probe_str = any("zig-llvm/lib" in l for l in r_str.stdout.splitlines())
                 has_libcxx_so = any("libc++.so.1" in l for l in r_str.stdout.splitlines())
@@ -380,8 +412,11 @@ def test_libcxx_probe_paths() -> None:
 
         # Run with --verbose-link to see actual linker args
         out = Path(td) / "libprobe.so"
-        r_vl = _run([zig, "c++", "-shared", "--verbose-link",
-                      "-o", str(out), str(src)], cwd=td, timeout=120)
+        r_vl = _run([zig, "c++", *_target_args, "-shared", "--verbose-link",
+                      "-o", str(out), str(src)], cwd=td, timeout=_COMPILE_TIMEOUT_S)
+        if timed_out(r_vl):
+            FAIL("verbose-link", f"timed out ({_COMPILE_TIMEOUT_S}s)")
+            return
         if r_vl.returncode == 0 or r_vl.stderr:
             # Look for libc++ in verbose output (both stdout and stderr)
             verbose = r_vl.stdout + "\n" + r_vl.stderr
@@ -401,12 +436,12 @@ def test_libcxx_probe_paths() -> None:
         out = Path(td) / "libprobe_strace.so"
         cmd = [
             strace, "-f", "-e", "trace=access,faccessat,faccessat2",
-            zig, "c++", "-shared", "-o", str(out), str(src),
+            zig, "c++", *_target_args, "-shared", "-o", str(out), str(src),
         ]
-        r = _run(cmd, cwd=td, timeout=120)
+        r = _run(cmd, cwd=td, timeout=_COMPILE_TIMEOUT_S)
 
-        if r.stderr == "TIMEOUT":
-            WARN("strace probe", "timed out (120s)")
+        if timed_out(r):
+            FAIL("strace probe", f"timed out ({_COMPILE_TIMEOUT_S}s)")
             return
 
         if r.returncode != 0:
@@ -476,8 +511,12 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
             '}\n'
         )
 
-        r = _run([zig, "c++", "-shared", "-o", str(cxx_out), str(cxx_src)],
-                 cwd=td, timeout=120)
+        r = _run([zig, "c++", *_target_args, "-shared", "-o", str(cxx_out), str(cxx_src)],
+                 cwd=td, timeout=_COMPILE_TIMEOUT_S)
+
+        if timed_out(r):
+            FAIL(f"{label}: C++ compilation timed out", f"{_COMPILE_TIMEOUT_S}s limit")
+            return
 
         if r.returncode != 0:
             FAIL(f"{label}: C++ compilation failed",
@@ -497,6 +536,9 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
                 SKIP(f"{label}: readelf check", "readelf not found")
                 return
             r2 = _run([readelf, "-d", str(cxx_out)], cwd=td)
+            if timed_out(r2):
+                FAIL(f"{label}: readelf timed out", "30s limit")
+                return
             if r2.returncode != 0:
                 WARN(f"{label}: readelf failed", f"rc={r2.returncode}")
                 return
@@ -518,6 +560,9 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
                 SKIP(f"{label}: otool check", "otool not found")
                 return
             r2 = _run([otool, "-L", str(cxx_out)], cwd=td)
+            if timed_out(r2):
+                FAIL(f"{label}: otool timed out", "30s limit")
+                return
             if r2.returncode != 0:
                 WARN(f"{label}: otool failed", f"rc={r2.returncode}")
                 return
@@ -541,6 +586,9 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
                 SKIP(f"{label}: objdump check", "objdump not found")
                 return
             r2 = _run([objdump, "-p", str(cxx_out)], cwd=td)
+            if timed_out(r2):
+                FAIL(f"{label}: objdump timed out", "30s limit")
+                return
             if r2.returncode != 0:
                 WARN(f"{label}: objdump failed", f"rc={r2.returncode}")
                 return
@@ -584,14 +632,14 @@ def _build_shared_libcxx(
 
     if is_linux_target:
         cmd = [
-            zig, "cc", "-shared",
+            zig, "cc", *_target_args, "-shared",
             "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
             "-Wl,-soname," + soname,
             "-o", str(shared_build),
         ]
     elif is_macos_target:
         cmd = [
-            zig, "cc", "-shared",
+            zig, "cc", *_target_args, "-shared",
             "-Wl,-force_load," + str(libcxx_a),
             "-Wl,-install_name,@rpath/" + soname,
             "-o", str(shared_build),
@@ -600,7 +648,7 @@ def _build_shared_libcxx(
         # Build import lib + DLL from static archive
         dll_build = td_path / "libc++.dll"
         cmd = [
-            zig, "cc", "-shared",
+            zig, "cc", *_target_args, "-shared",
             "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
             "-Wl,--out-implib," + str(shared_build),
             "-o", str(dll_build),
@@ -608,7 +656,11 @@ def _build_shared_libcxx(
     else:
         return None
 
-    r = _run(cmd, cwd=str(td_path), timeout=120)
+    r = _run(cmd, cwd=str(td_path), timeout=_COMPILE_TIMEOUT_S)
+    if timed_out(r):
+        FAIL("libcxx-simulation: build shared libc++ timed out",
+             f"{_COMPILE_TIMEOUT_S}s limit")
+        return None
     if r.returncode != 0 or not shared_build.exists():
         FAIL("libcxx-simulation: build shared libc++ from static .a",
              f"rc={r.returncode}\n{r.stderr[:2000]}")

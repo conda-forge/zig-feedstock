@@ -167,23 +167,33 @@ static int is_xlinker_lld_trigger(const char *arg) {
 }
 
 /* --- Find zig binary --- */
-static int find_zig(char *out, size_t out_size) {
-    const char *conda = getenv("CONDA_PREFIX");
-    if (conda && conda[0]) {
-        snprintf(out, out_size, "%s\\Library\\bin\\%s", conda, ZIG_BIN_NAME);
-        if (GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES)
-            return 1;
+static const char *resolve_zig_prefix(void) {
+    const char *prefixes[] = { getenv("PREFIX"), getenv("CONDA_PREFIX") };
+    char probe[MAX_PATH];
+    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
+        const char *p = prefixes[i];
+        if (p && p[0]) {
+            snprintf(probe, sizeof(probe), "%s\\Library\\bin\\%s", p, ZIG_BIN_NAME);
+            if (GetFileAttributesA(probe) != INVALID_FILE_ATTRIBUTES)
+                return p;
+        }
     }
-    return 0;
+    return NULL;
+}
+
+static int find_zig(char *out, size_t out_size) {
+    const char *p = resolve_zig_prefix();
+    if (!p) return 0;
+    snprintf(out, out_size, "%s\\Library\\bin\\%s", p, ZIG_BIN_NAME);
+    return 1;
 }
 
 int main(int argc, char *argv[]) {
     init_zig_global_cache_dir();
 
-    /* One CONDA_PREFIX getenv() call for the translate profile; the
-     * pre-existing getenv("CONDA_PREFIX") calls inside find_zig() are left
-     * untouched. */
-    const char *conda_prefix = getenv("CONDA_PREFIX");
+    const char *conda_prefix = resolve_zig_prefix();
+    if (!conda_prefix) conda_prefix = getenv("CONDA_PREFIX");
+    if (!conda_prefix) conda_prefix = "";
 
     /* Pre-filter over the raw args (argv[0] excluded):
      *  - drop -Xlinker <arg> pairs not owned by the generated translator
@@ -273,8 +283,9 @@ int main(int argc, char *argv[]) {
     if (!find_zig(zig_path, MAX_PATH)) {
         fprintf(stderr, "ERROR: zig-%s: zig binary not found (%s)\n",
                 ZIG_CC_MODE, ZIG_BIN_NAME);
-        fprintf(stderr, "  CONDA_PREFIX=%s\n",
-                conda_prefix ? conda_prefix : "(unset)");
+        fprintf(stderr, "  PREFIX=%s CONDA_PREFIX=%s\n",
+                getenv("PREFIX") ? getenv("PREFIX") : "(unset)",
+                getenv("CONDA_PREFIX") ? getenv("CONDA_PREFIX") : "(unset)");
         free(out_argv);
         return 1;
     }
