@@ -1150,80 +1150,16 @@ def test_force_load_wrappers() -> None:
                 _archive_error = f"compile {name}.c: {detail}"
                 return None
 
-            def _diag_evidence(
-                zig_ar_path: Path, ar_shim: Path | None, native_zig: Path | None
-            ) -> None:
-                """One-shot Rosetta/arch evidence; every probe is independently guarded."""
-                if sys.platform != "darwin":
-                    return
-
-                try:
-                    if zig_ar_path.exists():
-                        fr = _run(["file", str(zig_ar_path)], timeout=15)
-                        print(f"    DIAG rosetta_file_zig_ar={fr.stdout.strip()!r}")
-                    else:
-                        print("    DIAG rosetta_file_zig_ar=MISSING")
-                except Exception as exc:
-                    print(f"    DIAG rosetta_file_zig_ar=EXC:{exc}")
-
-                try:
-                    if ar_shim is not None and ar_shim.exists():
-                        fr2 = _run(["file", str(ar_shim)], timeout=15)
-                        print(f"    DIAG rosetta_file_shim={fr2.stdout.strip()!r}")
-                    else:
-                        print("    DIAG rosetta_file_shim=MISSING")
-                except Exception as exc:
-                    print(f"    DIAG rosetta_file_shim=EXC:{exc}")
-
-                try:
-                    lr = _run(["lipo", "-archs", str(zig_ar_path)], timeout=15)
-                    print(f"    DIAG rosetta_lipo_archs={lr.stdout.strip()!r}")
-                except Exception as exc:
-                    print(f"    DIAG rosetta_lipo_archs=EXC:{exc}")
-
-                try:
-                    sr = _run(["sysctl", "-n", "sysctl.proc_translated"], timeout=15)
-                    print(f"    DIAG rosetta_proc_translated={sr.stdout.strip()!r}")
-                except Exception as exc:
-                    print(f"    DIAG rosetta_proc_translated=EXC:{exc}")
-
-                try:
-                    ar_r = _run(["/usr/bin/arch", "-x86_64", "/usr/bin/true"], timeout=15)
-                    print(f"    DIAG rosetta_arch_x86_64_true_rc={ar_r.returncode}")
-                except Exception as exc:
-                    print(f"    DIAG rosetta_arch_x86_64_true_rc=EXC:{exc}")
-
-                try:
-                    if ar_shim is not None and ar_shim.exists():
-                        zr = _run([str(ar_shim), "env"], timeout=30)
-                        for ln in (zr.stdout or zr.stderr).splitlines()[:20]:
-                            print(f"    DIAG zig_env_shim| {ln}")
-                    else:
-                        print("    DIAG zig_env_shim=MISSING")
-                except Exception as exc:
-                    print(f"    DIAG zig_env_shim=EXC:{exc}")
-
-                try:
-                    if native_zig is not None and native_zig != ar_shim and native_zig.exists():
-                        zr2 = _run([str(native_zig), "env"], timeout=30)
-                        for ln in (zr2.stdout or zr2.stderr).splitlines()[:20]:
-                            print(f"    DIAG zig_env_native| {ln}")
-                    else:
-                        print("    DIAG zig_env_native=MISSING")
-                except Exception as exc:
-                    print(f"    DIAG zig_env_native=EXC:{exc}")
-
             # One-shot evidence: probe every archiver candidate unconditionally
             # (own output path per tag), pick first success after. Outcome is
             # unchanged; only collected diagnostics differ.
             _matrix: list[str] = []
-            _any_failed = False
             _winner: tuple[str, Path] | None = None
 
             def _probe(
                 tag: str, argv: list[str] | None, cwd: Path, out_dir: Path | None = None
             ) -> None:
-                nonlocal _any_failed, _winner
+                nonlocal _winner
                 if argv is None:
                     print(f"    DIAG archiver_candidate={tag} exists=False")
                     _matrix.append(f"{tag}:rc=MISSING:exists=False")
@@ -1235,14 +1171,11 @@ def test_force_load_wrappers() -> None:
                 except Exception as exc:
                     print(f"    DIAG archiver_try={tag}=EXC:{exc}")
                     _matrix.append(f"{tag}:rc=EXC:exists=False")
-                    _any_failed = True
                     return
                 ok = pr.returncode == 0 and out.exists()
                 print(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
                       f"exists={out.exists()} stderr={pr.stderr[:300]}")
                 _matrix.append(f"{tag}:rc={pr.returncode}:exists={out.exists()}")
-                if pr.returncode != 0:
-                    _any_failed = True
                 if ok and _winner is None:
                     _winner = (tag, out)
                 elif not ok:
@@ -1273,63 +1206,49 @@ def test_force_load_wrappers() -> None:
             _which_ar = shutil.which("ar")
             _probe("which_ar", [_which_ar] if _which_ar else None, Path(td))
 
-            # Candidates: the three existing zig-ar attempts, unchanged
-            # behaviour, now recorded into the same matrix.
+            # Candidate: the zig-ar wrapper itself, baseline datapoint.
             _probe("zig_ar_primary", [str(zig_ar)], Path(td))
 
-            alt_dir = Path.cwd()
-            _probe("zig_ar_retry_cwd", [str(zig_ar)], alt_dir, out_dir=alt_dir)
-
-            shim = Path(str(zig_ar)[:-3]) if str(zig_ar).endswith("-ar") else None
-            native: Path | None = None
-            if shim is not None and shim.exists():
+            # Control probe (Darwin-only, unconditional, excluded from winner
+            # selection): same implementation as usr_bin_ar, but translated
+            # via Rosetta. Isolates translation from implementation -- last
+            # run llvm_ar was MISSING, so usr_bin_ar's win differed from the
+            # losers in both dimensions at once; this holds implementation
+            # fixed and varies only translation state. Recorded into the
+            # matrix, but its archive is never used.
+            if sys.platform == "darwin":
+                _x86_out = Path(td) / f"lib{name}.usr_bin_ar_x86.a"
                 try:
-                    shim_lines = shim.read_text(errors="replace").splitlines()
-                except OSError as exc:
-                    shim_lines = []
-                    print(f"    DIAG shim_read_failed={exc}")
-                for ln in shim_lines[:40]:
-                    if ln.strip().startswith("native_zig=") and "/bin/" in ln:
-                        native_name = ln.split("/bin/")[-1].strip().strip('"').strip("'")
-                        native = shim.parent / native_name
-            print(f"    DIAG shim={shim} exists={bool(shim and shim.exists())}")
-            print(f"    DIAG native={native} exists={bool(native and native.exists())}")
-            _probe(
-                "zig_ar_native",
-                [str(native), "ar"] if native is not None and native.exists() else None,
-                alt_dir,
-                out_dir=alt_dir,
-            )
+                    x86r = _run(
+                        ["/usr/bin/arch", "-x86_64", "/usr/bin/ar", "rcs",
+                         str(_x86_out), str(obj)],
+                        cwd=td, timeout=60,
+                    )
+                    print(f"    DIAG archiver_try=usr_bin_ar_x86 -> rc={x86r.returncode} "
+                          f"exists={_x86_out.exists()}")
+                    print(f"    DIAG usr_bin_ar_x86_stderr={x86r.stderr}")
+                    _matrix.append(f"usr_bin_ar_x86:rc={x86r.returncode}:exists={_x86_out.exists()}")
+                    try:
+                        _x86_out.unlink()
+                    except OSError:
+                        pass
+                except Exception as exc:
+                    print(f"    DIAG usr_bin_ar_x86=EXC:{exc}")
+                    _matrix.append("usr_bin_ar_x86:rc=EXC:exists=False")
+
+                # Validity check for the control above: if /usr/bin/ar has no
+                # x86_64 slice, "Bad CPU type" is a lipo fact, not Rosetta.
+                try:
+                    lipo_ar = _run(["lipo", "-archs", "/usr/bin/ar"], timeout=15)
+                    print(f"    DIAG rosetta_lipo_usr_bin_ar={lipo_ar.stdout.strip()!r}")
+                except Exception as exc:
+                    print(f"    DIAG rosetta_lipo_usr_bin_ar=EXC:{exc}")
+            else:
+                print("    DIAG usr_bin_ar_x86=MISSING")
+                print("    DIAG rosetta_lipo_usr_bin_ar=MISSING")
+                _matrix.append("usr_bin_ar_x86:rc=MISSING:exists=False")
 
             print(f"    DIAG archiver_matrix={','.join(_matrix)}")
-
-            # Independent probe, unconditional every run: dump the wrapper's
-            # expanded argv (no archive produced, zero cost) -- the only
-            # evidence that -zig-ar dispatches into `<zig> ar rcs ...` rather
-            # than something else. Distinct hypothesis from "zig ar failed".
-            try:
-                if zig_ar.exists():
-                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
-                    try:
-                        rp = _run(
-                            [str(zig_ar), "rcs",
-                             str(alt_dir / f"lib{name}.wrapper_argv.a"), str(obj)],
-                            cwd=str(alt_dir),
-                            timeout=15,
-                        )
-                    finally:
-                        os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
-                    print(f"    DIAG wrapper_argv rc={rp.returncode} out={rp.stdout[:400]!r}")
-                else:
-                    print("    DIAG wrapper_argv=MISSING")
-            except Exception as exc:
-                print(f"    DIAG wrapper_argv=EXC:{exc}")
-
-            # Diagnostics fire whenever ANY candidate failed -- even when a
-            # later one succeeded -- because /usr/bin/ar is expected to PASS
-            # on the failing lanes and would otherwise hide the arch evidence.
-            if _any_failed:
-                _diag_evidence(zig_ar, shim, native)
 
             if _winner is not None:
                 tag, out = _winner
