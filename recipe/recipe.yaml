@@ -199,10 +199,10 @@ source:
           # explicitly requested --no-as-needed, breaking dlsym(sin) at runtime.
           # Three-part fix: Config.zig flag + main.zig recorder + Lld.zig bracket.
           - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
-          # LLVM backend: downgrade .shr_exact → .shr when safety checks are on.
-          # LLVM InstCombine folds shl(lshr_exact(x,N),N) → x, making the runtime
+          # LLVM backend: downgrade .shr_exact -> .shr when safety checks are on.
+          # LLVM InstCombine folds shl(lshr_exact(x,N),N) -> x, making the runtime
           # back-shift comparison trivially true and silently dropping the panic.
-          # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, …).
+          # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, ...).
           - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
@@ -301,6 +301,17 @@ outputs:
             then: /usr/lib/libSystem.B.dylib
           - if: not unix
             then: "*/VERSION.dll"
+          - if: linux
+            then:
+              - "*/libc.so.6"
+              - "*/libm.so.6"
+              - "*/libpthread.so.0"
+              - "*/librt.so.1"
+              - "*/libdl.so.2"
+              - "*/libresolv.so.2"
+              - "*/libutil.so.1"
+              - "*/ld-linux-*.so.*"
+              - "*/ld64.so.*"
       script:
         file: build.sh
         env:
@@ -583,7 +594,7 @@ outputs:
         - python 3.12.*
         # The C shims (unix multiplexer zig-cc-unix.c; .exe shims on non-unix) are
         # compiled at package-build time, so we need a zig that RUNS HERE, on the
-        # build machine. That is always the NATIVE zig_impl_<build_platform> — a
+        # build machine. That is always the NATIVE zig_impl_<build_platform> -- a
         # cross-compiler is just the native compiler invoked with -target, which
         # _compile_c_shim() already passes when unhosted.
         #
@@ -601,8 +612,8 @@ outputs:
             - ${{ compiler('c') }}
             - ${{ stdlib("c") }}
       host:
-        # The C shim links via gcc/ld.bfd on ppc64le, so GCC's sysroot — not
-        # zig's -target — sets its glibc. Match the build/test sysroot.
+        # The C shim links via gcc/ld.bfd on ppc64le, so GCC's sysroot -- not
+        # zig's -target -- sets its glibc. Match the build/test sysroot.
         - if: linux
           then:
             - sysroot_${{ target_platform }} ${{ _c_v }}.*
@@ -650,7 +661,7 @@ outputs:
                 # Compiled multiplexer copies, unix-only (no Windows arm).
                 - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc${{ exe }}
                 - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx${{ exe }}
-            # Native-triplet compiler suite (cross-compiler builds only) —
+            # Native-triplet compiler suite (cross-compiler builds only) --
             # the build machine's own zig-cc/cxx/etc, mirroring the target
             # suite above but keyed on xc_build_triplet instead of conda_triplet.
             - if: is_cross_compiler
@@ -842,13 +853,10 @@ outputs:
       run:
         - ${{ pin_subpackage("zig", exact=True) }}
         - c-compiler
-        - if: linux
-          then:
-            - binutils_impl_${{ target_platform }}
         - if: osx
           then:
-            - lld
-            - llvm-tools
+            - lld ${{ llvm_version }}.*
+            - llvm-tools ${{ llvm_version }}.*
     tests:
       - script:
           - zig cc --version

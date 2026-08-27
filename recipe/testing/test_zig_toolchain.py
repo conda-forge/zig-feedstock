@@ -117,7 +117,7 @@ int main(void) {
 
 
 # ===================================================================
-# Section 1 — Wrapper existence
+# Section 1 -- Wrapper existence
 # ===================================================================
 def test_wrapper_existence() -> None:
     print("--- Wrapper existence ---")
@@ -162,7 +162,7 @@ def test_wrapper_existence() -> None:
 
 
 # ===================================================================
-# Section 2 — Activation variables
+# Section 2 -- Activation variables
 # ===================================================================
 def test_activation_variables() -> None:
     print("--- Activation variables ---")
@@ -227,7 +227,7 @@ def test_activation_variables() -> None:
 
 
 # ===================================================================
-# Section 3 — Flag filtering (functional)
+# Section 3 -- Flag filtering (functional)
 # ===================================================================
 def test_flag_filtering() -> None:
     print("--- Flag filtering (compile with conda-injected flags) ---")
@@ -335,7 +335,7 @@ def test_flag_filtering() -> None:
 
 
 # ===================================================================
-# Section 3b — Target/mcpu override and Windows C shim tests
+# Section 3b -- Target/mcpu override and Windows C shim tests
 # ===================================================================
 def test_target_override() -> None:
     print("--- Target/mcpu override ---")
@@ -377,7 +377,7 @@ def test_target_override() -> None:
 
 
 # ===================================================================
-# Section 4 — Shared library creation
+# Section 4 -- Shared library creation
 # ===================================================================
 def test_shared_lib() -> None:
     print("--- Shared library creation ---")
@@ -416,11 +416,11 @@ def _test_shared_lib_unix(
     zig_cc: str, obj: Path, td: str, *, ext: str
 ) -> None:
     out = Path(td) / f"libhello{ext}"
-    # Linking is slower than compiling — give 60s (aarch64 CI can be slow)
+    # Linking is slower than compiling -- give 60s (aarch64 CI can be slow)
     r = _run([zig_cc, "-shared", "-o", str(out), str(obj)], cwd=td, timeout=60)
     if r.stderr == "TIMEOUT":
         WARN(f"shared lib creation ({ext})",
-             "zig cc -shared timed out (60s) — slow CI or zig linker issue")
+             "zig cc -shared timed out (60s) -- slow CI or zig linker issue")
         return
     if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
         PASS(f"shared lib creation ({ext})")
@@ -460,7 +460,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
     if not implib.exists() or implib.stat().st_size == 0:
         if is_aarch64_win:
             WARN("import lib non-empty",
-                 "empty import lib on aarch64-windows — known zig bug")
+                 "empty import lib on aarch64-windows -- known zig bug")
         else:
             FAIL("import lib non-empty")
         return
@@ -486,7 +486,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
 
 
 # ===================================================================
-# Section 4b — Executable linking (verifies CRT + libc handling)
+# Section 4b -- Executable linking (verifies CRT + libc handling)
 # ===================================================================
 def test_exe_linking() -> None:
     """Link a trivial executable.  On ppc64le this exercises the GCC linker
@@ -526,11 +526,11 @@ def test_exe_linking() -> None:
 
 
 # ===================================================================
-# Section 4c — Libc linking (verifies zig can resolve and link libc)
+# Section 4c -- Libc linking (verifies zig can resolve and link libc)
 # ===================================================================
 def test_libc_linking() -> None:
     """Compile and link a program that calls libc functions (printf, strlen).
-    This exercises zig's libc detection and linking — the same code path
+    This exercises zig's libc detection and linking -- the same code path
     that crashes with TODO panic in zig's doctest examples using -lc."""
     print("--- Libc linking ---")
 
@@ -578,7 +578,7 @@ def test_libc_linking() -> None:
 
 
 # ===================================================================
-# Section 4d — Windows import library resolution (ziglang/zig#14919)
+# Section 4d -- Windows import library resolution (ziglang/zig#14919)
 # ===================================================================
 def test_windows_import_libs() -> None:
     """Verify -lsynchronization resolves when targeting Windows.
@@ -595,7 +595,7 @@ def test_windows_import_libs() -> None:
         return
 
     if _is_emulated:
-        SKIP("windows import libs", "emulated CI — linker OOM risk")
+        SKIP("windows import libs", "emulated CI -- linker OOM risk")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -607,7 +607,7 @@ def test_windows_import_libs() -> None:
         src = Path(td) / "sync_test.c"
         src.write_text("int main(void) { return 0; }\n")
 
-        # Test 1: -lsynchronization (missing .def — ziglang/zig#14919)
+        # Test 1: -lsynchronization (missing .def -- ziglang/zig#14919)
         out = Path(td) / "sync_test.exe"
         r = _run(
             [zig_cc, "-lsynchronization", "-o", str(out), str(src)],
@@ -620,7 +620,7 @@ def test_windows_import_libs() -> None:
             if "DllImportLibraryNotFound" in r.stderr or "libsynchronization" in r.stderr:
                 FAIL(
                     "windows import libs (-lsynchronization)",
-                    "libsynchronization.a not found — synchronization.def missing from sysroot",
+                    "libsynchronization.a not found -- synchronization.def missing from sysroot",
                 )
             elif (
                 "sub-compilation of libubsan failed" in r.stderr
@@ -636,7 +636,7 @@ def test_windows_import_libs() -> None:
                 # upstream 0.16.0 on codeberg and no feedstock patch touches
                 # it, so we don't appear to be the cause.  We haven't found
                 # an existing upstream issue, but we also can't rule out that
-                # one exists under different search terms — so this is an
+                # one exists under different search terms -- so this is an
                 # informed guess, not a confirmed upstream bug.  The
                 # synchronization.def workaround the test was meant to
                 # exercise is independent: zig errors out before reaching the
@@ -645,7 +645,7 @@ def test_windows_import_libs() -> None:
                     "windows import libs (-lsynchronization)",
                     "suspected upstream stdlib issue in zig 0.16.0 "
                     "SelfInfo/Windows.zig:670 (@ptrCast without @alignCast) "
-                    "— synchronization.def path unreached",
+                    "-- synchronization.def path unreached",
                 )
             else:
                 FAIL(
@@ -655,7 +655,7 @@ def test_windows_import_libs() -> None:
         else:
             PASS("windows import libs (-lsynchronization)")
 
-        # Test 2: -lapi-ms-win-core-synch-l1-2-0 (LIBRARY line missing .dll suffix → unreachable)
+        # Test 2: -lapi-ms-win-core-synch-l1-2-0 (LIBRARY line missing .dll suffix -> unreachable)
         out2 = Path(td) / "apisynch_test.exe"
         r2 = _run(
             [zig_cc, "-lapi-ms-win-core-synch-l1-2-0", "-o", str(out2), str(src)],
@@ -673,11 +673,11 @@ def test_windows_import_libs() -> None:
                 )
             elif "unable to find dynamic system library" in r2.stderr:
                 # api-ms-win-core-synch-l1-2-0 is absent from the arm64 Windows SDK layout
-                # on some CI runners. This is an SDK gap, not our bug — the unreachable panic
+                # on some CI runners. This is an SDK gap, not our bug -- the unreachable panic
                 # (what we fixed) is absent, so the fix is working.
                 WARN(
                     "windows import libs (-lapi-ms-win-core-synch-l1-2-0)",
-                    "lib not in Windows SDK paths (arm64 SDK gap) — no unreachable panic, fix OK",
+                    "lib not in Windows SDK paths (arm64 SDK gap) -- no unreachable panic, fix OK",
                 )
             else:
                 FAIL(
@@ -689,7 +689,7 @@ def test_windows_import_libs() -> None:
 
 
 # ===================================================================
-# Section 4d2 — win-arm64 entry-point link probe (Q2)
+# Section 4d2 -- win-arm64 entry-point link probe (Q2)
 # ===================================================================
 def test_win_arm64_entry_point() -> None:
     """Q2 link probe: aarch64-windows console entry symbols resolve.
@@ -804,7 +804,7 @@ def test_win_arm64_entry_point() -> None:
 
 
 # ===================================================================
-# Section 4e — -print-search-dirs and pre-generated MinGW import libs
+# Section 4e -- -print-search-dirs and pre-generated MinGW import libs
 # ===================================================================
 def test_print_search_dirs() -> None:
     """Verify -print-search-dirs returns GCC-compatible output with valid paths.
@@ -871,10 +871,10 @@ def test_mingw_prebuilt_import_libs() -> None:
     files must exist on disk at install time so flexlink can resolve -lws2_32,
     -lkernel32, etc. as library links rather than literal filenames.
 
-    .def files  → llvm-dlltool generates the .a directly.
-    .def.in files (ws2_32, kernel32, ...) → preprocessed with zig cc -E -P
+    .def files  -> llvm-dlltool generates the .a directly.
+    .def.in files (ws2_32, kernel32, ...) -> preprocessed with zig cc -E -P
                   to expand F_X64/F_I386 macros, then llvm-dlltool.
-    uuid        → compiled from libsrc/uuid.c (no DLL import lib needed).
+    uuid        -> compiled from libsrc/uuid.c (no DLL import lib needed).
     """
     print("--- Pre-generated MinGW import libs ---")
 
@@ -892,19 +892,19 @@ def test_mingw_prebuilt_import_libs() -> None:
         return
     PASS("lib-common directory exists")
 
-    # Core Windows system libs — from .def.in templates (ws2_32, kernel32, ole32,
+    # Core Windows system libs -- from .def.in templates (ws2_32, kernel32, ole32,
     # advapi32, user32) or plain .def (shlwapi, version, synchronization) or
     # C source (uuid).
     required = [
-        "libws2_32.a",       # .def.in — Winsock
-        "libkernel32.a",     # .def.in — Windows kernel
-        "libole32.a",        # .def.in — COM/OLE
-        "libadvapi32.a",     # .def.in — registry, security
-        "libuser32.a",       # .def.in — UI, message loop
-        "libuuid.a",         # C source (libsrc/uuid.c) — UUID constants
+        "libws2_32.a",       # .def.in -- Winsock
+        "libkernel32.a",     # .def.in -- Windows kernel
+        "libole32.a",        # .def.in -- COM/OLE
+        "libadvapi32.a",     # .def.in -- registry, security
+        "libuser32.a",       # .def.in -- UI, message loop
+        "libuuid.a",         # C source (libsrc/uuid.c) -- UUID constants
         "libsynchronization.a",  # plain .def (our feedstock workaround)
-        "libshlwapi.a",      # plain .def — Shell lightweight API
-        "libversion.a",      # plain .def — version info
+        "libshlwapi.a",      # plain .def -- Shell lightweight API
+        "libversion.a",      # plain .def -- version info
     ]
     for fname in required:
         lib = lib_common / fname
@@ -920,7 +920,7 @@ def test_mingw_prebuilt_import_libs() -> None:
 
 
 # ===================================================================
-# Section 5 — Visibility (macOS only)
+# Section 5 -- Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
     print("--- Visibility (macOS) ---")
@@ -964,16 +964,16 @@ def test_visibility() -> None:
         lines = [l for l in r2.stdout.splitlines() if "vis_test_func" in l]
         if not lines:
             WARN("visibility: vis_test_func not in nm output",
-                 "may not honor -fvisibility=default — known zig issue")
+                 "may not honor -fvisibility=default -- known zig issue")
         elif any(" T " in l or " T\t" in l for l in lines):
             PASS("visibility: vis_test_func exported (T)")
         else:
             WARN("visibility: vis_test_func not exported",
-                 f"nm shows: {lines[0].strip()} — known zig issue")
+                 f"nm shows: {lines[0].strip()} -- known zig issue")
 
 
 # ===================================================================
-# Section 6 — ld.lld dispatch (non-unix targets only)
+# Section 6 -- ld.lld dispatch (non-unix targets only)
 # ===================================================================
 def test_lld_dispatch() -> None:
     print("--- ld.lld dispatch ---")
@@ -999,14 +999,14 @@ def test_lld_dispatch() -> None:
     else:
         if "unknown emulation" in r.stderr.lower():
             WARN("zig ld.lld routes to ELF driver for MinGW PE targets",
-                 "known zig bug — ld.lld doesn't honour -m for PE")
+                 "known zig bug -- ld.lld doesn't honour -m for PE")
         else:
             FAIL("zig ld.lld -m i386pep",
                  f"rc={r.returncode} stderr={r.stderr[:200]}")
 
 
 # ===================================================================
-# Section 7 — Unix-only: flag filter content checks (from old .sh)
+# Section 7 -- Unix-only: flag filter content checks (from old .sh)
 # ===================================================================
 def test_flag_filter_content() -> None:
     """Check that _zig-cc-common.sh contains expected filter patterns."""
@@ -1078,7 +1078,7 @@ def test_flag_filter_content() -> None:
 
 
 # ===================================================================
-# Section 8 — Unix-only: force-load wrapper behaviour
+# Section 8 -- Unix-only: force-load wrapper behaviour
 # ===================================================================
 def test_force_load_wrappers() -> None:
     """zig-force-load-cc/cxx are C-mux aliases of zig-cc/zig-cxx: -force_load
@@ -1208,45 +1208,6 @@ def test_force_load_wrappers() -> None:
 
             # Candidate: the zig-ar wrapper itself, baseline datapoint.
             _probe("zig_ar_primary", [str(zig_ar)], Path(td))
-
-            # Control probe (Darwin-only, unconditional, excluded from winner
-            # selection): same implementation as usr_bin_ar, but translated
-            # via Rosetta. Isolates translation from implementation -- last
-            # run llvm_ar was MISSING, so usr_bin_ar's win differed from the
-            # losers in both dimensions at once; this holds implementation
-            # fixed and varies only translation state. Recorded into the
-            # matrix, but its archive is never used.
-            if sys.platform == "darwin":
-                _x86_out = Path(td) / f"lib{name}.usr_bin_ar_x86.a"
-                try:
-                    x86r = _run(
-                        ["/usr/bin/arch", "-x86_64", "/usr/bin/ar", "rcs",
-                         str(_x86_out), str(obj)],
-                        cwd=td, timeout=60,
-                    )
-                    print(f"    DIAG archiver_try=usr_bin_ar_x86 -> rc={x86r.returncode} "
-                          f"exists={_x86_out.exists()}")
-                    print(f"    DIAG usr_bin_ar_x86_stderr={x86r.stderr}")
-                    _matrix.append(f"usr_bin_ar_x86:rc={x86r.returncode}:exists={_x86_out.exists()}")
-                    try:
-                        _x86_out.unlink()
-                    except OSError:
-                        pass
-                except Exception as exc:
-                    print(f"    DIAG usr_bin_ar_x86=EXC:{exc}")
-                    _matrix.append("usr_bin_ar_x86:rc=EXC:exists=False")
-
-                # Validity check for the control above: if /usr/bin/ar has no
-                # x86_64 slice, "Bad CPU type" is a lipo fact, not Rosetta.
-                try:
-                    lipo_ar = _run(["lipo", "-archs", "/usr/bin/ar"], timeout=15)
-                    print(f"    DIAG rosetta_lipo_usr_bin_ar={lipo_ar.stdout.strip()!r}")
-                except Exception as exc:
-                    print(f"    DIAG rosetta_lipo_usr_bin_ar=EXC:{exc}")
-            else:
-                print("    DIAG usr_bin_ar_x86=MISSING")
-                print("    DIAG rosetta_lipo_usr_bin_ar=MISSING")
-                _matrix.append("usr_bin_ar_x86:rc=MISSING:exists=False")
 
             print(f"    DIAG archiver_matrix={','.join(_matrix)}")
 
@@ -1386,7 +1347,7 @@ def test_force_load_wrappers() -> None:
 
 
 # ===================================================================
-# Section 9 — Unix-only: wrapper executability under emulation
+# Section 9 -- Unix-only: wrapper executability under emulation
 # ===================================================================
 def _owned_bin_basenames() -> set[str] | None:
     """Basenames under bin/ (Library/bin on win) owned by this feedstock's outputs.

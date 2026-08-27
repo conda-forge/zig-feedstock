@@ -1,4 +1,4 @@
-# Purpose: Suppress atexit() definition in crtexe.c unconditionally — provided via UCRT import lib (api-ms-win-crt-runtime-l1-1-0) on all Windows arches
+# Purpose: Suppress atexit() definition in crtexe.c unconditionally -- provided via UCRT import lib (api-ms-win-crt-runtime-l1-1-0) on all Windows arches
 # Affects: lib/libc/mingw/crt/crtexe.c
 # Upstream: not filed
 # Drop-when: mingw-w64 ships atexit that does not conflict with UCRT alias on all arches

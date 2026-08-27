@@ -11,7 +11,7 @@
 +    // LLD doesn't support PowerPC64 TOC relocations (R_PPC64_* = 31/60/119/
 +    // 120), so use_lld=false falls back to the system toolchain (`cc` via
 +    // GCC / ld.bfd) for linking. Also applies to the bootstrap zig that
-+    // compiles our zig — otherwise its built-in LLD chokes on zigcpp.a.
++    // compiles our zig -- otherwise its built-in LLD chokes on zigcpp.a.
 +    if (target.result.cpu.arch == .powerpc64le) {
 +        exe.use_llvm = true;
 +        exe.use_lld = false;
@@ -29,7 +29,7 @@
          }
 +        // PowerPC64LE needs libgcc for GPR save/restore functions (_savegpr0_*, _restgpr0_*, etc.)
 +        // __libc_csu_init/fini (GCC 14 + glibc 2.28 compat) is handled by
-+        // _libc_tuning.sh patching crt1.o in-place — no separate library needed.
++        // _libc_tuning.sh patching crt1.o in-place -- no separate library needed.
 +        if (target.result.cpu.arch == .powerpc64le) {
 +            exe.root_module.linkSystemLibrary("gcc", .{});
 +        }

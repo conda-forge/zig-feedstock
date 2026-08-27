@@ -1,5 +1,5 @@
 # Shared flag filtering and sysroot detection for zig cc/c++ wrappers.
-# Sourced by zig-cc.sh and zig-cxx.sh — not installed directly.
+# Sourced by zig-cc.sh and zig-cxx.sh -- not installed directly.
 #
 # Expects caller to set: _ZIG_MODE ("cc" or "c++")
 # Sets: _exec_args (array) ready for: exec "@ZIG_BIN@" "${_exec_args[@]}"
@@ -147,8 +147,8 @@ for _fa in "${_tr_out_args[@]}"; do
         -fdebug-prefix-map=*) ;;
         -stdlib=*) ;;
         # GCC runtime libraries zig doesn't ship and can't link
-        # -lgcc_eh: GCC exception handling — zig uses its own EH mechanism
-        # -lgcc_s:  GCC shared runtime — zig uses its own runtime
+        # -lgcc_eh: GCC exception handling -- zig uses its own EH mechanism
+        # -lgcc_s:  GCC shared runtime -- zig uses its own runtime
         -lgcc_eh|-lgcc_s) ;;
         # GNU ld colon-prefix syntax (-l:filename) for known zig-provided libs
         # The -l: prefix means "exact filename match" (GNU ld extension).

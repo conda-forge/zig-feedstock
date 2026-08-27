@@ -5,14 +5,14 @@ Build script for zig_$cross_target_platform_ activation package.
 Installs:
 1. Activation/deactivation scripts (all builds)
 2. zig-cc wrapper scripts from templates (all Unix builds)
-3. Native-triplet compiler suite (cross-compiler builds only) — many
+3. Native-triplet compiler suite (cross-compiler builds only) -- many
    downstream cross-compiling recipes invoke the build machine's own
    triplet-prefixed compiler for build-time tools in addition to the
    host/target compiler.
 4. Triplet-prefixed cross-compiler wrappers (cross-compiler builds only)
 
 All wrapper content lives in recipe/scripts/ as templates with @PLACEHOLDER@
-substitution — no script content is generated inline.
+substitution -- no script content is generated inline.
 """
 
 import os
@@ -50,7 +50,7 @@ def main():
     # Cross-target triplet: only set for cross-compiler builds
     cross_target_triplet = target_triplet if cross_compiler == "true" else ""
 
-    # Zig toolchain identification — compute from collision-free recipe env vars
+    # Zig toolchain identification -- compute from collision-free recipe env vars
     # (CONDA_ZIG_BUILD/HOST in os.environ may be polluted by activation of
     # native zig package installed as a build dep)
     native_triplet = os.environ.get("NATIVE_TRIPLET", conda_triplet)
@@ -97,12 +97,12 @@ def main():
 
         # Native-triplet compiler suite (zig-cc/cxx/ar/ranlib/asm/rc/lld/
         # windres/force-load-cc/force-load-cxx targeting the build machine
-        # itself) — reuses install_zig_cc_wrappers with native_triplet/
+        # itself) -- reuses install_zig_cc_wrappers with native_triplet/
         # native_zig_triplet substituted for conda_triplet/zig_triplet, so
         # the resulting suite is named f"{native_triplet}-{name}" instead
         # of f"{conda_triplet}-{name}". is_nonunix is shared with the target
         # suite because this recipe's xc_valid gating (xc_lnx/xc_osx/xc_nlo)
-        # only allows same-OS-family cross builds — native and target are
+        # only allows same-OS-family cross builds -- native and target are
         # never on opposite sides of the Unix/non-Unix boundary.
         install_zig_cc_wrappers(
             prefix, recipe_dir,
@@ -137,7 +137,7 @@ def _find_zig_compiler() -> str:
 
     Search order:
     1. CONDA_ZIG_BUILD (build machine's zig binary name)
-    2. CONDA_ZIG_HOST (target machine's zig — usable on win-arm64 via x86_64 emulation)
+    2. CONDA_ZIG_HOST (target machine's zig -- usable on win-arm64 via x86_64 emulation)
     3. Any *-zig.exe or zig.exe in known prefix directories
     """
     conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
@@ -176,13 +176,13 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
     non-Unix targets) appended to the compile command.
 
     target controls the architecture the shim is compiled for. It defaults
-    to None, which means "compile natively for the build machine" — this is
+    to None, which means "compile natively for the build machine" -- this is
     correct both for native builds and for HOSTED cross-compilers (where
     build_platform == target_platform and the resulting wrapper executes on
     the build machine, e.g. win-64 -> win-arm64). Set target to the target
-    triple whenever target_platform != build_platform — that is, for UNHOSTED
+    triple whenever target_platform != build_platform -- that is, for UNHOSTED
     cross-compilers AND for is_cross_target lanes such as ppc64le built on an
-    x86_64 runner — where the wrapper executes on the TARGET machine and a
+    x86_64 runner -- where the wrapper executes on the TARGET machine and a
     natively-compiled shim would be the wrong architecture. The bash
     wrappers this C port replaces were architecture-neutral text scripts,
     so this concern is introduced by the C port itself.
@@ -270,7 +270,7 @@ def install_activation_scripts(
 
     # CONDA_ZIG_BUILD: the build platform's conda triplet (who runs the compiler)
     # CONDA_ZIG_HOST: the target platform's conda triplet (what the compiler targets)
-    # Compute from collision-free args — don't read from os.environ which may be
+    # Compute from collision-free args -- don't read from os.environ which may be
     # polluted by activation of native zig installed as build dep.
     native_triplet = os.environ.get("NATIVE_TRIPLET", conda_triplet)
     conda_zig_build = f"{native_triplet}-zig"

@@ -14,7 +14,7 @@
 +    // When safety is enabled, downgrade .shr_exact to .shr so the runtime
 +    // back-shift check (`shl(result, rhs) == lhs`) is not eliminated by
 +    // LLVM InstCombine.  LLVM treats `lshr exact` as a UB promise that no
-+    // bits are lost, which lets it fold `shl(lshr_exact(x,N), N)` → `x`,
++    // bits are lost, which lets it fold `shl(lshr_exact(x,N), N)` -> `x`,
 +    // turning the safety comparison into a trivial `x == x` and dropping the
 +    // panic branch.  When safety is off (ReleaseFast/ReleaseSmall) we keep
 +    // .shr_exact so LLVM can still exploit the UB promise for optimisation.

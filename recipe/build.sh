@@ -61,7 +61,7 @@ fi
 source "${RECIPE_DIR}/building/_upstream_bootstrap.sh"
 setup_upstream_zig_bootstrap
 
-# Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
+# Bootstrap zig runs on the build machine -- always use CONDA_ZIG_BUILD
 BUILD_ZIG="${CONDA_ZIG_BUILD}"
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
@@ -250,7 +250,7 @@ fi
 # Append LLVM deps that conda's split packaging doesn't bake into
 # config.h's ZIG_LLVM_LIBRARIES: zlib (adler32 refs in lld-ELF),
 # zstd (compression), libxml2. Needed on every native + cross linux
-# build — linux-aarch64 failed linking zig2 with undefined adler32
+# build -- linux-aarch64 failed linking zig2 with undefined adler32
 # when this was gated on `is_cross`.
 is_linux && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
 is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
@@ -259,10 +259,10 @@ is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PRE
 # Lld.zig-prefer-shared-libcxx.patch) already resolves to ${PREFIX}/lib/libc++.1.dylib.
 # Injecting libc++.dylib here would add a second LC_LOAD_DYLIB to the same dylib;
 # macOS SDK >= 26 dyld aborts on duplicate linked dylibs ("duplicate linked dylib
-# '@rpath/libc++.1.dylib'" — Abort trap: 6).
+# '@rpath/libc++.1.dylib'" -- Abort trap: 6).
 
 # zig2.c (the pre-generated C bootstrap from 0.16) calls getrandom,
-# copy_file_range, and statx — all absent from conda-forge's glibc 2.17
+# copy_file_range, and statx -- all absent from conda-forge's glibc 2.17
 # sysroot. Compile weak-symbol syscall() stubs and inject the .o into
 # both the zig-build path (via config.h's ZIG_LLVM_LIBRARIES) and the
 # CMake fallback path (via cmake/0002 target_link_libraries).

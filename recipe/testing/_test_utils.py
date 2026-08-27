@@ -148,7 +148,7 @@ def _run(
         except Exception:
             proc.kill()
         try:
-            proc.communicate(timeout=5)  # Drain pipes — may hang if children survive
+            proc.communicate(timeout=5)  # Drain pipes -- may hang if children survive
         except (subprocess.TimeoutExpired, OSError):
             # Children still alive: force-close pipes so we don't block forever
             for pipe in (proc.stdout, proc.stderr):

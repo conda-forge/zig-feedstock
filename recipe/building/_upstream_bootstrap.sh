@@ -9,7 +9,7 @@
 #
 # The upstream binary needs its adjacent lib/ dir to work, so we
 # rename/hardlink IN PLACE inside the bootstrap dir (rather than
-# symlinking into a separate dir) — keeps lib/ adjacent.  On Windows,
+# symlinking into a separate dir) -- keeps lib/ adjacent.  On Windows,
 # MSYS `ln -s` writes a cygwin-marker file that native programs don't
 # follow, so we use a hardlink (or copy as fallback).
 #
