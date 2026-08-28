@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # windres wrapper: translates -o <out> / -o<out> to zig rc's -fo equivalent.
 set -e
+_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _args=()
 while [ $# -gt 0 ]; do
     case "$1" in

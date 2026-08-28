@@ -39,6 +39,8 @@ from _test_utils import (
     FAIL,
     WARN,
     SKIP,
+    check_emulation_env,
+    resolve_test_prefix,
     setup_zig_global_cache_dir,
 )
 
@@ -75,7 +77,7 @@ setup_zig_global_cache_dir()
 _build_zig = os.environ.get("CONDA_ZIG_BUILD", "")
 _is_cross_compiler = _build_zig != _host and _build_zig != "" and _host != ""
 
-_prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+_prefix = resolve_test_prefix("Library/bin" if _build_is_win else "bin")
 if _build_is_win:
     _wrapper_dir = _prefix / "Library" / "bin"
 else:
@@ -244,7 +246,7 @@ def test_flag_filtering() -> None:
             PASS("compile with conda gcc flags succeeds (flags filtered)")
         else:
             FAIL("compile with conda gcc flags succeeds",
-                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+                 f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
 
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.
@@ -273,7 +275,8 @@ def test_flag_filtering() -> None:
                     PASS("-fuse-ld=lld blocked on ppc64le (wrapper guard)")
                 else:
                     FAIL("-fuse-ld=lld ppc64le guard",
-                         f"expected rejection, got rc={r_block.returncode} stderr={r_block.stderr[:500]}")
+                         f"expected rejection, got rc={r_block.returncode} "
+                         f"stdout={r_block.stdout[:500]} stderr={r_block.stderr[:500]}")
                 SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
             elif not is_linux_target:
@@ -296,7 +299,7 @@ def test_flag_filtering() -> None:
                     PASS("--dynamic-list auto-LLD promotion (wrapper + patched zig)")
                 else:
                     FAIL("--dynamic-list auto-LLD promotion",
-                         f"rc={r_dl.returncode} stderr={r_dl.stderr[:2000]}")
+                         f"rc={r_dl.returncode} stdout={r_dl.stdout[:2000]} stderr={r_dl.stderr[:2000]}")
 
                 # Step 2: Verify explicit -fuse-ld=lld also works
                 exe_explicit = Path(td) / "test_explicit_lld"
@@ -312,7 +315,7 @@ def test_flag_filtering() -> None:
                     PASS("-fuse-ld=lld explicit with --dynamic-list")
                 else:
                     FAIL("-fuse-ld=lld explicit with --dynamic-list",
-                         f"rc={r_exp.returncode} stderr={r_exp.stderr[:2000]}")
+                         f"rc={r_exp.returncode} stdout={r_exp.stdout[:2000]} stderr={r_exp.stderr[:2000]}")
 
 
 # ===================================================================
@@ -344,7 +347,7 @@ def test_target_override() -> None:
             PASS("compile with user -target override")
         else:
             FAIL("compile with user -target override",
-                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+                 f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
 
         # Test: user-provided -mcpu should override baked-in -mcpu=baseline
         obj2 = Path(td) / "test_mcpu.o"
@@ -354,7 +357,7 @@ def test_target_override() -> None:
             PASS("compile with user -mcpu override")
         else:
             FAIL("compile with user -mcpu override",
-                 f"rc={r2.returncode} stderr={r2.stderr[:2000]}")
+                 f"rc={r2.returncode} stdout={r2.stdout[:2000]} stderr={r2.stderr[:2000]}")
 
 
 # ===================================================================
@@ -380,7 +383,8 @@ def test_shared_lib() -> None:
         # Compile object
         r = _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td)
         if r.returncode != 0:
-            FAIL("compile object for shared lib", f"rc={r.returncode} stderr={r.stderr[:2000]}")
+            FAIL("compile object for shared lib",
+                 f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
             return
 
         if is_win_target and _build_is_win:
@@ -406,7 +410,7 @@ def _test_shared_lib_unix(
     if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
         PASS(f"shared lib creation ({ext})")
     else:
-        detail = f"rc={r.returncode} stderr={r.stderr[:2000]}"
+        detail = f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}"
         FAIL(f"shared lib creation ({ext})", detail)
 
 
@@ -429,7 +433,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
 
     if r.returncode != 0:
         FAIL("shared lib creation (windows)",
-             f"rc={r.returncode} stderr={r.stderr[:200]}")
+             f"rc={r.returncode} stdout={r.stdout[:200]} stderr={r.stderr[:200]}")
         return
 
     if not dll.exists() or dll.stat().st_size == 0:
@@ -503,7 +507,7 @@ def test_exe_linking() -> None:
             PASS("exe linking")
         else:
             FAIL("exe linking",
-                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+                 f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
 
 
 # ===================================================================
@@ -539,7 +543,7 @@ def test_libc_linking() -> None:
             return
         if r.returncode != 0:
             FAIL("libc linking",
-                 f"rc={r.returncode} stderr={r.stderr[:2000]}")
+                 f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
             return
         if not out.exists() or out.stat().st_size == 0:
             FAIL("libc linking", "output binary missing or empty")
@@ -548,7 +552,7 @@ def test_libc_linking() -> None:
 
         # If native (not cross), try running it
         if not _is_cross_compiler and not is_win_target:
-            r2 = _run([str(out)], cwd=td, timeout=10)
+            r2 = _run([str(out)], cwd=td, timeout=10, target=_triplet)
             if r2.returncode == 0 and "len=5" in r2.stdout:
                 PASS("libc exe runs correctly")
             elif r2.returncode == 0:
@@ -631,7 +635,7 @@ def test_windows_import_libs() -> None:
             else:
                 FAIL(
                     "windows import libs (-lsynchronization)",
-                    f"rc={r.returncode} stderr={r.stderr[:2000]}",
+                    f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}",
                 )
         else:
             PASS("windows import libs (-lsynchronization)")
@@ -663,7 +667,7 @@ def test_windows_import_libs() -> None:
             else:
                 FAIL(
                     "windows import libs (-lapi-ms-win-core-synch-l1-2-0)",
-                    f"rc={r2.returncode} stderr={r2.stderr[:2000]}",
+                    f"rc={r2.returncode} stdout={r2.stdout[:2000]} stderr={r2.stderr[:2000]}",
                 )
         else:
             PASS("windows import libs (-lapi-ms-win-core-synch-l1-2-0)")
@@ -781,7 +785,7 @@ def test_win_arm64_entry_point() -> None:
                     print(f"  [arm64-diag] {entry}: {_ln}")
             else:
                 FAIL(f"win-arm64 {entry} link",
-                     f"rc={r.returncode} stderr={r.stderr[:2000]}")
+                     f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
 
 
 # ===================================================================
@@ -811,7 +815,8 @@ def test_print_search_dirs() -> None:
 
     r = _run([zig_cc, "-print-search-dirs"], cwd=tempfile.gettempdir(), timeout=15)
     if r.returncode != 0:
-        FAIL("-print-search-dirs exits zero", f"rc={r.returncode} stderr={r.stderr[:500]}")
+        FAIL("-print-search-dirs exits zero",
+             f"rc={r.returncode} stdout={r.stdout[:500]} stderr={r.stderr[:500]}")
         return
 
     output = r.stdout
@@ -927,7 +932,7 @@ def test_visibility() -> None:
         )
         if r.returncode != 0:
             FAIL("visibility: compile shared lib",
-                 f"rc={r.returncode} stderr={r.stderr[:200]}")
+                 f"rc={r.returncode} stdout={r.stdout[:200]} stderr={r.stderr[:200]}")
             return
 
         r2 = _run([nm, "-g", str(dylib)], cwd=td)
@@ -1139,6 +1144,9 @@ def main() -> int:
             shutil.copy2(_patched, zig_bin)
             os.chmod(str(zig_bin), 0o755)
             print(f"  [patched] Overlaid {zig_bin} with locally-built native zig")
+
+    if not check_emulation_env(_triplet):
+        return 1
 
     test_wrapper_existence()
     test_activation_variables()
