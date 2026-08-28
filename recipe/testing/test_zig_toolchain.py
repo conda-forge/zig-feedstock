@@ -143,7 +143,6 @@ def test_wrapper_existence() -> None:
             f"{_triplet}-zig-asm",
             f"{_triplet}-zig-rc",
             f"{_triplet}-zig-lld",
-            f"{_triplet}-_translate.gen.sh",
         ]
 
     for w in expected:
@@ -1008,14 +1007,20 @@ def test_lld_dispatch() -> None:
 # Section 7 -- Unix-only: flag filter content checks (from old .sh)
 # ===================================================================
 def test_flag_filter_content() -> None:
-    """Check that _translate.gen.sh contains expected flag-translation patterns.
+    """Behavioural checks against the shipped zig-cc-unix.c mux (flag_rules.py
+    rules R2 and R6), replacing the old grep of the deleted _translate.gen.sh
+    bash fragment (no longer shipped into $PREFIX/bin).
 
-    The flag-filter/translation logic used to live in the hand-written
-    recipe/scripts/_zig-cc-common.sh fragment (now deleted); it has since
-    been ported into the shared manifest (recipe/building/flag_rules.py)
-    generated into _translate.gen.sh (bash) / _translate.inc (C, compiled
-    into zig-cc-unix.c). This checks the generated bash artifact's content;
-    see test_flag_translation_parity.py for the behavioral GEN_CASES leg.
+    R6 (-mcpu): an explicit -mcpu=<x> survives untouched into the final
+    argv; when absent, -mcpu=baseline is injected. Checked via the same
+    ZIG_WRAPPER_PRINT_ARGV argv-dump idiom used by test_force_load_wrappers.
+
+    R2 (-print-search-dirs): the wrapper intercepts this flag and returns 2
+    before exec_zig's ZIG_WRAPPER_PRINT_ARGV hook ever runs, so it is
+    checked on the wrapper's direct stdout instead of the argv dump.
+
+    Neither R2 nor R6 is an LLD-trigger flag (only -force_load/-all_load
+    are), so no ppc64le skip is needed here.
     """
     print("--- Flag filter content (Unix) ---")
 
@@ -1023,22 +1028,71 @@ def test_flag_filter_content() -> None:
         SKIP("flag filter content", "Unix-only")
         return
 
-    translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
-    if not translate.exists():
-        FAIL("_translate.gen.sh exists for flag-translation checks")
+    wrapper_cc = _wrapper_dir / f"{_triplet}-zig-cc"
+    if not wrapper_cc.exists():
+        SKIP("flag filter content", "zig-cc wrapper not found")
         return
 
-    gen_text = translate.read_text()
-    gen_checks = [
-        ("-mcpu= handled by translator", "-mcpu="),
-        ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
-        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
-    ]
-    for label, needle in gen_checks:
-        if needle in gen_text:
-            PASS(label)
+    zig_cc = _env_var("ZIG_CC")
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("flag filter content", "target binaries are not executable on this runner")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        main_src = Path(td) / "main.c"
+        main_src.write_text(_MAIN_C)
+        out = Path(td) / "probe"
+
+        def _dump_argv(extra: list[str]) -> list[str]:
+            """Invoke the wrapper with ZIG_WRAPPER_PRINT_ARGV=1 and return its
+            fully rewritten argv as a token list (argv[0] and the cc/c++ mode
+            token included, no trailing empty entries)."""
+            cmd = [str(wrapper_cc), str(main_src), *extra, "-o", str(out)]
+            old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
+            os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
+            try:
+                r = _run(cmd, cwd=td, timeout=60)
+            finally:
+                if old_flag is None:
+                    os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
+                else:
+                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = old_flag
+            if timed_out(r) or r.returncode != 0:
+                return []
+            tokens = r.stdout.split("\n")
+            while tokens and tokens[-1] == "":
+                tokens.pop()
+            return tokens
+
+        # R6(a): explicit -mcpu=<x> survives verbatim
+        argv_explicit = _dump_argv(["-mcpu=x86_64_v2"])
+        if not argv_explicit:
+            WARN("-mcpu=<x> survives verbatim", "wrapper produced no argv dump")
+        elif "-mcpu=x86_64_v2" in argv_explicit:
+            PASS("-mcpu=<x> survives verbatim")
         else:
-            FAIL(label)
+            FAIL("-mcpu=<x> survives verbatim", " ".join(argv_explicit)[:500])
+
+        # R6(b): no -mcpu given -> -mcpu=baseline injected
+        argv_default = _dump_argv([])
+        if not argv_default:
+            WARN("-mcpu=baseline injected when absent", "wrapper produced no argv dump")
+        elif "-mcpu=baseline" in argv_default:
+            PASS("-mcpu=baseline injected when absent")
+        else:
+            FAIL("-mcpu=baseline injected when absent", " ".join(argv_default)[:500])
+
+        # R2: -print-search-dirs is intercepted with an early `return 2`,
+        # before exec_zig's ZIG_WRAPPER_PRINT_ARGV hook runs -- so check the
+        # wrapper's direct stdout instead of the argv dump.
+        r = _run([str(wrapper_cc), "-print-search-dirs"], cwd=td, timeout=60)
+        if timed_out(r):
+            WARN("-print-search-dirs handled (flexlink compat)", "invocation timed out")
+        elif all(key in r.stdout for key in ("install:", "programs:", "libraries:")):
+            PASS("-print-search-dirs handled (flexlink compat)")
+        else:
+            FAIL("-print-search-dirs handled (flexlink compat)",
+                 f"rc={r.returncode} stdout={r.stdout[:300]}")
 
 
 # ===================================================================

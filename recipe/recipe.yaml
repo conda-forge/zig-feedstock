@@ -11,6 +11,7 @@ context:
 
   bootstrap_via_upstream: false
 
+  # Single switch for langref; build-env export derives from this. Revert to "1" only for local iteration.
   skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
@@ -331,8 +332,8 @@ outputs:
           # auto = absolute GROUP paths for the riscv64 sysroot only. legacy/abs force one form.
           ZIG_SYSROOT_MODE: ${{ env.get("ZIG_SYSROOT_MODE", default="auto") }}
 
-          # TEMPORARY: "1" skips Phase 2 langref (~2h on emulated lanes). Revert to "0" before merge.
-          SKIP_LANGREF: ${{ env.get("SKIP_LANGREF", default="1") }}
+          # Derived from the single skip_langref switch above; do not re-add an env.get here.
+          SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
