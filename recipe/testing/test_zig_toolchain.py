@@ -143,7 +143,6 @@ def test_wrapper_existence() -> None:
             f"{_triplet}-zig-asm",
             f"{_triplet}-zig-rc",
             f"{_triplet}-zig-lld",
-            f"{_triplet}-_zig-cc-common.sh",
             f"{_triplet}-_translate.gen.sh",
         ]
 
@@ -1009,72 +1008,37 @@ def test_lld_dispatch() -> None:
 # Section 7 -- Unix-only: flag filter content checks (from old .sh)
 # ===================================================================
 def test_flag_filter_content() -> None:
-    """Check that _zig-cc-common.sh contains expected filter patterns."""
+    """Check that _translate.gen.sh contains expected flag-translation patterns.
+
+    The flag-filter/translation logic used to live in the hand-written
+    recipe/scripts/_zig-cc-common.sh fragment (now deleted); it has since
+    been ported into the shared manifest (recipe/building/flag_rules.py)
+    generated into _translate.gen.sh (bash) / _translate.inc (C, compiled
+    into zig-cc-unix.c). This checks the generated bash artifact's content;
+    see test_flag_translation_parity.py for the behavioral GEN_CASES leg.
+    """
     print("--- Flag filter content (Unix) ---")
 
     if _build_is_win:
         SKIP("flag filter content", "Unix-only")
         return
 
-    common = _wrapper_dir / f"{_triplet}-_zig-cc-common.sh"
-    if not common.exists():
-        FAIL("_zig-cc-common.sh exists for content check")
-        return
-
-    text = common.read_text()
-
-    checks = [
-        ("-march=* in filter list", "-march="),
-        ("-mtune=* in filter list", "-mtune="),
-        ("exported_symbols_list filtered", "exported_symbols_list"),
-        ("unexported_symbols_list filtered", "unexported_symbols_list"),
-        ("force_symbols_not_weak_list filtered", "force_symbols_not_weak_list"),
-        ("force_symbols_weak_list filtered", "force_symbols_weak_list"),
-        ("reexported_symbols_list filtered", "reexported_symbols_list"),
-        ("-Wl,-all_load filtered", "all_load"),
-        ("-Wl,-force_load filtered", "force_load"),
-        ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
-        ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
-        ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
-    ]
-    for label, needle in checks:
-        if needle in text:
-            PASS(label)
-        else:
-            FAIL(label)
-
-    # These behaviors moved from _zig-cc-common.sh into the generated
-    # _translate.gen.sh by the R6 flag-translation refactor (see
-    # test_flag_translation_parity.py); verify them in their new home rather
-    # than grepping _zig-cc-common.sh (where only explanatory comments remain).
     translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
     if not translate.exists():
         FAIL("_translate.gen.sh exists for flag-translation checks")
-    else:
-        gen_text = translate.read_text()
-        gen_checks = [
-            ("-mcpu= handled by translator", "-mcpu="),
-            ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
-            ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
-        ]
-        for label, needle in gen_checks:
-            if needle in gen_text:
-                PASS(label)
-            else:
-                FAIL(label)
+        return
 
-    # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
-    if "_use_lld" in text and "-fuse-ld=lld" in text:
-        PASS("auto-LLD promotion logic present")
-    else:
-        FAIL("auto-LLD promotion logic present")
-
-    lld_triggers = ["version-script", "dynamic-list", "gc-sections", "build-id"]
-    for flag in lld_triggers:
-        if f"--{flag}" in text:
-            PASS(f"--{flag} triggers LLD promotion")
+    gen_text = translate.read_text()
+    gen_checks = [
+        ("-mcpu= handled by translator", "-mcpu="),
+        ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
+        ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
+    ]
+    for label, needle in gen_checks:
+        if needle in gen_text:
+            PASS(label)
         else:
-            FAIL(f"--{flag} should trigger LLD promotion")
+            FAIL(label)
 
 
 # ===================================================================

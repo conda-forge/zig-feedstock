@@ -11,8 +11,7 @@ context:
 
   bootstrap_via_upstream: false
 
-  # TEMPORARY: default "1" skips the ~2h Phase 2 langref build. Revert to "0" before merge.
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -42,6 +41,8 @@ context:
   # Zig target mapping https://github.com/ziglang/zig-bootstrap
   _c_v: ${{ c_stdlib_version | default("") }}
   _zig_glibc: ${{ "2.27" if xc_riscv64 else _c_v }}
+  # Same 2.27 riscv64 floor as _zig_glibc, keyed on target_platform (not cross_target_platform_)
+  _zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else _c_v }}
   zig_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ _zig_glibc        if xc_l64                              else
@@ -117,11 +118,11 @@ context:
   # Used by xc_build_zig_triplet for unhosted cross-compilers (runs on target_platform).
   zig_target_triplet: >-
     ${{
-      "x86_64-linux-gnu." ~ _c_v             if target_platform == "linux-64"       else
-      "aarch64-linux-gnu." ~ _c_v            if target_platform == "linux-aarch64"  else
-      "powerpc64le-linux-gnu." ~ _c_v        if target_platform == "linux-ppc64le"  else
-      "riscv64-linux-gnu." ~ _c_v            if target_platform == "linux-riscv64"  else
-      "s390x-linux-gnu." ~ _c_v              if target_platform == "linux-s390x"    else
+      "x86_64-linux-gnu." ~ _zig_glibc_tgt   if target_platform == "linux-64"       else
+      "aarch64-linux-gnu." ~ _zig_glibc_tgt  if target_platform == "linux-aarch64"  else
+      "powerpc64le-linux-gnu." ~ _zig_glibc_tgt if target_platform == "linux-ppc64le" else
+      "riscv64-linux-gnu." ~ _zig_glibc_tgt  if target_platform == "linux-riscv64"  else
+      "s390x-linux-gnu." ~ _zig_glibc_tgt    if target_platform == "linux-s390x"    else
       "x86_64-macos." ~ _c_v ~ "-none"       if target_platform == "osx-64"         else
       "aarch64-macos." ~ _c_v ~ "-none"      if target_platform == "osx-arm64"      else
       "x86_64-windows-gnu"                   if target_platform == "win-64"         else
@@ -655,9 +656,6 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-windres${{ exe }}
             - if: unix
               then:
-                - bin/${{ conda_triplet }}-_zig-cc-common.sh
-                - bin/${{ conda_triplet }}-_zig-cache-common.sh
-                - bin/${{ conda_triplet }}-_translate.gen.sh
                 # Compiled multiplexer copies, unix-only (no Windows arm).
                 - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc${{ exe }}
                 - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx${{ exe }}
@@ -676,9 +674,6 @@ outputs:
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-windres${{ exe }}
             - if: is_cross_compiler and unix
               then:
-                - bin/${{ xc_build_triplet }}-_zig-cc-common.sh
-                - bin/${{ xc_build_triplet }}-_zig-cache-common.sh
-                - bin/${{ xc_build_triplet }}-_translate.gen.sh
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cc${{ exe }}
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cxx${{ exe }}
             # Post-install tests
@@ -781,8 +776,7 @@ outputs:
           build:
             - python >=3.10
       # Golden/characterization parity tests for the zig-cc wrapper flag
-      # translation fragment (recipe/scripts/_zig-cc-common.sh) and its
-      # generated C/bash translators (recipe/building/_translate.inc,
+      # translation and its generated C/bash translators (recipe/building/_translate.inc,
       # _translate.gen.sh). Target-independent: internally exercises both
       # unix and windows profiles via subprocess/bash-source-capture, so it
       # is NOT gated on xc_w64 and runs once per build.
@@ -794,7 +788,6 @@ outputs:
             - testing/test_flag_translation_parity.py
             - testing/_test_utils.py
             - testing/_translate_harness.c
-            - scripts/_zig-cc-common.sh
             - building/flag_rules.py
             - building/gen_translators.py
             - building/_translate.gen.sh

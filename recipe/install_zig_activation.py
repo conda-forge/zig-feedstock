@@ -302,10 +302,10 @@ def install_zig_cc_wrappers(
     shim_on_target: bool = False,
 ):
     """Install zig-cc/cxx/ar/ranlib/asm/rc wrapper scripts from templates."""
-    scripts_dir = recipe_dir / "scripts"
 
-    # Strip glibc version for cc/c++ target (clang rejects ".2.17" suffix)
-    cc_target = _strip_glibc_version(zig_triplet)
+    # Pass the full versioned triplet: zig parses and enforces the glibc floor.
+    # llvm.zig-triple-no-glibc-version.patch stops it reaching LLVM's triple.
+    cc_target = zig_triplet
     zig_bin = _find_zig_bin(conda_triplet, is_nonunix=is_nonunix)
 
     # Architecture prefix for sysroot detection (e.g. x86_64 from x86_64-linux-gnu.2.17)
@@ -367,19 +367,10 @@ def install_zig_cc_wrappers(
     else:
         wrapper_dir = prefix / "bin"
         building_dir = recipe_dir / "building"
-        # Install shared helpers (sourced by wrapper scripts, not executed directly).
-        # _translate.gen.sh is the generated flag-translation fragment (R1-R9);
-        # it lives in recipe/building/ (source of truth: flag_rules.py), unlike
-        # the other two helpers which live in recipe/scripts/ alongside the
-        # wrapper templates that source them.
-        for helper, helper_src_dir in [
-            ("_zig-cache-common.sh", scripts_dir),
-            ("_zig-cc-common.sh", scripts_dir),
-            ("_translate.gen.sh", building_dir),
-        ]:
-            src = helper_src_dir / helper
-            if src.exists():
-                _install_template(src, wrapper_dir / f"{conda_triplet}-{helper}", replacements)
+        # No shell helpers are installed: the unix wrappers are the compiled
+        # zig-cc-unix.c multiplexer, which has the flag translation compiled in
+        # via _translate.inc. _translate.gen.sh stays in recipe/building/ for the
+        # parity test only; nothing sources it at runtime.
 
         # The C multiplexer: ONE binary compiled once, then copied to each
         # wrapper name. It dispatches on basename(argv[0]) with the
@@ -419,8 +410,8 @@ def install_unix_cross_wrappers(
     # Always use triplet-prefixed native zig (zig_impl provides it)
     native_zig = f"{native_triplet}-zig"
 
-    # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
-    cc_triplet = _strip_glibc_version(zig_triplet)
+    # Full versioned triplet; see cc_target note in install_wrappers.
+    cc_triplet = zig_triplet
 
     replacements = {
         "@NATIVE_ZIG@": native_zig,
@@ -449,8 +440,8 @@ def install_nonunix_cross_wrappers(
     # Always use triplet-prefixed native zig (zig_impl provides it)
     native_zig_exe = f"{native_triplet}-zig.exe"
 
-    # Strip glibc version for cc/c++ commands (clang rejects ".2.17" suffix)
-    cc_triplet = _strip_glibc_version(zig_triplet)
+    # Full versioned triplet; see cc_target note in install_wrappers.
+    cc_triplet = zig_triplet
 
     replacements = {
         "@NATIVE_ZIG_EXE@": native_zig_exe,

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Cross-compiler wrapper: injects -target for commands that support it
-# cc/c++ use stripped triplet (clang rejects glibc version suffix)
-# zig-native commands use full triplet (zig accepts glibc version)
+# All commands use the full versioned triplet; zig enforces the glibc floor.
+# llvm.zig-triple-no-glibc-version.patch keeps the version out of LLVM's triple.
 native_zig=""
 for _p in "$PREFIX" "$CONDA_PREFIX"; do
   if [ -n "$_p" ] && [ -x "$_p/bin/@NATIVE_ZIG@" ]; then
