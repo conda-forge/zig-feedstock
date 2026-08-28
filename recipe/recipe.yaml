@@ -1,11 +1,15 @@
 schema_version: 1
 
 context:
-  build_number: 2
+  build_number: 3
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "1884+841dd0eb8"
+  # Bootstrap comes from an ALREADY-PUBLISHED snapshot; lags `snapshot` by design.
+  snapshot_ref: "1811"
+  build_ref: "2"
+  zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
@@ -126,6 +130,10 @@ context:
       "x86-windows-gnu"                 if target_platform == "win-32"         else
       "native"
     }}
+
+  qemu_arch: ${{ target_platform | replace("linux-64", "x86_64") | replace("linux-", "") }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11" if linux and build_platform != target_platform else "" }}
+  sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
   is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -334,16 +342,16 @@ outputs:
             - llvmdev ${{ llvm_version }}.*  # llvm-config
             - if: linux
               then:
-                - qemu-execve-${{ target_platform | replace("linux-", "") }}
+                - ${{ qemu_pkg }}
             - if: osx
               then:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig.
-        # Pin build string to snapshot: version alone lets the solver pick a higher build number from an older snapshot.
+        # build_ref is a MINIMUM: rejects older builds, fails loudly until one is published.
         - if: not bootstrap_via_upstream
           then:
-            - zig_impl_${{ build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_1
+            - 'zig_impl_${{ build_platform }}${{ zig_impl_pin }}'
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -355,7 +363,6 @@ outputs:
         - if: osx
           then:
             - libcxx ${{ llvm_version }}.*
-            - libxml2-devel
       run:
         - if: ppc64le
           then:
@@ -386,7 +393,7 @@ outputs:
                 - zig-lld-bundle
           files:
             # qemu-ppc64le doesn't faithfully emulate traps
-            - if: (is_native and not win) or (linux and not xc_ppc64le)
+            - if: (is_native and not win) or (linux and not xc_ppc64le and not xc_riscv64)
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -411,14 +418,26 @@ outputs:
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
-          - if: unix
-            then: PYTHONIOENCODING=utf-8 python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
-          - if: not unix
-            then: set PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+          - if: linux
+            then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+            else:
+              - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
         requirements:
-          run:
+          build:
             - python >=3.10
-            - libcxx
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: osx
+              then:
+                - libcxx
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
         files:
           recipe:
             - testing/_test_utils.py
@@ -427,17 +446,25 @@ outputs:
       - script:
           - if: linux
             then:
-              - python testing/test_dtneeded.py ${{ conda_triplet }}
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - python testing/test_dtneeded.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
               - echo "SKIP DT_NEEDED test (non-linux)"
         requirements:
+          build:
+            - python >=3.10
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
           run:
             - if: linux
               then:
-                - python >=3.10
+                - sysroot_${{ target_platform }}
                 - binutils_impl_${{ target_platform }}
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_dtneeded.py
       # Functional test using triplet-prefixed binary
       - script:
@@ -448,12 +475,28 @@ outputs:
                   - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
                 else:
                   - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
+              - if: linux
+                then:
+                  - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+                  - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+                  - if: build_platform != target_platform
+                    then:
+                      - '[ -n "${QEMU_EXECVE}" ] || { echo "QEMU_EXECVE_MISSING: qemu-execve-${{ qemu_arch }} not found for ${{ target_platform }}"; exit 1; }'
               - ${{ conda_triplet }}-zig version
               - ${{ conda_triplet }}-zig zen
               - ${{ conda_triplet }}-zig init
               - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
               - echo "Skip test on non-emulated archs"
+        requirements:
+          build:
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
         files:
           source:
             - zig-source/test
@@ -478,6 +521,8 @@ outputs:
           - if: linux and not ppc64le and not arm64
             then:
               # Linux: test with ELF --dynamic-list
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
               - echo '{ main; };' > /tmp/test_lld.dyn
               - ${{ conda_triplet }}-zig cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
@@ -512,6 +557,15 @@ outputs:
               # LLD lacks ppc64le relocation support; wrapper guard tested via
               # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
               - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+        requirements:
+          build:
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: build_platform != target_platform
+              then:
+                - sysroot_${{ target_platform }}
 
       # Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common
       - script:
@@ -525,9 +579,10 @@ outputs:
               - echo "SKIP x86_64-windows-gnu CRT test (non-Windows target)"
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_mingw_crt.py
         requirements:
-          run:
+          build:
             - python >=3.10
 
   # ==========================================================================
@@ -560,7 +615,7 @@ outputs:
         # Need zig to compile .exe shims on non-Unix (cross-compiler shim)
         - if: is_cross_compiler and not unix
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_1
+            - 'zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}'
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -574,7 +629,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.* *_${{ snapshot | replace("+","_") }}_1
+            - 'zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}'
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -646,6 +701,10 @@ outputs:
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper + functional validation tests (Python, cross-platform)
+          - if: linux
+            then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
           - if: unix
             then: PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
           - if: not unix
@@ -664,12 +723,20 @@ outputs:
               - if not exist %TEMP%\test_manifest.dll exit /b 1
               - echo PASS zig cc /MANIFEST* filter
         requirements:
-          run:
+          build:
             - python >=3.10
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
             - if: ppc64le
               then:
                 - bash >=5.2
                 - libclang-cpp ${{ llvm_version }}.*
+            - if: linux
+              then:
+                - sysroot_${{ cross_target_platform_ }}
+                - binutils_impl_${{ cross_target_platform_ }}
         files:
           recipe:
             - testing/_test_utils.py
@@ -689,7 +756,7 @@ outputs:
           recipe:
             - testing/test_windres.py
         requirements:
-          run:
+          build:
             - python >=3.10
       # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
       - script:
@@ -705,7 +772,7 @@ outputs:
           recipe:
             - testing/test_wl_entry_translation.py
         requirements:
-          run:
+          build:
             - python >=3.10
       # Golden/characterization parity tests for the zig-cc wrapper flag
       # translation fragment (recipe/scripts/_zig-cc-common.sh) and its
@@ -736,7 +803,7 @@ outputs:
             - building/_translate.gen.sh
             - building/_translate.inc
         requirements:
-          run:
+          build:
             - python >=3.10
 
   # ==========================================================================
@@ -769,11 +836,24 @@ outputs:
           bin:
             - zig
       - script:
+          - if: linux
+            then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
           - if: not arm64
             then:
               - zig version
             else:
               - echo "Skip on cross-compiled platform"
+        requirements:
+          build:
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
 
   # ==========================================================================
   # TOOLCHAIN META-PACKAGE: zig-compiler (toolchain metapackage)
@@ -797,7 +877,20 @@ outputs:
             - llvm-tools
     tests:
       - script:
+          - if: linux
+            then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
           - zig cc --version
+        requirements:
+          build:
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
 
 about:
   homepage: https://ziglang.org/

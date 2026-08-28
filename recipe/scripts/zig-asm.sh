@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --- Sysroot detection (Linux only) ---
 _sysroot_flags=()
 if [[ "$(uname -s)" == "Linux" ]] && [[ "@ZIG_TARGET@" != "native" ]]; then

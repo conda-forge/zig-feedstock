@@ -27,17 +27,31 @@ function fix_sysroot_libc_scripts() {
           dbg echo "    Patching ${script_file}"
 
           # Backup original
-          cp "${script_file}" "${script_file}.orig"
+          [[ -f "${script_file}.orig" ]] || cp "${script_file}" "${script_file}.orig"
 
-          # Replace absolute paths with sysroot-relative paths
-          sed -i \
-            -e "s| /lib64/| ../../lib64/|g" \
-            -e "s| /usr/lib64/| ../lib64/|g" \
-            -e "s|( /lib64/|( ../../lib64/|g" \
-            -e "s|( /usr/lib64/|( ../lib64/|g" \
-            -e "s| /lib/ld-| ../../lib/ld-|g" \
-            -e "s|( /lib/ld-|( ../../lib/ld-|g" \
-            "${script_file}"
+          # riscv64: rewrite to sysroot-absolute paths (relative paths lose the
+          # ld-linux AS_NEEDED stub once usr/lib is symlinked to lib64); all
+          # other arches keep the sysroot-relative rewrite.
+          if [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]]; then
+            sed -i \
+              -e "s| /lib64/| ${sysroot_dir}/lib64/|g" \
+              -e "s| /usr/lib64/| ${sysroot_dir}/usr/lib64/|g" \
+              -e "s|( /lib64/|( ${sysroot_dir}/lib64/|g" \
+              -e "s|( /usr/lib64/|( ${sysroot_dir}/usr/lib64/|g" \
+              -e "s| /lib/ld-| ${sysroot_dir}/lib/ld-|g" \
+              -e "s|( /lib/ld-|( ${sysroot_dir}/lib/ld-|g" \
+              "${script_file}"
+          else
+            # Replace absolute paths with sysroot-relative paths
+            sed -i \
+              -e "s| /lib64/| ../../lib64/|g" \
+              -e "s| /usr/lib64/| ../lib64/|g" \
+              -e "s|( /lib64/|( ../../lib64/|g" \
+              -e "s|( /usr/lib64/|( ../lib64/|g" \
+              -e "s| /lib/ld-| ../../lib/ld-|g" \
+              -e "s|( /lib/ld-|( ../../lib/ld-|g" \
+              "${script_file}"
+          fi
 
           dbg echo "      patched $(basename "${script_file}") ($(wc -c < "${script_file}") bytes)"
           rm -f "${script_file}.orig"

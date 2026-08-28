@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import platform as _platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -77,6 +78,37 @@ def setup_zig_global_cache_dir() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test-env prefix resolution
+# ---------------------------------------------------------------------------
+def resolve_test_prefix(marker: str = "bin") -> Path:
+    """Resolve the prefix that actually holds the package under test.
+
+    rattler-build spins up a separate BUILD env whenever a test block
+    declares `requirements: build:`. CONDA_PREFIX then resolves to that
+    test BUILD env, while the package under test is installed in the RUN
+    env (PREFIX). Prefer PREFIX, fall back to CONDA_PREFIX, and pick
+    whichever candidate actually has `<candidate>/<marker>` on disk so a
+    lane without build requirements (where only CONDA_PREFIX is set/valid)
+    keeps working unchanged.
+
+    `marker` must be the subpath the CALLER actually consumes, not just
+    any path that happens to exist under the desired prefix. It is used
+    purely to discriminate which env is correct and is NEVER appended to
+    the returned value -- callers keep computing their own subpaths from
+    the returned prefix. Passing a marker the caller does not consume can
+    select an env that satisfies the marker but not the real lookup,
+    reproducing the silent skip this helper exists to prevent.
+    """
+    for var in ("PREFIX", "CONDA_PREFIX"):
+        candidate = os.environ.get(var, "")
+        if candidate and (Path(candidate) / marker).is_dir():
+            print(f"  prefix source = {var} (marker {marker!r})")
+            return Path(candidate)
+    print(f"  prefix source = CONDA_PREFIX (fallback, no env had {marker!r})")
+    return Path(os.environ.get("CONDA_PREFIX", ""))
+
+
+# ---------------------------------------------------------------------------
 # Emulation detection
 # ---------------------------------------------------------------------------
 _native_machine = _platform.machine()
@@ -87,6 +119,130 @@ _is_emulated = (
 )
 
 
+def _canonical_arch(arch: str) -> str:
+    """Normalise arch aliases (amd64/arm64/ppc64le) to their triplet spelling.
+
+    Case-insensitive: platform.machine() reports "AMD64"/"ARM64" on Windows.
+    """
+    aliases = {
+        "amd64": "x86_64",
+        "arm64": "aarch64",
+        "ppc64le": "powerpc64le",
+    }
+    arch = arch.lower()
+    return aliases.get(arch, arch)
+
+
+def target_arch_from_triplet(triplet: str) -> str:
+    """Extract the machine arch from a conda triplet.
+
+    e.g. 'powerpc64le-conda-linux-gnu' -> 'powerpc64le'.
+    """
+    return triplet.split("-", 1)[0] if triplet else ""
+
+
+def is_foreign_target(triplet: str) -> bool:
+    """True when triplet's arch differs from the native machine (alias-aware).
+
+    Restricted to Linux triplets: the QEMU-user + binfmt_misc + QEMU_LD_PREFIX
+    mechanism this feeds is Linux-ELF-specific (mirrors recipe.yaml's `if:
+    linux` gating of QEMU_EXECVE/QEMU_LD_PREFIX). Windows/macOS cross targets
+    are never run under it, so they must never be reported as "foreign" here.
+    """
+    if "linux" not in triplet:
+        return False
+    arch = target_arch_from_triplet(triplet)
+    if not arch:
+        return False
+    return _canonical_arch(arch) != _canonical_arch(_native_machine)
+
+
+def _qemu_binary_arch(arch: str) -> str:
+    """Map a canonical triplet arch to the qemu-execve-<arch> package's naming.
+
+    Mirrors recipe.yaml's qemu_arch computed value: powerpc64le -> ppc64le,
+    every other targeted arch passes through unchanged.
+    """
+    canonical = _canonical_arch(arch)
+    return "ppc64le" if canonical == "powerpc64le" else canonical
+
+
+def emulation_prefix(triplet: str) -> list[str]:
+    """Return the argv prefix needed to run a target-arch binary, or [] if native.
+
+    Uses ONLY qemu-execve-<arch> -- the vanilla qemu-<arch> binary is
+    deliberately NOT used here. Both binaries ship in the same
+    qemu-execve-<arch> package and a silent fallback to the vanilla one
+    would make it ambiguous which emulator actually ran; do not re-add it.
+    Returns [] (degrade to binfmt_misc) when no qemu-execve binary can be
+    resolved, so callers don't hard-fail on a missing lookup.
+
+    Gate and emulator are both keyed on the TRIPLET. $QEMU_EXECVE is
+    target_platform-keyed and there is one per lane, so it is honoured only
+    when its basename matches the arch this triplet asks for; otherwise we
+    fall through to the PATH lookup. Without that check, a lane handling two
+    foreign targets would gate on one arch and emulate with another.
+    """
+    if not is_foreign_target(triplet):
+        return []
+    arch = _qemu_binary_arch(target_arch_from_triplet(triplet))
+    qemu_execve = os.environ.get("QEMU_EXECVE", "")
+    if (
+        qemu_execve
+        and os.path.basename(qemu_execve) == f"qemu-execve-{arch}"
+        and os.access(qemu_execve, os.X_OK)
+    ):
+        return [qemu_execve]
+    found = shutil.which(f"qemu-execve-{arch}")
+    return [found] if found else []
+
+
+def check_emulation_env(triplet: str) -> bool:
+    """Preflight QEMU emulation setup for a foreign-target test script.
+
+    Call once per script after the triplet is known, before the first
+    target-arch invocation. Returns True if safe to proceed (including the
+    native no-op case, where nothing is reported). Returns False after
+    reporting FAIL if a hard blocker was found.
+    """
+    if not is_foreign_target(triplet):
+        return True
+
+    arch = _qemu_binary_arch(target_arch_from_triplet(triplet))
+    if not emulation_prefix(triplet):
+        WARN(
+            "qemu emulation binary",
+            f"qemu-execve-{arch} not found (QEMU_EXECVE unset/not executable, "
+            "not on PATH) -- relying on binfmt_misc for target invocations",
+        )
+
+    ld_prefix = os.environ.get("QEMU_LD_PREFIX", "")
+    if not ld_prefix:
+        FAIL(
+            "QEMU_LD_PREFIX is set",
+            "unset -- the target binary's loader will resolve against the host root",
+        )
+        return False
+
+    ld_path = Path(ld_prefix)
+    if not ld_path.is_dir():
+        detail = f"{ld_prefix} does not exist"
+        try:
+            parent = ld_path.parent
+            if parent.is_dir():
+                listing = ", ".join(sorted(p.name for p in parent.iterdir()))
+                detail += f"; {parent} contains: {listing}"
+        except Exception:
+            pass
+        FAIL("QEMU_LD_PREFIX directory exists", detail)
+        return False
+
+    if not list(ld_path.glob("lib*/ld*.so*")):
+        WARN("QEMU_LD_PREFIX loader glob", f"no lib*/ld*.so* found under {ld_prefix}")
+
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Subprocess runner
 # ---------------------------------------------------------------------------
@@ -95,14 +251,28 @@ def _run(
     *,
     timeout: int = 30,
     cwd: str | Path | None = None,
+    target: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a command, return CompletedProcess. Never raises on non-zero rc."""
+    """Run a command, return CompletedProcess. Never raises on non-zero rc.
+
+    If `target` is a conda triplet, the command is prefixed with
+    `emulation_prefix(target)` (a qemu-execve-<arch> wrapper) when the
+    triplet's arch is foreign to the native machine. Default None preserves
+    prior behaviour exactly.
+    """
+    if target is not None:
+        cmd = emulation_prefix(target) + cmd
     try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd,
+            # POSIX: give the child its own process group so the killpg on the
+            # timeout path reaches only the child tree. Without it the child
+            # inherits OUR pgid and killpg() SIGKILLs this harness too.
+            # No-op on Windows, where False is the default regardless.
+            start_new_session=not _build_is_win,
         )
     except FileNotFoundError:
         return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="NOTFOUND")

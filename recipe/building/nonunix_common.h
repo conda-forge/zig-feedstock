@@ -1,7 +1,7 @@
 /*
  * nonunix_common.h - shared helpers for non-unix C shims.
  *
- * Included by zig-cc-nonunix.c and zig-tool-nonunix.c.
+ * Included by zig-cc-nonunix.c, zig-tool-nonunix.c and zig-windres-nonunix.c.
  * All functions are static inline so no shared state or linkage issues arise.
  */
 
@@ -72,6 +72,51 @@ static inline void restore_msys2_system32_path(void) {
             }
         }
     }
+}
+
+/* Resolve <prefix>\Library\bin\<bin_name> against the env vars that may hold
+ * the RUN env, returning the name of the var that matched or NULL.
+ *
+ * rattler-build spins up a separate BUILD env whenever a test block declares
+ * `requirements: build:`; CONDA_PREFIX then points at that build env while the
+ * package under test lives in PREFIX. Probe order and the existence check
+ * mirror recipe/testing/_test_utils.py resolve_test_prefix() -- keep the two
+ * in sync. The existence check is what makes PREFIX-first safe during the
+ * build phase, where PREFIX may not hold zig at all. */
+static inline const char *zig_find_in_prefixes(char *out, size_t out_size,
+                                               const char *bin_name) {
+    static const char *const VARS[] = { "PREFIX", "CONDA_PREFIX" };
+    for (size_t i = 0; i < sizeof(VARS) / sizeof(VARS[0]); i++) {
+        const char *base = getenv(VARS[i]);
+        if (!base || !base[0])
+            continue;
+        snprintf(out, out_size, "%s\\Library\\bin\\%s", base, bin_name);
+        if (GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES)
+            return VARS[i];
+    }
+    return NULL;
+}
+
+/* Resolve which prefix actually contains <subpath>, PREFIX first, returning
+ * that prefix (not the probed path). Same rationale as zig_find_in_prefixes():
+ * a test block declaring `requirements: build:` moves CONDA_PREFIX to the test
+ * build env while the package under test lives in PREFIX. The marker is the
+ * subpath the caller goes on to consume, so the prefix chosen is one that
+ * really has it; falling back to CONDA_PREFIX keeps lanes without build
+ * requirements (and the build phase, where PREFIX may not hold zig yet)
+ * working. Keep in sync with recipe/testing/_test_utils.py resolve_test_prefix(). */
+static inline const char *zig_prefix_with_subpath(const char *subpath) {
+    static const char *const VARS[] = { "PREFIX", "CONDA_PREFIX" };
+    char probe[512];
+    for (size_t i = 0; i < sizeof(VARS) / sizeof(VARS[0]); i++) {
+        const char *base = getenv(VARS[i]);
+        if (!base || !base[0])
+            continue;
+        snprintf(probe, sizeof(probe), "%s\\%s", base, subpath);
+        if (GetFileAttributesA(probe) != INVALID_FILE_ATTRIBUTES)
+            return base;
+    }
+    return getenv("CONDA_PREFIX");
 }
 
 #endif /* NONUNIX_COMMON_H */
