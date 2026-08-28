@@ -165,6 +165,16 @@ if is_unix; then
   )
 fi
 
+# bare qemu-<arch> already exists on PATH (regular variant); this shadow
+# makes zig's internal -fqemu lookup resolve to the execve variant instead.
+_qemu_shadow_dir=""
+if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+  _qemu_shadow_dir=$(mktemp -d)
+  ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
+  export PATH="${_qemu_shadow_dir}:${PATH}"
+  dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
+fi
+
 if is_linux && is_cross; then
   EXTRA_ZIG_ARGS+=(
     --libc "${zig_build_dir}"/libc_file
@@ -322,16 +332,6 @@ elif _can_run_stage3; then
     _stage3_runner=("${QEMU_EXECVE}")
   fi
 
-  # bare qemu-<arch> already exists on PATH (regular variant); this shadow
-  # makes zig's internal -fqemu lookup resolve to the execve variant instead.
-  _qemu_shadow_dir=""
-  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
-    _qemu_shadow_dir=$(mktemp -d)
-    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
-    export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
-  fi
-
   (
     cd "${cmake_source_dir}" &&
     "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
@@ -345,11 +345,6 @@ elif _can_run_stage3; then
     fi
     echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
   }
-
-  if [ -n "${_qemu_shadow_dir:-}" ]; then
-    rm -rf "${_qemu_shadow_dir}"
-    unset _qemu_shadow_dir
-  fi
 else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
 fi

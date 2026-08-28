@@ -1,14 +1,14 @@
 schema_version: 1
 
 context:
-  build_number: 3
+  build_number: 0
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "1884+841dd0eb8"
   # Bootstrap comes from an ALREADY-PUBLISHED snapshot; lags `snapshot` by design.
   snapshot_ref: "1811"
-  build_ref: "2"
+  build_ref: "3"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   llvm_src_version: "22.1.6"
@@ -132,7 +132,7 @@ context:
     }}
 
   qemu_arch: ${{ target_platform | replace("linux-64", "x86_64") | replace("linux-", "") }}
-  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11" if linux and build_platform != target_platform else "" }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=5"]' if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -168,6 +168,7 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
+      - patches/build.zig-03-compiler-step-zig-lib-dir.patch
       # order load-bearing: setjmp-s must precede arm64-stubs
       - patches/non_unix/mingw-include-setjmp-s.patch
       - patches/non_unix/mingw-setjmp-no-crtimp.patch
@@ -482,10 +483,11 @@ outputs:
                   - if: build_platform != target_platform
                     then:
                       - '[ -n "${QEMU_EXECVE}" ] || { echo "QEMU_EXECVE_MISSING: qemu-execve-${{ qemu_arch }} not found for ${{ target_platform }}"; exit 1; }'
-              - ${{ conda_triplet }}-zig version
-              - ${{ conda_triplet }}-zig zen
-              - ${{ conda_triplet }}-zig init
-              - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
+              - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig version'
+              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig zen'
+              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig init'
+              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig test zig-source/test/behavior.zig'
             else:
               - echo "Skip test on non-emulated archs"
         requirements:
