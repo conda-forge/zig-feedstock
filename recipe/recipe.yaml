@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 14
+  build_number: 15
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -133,7 +133,7 @@ context:
     }}
 
   qemu_arch: ${{ target_platform | replace("linux-", "") }}
-  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11" if linux and build_platform != target_platform else "" }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11.0.3" if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -437,6 +437,7 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
           - ${{ "PYTHONIOENCODING=utf-8" if unix else "set PYTHONIOENCODING=utf-8 &&" }} python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
         requirements:
           build:
@@ -458,6 +459,7 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
               - python testing/test_dtneeded.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
               - echo "SKIP DT_NEEDED test (non-linux)"
@@ -706,12 +708,14 @@ outputs:
           # QEMU_LD_PREFIX is required either way: without it qemu looks for the
           # target loader at the bare literal path (ppc64le: /lib64/ld64.so.2) and
           # dies before pytest is ever reached.
+          # Native passthrough needs BOTH vars: QEMU_EXECVE alone silently doesn't intercept.
           - if: unix
             then:
               - if: linux and build_platform != target_platform
                 then:
                   - 'export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"'
                   - 'export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"'
+                  - 'export QEMU_EXECVE_NATIVE_PASSTHROUGH=1'
                   - 'echo "QEMU_EXECVE=${QEMU_EXECVE} QEMU_LD_PREFIX=${QEMU_LD_PREFIX}"'
                   - 'test -x "${QEMU_EXECVE}"'
                   - 'test -d "${QEMU_LD_PREFIX}"'

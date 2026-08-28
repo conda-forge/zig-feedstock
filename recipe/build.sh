@@ -207,6 +207,10 @@ if is_linux && is_cross; then
   _qemu_shadow_dir=""
   if [ -n "${_zig_qemu}" ]; then
     export QEMU_EXECVE="${_zig_qemu}"
+    case "$(basename "${_zig_qemu}")" in
+      qemu-execve-*) export QEMU_EXECVE_NATIVE_PASSTHROUGH=1 ;;
+      *) dbg echo "qemu: ${_zig_qemu} is not qemu-execve-*; native passthrough NOT armed" ;;
+    esac
     _qemu_shadow_dir="$(mktemp -d)"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${target_platform#linux-}"
