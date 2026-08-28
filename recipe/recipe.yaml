@@ -483,11 +483,19 @@ outputs:
                   - if: build_platform != target_platform
                     then:
                       - '[ -n "${QEMU_EXECVE}" ] || { echo "QEMU_EXECVE_MISSING: qemu-execve-${{ qemu_arch }} not found for ${{ target_platform }}"; exit 1; }'
-              - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
-              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig version'
-              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig zen'
-              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig init'
-              - '"${_qrun[@]+"${_qrun[@]}"}" ${{ conda_triplet }}-zig test zig-source/test/behavior.zig'
+              - if: unix
+                then:
+                  - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+                  - _zigbin="$(command -v ${{ conda_triplet }}-zig || echo "${PREFIX}/bin/${{ conda_triplet }}-zig")"
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" version'
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" zen'
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" init'
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" test zig-source/test/behavior.zig'
+                else:
+                  - ${{ conda_triplet }}-zig version
+                  - ${{ conda_triplet }}-zig zen
+                  - ${{ conda_triplet }}-zig init
+                  - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
               - echo "Skip test on non-emulated archs"
         requirements:
@@ -527,7 +535,9 @@ outputs:
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
               - echo '{ main; };' > /tmp/test_lld.dyn
-              - ${{ conda_triplet }}-zig cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+              - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+              - _zigbin="$(command -v ${{ conda_triplet }}-zig || echo "${PREFIX}/bin/${{ conda_triplet }}-zig")"
+              - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c'
               - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
           - if: not unix
             then:
@@ -844,7 +854,13 @@ outputs:
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
           - if: not arm64
             then:
-              - zig version
+              - if: unix
+                then:
+                  - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+                  - _zigbin="$(command -v zig || echo "${PREFIX}/bin/zig")"
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" version'
+                else:
+                  - zig version
             else:
               - echo "Skip on cross-compiled platform"
         requirements:
@@ -883,7 +899,13 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-          - zig cc --version
+          - if: unix
+            then:
+              - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+              - _zigbin="$(command -v zig || echo "${PREFIX}/bin/zig")"
+              - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" cc --version'
+            else:
+              - zig cc --version
         requirements:
           build:
             - if: build_platform != target_platform

@@ -114,6 +114,11 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
   )
+  EXTRA_ZIG_ARGS+=(--verbose-link)
+  mkdir -p "${PREFIX}/bin"
+  # Build-time only gcc-lookup lever; stripped before packaging (see below).
+  ln -sf "${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc" "${PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc"
+  ln -sf "${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-ld" "${PREFIX}/bin/powerpc64le-conda-linux-gnu-ld"
 fi
 
 # Strip host-arch flags injected by conda-build for cross builds.
@@ -378,6 +383,12 @@ if [[ -d "${PREFIX}" ]]; then
     echo "[build.sh] __pycache__ strip done"
 else
     echo "[build.sh] WARNING: ${PREFIX} does not exist — find skipped"
+fi
+
+# Build-time only gcc-lookup lever; must not ship.
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  rm -f "${PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc"
+  rm -f "${PREFIX}/bin/powerpc64le-conda-linux-gnu-ld"
 fi
 
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="
