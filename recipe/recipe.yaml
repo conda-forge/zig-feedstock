@@ -476,6 +476,7 @@ outputs:
                 - binutils_impl_${{ target_platform }}
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_dtneeded.py
       # Functional test using triplet-prefixed binary
       - script:
@@ -484,14 +485,36 @@ outputs:
               - if: unix
                 then:
                   - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+                  - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+                  - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+                  - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
+                  - _zig="${PREFIX}/bin/${{ conda_triplet }}-zig"
+                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
+                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" zen
+                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" init
+                  - if: build_platform == target_platform
+                    then:
+                      - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" test zig-source/test/behavior.zig
+                    else:
+                      - echo "Skip zig test zig-source/test/behavior.zig under emulation"
                 else:
                   - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
-              - ${{ conda_triplet }}-zig version
-              - ${{ conda_triplet }}-zig zen
-              - ${{ conda_triplet }}-zig init
-              - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
+                  - ${{ conda_triplet }}-zig version
+                  - ${{ conda_triplet }}-zig zen
+                  - ${{ conda_triplet }}-zig init
+                  - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
               - echo "Skip test on non-emulated archs"
+        requirements:
+          build:
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
+                - binutils_impl_${{ target_platform }}
         files:
           source:
             # Only what `zig test zig-source/test/behavior.zig` above actually
@@ -513,7 +536,7 @@ outputs:
 
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
-      # ppc64le stays excluded (unhosted lane); arm64 runs natively so it is included.
+      # ppc64le stays excluded (unhosted lane); riscv64 is qemu-routed (not excluded).
       - script:
           - if: unix
             then:
@@ -523,9 +546,14 @@ outputs:
           - if: linux and not ppc64le
             then:
               # Linux: test with ELF --dynamic-list
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
               - echo '{ main; };' > /tmp/test_lld.dyn
-              - ${{ conda_triplet }}-zig cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+              - _qrun=(); if [ -n "${QEMU_EXECVE:-}" ]; then _qrun=("${QEMU_EXECVE}"); fi
+              - _zigbin="$(command -v ${{ conda_triplet }}-zig || echo "${PREFIX}/bin/${{ conda_triplet }}-zig")"
+              - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c'
               - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
           - if: not unix
             then:
