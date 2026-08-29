@@ -689,7 +689,7 @@ WARM_EOF
           # Stage under conventional library names + both .lib (Windows MSVC) and
           # .a (Unix toolchain) extensions so consumers spelling -lucrt /
           # -lmingwex / -lwinpthread all resolve to the single zig-built archive.
-          # DO NOT overwrite libpthread.a — it's the 2KB import lib for
+          # DO NOT overwrite libpthread.a -- it's the 2KB import lib for
           # libwinpthread-1.dll; overwriting would silently switch consumers from
           # dynamic to static threading runtime.
           local _name

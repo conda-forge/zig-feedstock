@@ -35,7 +35,7 @@ function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array — always use conda's CC/CXX (clang/gcc),
+  # Build local cmake args array -- always use conda's CC/CXX (clang/gcc),
   # never zig-cc (which has a baked-in target that conflicts with cross-builds).
   local cmake_args=()
 

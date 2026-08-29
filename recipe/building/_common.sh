@@ -1,4 +1,4 @@
-# _common.sh — shared predicates and helpers sourced by recipe/build.sh and recipe/building/*.sh
+# _common.sh -- shared predicates and helpers sourced by recipe/build.sh and recipe/building/*.sh
 # Idempotency-guarded; safe to source multiple times.
 # Requires: ${target_platform} and ${build_platform} to be set by the caller before any function call.
 
@@ -61,7 +61,7 @@ sanitize_cross_cflags() {
   echo "${_result}"
 }
 
-# sanitize_and_export_cross_flags — sanitize CFLAGS/CXXFLAGS for cross builds.
+# sanitize_and_export_cross_flags -- sanitize CFLAGS/CXXFLAGS for cross builds.
 # Reads ${target_platform}; mutates and re-exports CFLAGS and CXXFLAGS.
 sanitize_and_export_cross_flags() {
   local _arch="${target_platform##*-}"

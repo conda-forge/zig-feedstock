@@ -9,7 +9,10 @@ set _fail=0
 echo === Cross-compiler .exe Shim Validation ===
 
 REM CONDA_TRIPLET is the target triplet (e.g. aarch64-w64-mingw32)
-set "_shim=%CONDA_PREFIX%\Library\bin\%CONDA_TRIPLET%-zig.exe"
+set "_shim_prefix=%PREFIX%\Library\bin\%CONDA_TRIPLET%-zig.exe"
+set "_shim_conda=%CONDA_PREFIX%\Library\bin\%CONDA_TRIPLET%-zig.exe"
+set "_shim=%_shim_prefix%"
+if not exist "%_shim%" set "_shim=%_shim_conda%"
 
 REM --- 1. Shim exists as .exe ---
 echo --- Shim existence ---
@@ -17,7 +20,7 @@ if exist "%_shim%" (
     echo   PASS: %CONDA_TRIPLET%-zig.exe exists
     set /a _pass+=1
 ) else (
-    echo   FAIL: %CONDA_TRIPLET%-zig.exe not found at %_shim%
+    echo   FAIL: %CONDA_TRIPLET%-zig.exe not found at "%_shim_prefix%" or "%_shim_conda%"
     set /a _fail+=1
     goto :summary
 )

@@ -23,7 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from _test_utils import PASS, FAIL, WARN, SKIP, _results, _run
+from _test_utils import PASS, FAIL, WARN, SKIP, _results, _run, resolve_test_prefix
 
 # Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
 # rattler-build's UTF-8 stream reader even when tests pass).
@@ -400,7 +400,7 @@ def test_gui_subsystem_link_probes() -> None:
 
 
 def main() -> int:
-    prefix = Path(os.environ.get("CONDA_PREFIX", ""))
+    prefix = resolve_test_prefix("Library/lib/zig" if _build_is_win else "lib/zig")
     if not prefix.exists():
         FAIL("CONDA_PREFIX set", "not set or missing")
 

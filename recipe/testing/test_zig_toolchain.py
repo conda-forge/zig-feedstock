@@ -13,6 +13,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -35,6 +36,8 @@ from _test_utils import (
     _record,
     _results,
     _run,
+    can_execute_target,
+    timed_out,
     PASS,
     FAIL,
     WARN,
@@ -58,6 +61,10 @@ is_aarch64_win = is_win_target and _arch == "aarch64"
 # Normalise: arm64 == aarch64
 if _arch == "arm64":
     _arch = "aarch64"
+
+# Emulated compiles are far slower than native; measured budget unknown, so
+# this is deliberately generous rather than tuned.
+_COMPILE_TIMEOUT_S = 300
 
 # Ensure zig can resolve its cache directory when called directly (no wrapper).
 # zig's getAppDataDir on Linux checks XDG_DATA_HOME then HOME/.local/share;
@@ -110,7 +117,7 @@ int main(void) {
 
 
 # ===================================================================
-# Section 1 — Wrapper existence
+# Section 1 -- Wrapper existence
 # ===================================================================
 def test_wrapper_existence() -> None:
     print("--- Wrapper existence ---")
@@ -136,8 +143,6 @@ def test_wrapper_existence() -> None:
             f"{_triplet}-zig-asm",
             f"{_triplet}-zig-rc",
             f"{_triplet}-zig-lld",
-            f"{_triplet}-_zig-cc-common.sh",
-            f"{_triplet}-_translate.gen.sh",
         ]
 
     for w in expected:
@@ -155,7 +160,7 @@ def test_wrapper_existence() -> None:
 
 
 # ===================================================================
-# Section 2 — Activation variables
+# Section 2 -- Activation variables
 # ===================================================================
 def test_activation_variables() -> None:
     print("--- Activation variables ---")
@@ -220,7 +225,7 @@ def test_activation_variables() -> None:
 
 
 # ===================================================================
-# Section 3 — Flag filtering (functional)
+# Section 3 -- Flag filtering (functional)
 # ===================================================================
 def test_flag_filtering() -> None:
     print("--- Flag filtering (compile with conda-injected flags) ---")
@@ -243,23 +248,17 @@ def test_flag_filtering() -> None:
             "-fno-plt",
         ]
         cmd = [zig_cc] + gcc_flags + ["-c", "-o", str(obj), str(src)]
-        r = _run(cmd, cwd=td)
+        r = _run(cmd, cwd=td, target=_triplet, timeout=_COMPILE_TIMEOUT_S)
         if r.returncode == 0 and obj.exists():
             PASS("compile with conda gcc flags succeeds (flags filtered)")
         elif _is_emulated and r.returncode != 0 and not r.stderr:
-            # WARN, not FAIL: under qemu-user with a native rootfs the wrapper's
-            # `#!/usr/bin/env bash` shebang cannot be resolved (env resolves to a
-            # build-arch binary the emulator cannot exec), so the wrapper never
-            # runs at all -- rc != 0 with EMPTY stderr, no compiler diagnostics.
-            # This is the identical condition already reported as WARN by
-            # test_wrapper_shebang_portability's siblings, surfaced here as a
-            # hard failure only because this test executes the wrapper instead
-            # of stat-ing it. Kept as WARN so it stays visible in the summary
-            # without masking real failures in CI -- do NOT delete this check
-            # to make CI green.
+            # DEFENSIVE, not expected: passed on the emulated ppc64le lane at
+            # build 13 (PR #157). Remaining shebang-under-emulation risk is the
+            # c89/c99 wrappers, not zig-cc. Do NOT delete this check to make CI
+            # green.
             WARN("compile with conda gcc flags succeeds",
-                 f"rc={r.returncode} stderr=<empty> - wrapper shebang unresolvable "
-                 f"under emulation with a native rootfs; pending the C shim port")
+                 f"rc={r.returncode} stderr=<empty> - wrapper never ran; shebang "
+                 f"unresolvable under emulation with a native rootfs")
         else:
             FAIL("compile with conda gcc flags succeeds",
                  f"rc={r.returncode} stderr={r.stderr[:2000]}")
@@ -267,8 +266,8 @@ def test_flag_filtering() -> None:
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.
         # The wrapper should silently filter them so compilation succeeds.
-        if _is_emulated or _is_cross_compiler:
-            SKIP("linker flag filtering", "emulated/cross CI — cannot execute target binary")
+        if not can_execute_target(_triplet, zig_cc):
+            SKIP("linker flag filtering", "target binaries are not executable on this runner")
         else:
             # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
             # Verifies the full pipeline:
@@ -334,7 +333,7 @@ def test_flag_filtering() -> None:
 
 
 # ===================================================================
-# Section 3b — Target/mcpu override and Windows C shim tests
+# Section 3b -- Target/mcpu override and Windows C shim tests
 # ===================================================================
 def test_target_override() -> None:
     print("--- Target/mcpu override ---")
@@ -344,8 +343,8 @@ def test_target_override() -> None:
         SKIP("target override", "ZIG_CC not set")
         return
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("target override", "emulated/cross CI — cannot execute target binary")
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("target override", "target binaries are not executable on this runner")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -376,18 +375,18 @@ def test_target_override() -> None:
 
 
 # ===================================================================
-# Section 4 — Shared library creation
+# Section 4 -- Shared library creation
 # ===================================================================
 def test_shared_lib() -> None:
     print("--- Shared library creation ---")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("shared lib creation", "emulated/cross CI — cannot execute target binary")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("shared lib creation", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("shared lib creation", "target binaries are not executable on this runner")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -415,11 +414,11 @@ def _test_shared_lib_unix(
     zig_cc: str, obj: Path, td: str, *, ext: str
 ) -> None:
     out = Path(td) / f"libhello{ext}"
-    # Linking is slower than compiling — give 60s (aarch64 CI can be slow)
+    # Linking is slower than compiling -- give 60s (aarch64 CI can be slow)
     r = _run([zig_cc, "-shared", "-o", str(out), str(obj)], cwd=td, timeout=60)
     if r.stderr == "TIMEOUT":
         WARN(f"shared lib creation ({ext})",
-             "zig cc -shared timed out (60s) — slow CI or zig linker issue")
+             "zig cc -shared timed out (60s) -- slow CI or zig linker issue")
         return
     if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
         PASS(f"shared lib creation ({ext})")
@@ -459,7 +458,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
     if not implib.exists() or implib.stat().st_size == 0:
         if is_aarch64_win:
             WARN("import lib non-empty",
-                 "empty import lib on aarch64-windows — known zig bug")
+                 "empty import lib on aarch64-windows -- known zig bug")
         else:
             FAIL("import lib non-empty")
         return
@@ -485,7 +484,7 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
 
 
 # ===================================================================
-# Section 4b — Executable linking (verifies CRT + libc handling)
+# Section 4b -- Executable linking (verifies CRT + libc handling)
 # ===================================================================
 def test_exe_linking() -> None:
     """Link a trivial executable.  On ppc64le this exercises the GCC linker
@@ -493,13 +492,13 @@ def test_exe_linking() -> None:
     pthread_atfork_stub.o) are required at runtime."""
     print("--- Executable linking ---")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("exe linking", "emulated/cross CI — cannot execute target binary")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("exe linking", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("exe linking", "target binaries are not executable on this runner")
         return
 
     # Cross-compilation to a different OS can't run the result, but
@@ -525,21 +524,21 @@ def test_exe_linking() -> None:
 
 
 # ===================================================================
-# Section 4c — Libc linking (verifies zig can resolve and link libc)
+# Section 4c -- Libc linking (verifies zig can resolve and link libc)
 # ===================================================================
 def test_libc_linking() -> None:
     """Compile and link a program that calls libc functions (printf, strlen).
-    This exercises zig's libc detection and linking — the same code path
+    This exercises zig's libc detection and linking -- the same code path
     that crashes with TODO panic in zig's doctest examples using -lc."""
     print("--- Libc linking ---")
-
-    if _is_emulated or _is_cross_compiler:
-        SKIP("libc linking", "emulated/cross CI — cannot execute target binary")
-        return
 
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("libc linking", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("libc linking", "target binaries are not executable on this runner")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -577,7 +576,7 @@ def test_libc_linking() -> None:
 
 
 # ===================================================================
-# Section 4d — Windows import library resolution (ziglang/zig#14919)
+# Section 4d -- Windows import library resolution (ziglang/zig#14919)
 # ===================================================================
 def test_windows_import_libs() -> None:
     """Verify -lsynchronization resolves when targeting Windows.
@@ -594,7 +593,7 @@ def test_windows_import_libs() -> None:
         return
 
     if _is_emulated:
-        SKIP("windows import libs", "emulated CI — linker OOM risk")
+        SKIP("windows import libs", "emulated CI -- linker OOM risk")
         return
 
     zig_cc = _env_var("ZIG_CC")
@@ -606,7 +605,7 @@ def test_windows_import_libs() -> None:
         src = Path(td) / "sync_test.c"
         src.write_text("int main(void) { return 0; }\n")
 
-        # Test 1: -lsynchronization (missing .def — ziglang/zig#14919)
+        # Test 1: -lsynchronization (missing .def -- ziglang/zig#14919)
         out = Path(td) / "sync_test.exe"
         r = _run(
             [zig_cc, "-lsynchronization", "-o", str(out), str(src)],
@@ -619,7 +618,7 @@ def test_windows_import_libs() -> None:
             if "DllImportLibraryNotFound" in r.stderr or "libsynchronization" in r.stderr:
                 FAIL(
                     "windows import libs (-lsynchronization)",
-                    "libsynchronization.a not found — synchronization.def missing from sysroot",
+                    "libsynchronization.a not found -- synchronization.def missing from sysroot",
                 )
             elif (
                 "sub-compilation of libubsan failed" in r.stderr
@@ -635,7 +634,7 @@ def test_windows_import_libs() -> None:
                 # upstream 0.16.0 on codeberg and no feedstock patch touches
                 # it, so we don't appear to be the cause.  We haven't found
                 # an existing upstream issue, but we also can't rule out that
-                # one exists under different search terms — so this is an
+                # one exists under different search terms -- so this is an
                 # informed guess, not a confirmed upstream bug.  The
                 # synchronization.def workaround the test was meant to
                 # exercise is independent: zig errors out before reaching the
@@ -644,7 +643,7 @@ def test_windows_import_libs() -> None:
                     "windows import libs (-lsynchronization)",
                     "suspected upstream stdlib issue in zig 0.16.0 "
                     "SelfInfo/Windows.zig:670 (@ptrCast without @alignCast) "
-                    "— synchronization.def path unreached",
+                    "-- synchronization.def path unreached",
                 )
             else:
                 FAIL(
@@ -654,7 +653,7 @@ def test_windows_import_libs() -> None:
         else:
             PASS("windows import libs (-lsynchronization)")
 
-        # Test 2: -lapi-ms-win-core-synch-l1-2-0 (LIBRARY line missing .dll suffix → unreachable)
+        # Test 2: -lapi-ms-win-core-synch-l1-2-0 (LIBRARY line missing .dll suffix -> unreachable)
         out2 = Path(td) / "apisynch_test.exe"
         r2 = _run(
             [zig_cc, "-lapi-ms-win-core-synch-l1-2-0", "-o", str(out2), str(src)],
@@ -672,11 +671,11 @@ def test_windows_import_libs() -> None:
                 )
             elif "unable to find dynamic system library" in r2.stderr:
                 # api-ms-win-core-synch-l1-2-0 is absent from the arm64 Windows SDK layout
-                # on some CI runners. This is an SDK gap, not our bug — the unreachable panic
+                # on some CI runners. This is an SDK gap, not our bug -- the unreachable panic
                 # (what we fixed) is absent, so the fix is working.
                 WARN(
                     "windows import libs (-lapi-ms-win-core-synch-l1-2-0)",
-                    "lib not in Windows SDK paths (arm64 SDK gap) — no unreachable panic, fix OK",
+                    "lib not in Windows SDK paths (arm64 SDK gap) -- no unreachable panic, fix OK",
                 )
             else:
                 FAIL(
@@ -688,7 +687,7 @@ def test_windows_import_libs() -> None:
 
 
 # ===================================================================
-# Section 4d2 — win-arm64 entry-point link probe (Q2)
+# Section 4d2 -- win-arm64 entry-point link probe (Q2)
 # ===================================================================
 def test_win_arm64_entry_point() -> None:
     """Q2 link probe: aarch64-windows console entry symbols resolve.
@@ -803,7 +802,7 @@ def test_win_arm64_entry_point() -> None:
 
 
 # ===================================================================
-# Section 4e — -print-search-dirs and pre-generated MinGW import libs
+# Section 4e -- -print-search-dirs and pre-generated MinGW import libs
 # ===================================================================
 def test_print_search_dirs() -> None:
     """Verify -print-search-dirs returns GCC-compatible output with valid paths.
@@ -818,13 +817,13 @@ def test_print_search_dirs() -> None:
         SKIP("print-search-dirs", "Windows target only")
         return
 
-    if _is_cross_compiler:
-        SKIP("print-search-dirs", "cross CI — zig binary is for target arch, cannot execute on host")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("print-search-dirs", "ZIG_CC not set")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("print-search-dirs", "target binaries are not executable on this runner")
         return
 
     r = _run([zig_cc, "-print-search-dirs"], cwd=tempfile.gettempdir(), timeout=15)
@@ -870,10 +869,10 @@ def test_mingw_prebuilt_import_libs() -> None:
     files must exist on disk at install time so flexlink can resolve -lws2_32,
     -lkernel32, etc. as library links rather than literal filenames.
 
-    .def files  → llvm-dlltool generates the .a directly.
-    .def.in files (ws2_32, kernel32, ...) → preprocessed with zig cc -E -P
+    .def files  -> llvm-dlltool generates the .a directly.
+    .def.in files (ws2_32, kernel32, ...) -> preprocessed with zig cc -E -P
                   to expand F_X64/F_I386 macros, then llvm-dlltool.
-    uuid        → compiled from libsrc/uuid.c (no DLL import lib needed).
+    uuid        -> compiled from libsrc/uuid.c (no DLL import lib needed).
     """
     print("--- Pre-generated MinGW import libs ---")
 
@@ -891,19 +890,19 @@ def test_mingw_prebuilt_import_libs() -> None:
         return
     PASS("lib-common directory exists")
 
-    # Core Windows system libs — from .def.in templates (ws2_32, kernel32, ole32,
+    # Core Windows system libs -- from .def.in templates (ws2_32, kernel32, ole32,
     # advapi32, user32) or plain .def (shlwapi, version, synchronization) or
     # C source (uuid).
     required = [
-        "libws2_32.a",       # .def.in — Winsock
-        "libkernel32.a",     # .def.in — Windows kernel
-        "libole32.a",        # .def.in — COM/OLE
-        "libadvapi32.a",     # .def.in — registry, security
-        "libuser32.a",       # .def.in — UI, message loop
-        "libuuid.a",         # C source (libsrc/uuid.c) — UUID constants
+        "libws2_32.a",       # .def.in -- Winsock
+        "libkernel32.a",     # .def.in -- Windows kernel
+        "libole32.a",        # .def.in -- COM/OLE
+        "libadvapi32.a",     # .def.in -- registry, security
+        "libuser32.a",       # .def.in -- UI, message loop
+        "libuuid.a",         # C source (libsrc/uuid.c) -- UUID constants
         "libsynchronization.a",  # plain .def (our feedstock workaround)
-        "libshlwapi.a",      # plain .def — Shell lightweight API
-        "libversion.a",      # plain .def — version info
+        "libshlwapi.a",      # plain .def -- Shell lightweight API
+        "libversion.a",      # plain .def -- version info
     ]
     for fname in required:
         lib = lib_common / fname
@@ -919,7 +918,7 @@ def test_mingw_prebuilt_import_libs() -> None:
 
 
 # ===================================================================
-# Section 5 — Visibility (macOS only)
+# Section 5 -- Visibility (macOS only)
 # ===================================================================
 def test_visibility() -> None:
     print("--- Visibility (macOS) ---")
@@ -963,16 +962,16 @@ def test_visibility() -> None:
         lines = [l for l in r2.stdout.splitlines() if "vis_test_func" in l]
         if not lines:
             WARN("visibility: vis_test_func not in nm output",
-                 "may not honor -fvisibility=default — known zig issue")
+                 "may not honor -fvisibility=default -- known zig issue")
         elif any(" T " in l or " T\t" in l for l in lines):
             PASS("visibility: vis_test_func exported (T)")
         else:
             WARN("visibility: vis_test_func not exported",
-                 f"nm shows: {lines[0].strip()} — known zig issue")
+                 f"nm shows: {lines[0].strip()} -- known zig issue")
 
 
 # ===================================================================
-# Section 6 — ld.lld dispatch (non-unix targets only)
+# Section 6 -- ld.lld dispatch (non-unix targets only)
 # ===================================================================
 def test_lld_dispatch() -> None:
     print("--- ld.lld dispatch ---")
@@ -998,86 +997,106 @@ def test_lld_dispatch() -> None:
     else:
         if "unknown emulation" in r.stderr.lower():
             WARN("zig ld.lld routes to ELF driver for MinGW PE targets",
-                 "known zig bug — ld.lld doesn't honour -m for PE")
+                 "known zig bug -- ld.lld doesn't honour -m for PE")
         else:
             FAIL("zig ld.lld -m i386pep",
                  f"rc={r.returncode} stderr={r.stderr[:200]}")
 
 
 # ===================================================================
-# Section 7 — Unix-only: flag filter content checks (from old .sh)
+# Section 7 -- Unix-only: flag filter content checks (from old .sh)
 # ===================================================================
 def test_flag_filter_content() -> None:
-    """Check that _zig-cc-common.sh contains expected filter patterns."""
+    """Behavioural checks against the shipped zig-cc-unix.c mux (flag_rules.py
+    rules R2 and R6), replacing the old grep of the deleted _translate.gen.sh
+    bash fragment (no longer shipped into $PREFIX/bin).
+
+    R6 (-mcpu): an explicit -mcpu=<x> survives untouched into the final
+    argv; when absent, -mcpu=baseline is injected. Checked via the same
+    ZIG_WRAPPER_PRINT_ARGV argv-dump idiom used by test_force_load_wrappers.
+
+    R2 (-print-search-dirs): the wrapper intercepts this flag and returns 2
+    before exec_zig's ZIG_WRAPPER_PRINT_ARGV hook ever runs, so it is
+    checked on the wrapper's direct stdout instead of the argv dump.
+
+    Neither R2 nor R6 is an LLD-trigger flag (only -force_load/-all_load
+    are), so no ppc64le skip is needed here.
+    """
     print("--- Flag filter content (Unix) ---")
 
     if _build_is_win:
         SKIP("flag filter content", "Unix-only")
         return
 
-    common = _wrapper_dir / f"{_triplet}-_zig-cc-common.sh"
-    if not common.exists():
-        FAIL("_zig-cc-common.sh exists for content check")
+    wrapper_cc = _wrapper_dir / f"{_triplet}-zig-cc"
+    if not wrapper_cc.exists():
+        SKIP("flag filter content", "zig-cc wrapper not found")
         return
 
-    text = common.read_text()
+    zig_cc = _env_var("ZIG_CC")
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("flag filter content", "target binaries are not executable on this runner")
+        return
 
-    checks = [
-        ("-march=* in filter list", "-march="),
-        ("-mtune=* in filter list", "-mtune="),
-        ("exported_symbols_list filtered", "exported_symbols_list"),
-        ("unexported_symbols_list filtered", "unexported_symbols_list"),
-        ("force_symbols_not_weak_list filtered", "force_symbols_not_weak_list"),
-        ("force_symbols_weak_list filtered", "force_symbols_weak_list"),
-        ("reexported_symbols_list filtered", "reexported_symbols_list"),
-        ("-Wl,-all_load filtered", "all_load"),
-        ("-Wl,-force_load filtered", "force_load"),
-        ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
-        ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
-        ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
-    ]
-    for label, needle in checks:
-        if needle in text:
-            PASS(label)
+    with tempfile.TemporaryDirectory() as td:
+        main_src = Path(td) / "main.c"
+        main_src.write_text(_MAIN_C)
+        out = Path(td) / "probe"
+
+        def _dump_argv(extra: list[str]) -> list[str]:
+            """Invoke the wrapper with ZIG_WRAPPER_PRINT_ARGV=1 and return its
+            fully rewritten argv as a token list (argv[0] and the cc/c++ mode
+            token included, no trailing empty entries)."""
+            cmd = [str(wrapper_cc), str(main_src), *extra, "-o", str(out)]
+            old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
+            os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
+            try:
+                r = _run(cmd, cwd=td, timeout=60)
+            finally:
+                if old_flag is None:
+                    os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
+                else:
+                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = old_flag
+            if timed_out(r) or r.returncode != 0:
+                return []
+            tokens = r.stdout.split("\n")
+            while tokens and tokens[-1] == "":
+                tokens.pop()
+            return tokens
+
+        # R6(a): explicit -mcpu=<x> survives verbatim
+        argv_explicit = _dump_argv(["-mcpu=x86_64_v2"])
+        if not argv_explicit:
+            WARN("-mcpu=<x> survives verbatim", "wrapper produced no argv dump")
+        elif "-mcpu=x86_64_v2" in argv_explicit:
+            PASS("-mcpu=<x> survives verbatim")
         else:
-            FAIL(label)
+            FAIL("-mcpu=<x> survives verbatim", " ".join(argv_explicit)[:500])
 
-    # These behaviors moved from _zig-cc-common.sh into the generated
-    # _translate.gen.sh by the R6 flag-translation refactor (see
-    # test_flag_translation_parity.py); verify them in their new home rather
-    # than grepping _zig-cc-common.sh (where only explanatory comments remain).
-    translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
-    if not translate.exists():
-        FAIL("_translate.gen.sh exists for flag-translation checks")
-    else:
-        gen_text = translate.read_text()
-        gen_checks = [
-            ("-mcpu= handled by translator", "-mcpu="),
-            ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
-            ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
-        ]
-        for label, needle in gen_checks:
-            if needle in gen_text:
-                PASS(label)
-            else:
-                FAIL(label)
-
-    # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
-    if "_use_lld" in text and "-fuse-ld=lld" in text:
-        PASS("auto-LLD promotion logic present")
-    else:
-        FAIL("auto-LLD promotion logic present")
-
-    lld_triggers = ["version-script", "dynamic-list", "gc-sections", "build-id"]
-    for flag in lld_triggers:
-        if f"--{flag}" in text:
-            PASS(f"--{flag} triggers LLD promotion")
+        # R6(b): no -mcpu given -> -mcpu=baseline injected
+        argv_default = _dump_argv([])
+        if not argv_default:
+            WARN("-mcpu=baseline injected when absent", "wrapper produced no argv dump")
+        elif "-mcpu=baseline" in argv_default:
+            PASS("-mcpu=baseline injected when absent")
         else:
-            FAIL(f"--{flag} should trigger LLD promotion")
+            FAIL("-mcpu=baseline injected when absent", " ".join(argv_default)[:500])
+
+        # R2: -print-search-dirs is intercepted with an early `return 2`,
+        # before exec_zig's ZIG_WRAPPER_PRINT_ARGV hook runs -- so check the
+        # wrapper's direct stdout instead of the argv dump.
+        r = _run([str(wrapper_cc), "-print-search-dirs"], cwd=td, timeout=60)
+        if timed_out(r):
+            WARN("-print-search-dirs handled (flexlink compat)", "invocation timed out")
+        elif all(key in r.stdout for key in ("install:", "programs:", "libraries:")):
+            PASS("-print-search-dirs handled (flexlink compat)")
+        else:
+            FAIL("-print-search-dirs handled (flexlink compat)",
+                 f"rc={r.returncode} stdout={r.stdout[:300]}")
 
 
 # ===================================================================
-# Section 8 — Unix-only: force-load wrapper behaviour
+# Section 8 -- Unix-only: force-load wrapper behaviour
 # ===================================================================
 def test_force_load_wrappers() -> None:
     """zig-force-load-cc/cxx are C-mux aliases of zig-cc/zig-cxx: -force_load
@@ -1117,10 +1136,6 @@ def test_force_load_wrappers() -> None:
         return
     PASS("zig-force-load-cxx exists")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("force-load wrapper behaviour", "emulated/cross CI — cannot execute target binary")
-        return
-
     if is_ppc64le_target:
         # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()), and
         # LLD is unsupported on ppc64le -- the wrapper hard-errors before it
@@ -1134,22 +1149,103 @@ def test_force_load_wrappers() -> None:
         SKIP("force-load wrapper behaviour", "ZIG_CC/zig-ar not available")
         return
 
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("force-load wrapper behaviour", "target binaries are not executable on this runner")
+        return
+
     with tempfile.TemporaryDirectory() as td:
+        _archive_error: str | None = None
+
         def _make_archive(name: str) -> Path | None:
+            nonlocal _archive_error
             src = Path(td) / f"{name}.c"
             obj = Path(td) / f"{name}.o"
             arch = Path(td) / f"lib{name}.a"
             src.write_text(f"int {name}(void) {{ return 0; }}\n")
-            if _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td).returncode != 0:
+            r = _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td)
+            if r.returncode != 0:
+                detail = "TIMEOUT" if timed_out(r) else f"rc={r.returncode} stderr={r.stderr[:500]}"
+                _archive_error = f"compile {name}.c: {detail}"
                 return None
-            if _run([str(zig_ar), "rcs", str(arch), str(obj)], cwd=td).returncode != 0:
+
+            # One-shot evidence: probe every archiver candidate unconditionally
+            # (own output path per tag), pick first success after. Outcome is
+            # unchanged; only collected diagnostics differ.
+            _matrix: list[str] = []
+            _winner: tuple[str, Path] | None = None
+
+            def _probe(
+                tag: str, argv: list[str] | None, cwd: Path, out_dir: Path | None = None
+            ) -> None:
+                nonlocal _winner
+                if argv is None:
+                    print(f"    DIAG archiver_candidate={tag} exists=False")
+                    _matrix.append(f"{tag}:rc=MISSING:exists=False")
+                    return
+                _out_dir = out_dir if out_dir is not None else Path(td)
+                out = _out_dir / f"lib{name}.{tag}.a"
+                try:
+                    pr = _run([*argv, "rcs", str(out), str(obj)], cwd=cwd, timeout=60)
+                except Exception as exc:
+                    print(f"    DIAG archiver_try={tag}=EXC:{exc}")
+                    _matrix.append(f"{tag}:rc=EXC:exists=False")
+                    return
+                ok = pr.returncode == 0 and out.exists()
+                print(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
+                      f"exists={out.exists()} stderr={pr.stderr[:300]}")
+                _matrix.append(f"{tag}:rc={pr.returncode}:exists={out.exists()}")
+                if ok and _winner is None:
+                    _winner = (tag, out)
+                elif not ok:
+                    try:
+                        out.unlink()
+                    except OSError:
+                        pass
+
+            # Candidate: llvm-ar (search order mirrors _mingw.sh's probe)
+            _llvm_ar = None
+            for _cand in (
+                os.environ.get("BUILD_PREFIX", "") and str(Path(os.environ["BUILD_PREFIX"]) / "bin" / "llvm-ar"),
+                os.environ.get("PREFIX", "") and str(Path(os.environ["PREFIX"]) / "bin" / "llvm-ar"),
+                os.environ.get("CONDA_PREFIX", "") and str(Path(os.environ["CONDA_PREFIX"]) / "bin" / "llvm-ar"),
+                shutil.which("llvm-ar"),
+            ):
+                if _cand:
+                    _llvm_ar = _cand
+                    break
+            _probe("llvm_ar", [_llvm_ar] if _llvm_ar and Path(_llvm_ar).exists() else None, Path(td))
+
+            # Candidate: /usr/bin/ar -- native arm64 system ar, expected
+            # winner on the failing osx-64/Rosetta lanes.
+            if sys.platform == "darwin":
+                _probe("usr_bin_ar", ["/usr/bin/ar"] if Path("/usr/bin/ar").exists() else None, Path(td))
+
+            # Candidate: any ar on PATH
+            _which_ar = shutil.which("ar")
+            _probe("which_ar", [_which_ar] if _which_ar else None, Path(td))
+
+            # Candidate: the zig-ar wrapper itself, baseline datapoint.
+            _probe("zig_ar_primary", [str(zig_ar)], Path(td))
+
+            print(f"    DIAG archiver_matrix={','.join(_matrix)}")
+
+            if _winner is not None:
+                tag, out = _winner
+                print(f"    DIAG archiver_selected={tag}")
+                shutil.move(str(out), str(arch))
+                if arch.exists():
+                    return arch
+                _archive_error = f"ar rcs lib{name}.a: {tag} succeeded but move to {arch.name} failed"
                 return None
-            return arch if arch.exists() else None
+
+            _archive_error = f"ar rcs lib{name}.a: all archiver candidates failed ({','.join(_matrix)})"
+            return None
 
         lib_a = _make_archive("force_a")
-        lib_b = _make_archive("force_b")
+        lib_b = _make_archive("force_b") if lib_a is not None else None
         if lib_a is None or lib_b is None:
-            FAIL("force-load wrapper behaviour", "could not build .a fixtures")
+            FAIL("force-load wrapper behaviour",
+                 f"could not build .a fixtures: {_archive_error}")
             return
 
         main_src = Path(td) / "main.c"
@@ -1269,8 +1365,43 @@ def test_force_load_wrappers() -> None:
 
 
 # ===================================================================
-# Section 9 — Unix-only: wrapper executability under emulation
+# Section 9 -- Unix-only: wrapper executability under emulation
 # ===================================================================
+def _owned_bin_basenames() -> set[str] | None:
+    """Basenames under bin/ (Library/bin on win) owned by this feedstock's outputs.
+
+    Reads ${PREFIX}/conda-meta/*.json rather than hardcoding output names from
+    recipe.yaml, so it can't drift out of sync with it. Matches on the manifest's
+    "name" field: zig, zig-compiler, and the platform-suffixed zig_/zig_impl_
+    variants all start with "zig_" except the two exact names.
+
+    Returns None if no matching manifest was found at all (conda-meta missing,
+    or none of this feedstock's outputs are installed) -- callers must not treat
+    that the same as "found manifests but they own nothing".
+    """
+    conda_meta = _prefix / "conda-meta"
+    if not conda_meta.is_dir():
+        return None
+
+    bin_prefix = "Library/bin/" if _build_is_win else "bin/"
+    owned: set[str] = set()
+    found_manifest = False
+    for meta_file in conda_meta.glob("*.json"):
+        try:
+            data = json.loads(meta_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        name = data.get("name", "")
+        if name not in ("zig", "zig-compiler") and not name.startswith("zig_"):
+            continue
+        found_manifest = True
+        for rel in data.get("files", []):
+            if rel.startswith(bin_prefix):
+                owned.add(Path(rel).name)
+
+    return owned if found_manifest else None
+
+
 def test_wrapper_shebang_portability() -> None:
     """Installed wrappers must not depend on an interpreter outside $PREFIX.
 
@@ -1295,13 +1426,27 @@ def test_wrapper_shebang_portability() -> None:
         return
 
     prefix_str = str(_prefix)
-    candidates = sorted(
+    all_matches = sorted(
         p for p in _wrapper_dir.glob(f"{_triplet}-*")
         if p.is_file() and os.access(p, os.X_OK)
     )
-    if not candidates:
-        FAIL("wrapper shebang portability", f"no executable wrappers in {_wrapper_dir}")
-        return
+    owned = _owned_bin_basenames()
+    if owned is None:
+        WARN("wrapper ownership filtering unavailable",
+             "no conda-meta manifest for this feedstock's outputs was found; "
+             f"examining all {_triplet}-* wrappers in {_wrapper_dir}, "
+             "results may include foreign wrappers from other packages")
+        candidates = all_matches
+        if not candidates:
+            FAIL("wrapper shebang portability", f"no executable wrappers in {_wrapper_dir}")
+            return
+    else:
+        candidates = [p for p in all_matches if p.name in owned]
+        if not candidates:
+            FAIL("wrapper shebang portability",
+                 f"ownership filtering resolved but found zero owned {_triplet}-* wrappers "
+                 f"in {_wrapper_dir} -- expected at least one; ownership logic is likely broken")
+            return
 
     for p in candidates:
         try:

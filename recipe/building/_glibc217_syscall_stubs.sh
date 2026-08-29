@@ -3,9 +3,9 @@ function create_glibc217_syscall_stubs() {
   #
   # zig2.c (the pre-generated C bootstrap) calls glibc wrapper functions that
   # don't exist in conda-forge's glibc 2.17 sysroot:
-  #   - getrandom()        — glibc 2.25  (syscall since Linux 3.17)
-  #   - copy_file_range()  — glibc 2.27  (syscall since Linux 4.5)
-  #   - statx()            — glibc 2.28  (syscall since Linux 4.11)
+  #   - getrandom()        -- glibc 2.25  (syscall since Linux 3.17)
+  #   - copy_file_range()  -- glibc 2.27  (syscall since Linux 4.5)
+  #   - statx()            -- glibc 2.28  (syscall since Linux 4.11)
   #
   # These stubs use the raw syscall() interface (available in all glibc versions)
   # to provide the missing functions at link time.

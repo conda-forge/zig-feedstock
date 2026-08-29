@@ -18,7 +18,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +        // patches) handles correctly.  ld.bfd cannot process these synthetic
 +        // stubs because it does not understand zig's version-node encoding.
 +        // Also skip for compile-only operations (output_mode == .Obj) such as
-+        // `zig cc -c -o test.o test.c` — these produce object files without
++        // `zig cc -c -o test.o test.c` -- these produce object files without
 +        // linking, so invoking the GCC linker would fail with "undefined
 +        // reference to main" because no link step is needed at all.
 +        const is_ppc64 = target.cpu.arch == .powerpc64le or target.cpu.arch == .powerpc64;
@@ -61,7 +61,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +            //    automatically (we only skip CRT startup files, not libc).
 +            //
 +            // 3. Pure C via zig cc (no ZCU, no libc_installation):
-+            //    Let GCC handle everything — CRT, startup, libc.  No
++            //    Let GCC handle everything -- CRT, startup, libc.  No
 +            //    -nostartfiles needed.
 +            const csu = try comp.getCrtPaths(arena);
 +            const has_zig_crt = csu.crt0 != null or csu.crti != null or csu.crtbegin != null;
@@ -74,7 +74,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                // Zig provides startup code (either CRT files or ZCU with _start).
 +                // Use -nostartfiles to prevent GCC from adding its own crt1.o
 +                // (avoids duplicate _start definition errors).  GCC still links
-+                // libc automatically — -nostartfiles only skips CRT objects.
++                // libc automatically -- -nostartfiles only skips CRT objects.
 +                try argv.append("-nostartfiles");
 +            }
 +
@@ -170,7 +170,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                }
 +            }
 +
-+            // CRT files — only when zig provides them AND libc_installation is
++            // CRT files -- only when zig provides them AND libc_installation is
 +            // available (build-time).  At runtime, GCC handles CRT via its sysroot.
 +            if (use_zig_crt) {
 +                // For executables: crt0 + crti.  For shared libs: only crti.
@@ -196,7 +196,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                try argv.append(try std.fmt.allocPrint(arena, "-Wl,-rpath,{s}", .{rpath}));
 +            }
 +
-+            // Library paths — only when libc_installation is available (build-time)
++            // Library paths -- only when libc_installation is available (build-time)
 +            // At runtime, GCC finds libraries via its own sysroot configuration
 +            if (comp.config.link_libc) {
 +                if (comp.libc_installation) |libc_installation| {
@@ -307,7 +307,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                    }
 +                }
 +
-+                // libunwind dependency — prefer shared from ZIG_SHARED_LIBCXX_DIR
++                // libunwind dependency -- prefer shared from ZIG_SHARED_LIBCXX_DIR
 +                // (co-located with libc++.so in zig-llvm/lib/).
 +                // Zig's static libunwind.a has hidden visibility which conflicts
 +                // with shared libc++.so that depends on libunwind symbols.
@@ -330,7 +330,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                    try argv.append("-Wl,--as-needed");
 +                }
 +
-+                // pthread_atfork stub — only during conda-build (use_zig_crt path)
++                // pthread_atfork stub -- only during conda-build (use_zig_crt path)
 +                // when SRC_DIR is set and the stub was created by the build script.
 +                if (use_zig_crt and comp.config.link_libc) {
 +                    add_stub: {
@@ -345,7 +345,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                // so bundled glibc libs always appear in DT_NEEDED regardless of whether
 +                // use_zig_crt is set.  Zig's frontend absorbs -lm/-lc/-lpthread etc. as
 +                // link_libc=true (isLibCLibName), so they never reach the link_inputs DSO
-+                // loop above — we must inject them here explicitly.  Mirror upstream
++                // loop above -- we must inject them here explicitly.  Mirror upstream
 +                // Lld.zig isGnuLibC() emission; emit -Wl,-l<name> because zig's bundled
 +                // .so stubs have @GLIBC_PRIVATE refs that ld.bfd rejects.
 +                if (comp.config.link_libc and target.isGnuLibC()) {
@@ -361,7 +361,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                    try argv.append("-Wl,--as-needed");
 +
 +                    // PowerPC64: Dynamic linker provides __tls_get_addr (TLS support).
-+                    // Only needed in use_zig_crt (build-time -nostartfiles) path —
++                    // Only needed in use_zig_crt (build-time -nostartfiles) path --
 +                    // at runtime, GCC spec files handle the dynamic linker automatically.
 +                    if (use_zig_crt) {
 +                        if (comp.libc_installation) |libc_installation| {
@@ -385,7 +385,7 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                try argv.append(try p.toString(arena));
 +            }
 +
-+            // CRT end files — only when zig provides CRT (build-time)
++            // CRT end files -- only when zig provides CRT (build-time)
 +            if (use_zig_crt) {
 +                if (csu.crtend) |p| {
 +                    try argv.append(try p.toString(arena));
