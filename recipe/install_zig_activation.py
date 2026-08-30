@@ -177,6 +177,9 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict):
         subprocess.check_call([
             zig_bin, "cc",
             "-O2",
+            # No -target => native compile; zig defaults to the host CPU
+            # model, baking the runner's ISA into the shipped shim.
+            "-mcpu=baseline",
             f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
