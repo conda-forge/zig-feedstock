@@ -26,6 +26,11 @@ import tempfile
 from pathlib import Path
 
 
+def _dbg(msg: str) -> None:
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print(msg, flush=True)
+
+
 def main():
     if os.environ.get("DEBUG_ZIG_BUILD") == "1":
         print("=== Installing Zig Activation Package ===")
@@ -133,13 +138,17 @@ def _install_template(src: Path, dst: Path, replacements: dict, executable: bool
     print(f"  Installed: {dst}")
 
 
-def _find_zig_compiler() -> str:
+def _find_zig_compiler() -> tuple[str, bool]:
     """Find a zig binary suitable for compiling C shims at install time.
 
     Search order:
     1. CONDA_ZIG_BUILD (build machine's zig binary name)
     2. CONDA_ZIG_HOST (target machine's zig -- usable on win-arm64 via x86_64 emulation)
     3. Any *-zig.exe or zig.exe in known prefix directories
+
+    Returns (path, is_foreign): is_foreign is True when the match came from
+    CONDA_ZIG_HOST and CONDA_ZIG_HOST differs from CONDA_ZIG_BUILD, i.e. the
+    resolved binary is a target-arch zig rather than a build-arch one.
     """
     conda_zig_build = os.environ.get("CONDA_ZIG_BUILD", "")
     conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
@@ -150,9 +159,10 @@ def _find_zig_compiler() -> str:
     for zig_name in (conda_zig_build, conda_zig_host):
         if not zig_name:
             continue
+        is_foreign = zig_name == conda_zig_host and conda_zig_host != conda_zig_build
         found = shutil.which(zig_name)
         if found:
-            return found
+            return found, is_foreign
         # Search known prefix directories
         for name in (zig_name, f"{zig_name}.exe"):
             for prefix_var in ("BUILD_PREFIX", "PREFIX", "CONDA_PREFIX"):
@@ -162,7 +172,7 @@ def _find_zig_compiler() -> str:
                 for subdir in ("Library/bin", "bin"):
                     candidate = Path(prefix_path) / subdir / name
                     if candidate.exists():
-                        return str(candidate)
+                        return str(candidate), is_foreign
 
     raise RuntimeError(
         f"No zig binary found to compile C shim. "
@@ -234,22 +244,32 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
         content = content.replace(placeholder, value)
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    zig_bin = _find_zig_compiler()
+    zig_bin, zig_is_foreign = _find_zig_compiler()
+    # osx-64-on-osx-arm64 is zig_is_foreign but runs under Rosetta, not qemu.
+    needs_emulation = os.environ.get("NEEDS_EMULATION", "false").strip().lower() == "true"
+    if zig_is_foreign and needs_emulation:
+        raise RuntimeError(
+            "C shim must be compiled by the build-arch zig (CONDA_ZIG_BUILD); "
+            f"resolved a target-arch zig instead: {zig_bin}"
+        )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_src = Path(tmpdir) / src.name
         tmp_src.write_text(content)
         target_args = ["-target", target] if target else []
-        subprocess.check_call([
-            zig_bin, "cc",
-            *target_args,
-            "-O2",
-            "-mcpu=baseline",
-            f"-I{src.parent}",
-            "-o", str(dst),
-            str(tmp_src),
-            *extra_args,
-        ])
+        _dbg(f"[shim] zig={zig_bin!r} target={target!r}")
+        subprocess.check_call(
+            [
+                zig_bin, "cc",
+                *target_args,
+                "-O2",
+                "-mcpu=baseline",
+                f"-I{src.parent}",
+                "-o", str(dst),
+                str(tmp_src),
+                *extra_args,
+            ],
+        )
 
     pdb = dst.with_suffix(".pdb")
     if pdb.exists():
