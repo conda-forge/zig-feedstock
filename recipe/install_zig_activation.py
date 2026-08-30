@@ -16,6 +16,7 @@ substitution -- no script content is generated inline.
 """
 
 import os
+import platform
 import re
 import shutil
 import stat
@@ -169,6 +170,42 @@ def _find_zig_compiler() -> str:
     )
 
 
+_BASELINE_VIOLATION_MARKERS = (
+    "%ymm", "%zmm", "vzeroupper",
+    "%k0", "%k1", "%k2", "%k3", "%k4", "%k5", "%k6", "%k7",
+)
+
+
+def _assert_x86_baseline(binary: Path, target: str | None) -> None:
+    """Fail the build if an x86_64 shim contains above-baseline instructions.
+
+    zig's native CPU model can leak AVX/AVX-512 into a shim that then ships
+    to an arbitrary x86_64 user machine. -mcpu=baseline should prevent this;
+    this verifies it actually did rather than trusting the flag silently.
+    """
+    arch = target.split("-")[0] if target else platform.machine()
+    if arch not in ("x86_64", "amd64", "AMD64"):
+        return
+
+    objdump = shutil.which("llvm-objdump")
+    if not objdump:
+        raise RuntimeError(
+            f"llvm-objdump not found on PATH -- cannot verify baseline CPU "
+            f"compliance of {binary}. Refusing to silently skip this check."
+        )
+
+    result = subprocess.run(
+        [objdump, "-d", str(binary)],
+        capture_output=True, text=True, check=True,
+    )
+    found = [m for m in _BASELINE_VIOLATION_MARKERS if m in result.stdout]
+    if found:
+        raise RuntimeError(
+            f"{binary}: above-baseline x86 instructions detected "
+            f"(markers found: {found}). -mcpu=baseline was not honored."
+        )
+
+
 def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple = (), target: str | None = None):
     """Compile a C shim with @PLACEHOLDER@ substitution using zig cc.
 
@@ -186,6 +223,11 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
     natively-compiled shim would be the wrong architecture. The bash
     wrappers this C port replaces were architecture-neutral text scripts,
     so this concern is introduced by the C port itself.
+
+    Note: target only constrains architecture, not CPU features. The shim
+    runs on the build machine only during the build; the shipped shim runs
+    on the user's (unknown) x86_64 machine. So -mcpu=baseline is required
+    in addition to target, not instead of it.
     """
     content = src.read_text()
     for placeholder, value in replacements.items():
@@ -202,6 +244,7 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
             zig_bin, "cc",
             *target_args,
             "-O2",
+            "-mcpu=baseline",
             f"-I{src.parent}",
             "-o", str(dst),
             str(tmp_src),
@@ -214,6 +257,8 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
         print(f"  Removed: {pdb}")
 
     print(f"  Compiled: {dst}" + (f" (-target {target})" if target else ""))
+
+    _assert_x86_baseline(dst, target)
 
 
 def _strip_glibc_version(triplet: str) -> str:

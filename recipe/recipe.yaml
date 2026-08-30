@@ -624,6 +624,8 @@ outputs:
       build:
         - ${{ m2 }}bash
         - python 3.12.*
+        # llvm-objdump asserts CPU baseline
+        - llvm-tools ${{ llvm_version }}.*
         # The C shims (unix multiplexer zig-cc-unix.c; .exe shims on non-unix) are
         # compiled at package-build time, so we need a zig that RUNS HERE, on the
         # build machine. That is always the NATIVE zig_impl_<build_platform> -- a
