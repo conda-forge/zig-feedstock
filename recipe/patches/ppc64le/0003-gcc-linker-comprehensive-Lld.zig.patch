@@ -2,12 +2,12 @@
 # Affects: src/link/Lld.zig
 # Upstream: TBD
 # Drop-when: Upstream LLD gains full PowerPC64 ELF relocation support (R_PPC64_REL24, TOC, etc.)
-# Last-verified: 2026-06-01
+# Last-verified: 2026-08-28
 
 diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -872,7 +872,434 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -879,6 +879,451 @@ fn elfLink(lld: *Lld, arena: Allocator)
              .{},
          );
      } else {
@@ -28,19 +28,37 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +            var argv = std.array_list.Managed([]const u8).init(gpa);
 +            defer argv.deinit();
 +
-+            // GCC path: resolve via $PREFIX/bin (absolute), not a bare
-+            // PATH lookup -- discriminator for a suspected argv[0]-keyed
-+            // downstream defect (see reference doc section 7). Do NOT
-+            // read CC env var: in conda builds it's the zig-cc wrapper
-+            // (would cause infinite recursion).
++            // GCC path: three-step lookup, BUILD_PREFIX-first. Order:
++            //   1. $BUILD_PREFIX/bin/<gcc_name> -- build time, the real cross driver
++            //   2. $PREFIX/bin/<gcc_name>       -- runtime on real ppc64le hw (gcc_impl_ run-dep)
++            //   3. bare <gcc_name>              -- last resort PATH lookup
++            // The unconditional std.debug.print below exists to resolve the still-open
++            // environ_map-null question from reference doc section 7: PR #164 job
++            // 98996793057 showed zig's "Failed to spawn GCC: FileNotFound" does not
++            // print the attempted path, and round #2 found PREFIX was NULL in
++            // environ_map at this site. Do NOT read CC env var: in conda builds it's
++            // the zig-cc wrapper (would cause infinite recursion).
 +            const gcc_name: []const u8 = if (target.cpu.arch == .powerpc64le)
 +                "powerpc64le-conda-linux-gnu-gcc"
 +            else
 +                "powerpc64-conda-linux-gnu-gcc";
-+            const gcc_path: []const u8 = if (comp.environ_map.get("PREFIX")) |prefix|
++            const build_prefix_env = comp.environ_map.get("BUILD_PREFIX");
++            const prefix_env = comp.environ_map.get("PREFIX");
++            const gcc_path_source: []const u8 = if (build_prefix_env != null)
++                "BUILD_PREFIX"
++            else if (prefix_env != null)
++                "PREFIX"
++            else
++                "PATH-bare";
++            const gcc_path: []const u8 = if (build_prefix_env) |build_prefix|
++                try std.fs.path.join(arena, &[_][]const u8{ build_prefix, "bin", gcc_name })
++            else if (prefix_env) |prefix|
 +                try std.fs.path.join(arena, &[_][]const u8{ prefix, "bin", gcc_name })
 +            else
 +                gcc_name;
++            std.debug.print("zig-conda: gcc_path resolved via {s} -> {s}\n", .{ gcc_path_source, gcc_path });
++            std.debug.print("zig-conda: BUILD_PREFIX is {s} in environ_map\n", .{if (build_prefix_env != null) "PRESENT" else "NULL"});
++            std.debug.print("zig-conda: PREFIX is {s} in environ_map\n", .{if (prefix_env != null) "PRESENT" else "NULL"});
 +            try argv.append(gcc_path);
 +
 +            // Output
@@ -441,4 +459,3 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
          // Create an LLD command line and invoke it.
          var argv = std.array_list.Managed([]const u8).init(gpa);
          defer argv.deinit();
-         // We will invoke ourselves as a child process to gain access to LLD.

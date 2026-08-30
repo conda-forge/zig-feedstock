@@ -1,14 +1,14 @@
 schema_version: 1
 
 context:
-  build_number: 3
+  build_number: 0
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
-  snapshot: "1811+6716bf52e"
+  snapshot: "1884+841dd0eb8"
   # Bootstrap comes from an ALREADY-PUBLISHED snapshot; lags `snapshot` by design.
   snapshot_ref: "1811"
-  build_ref: "2"
+  build_ref: "3"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   llvm_src_version: "22.1.6"
@@ -132,7 +132,7 @@ context:
     }}
 
   qemu_arch: ${{ target_platform | replace("linux-64", "x86_64") | replace("linux-", "") }}
-  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ " >=11" if linux and build_platform != target_platform else "" }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=5"]' if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -157,7 +157,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: 0ee8f2ef68655e502c377668f231270deff08ab1bc1ef950a832dbd0e5389ea5
+    sha256: 8a24932b7930674e511bb68ad88377dc2b7dc5dfd66aabbbba71aadc539f3011
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -168,6 +168,7 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
+      - patches/build.zig-03-compiler-step-zig-lib-dir.patch
       # order load-bearing: setjmp-s must precede arm64-stubs
       - patches/non_unix/mingw-include-setjmp-s.patch
       - patches/non_unix/mingw-setjmp-no-crtimp.patch
@@ -243,32 +244,32 @@ source:
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: db1ce237e0303233421e5b6be7c4c767844bb67077c1b7f605f626705ab43060
+            sha256: 944c65ede040ed17aff9e3598fa3762b4b0cb8959102c09f67be386d92eb3b26
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 2f768f27561b1af4ad4720051f771f912f6b0284d856ee2f6aaa3fffc74a9304
+            sha256: a5fc597285feb2893e311f66aebb678798eea41441e6e1292d1efc8496060ec4
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: f435acda73357c27105fd1ad3057d2f8e5f23d5b6ed1035de8460a0220c43d2e
+            sha256: f8e1447f1274ddf876e07dfb8c60a3cc7eda42d49bc5b8feed69b0e7a82083f6
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: d95fbbfc6c1cd2409c2c48f6f9ac54d249c4239f2202bc33d5001c660a80776f
+            sha256: 223bc256d7ae81e5a6cb038cc2cd5db80b8485d53e8e7fd3a6516d418586ff92
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 145a9f0169bf9d76e44e3a0373e33fcf9ed88343357dd52ce17b91ca8c66ad6c
+            sha256: 9450f2ce46e49b2b3f98743403706304d96d711ab0bb5dd6e826892990959080
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
           - url: https://ziglang.org/builds/zig-powerpc64le-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: f9f850f811d14c43e668fc15e2e328c5ab3f8349e6c472ca86466af7229a8fb6
+            sha256: c0147f67fc77f9972743db58bc8d262abe0352f12f9c59e4da814fd1a9f3879f
             target_directory: zig-bootstrap
 
 build:
@@ -482,10 +483,19 @@ outputs:
                   - if: build_platform != target_platform
                     then:
                       - '[ -n "${QEMU_EXECVE}" ] || { echo "QEMU_EXECVE_MISSING: qemu-execve-${{ qemu_arch }} not found for ${{ target_platform }}"; exit 1; }'
-              - ${{ conda_triplet }}-zig version
-              - ${{ conda_triplet }}-zig zen
-              - ${{ conda_triplet }}-zig init
-              - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
+              - if: unix
+                then:
+                  - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+                  - _zigbin="$(command -v ${{ conda_triplet }}-zig || echo "${PREFIX}/bin/${{ conda_triplet }}-zig")"
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" version'
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" zen'
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" init'
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" test zig-source/test/behavior.zig'
+                else:
+                  - ${{ conda_triplet }}-zig version
+                  - ${{ conda_triplet }}-zig zen
+                  - ${{ conda_triplet }}-zig init
+                  - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
             else:
               - echo "Skip test on non-emulated archs"
         requirements:
@@ -525,7 +535,9 @@ outputs:
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
               - echo 'int main(void){return 0;}' > /tmp/test_lld.c
               - echo '{ main; };' > /tmp/test_lld.dyn
-              - ${{ conda_triplet }}-zig cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+              - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+              - _zigbin="$(command -v ${{ conda_triplet }}-zig || echo "${PREFIX}/bin/${{ conda_triplet }}-zig")"
+              - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c'
               - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
           - if: not unix
             then:
@@ -842,7 +854,13 @@ outputs:
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
           - if: not arm64
             then:
-              - zig version
+              - if: unix
+                then:
+                  - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+                  - _zigbin="$(command -v zig || echo "${PREFIX}/bin/zig")"
+                  - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" version'
+                else:
+                  - zig version
             else:
               - echo "Skip on cross-compiled platform"
         requirements:
@@ -881,7 +899,13 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-          - zig cc --version
+          - if: unix
+            then:
+              - _qrun=(); [ -n "${QEMU_EXECVE:-}" ] && _qrun=("${QEMU_EXECVE}")
+              - _zigbin="$(command -v zig || echo "${PREFIX}/bin/zig")"
+              - '"${_qrun[@]+"${_qrun[@]}"}" "${_zigbin}" cc --version'
+            else:
+              - zig cc --version
         requirements:
           build:
             - if: build_platform != target_platform

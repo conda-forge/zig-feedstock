@@ -114,6 +114,11 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
   )
+  EXTRA_ZIG_ARGS+=(--verbose-link)
+  mkdir -p "${PREFIX}/bin"
+  # Build-time only gcc-lookup lever; stripped before packaging (see below).
+  ln -sf "${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc" "${PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc"
+  ln -sf "${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-ld" "${PREFIX}/bin/powerpc64le-conda-linux-gnu-ld"
 fi
 
 # Strip host-arch flags injected by conda-build for cross builds.
@@ -163,6 +168,16 @@ if is_unix; then
     -DCMAKE_INSTALL_RPATH="${PREFIX}/lib"
     -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
   )
+fi
+
+# bare qemu-<arch> already exists on PATH (regular variant); this shadow
+# makes zig's internal -fqemu lookup resolve to the execve variant instead.
+_qemu_shadow_dir=""
+if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+  _qemu_shadow_dir=$(mktemp -d)
+  ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
+  export PATH="${_qemu_shadow_dir}:${PATH}"
+  dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
 fi
 
 if is_linux && is_cross; then
@@ -322,16 +337,6 @@ elif _can_run_stage3; then
     _stage3_runner=("${QEMU_EXECVE}")
   fi
 
-  # bare qemu-<arch> already exists on PATH (regular variant); this shadow
-  # makes zig's internal -fqemu lookup resolve to the execve variant instead.
-  _qemu_shadow_dir=""
-  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
-    _qemu_shadow_dir=$(mktemp -d)
-    ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
-    export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
-  fi
-
   (
     cd "${cmake_source_dir}" &&
     "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
@@ -345,11 +350,6 @@ elif _can_run_stage3; then
     fi
     echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
   }
-
-  if [ -n "${_qemu_shadow_dir:-}" ]; then
-    rm -rf "${_qemu_shadow_dir}"
-    unset _qemu_shadow_dir
-  fi
 else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
 fi
@@ -383,6 +383,12 @@ if [[ -d "${PREFIX}" ]]; then
     echo "[build.sh] __pycache__ strip done"
 else
     echo "[build.sh] WARNING: ${PREFIX} does not exist — find skipped"
+fi
+
+# Build-time only gcc-lookup lever; must not ship.
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  rm -f "${PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc"
+  rm -f "${PREFIX}/bin/powerpc64le-conda-linux-gnu-ld"
 fi
 
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="
