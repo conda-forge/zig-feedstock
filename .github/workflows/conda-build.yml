@@ -235,8 +235,8 @@ jobs:
       if: matrix.os == 'ubuntu'
       shell: bash
       run: |
-        if [[ "$(uname -m)" == "x86_64" || "$(uname -m)" == "aarch64" ]]; then
-          docker run --rm --privileged tonistiigi/binfmt --install all
+        if [[ "$(uname -m)" == "x86_64" ]]; then
+          docker run --rm --privileged multiarch/qemu-user-static:register --reset --credential yes
         fi
 
     - name: Build on Linux
