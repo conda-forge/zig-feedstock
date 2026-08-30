@@ -56,13 +56,13 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
         cmake ninja gcc gxx patchelf \
         "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
         libxml2-devel zlib zstd perl python \
-        "sysroot_linux-64=2.17"
+        "sysroot_${build_platform:-linux-64}=2.17"
 else
     ${CONDA_CMD} create -p "${ENV_DIR}" -c conda-forge -y \
         cmake ninja gcc gxx patchelf \
         "llvmdev=${LLVM_VER}.*" "clangdev=${LLVM_VER}.*" "libclang-cpp=${LLVM_VER}.*" "lld=${LLVM_VER}.*" \
         libxml2-devel zlib zstd perl python \
-        "sysroot_linux-64=2.17" \
+        "sysroot_${build_platform:-linux-64}=2.17" \
         "zig_impl_${build_platform:-linux-64}>=${PKG_VERSION}"
 fi
 
@@ -74,12 +74,11 @@ if [[ ${_act_rc} -ne 0 ]]; then
     echo "[build_native] mamba/conda activate returned ${_act_rc}; continuing (deactivate hooks may be noisy)" >&2
 fi
 
-# 2. Fix libc/libm linker scripts for zig (zig's lld can't handle relative paths
-#    in linker scripts — fix_sysroot_libc_scripts rewrites them to relative paths)
+# 2. Source helpers (sysroot ldscript rewrite is deferred — see below the
+#    CMake/atfork steps, which need absolute paths and run plain gcc/ld)
 source "${RECIPE_DIR}/building/_common.sh"
 source "${RECIPE_DIR}/building/_sysroot_fix.sh"
 source "${RECIPE_DIR}/building/_atfork.sh"
-fix_sysroot_libc_scripts "${ENV_DIR}"
 
 # 3. Find the zig binary to use as bootstrap
 if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
@@ -119,24 +118,35 @@ cmake --build "${CMAKE_BUILD}" --target zigcpp -- -j"${CPU_COUNT:-4}"
 # 4b. Create pthread_atfork stub (glibc 2.28 libc_nonshared.a not found by lld)
 STUB_DIR="${WORK_DIR}/atfork-stub"
 mkdir -p "${STUB_DIR}"
-NATIVE_CC=$(ls "${ENV_DIR}"/bin/x86_64-conda-linux-gnu-cc 2>/dev/null || echo gcc)
-create_pthread_atfork_stub "x86_64" "${NATIVE_CC}" "${STUB_DIR}"
+_host_triple="$("${CC:-gcc}" -dumpmachine 2>/dev/null)"
+if [[ -n "${_host_triple}" ]]; then
+    _host_arch="${_host_triple%%-*}"
+else
+    _host_arch="$(uname -m)"
+fi
+NATIVE_CC=$(ls "${ENV_DIR}/bin/${_host_triple}-cc" 2>/dev/null || echo "${CC:-gcc}")
+create_pthread_atfork_stub "${_host_arch}" "${NATIVE_CC}" "${STUB_DIR}"
 perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${STUB_DIR}/pthread_atfork_stub.o\"|g" \
     "${CMAKE_BUILD}/config.h"
 echo "[build_native] Injected pthread_atfork stub into config.h"
+
+# Rewrite sysroot ldscripts to relative form for zig's lld — AFTER all gcc/cmake steps, which need absolute paths.
+fix_sysroot_libc_scripts "${ENV_DIR}"
 
 # Common zig build args (shared between Stage 1 and Stage 2)
 ZIG_BUILD_ARGS=(
     --search-prefix "${ENV_DIR}"
     -Dconfig_h="${CMAKE_BUILD}/config.h"
     -Dcpu=baseline
-    -Ddoctest-target=x86_64-linux-gnu.2.17
+    -Ddoctest-target=${_host_arch}-linux-gnu.2.17
     -Denable-llvm
     -Dstatic-llvm=false
     # Explicit target ensures zig std lib uses raw syscalls for functions
-    # not in glibc 2.17 (e.g., copy_file_range). This script is only used
-    # for linux-64 (x86_64) native test builds.
-    -Dtarget=x86_64-linux-gnu.2.17
+    # not in glibc 2.17 (e.g., copy_file_range). Stage 1 is a NATIVE build,
+    # so target must be the HOST arch (${_host_arch}, computed above), not
+    # a fixed x86_64 — this script also runs on aarch64-hosted ppc64le/
+    # riscv64 cross lanes.
+    -Dtarget=${_host_arch}-linux-gnu.2.17
     -Duse-zig-libcxx=false
     -Dversion-string="${PKG_VERSION}"
     --maxrss 8000000000
