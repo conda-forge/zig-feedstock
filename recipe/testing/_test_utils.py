@@ -308,3 +308,46 @@ def _run(
                     except OSError:
                         pass
         return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
+
+
+def timed_out(proc: subprocess.CompletedProcess[str]) -> bool:
+    """True when `proc` is _run's timeout sentinel."""
+    return proc.stderr == "TIMEOUT"
+
+
+# ---------------------------------------------------------------------------
+# Target executability probe (measured, not inferred)
+# ---------------------------------------------------------------------------
+_can_execute_cache: dict[tuple[str, str | None], bool] = {}
+
+
+def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
+    """Measure -- don't infer -- whether a `triplet` binary can run here.
+
+    Compiles a trivial program with `zig_cc` and executes it through `_run`'s
+    `target=` routing (qemu-execve when foreign). Cached per (triplet, zig_cc).
+    """
+    key = (triplet, zig_cc)
+    if key in _can_execute_cache:
+        return _can_execute_cache[key]
+    if not zig_cc:
+        _can_execute_cache[key] = False
+        return False
+    result = False
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "probe.c"
+            exe = Path(td) / "probe"
+            src.write_text("int main(void) { return 0; }\n")
+            # target= on the compile too: on an unhosted lane zig_cc is itself a
+            # target-arch binary and needs the emulator.
+            r_compile = _run([zig_cc, "-o", str(exe), str(src)], cwd=td,
+                             target=triplet, timeout=120)
+            produced = exe if exe.exists() else exe.with_suffix(".exe")
+            if r_compile.returncode == 0 and produced.exists():
+                r_exec = _run([str(produced)], target=triplet, timeout=120)
+                result = r_exec.returncode == 0
+    except Exception:
+        result = False
+    _can_execute_cache[key] = result
+    return result
