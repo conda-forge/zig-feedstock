@@ -1,20 +1,19 @@
 schema_version: 1
 
 context:
-  build_number: 0
+  build_number: 1
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "1941+71115f0ab"
-  # Bootstrap comes from an ALREADY-PUBLISHED snapshot; lags `snapshot` by design.
-  snapshot_ref: "1811"
-  build_ref: "3"
+  snapshot_ref: "1933"
+  build_ref: "1"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
