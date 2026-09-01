@@ -607,30 +607,17 @@ outputs:
           SHIM_RUNS_ON_TARGET: ${{ shim_runs_on_target }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
           NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
-          # Zig toolchain identification (independent of gcc TOOLCHAIN)
-          # Includes -zig suffix so value is directly usable as binary name
-          # NATIVE build_triplet, not xc_build_triplet: this names the zig used to
-          # COMPILE the C shims on the build machine right now, so it must be the
-          # build machine's own zig. xc_build_triplet resolves to target_triplet on
-          # unhosted lanes, which named a compiler that cannot exist here. Matches
-          # the zig_impl_ output's own CONDA_ZIG_BUILD (build_triplet, see above).
+
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-          QEMU_ARCH: ${{ qemu_arch }}
-          QEMU_SYSROOT: ${{ sysroot }}
           NEEDS_EMULATION: ${{ linux and build_platform != target_platform }}
 
           LLVM_VERSION: ${{ llvm_version }}
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
     requirements:
       build:
-        # - ${{ m2 }}bash
         - python 3.12.*
-        # llvm-objdump asserts CPU baseline
-        - llvm-tools ${{ llvm_version }}.*
-        # - if: linux and build_platform != target_platform
-        #   then:
-        #     - ${{ qemu_pkg }}
+        - llvm-tools ${{ llvm_version }}.*  # llvm-objdump asserts CPU baseline
         - if: is_cross_compiler or is_cross_target
           then:
             - zig_impl_${{ build_platform }} ${{ abi_version }}.*
@@ -640,15 +627,6 @@ outputs:
                 - gcc_impl_${{ cross_target_platform_ }} >=14.3
                 - sysroot_${{ target_platform }} ${{ _c_v }}.*
       host:
-        # The C shim links via gcc/ld.bfd on ppc64le, so GCC's sysroot -- not
-        # zig's -target -- sets its glibc. Match the build/test sysroot.
-        # - if: linux
-        #   then:
-        #     - sysroot_${{ target_platform }} ${{ _c_v }}.*
-        # - if: xc_ppc64le
-        #   then:
-        #     - binutils_impl_${{ cross_target_platform_ }} >=2.45
-        #     - gcc_impl_${{ cross_target_platform_ }} >=14.3
         - if: not (is_cross_compiler or is_cross_target)
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
