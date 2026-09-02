@@ -181,7 +181,7 @@ source:
       # unconditionally -- gating them to `not unix` / win-32 left the freshly
       # built zig blind to them everywhere else (undefined __setjmp3, _fpreset).
       # Order: setjmp-s first (creates lib/libc/mingw/misc/setjmp.S and wires it
-      # into mingw32_x86_32_src), then arm64-stubs (fpreset_arm64.c + .aarch64
+      # into mingw32_x86_src), then arm64-stubs (fpreset_arm64.c + .aarch64
       # dispatch), which assumes the +11 line shift ahead of the setjmp hunk.
       - patches/non_unix/mingw-include-setjmp-s.patch
       - patches/non_unix/mingw-arm64-stubs.patch
@@ -218,7 +218,7 @@ source:
           # eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
           # build + ppc64le tests confirmed they are dead code: 0003-linker-redirect
           # forces the LLD backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted
-          # final-link path is never instantiated. See ZIG_PATCH_AUDIT_0.16.0.md.
+          # final-link path is never instantiated.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
@@ -603,7 +603,6 @@ outputs:
           ZIG_TRIPLET: ${{ zig_triplet }}
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
-          UNHOSTED_XCOMPILER: ${{ is_unhosted_xcompiler }}
           SHIM_RUNS_ON_TARGET: ${{ shim_runs_on_target }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
           NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
@@ -612,7 +611,6 @@ outputs:
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
           NEEDS_EMULATION: ${{ linux and build_platform != target_platform }}
 
-          LLVM_VERSION: ${{ llvm_version }}
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
     requirements:
       build:
@@ -907,4 +905,4 @@ extra:
     - MementoRC
     - xmnlab
     - tdejager
-  feedstock_name: zig
+  feedstock-name: zig

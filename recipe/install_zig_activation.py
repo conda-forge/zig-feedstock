@@ -71,7 +71,6 @@ def main():
         print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
         print(f"CONDA_ZIG_HOST: {conda_zig_host}")
         print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
-        print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
 
     # 1. Install activation/deactivation scripts
     install_activation_scripts(

@@ -9,7 +9,7 @@
 # Note: chkstk_arm64.S dropped -- compiler_rt provides ___chkstk_ms via
 #       lib/compiler_rt/stack_probe.zig:267 for aarch64-windows targets.
 #       setjmp.S dropped -- F_NON_ARM64 guard in .def.in means __intrinsic_setjmp
-#       is not declared for arm64ec; provided via mingw-include-setjmp-s.patch for i386.
+#       is not declared for arm64ec; provided via mingw-include-setjmp-s.patch for i386 and x86_64.
 # Upstream: TBD
 # drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
 # Last-verified: 2026-06-04
