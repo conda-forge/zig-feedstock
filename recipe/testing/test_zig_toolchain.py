@@ -19,6 +19,7 @@ import platform
 import shutil
 import sys
 import tempfile
+import traceback
 
 # Ensure stdout/stderr are UTF-8 on Windows (system ANSI codepage breaks
 # rattler-build's UTF-8 stream reader even when tests pass).
@@ -1051,7 +1052,7 @@ def test_flag_filter_content() -> None:
             old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
             os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
             try:
-                r = _run(cmd, cwd=td, timeout=60)
+                r = _run(cmd, cwd=td, target=_triplet, timeout=60)
             finally:
                 if old_flag is None:
                     os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
@@ -1260,7 +1261,7 @@ def test_force_load_wrappers() -> None:
             old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
             os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
             try:
-                r = _run(cmd, cwd=td, timeout=60)
+                r = _run(cmd, cwd=td, target=_triplet, timeout=60)
             finally:
                 if old_flag is None:
                     os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
@@ -1551,23 +1552,45 @@ def main() -> int:
             os.chmod(str(zig_bin), 0o755)
             print(f"  [patched] Overlaid {zig_bin} with locally-built native zig")
 
-    test_wrapper_existence()
-    test_activation_variables()
-    test_flag_filter_content()
-    test_force_load_wrappers()
-    test_wrapper_shebang_portability()
-    test_wrapper_exec_under_emulation()
-    test_flag_filtering()
-    test_target_override()
-    test_shared_lib()
-    test_exe_linking()
-    test_libc_linking()
-    test_windows_import_libs()
-    test_win_arm64_entry_point()
-    test_print_search_dirs()
-    test_mingw_prebuilt_import_libs()
-    test_visibility()
-    test_lld_dispatch()
+    # Explicit ordered dispatch (order is load-bearing, mirrors historical call
+    # sequence). Each test runs isolated: a crash is recorded as FAIL instead
+    # of aborting the remaining tests and skipping the summary.
+    _tests = [
+        ("test_wrapper_existence", test_wrapper_existence),
+        ("test_activation_variables", test_activation_variables),
+        ("test_flag_filter_content", test_flag_filter_content),
+        ("test_force_load_wrappers", test_force_load_wrappers),
+        ("test_wrapper_shebang_portability", test_wrapper_shebang_portability),
+        ("test_wrapper_exec_under_emulation", test_wrapper_exec_under_emulation),
+        ("test_flag_filtering", test_flag_filtering),
+        ("test_target_override", test_target_override),
+        ("test_shared_lib", test_shared_lib),
+        ("test_exe_linking", test_exe_linking),
+        ("test_libc_linking", test_libc_linking),
+        ("test_windows_import_libs", test_windows_import_libs),
+        ("test_win_arm64_entry_point", test_win_arm64_entry_point),
+        ("test_print_search_dirs", test_print_search_dirs),
+        ("test_mingw_prebuilt_import_libs", test_mingw_prebuilt_import_libs),
+        ("test_visibility", test_visibility),
+        ("test_lld_dispatch", test_lld_dispatch),
+    ]
+    for _name, _test_fn in _tests:
+        # Snapshot env/cwd so a test that crashes before its own cleanup
+        # cannot corrupt the tests that run after it.
+        _env_snapshot = dict(os.environ)
+        _cwd_snapshot = os.getcwd()
+        try:
+            _test_fn()
+        except Exception as exc:  # noqa: BLE001 - must not abort the run
+            traceback.print_exc(file=sys.stderr)
+            FAIL(_name, f"crashed: {type(exc).__name__}: {exc}")
+        finally:
+            os.environ.clear()
+            os.environ.update(_env_snapshot)
+            try:
+                os.chdir(_cwd_snapshot)
+            except OSError:
+                pass
 
     print()
     n_pass = len(_results["PASS"])

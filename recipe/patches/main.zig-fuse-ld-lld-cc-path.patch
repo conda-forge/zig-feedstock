@@ -22,22 +22,37 @@
                      },
                      .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
                          .assembly, .assembly_with_cpp, .c, .cpp, .ll, .bc, .h, .hpp, .hm, .hmm, .m, .mm => {
-@@ -2925,7 +2931,13 @@
+@@ -2925,7 +2931,28 @@
                      try Io.File.stdout().writeStreamingAll(io, "zig ld " ++ build_options.version ++ "\n");
                      process.exit(0);
                  } else {
 -                    fatal("unsupported linker arg: {s}", .{arg});
 +                    // When LLD requested, pass unrecognized linker args through
 +                    if (create_module.opts.use_lld == true) {
-+                        const wl_arg = try std.fmt.allocPrint(arena, "-Wl,{s}", .{arg});
-+                        try cc_argv.append(arena, wl_arg);
++                        if (arg.len > 0 and arg[0] == '-') {
++                            warn("forwarding unrecognized linker arg as -Wl passthrough: {s}", .{arg});
++                            const wl_arg = try std.fmt.allocPrint(arena, "-Wl,{s}", .{arg});
++                            try cc_argv.append(arena, wl_arg);
++                            // zig splits `--flag=value` into two tokens; the bare
++                            // value after a forwarded flag is its payload, not a positional.
++                            if (linker_args_it.i < linker_args_it.args.len) {
++                                const next_tok = linker_args_it.args[linker_args_it.i];
++                                if (next_tok.len > 0 and next_tok[0] != '-') {
++                                    linker_args_it.i += 1;
++                                    const wl_val = try std.fmt.allocPrint(arena, "-Wl,{s}", .{next_tok});
++                                    try cc_argv.append(arena, wl_val);
++                                }
++                            }
++                        } else {
++                            fatal("refusing to forward non-flag linker arg '{s}' as a -Wl positional (would leak as a bare ld argument)", .{arg});
++                        }
 +                    } else {
 +                        fatal("unsupported linker arg: {s}", .{arg});
 +                    }
                  }
              }
-
-@@ -6057,6 +6069,8 @@
+ 
+@@ -6058,6 +6085,8 @@
              break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
          } else if (mem.eql(u8, args[1], "wasm-ld")) {
              break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
