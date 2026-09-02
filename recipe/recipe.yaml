@@ -885,10 +885,24 @@ outputs:
 
 about:
   homepage: https://ziglang.org/
-  license: MIT AND LicenseRef-Public-Domain
+  license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
   license_file:
     - zig-source/LICENSE
     - building/mingw-defs/DISCLAIMER.PD
+    - zig-source/lib/libcxx/LICENSE.TXT
+    - zig-source/lib/libcxxabi/LICENSE.TXT
+    - zig-source/lib/libunwind/LICENSE.TXT
+    - zig-source/lib/libc/glibc/LICENSES
+    - zig-source/lib/libc/mingw/COPYING
+    - zig-source/lib/libc/musl/COPYRIGHT
+    - zig-source/lib/libc/freebsd/COPYRIGHT
+    - zig-source/lib/libc/wasi/LICENSE
+    - zig-source/lib/libc/wasi/LICENSE-APACHE
+    - zig-source/lib/libc/wasi/LICENSE-APACHE-LLVM
+    - zig-source/lib/libc/wasi/LICENSE-MIT
+    - zig-source/lib/libc/wasi/libc-bottom-half/cloudlibc/LICENSE
+    - zig-source/lib/libc/wasi/libc-top-half/musl/COPYRIGHT
+    - zig-source/lib/libc/wasi/fts/musl-fts/COPYING
   summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
   description: |
     Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
