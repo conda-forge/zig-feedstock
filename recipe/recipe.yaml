@@ -454,6 +454,9 @@ outputs:
             - if: osx
               then:
                 - libcxx
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
         files:
           recipe:
             - testing/_test_utils.py
@@ -717,10 +720,10 @@ outputs:
               - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
               - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
           # Wrapper + functional validation tests (Python, cross-platform)
-          - if: linux and build_platform != target_platform
+          - if: linux
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
-              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
               - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
           - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
           # the cc wrapper must filter them before forwarding to zig cc.
@@ -743,6 +746,10 @@ outputs:
             - if: (build_platform != target_platform) and linux
               then:
                 - ${{ stdlib("c") }}
+            - if: linux
+              then:
+                # QEMU_LD_PREFIX resolves against the cross_target_platform_ sysroot.
+                - sysroot_${{ cross_target_platform_ }}
             - if: ppc64le
               then:
                 - libclang-cpp ${{ llvm_version }}.*

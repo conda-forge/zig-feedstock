@@ -256,11 +256,15 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
         tmp_src = Path(tmpdir) / src.name
         tmp_src.write_text(content)
         target_args = ["-target", target] if target else []
-        _dbg(f"[shim] zig={zig_bin!r} target={target!r}")
+        # ppc64le: IEEE-128 long double redirects printf to __printfieee128
+        # (glibc 2.32+); this recipe targets 2.17, so pin the double-double ABI.
+        abi_args = ["-mabi=ibmlongdouble"] if (target or "").startswith("powerpc64le") else []
+        _dbg(f"[shim] zig={zig_bin!r} target={target!r} abi={abi_args!r}")
         subprocess.check_call(
             [
                 zig_bin, "cc",
                 *target_args,
+                *abi_args,
             "-O2",
             "-mcpu=baseline",
             f"-I{src.parent}",
