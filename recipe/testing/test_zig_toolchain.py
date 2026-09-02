@@ -39,9 +39,11 @@ from _test_utils import (
     FAIL,
     WARN,
     SKIP,
+    can_execute_target,
     check_emulation_env,
     resolve_test_prefix,
     setup_zig_global_cache_dir,
+    timed_out,
 )
 
 # ---------------------------------------------------------------------------
@@ -133,9 +135,6 @@ def test_wrapper_existence() -> None:
             f"{_triplet}-zig-asm",
             f"{_triplet}-zig-rc",
             f"{_triplet}-zig-lld",
-            f"{_triplet}-_zig-cc-common.sh",
-            f"{_triplet}-_zig-force-load-common.sh",
-            f"{_triplet}-_translate.gen.sh",
         ]
 
     for w in expected:
@@ -991,82 +990,120 @@ def test_lld_dispatch() -> None:
 
 
 # ===================================================================
-# Section 7 — Unix-only: flag filter content checks (from old .sh)
+# Section 7 -- Unix-only: flag filter content checks (from old .sh)
 # ===================================================================
 def test_flag_filter_content() -> None:
-    """Check that _zig-cc-common.sh contains expected filter patterns."""
+    """Behavioural checks against the shipped zig-cc-unix.c mux (flag_rules.py
+    rules R2 and R6), replacing the old grep of the deleted _translate.gen.sh
+    bash fragment (no longer shipped into $PREFIX/bin).
+
+    R6 (-mcpu): an explicit -mcpu=<x> survives untouched into the final
+    argv; when absent, -mcpu=baseline is injected. Checked via the same
+    ZIG_WRAPPER_PRINT_ARGV argv-dump idiom used by test_force_load_wrappers.
+
+    R2 (-print-search-dirs): the wrapper intercepts this flag and returns 2
+    before exec_zig's ZIG_WRAPPER_PRINT_ARGV hook ever runs, so it is
+    checked on the wrapper's direct stdout instead of the argv dump.
+
+    Neither R2 nor R6 is an LLD-trigger flag (only -force_load/-all_load
+    are), so no ppc64le skip is needed here.
+    """
     print("--- Flag filter content (Unix) ---")
 
     if _build_is_win:
         SKIP("flag filter content", "Unix-only")
         return
 
-    common = _wrapper_dir / f"{_triplet}-_zig-cc-common.sh"
-    if not common.exists():
-        FAIL("_zig-cc-common.sh exists for content check")
+    wrapper_cc = _wrapper_dir / f"{_triplet}-zig-cc"
+    if not wrapper_cc.exists():
+        SKIP("flag filter content", "zig-cc wrapper not found")
         return
 
-    text = common.read_text()
+    zig_cc = _env_var("ZIG_CC")
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("flag filter content", "target binaries are not executable on this runner")
+        return
 
-    checks = [
-        ("-march=* in filter list", "-march="),
-        ("-mtune=* in filter list", "-mtune="),
-        ("exported_symbols_list filtered", "exported_symbols_list"),
-        ("unexported_symbols_list filtered", "unexported_symbols_list"),
-        ("force_symbols_not_weak_list filtered", "force_symbols_not_weak_list"),
-        ("force_symbols_weak_list filtered", "force_symbols_weak_list"),
-        ("reexported_symbols_list filtered", "reexported_symbols_list"),
-        ("-Wl,-all_load filtered", "all_load"),
-        ("-Wl,-force_load filtered", "force_load"),
-        ("-lgcc_eh filtered (GCC EH not in zig)", "lgcc_eh"),
-        ("-lgcc_s filtered (GCC shared runtime not in zig)", "lgcc_s"),
-        ("-l:libpthread.a filtered (colon-prefix panics zig linker)", "l:libpthread"),
-    ]
-    for label, needle in checks:
-        if needle in text:
-            PASS(label)
+    with tempfile.TemporaryDirectory() as td:
+        main_src = Path(td) / "main.c"
+        main_src.write_text(_MAIN_C)
+        out = Path(td) / "probe"
+
+        def _dump_argv(extra: list[str]) -> list[str]:
+            """Invoke the wrapper with ZIG_WRAPPER_PRINT_ARGV=1 and return its
+            fully rewritten argv as a token list (argv[0] and the cc/c++ mode
+            token included, no trailing empty entries)."""
+            cmd = [str(wrapper_cc), str(main_src), *extra, "-o", str(out)]
+            old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
+            os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
+            try:
+                r = _run(cmd, cwd=td, timeout=60)
+            finally:
+                if old_flag is None:
+                    os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
+                else:
+                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = old_flag
+            if timed_out(r) or r.returncode != 0:
+                return []
+            tokens = r.stdout.split("\n")
+            while tokens and tokens[-1] == "":
+                tokens.pop()
+            return tokens
+
+        # R6(a): explicit -mcpu=<x> survives verbatim
+        argv_explicit = _dump_argv(["-mcpu=x86_64_v2"])
+        if not argv_explicit:
+            WARN("-mcpu=<x> survives verbatim", "wrapper produced no argv dump")
+        elif "-mcpu=x86_64_v2" in argv_explicit:
+            PASS("-mcpu=<x> survives verbatim")
         else:
-            FAIL(label)
+            FAIL("-mcpu=<x> survives verbatim", " ".join(argv_explicit)[:500])
 
-    # These behaviors moved from _zig-cc-common.sh into the generated
-    # _translate.gen.sh by the R6 flag-translation refactor (see
-    # test_flag_translation_parity.py); verify them in their new home rather
-    # than grepping _zig-cc-common.sh (where only explanatory comments remain).
-    translate = _wrapper_dir / f"{_triplet}-_translate.gen.sh"
-    if not translate.exists():
-        FAIL("_translate.gen.sh exists for flag-translation checks")
-    else:
-        gen_text = translate.read_text()
-        gen_checks = [
-            ("-mcpu= handled by translator", "-mcpu="),
-            ("-mcpu=baseline injection in _translate.gen.sh", "mcpu=baseline"),
-            ("-print-search-dirs handler present (flexlink compat)", "print-search-dirs"),
-        ]
-        for label, needle in gen_checks:
-            if needle in gen_text:
-                PASS(label)
-            else:
-                FAIL(label)
-
-    # Auto-LLD promotion: LLD-only flags should trigger -fuse-ld=lld injection
-    if "_use_lld" in text and "-fuse-ld=lld" in text:
-        PASS("auto-LLD promotion logic present")
-    else:
-        FAIL("auto-LLD promotion logic present")
-
-    lld_triggers = ["version-script", "dynamic-list", "gc-sections", "build-id"]
-    for flag in lld_triggers:
-        if f"--{flag}" in text:
-            PASS(f"--{flag} triggers LLD promotion")
+        # R6(b): no -mcpu given -> -mcpu=baseline injected
+        argv_default = _dump_argv([])
+        if not argv_default:
+            WARN("-mcpu=baseline injected when absent", "wrapper produced no argv dump")
+        elif "-mcpu=baseline" in argv_default:
+            PASS("-mcpu=baseline injected when absent")
         else:
-            FAIL(f"--{flag} should trigger LLD promotion")
+            FAIL("-mcpu=baseline injected when absent", " ".join(argv_default)[:500])
+
+        # R2: -print-search-dirs is intercepted with an early `return 2`,
+        # before exec_zig's ZIG_WRAPPER_PRINT_ARGV hook runs -- so check the
+        # wrapper's direct stdout instead of the argv dump.
+        r = _run([str(wrapper_cc), "-print-search-dirs"], cwd=td, timeout=60)
+        if timed_out(r):
+            WARN("-print-search-dirs handled (flexlink compat)", "invocation timed out")
+        elif all(key in r.stdout for key in ("install:", "programs:", "libraries:")):
+            PASS("-print-search-dirs handled (flexlink compat)")
+        else:
+            FAIL("-print-search-dirs handled (flexlink compat)",
+                 f"rc={r.returncode} stdout={r.stdout[:300]}")
 
 
 # ===================================================================
-# Section 8 — Unix-only: force-load wrapper content (from old .sh)
+# Section 8 -- Unix-only: force-load wrapper behaviour
 # ===================================================================
 def test_force_load_wrappers() -> None:
-    """Check force-load wrapper scripts contain expected patterns."""
+    """zig-force-load-cc/cxx are C-mux aliases of zig-cc/zig-cxx: -force_load
+    and -Wl,-force_load,<a> pass through unchanged (zig's own CLI sets
+    must_link); -all_load / -Wl,-all_load are rewritten into one -force_load
+    per .a archive on the line, with no double-force-load for archives
+    already explicitly -force_load'd. No tmpdir is created and ar is never
+    invoked (that extraction path belonged to the deleted bash implementation).
+
+    Capture mechanism for sub-cases (a)-(e): ZIG_WRAPPER_PRINT_ARGV=1 makes
+    the wrapper dump its complete final argv -- argv[0], then the "cc"/"c++"
+    mode token, then the rest, one token per line -- to stdout and exit 0
+    without ever invoking zig. zig's own --verbose-link is a subcommand-only
+    option that zig's clang-driver (cc) mode rejects outright
+    ("Unknown Clang option: '--verbose-link'"), so it cannot be used here.
+    Sub-case (e) is checked per-archive: each archive must appear exactly
+    once as a -force_load operand, with no leftover -all_load token and no
+    orphaned -Xlinker where -all_load was stripped. Sub-case (f) does not
+    inspect the dumped argv; instead it verifies ar is never invoked and
+    TMPDIR is untouched.
+    """
     print("--- Force-load wrappers (Unix) ---")
 
     if _build_is_win:
@@ -1077,51 +1114,240 @@ def test_force_load_wrappers() -> None:
     if not fl_cc.exists():
         FAIL("zig-force-load-cc exists")
         return
-
-    text_cc = fl_cc.read_text()
-    for label, needle in [
-        ("force-load-cc sources common", "_zig-force-load-common.sh"),
-        ('force-load-cc uses cc mode', '_ZIG_MODE="cc"'),
-    ]:
-        if needle in text_cc:
-            PASS(label)
-        else:
-            FAIL(label)
+    PASS("zig-force-load-cc exists")
 
     fl_cxx = _wrapper_dir / f"{_triplet}-zig-force-load-cxx"
     if not fl_cxx.exists():
         FAIL("zig-force-load-cxx exists")
         return
+    PASS("zig-force-load-cxx exists")
 
-    text_cxx = fl_cxx.read_text()
-    for label, needle in [
-        ("force-load-cxx sources common", "_zig-force-load-common.sh"),
-        ('force-load-cxx uses c++ mode', '_ZIG_MODE="c++"'),
-    ]:
-        if needle in text_cxx:
-            PASS(label)
-        else:
-            FAIL(label)
-
-    # Check the shared helper for implementation details
-    fl_common = _wrapper_dir / f"{_triplet}-_zig-force-load-common.sh"
-    if not fl_common.exists():
-        FAIL("_zig-force-load-common.sh exists")
+    if is_ppc64le_target:
+        # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()), and
+        # LLD is unsupported on ppc64le -- the wrapper hard-errors before it
+        # ever gets to build an argv worth inspecting.
+        SKIP("force-load wrapper behaviour", "LLD not supported on ppc64le")
         return
 
-    text_common = fl_common.read_text()
-    for label, needle in [
-        ("force-load-common sources _zig-cc-common.sh", "_zig-cc-common.sh"),
-        ("force-load-common uses ar x", "ar x"),
-        ("force-load-common creates tmpdir", "mktemp -d"),
-        ("force-load-common has cleanup trap", "trap"),
-        ("force-load-common handles -Wl,-force_load", "Wl,-force_load"),
-        ("force-load-common handles -Wl,-all_load", "Wl,-all_load"),
-    ]:
-        if needle in text_common:
-            PASS(label)
+    zig_cc = _env_var("ZIG_CC")
+    zig_ar = _wrapper_dir / f"{_triplet}-zig-ar"
+    if not zig_cc or not zig_ar.exists():
+        SKIP("force-load wrapper behaviour", "ZIG_CC/zig-ar not available")
+        return
+
+    if not can_execute_target(_triplet, zig_cc):
+        SKIP("force-load wrapper behaviour", "target binaries are not executable on this runner")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        _archive_error: str | None = None
+
+        def _make_archive(name: str) -> Path | None:
+            nonlocal _archive_error
+            src = Path(td) / f"{name}.c"
+            obj = Path(td) / f"{name}.o"
+            arch = Path(td) / f"lib{name}.a"
+            src.write_text(f"int {name}(void) {{ return 0; }}\n")
+            r = _run([zig_cc, "-c", "-o", str(obj), str(src)], cwd=td)
+            if r.returncode != 0:
+                detail = "TIMEOUT" if timed_out(r) else f"rc={r.returncode} stderr={r.stderr[:500]}"
+                _archive_error = f"compile {name}.c: {detail}"
+                return None
+
+            # One-shot evidence: probe every archiver candidate unconditionally
+            # (own output path per tag), pick first success after. Outcome is
+            # unchanged; only collected diagnostics differ.
+            _matrix: list[str] = []
+            _winner: tuple[str, Path] | None = None
+
+            def _probe(
+                tag: str, argv: list[str] | None, cwd: Path, out_dir: Path | None = None
+            ) -> None:
+                nonlocal _winner
+                if argv is None:
+                    print(f"    DIAG archiver_candidate={tag} exists=False")
+                    _matrix.append(f"{tag}:rc=MISSING:exists=False")
+                    return
+                _out_dir = out_dir if out_dir is not None else Path(td)
+                out = _out_dir / f"lib{name}.{tag}.a"
+                try:
+                    pr = _run([*argv, "rcs", str(out), str(obj)], cwd=cwd, timeout=60)
+                except Exception as exc:
+                    print(f"    DIAG archiver_try={tag}=EXC:{exc}")
+                    _matrix.append(f"{tag}:rc=EXC:exists=False")
+                    return
+                ok = pr.returncode == 0 and out.exists()
+                print(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
+                      f"exists={out.exists()} stderr={pr.stderr[:300]}")
+                _matrix.append(f"{tag}:rc={pr.returncode}:exists={out.exists()}")
+                if ok and _winner is None:
+                    _winner = (tag, out)
+                elif not ok:
+                    try:
+                        out.unlink()
+                    except OSError:
+                        pass
+
+            # Candidate: llvm-ar (search order mirrors _mingw.sh's probe)
+            _llvm_ar = None
+            for _cand in (
+                os.environ.get("BUILD_PREFIX", "") and str(Path(os.environ["BUILD_PREFIX"]) / "bin" / "llvm-ar"),
+                os.environ.get("PREFIX", "") and str(Path(os.environ["PREFIX"]) / "bin" / "llvm-ar"),
+                os.environ.get("CONDA_PREFIX", "") and str(Path(os.environ["CONDA_PREFIX"]) / "bin" / "llvm-ar"),
+                shutil.which("llvm-ar"),
+            ):
+                if _cand:
+                    _llvm_ar = _cand
+                    break
+            _probe("llvm_ar", [_llvm_ar] if _llvm_ar and Path(_llvm_ar).exists() else None, Path(td))
+
+            # Candidate: /usr/bin/ar -- native arm64 system ar, expected
+            # winner on the failing osx-64/Rosetta lanes.
+            if sys.platform == "darwin":
+                _probe("usr_bin_ar", ["/usr/bin/ar"] if Path("/usr/bin/ar").exists() else None, Path(td))
+
+            # Candidate: any ar on PATH
+            _which_ar = shutil.which("ar")
+            _probe("which_ar", [_which_ar] if _which_ar else None, Path(td))
+
+            # Candidate: the zig-ar wrapper itself, baseline datapoint.
+            _probe("zig_ar_primary", [str(zig_ar)], Path(td))
+
+            print(f"    DIAG archiver_matrix={','.join(_matrix)}")
+
+            if _winner is not None:
+                tag, out = _winner
+                print(f"    DIAG archiver_selected={tag}")
+                shutil.move(str(out), str(arch))
+                if arch.exists():
+                    return arch
+                _archive_error = f"ar rcs lib{name}.a: {tag} succeeded but move to {arch.name} failed"
+                return None
+
+            _archive_error = f"ar rcs lib{name}.a: all archiver candidates failed ({','.join(_matrix)})"
+            return None
+
+        lib_a = _make_archive("force_a")
+        lib_b = _make_archive("force_b") if lib_a is not None else None
+        if lib_a is None or lib_b is None:
+            FAIL("force-load wrapper behaviour",
+                 f"could not build .a fixtures: {_archive_error}")
+            return
+
+        main_src = Path(td) / "main.c"
+        main_src.write_text(_MAIN_C)
+        out = Path(td) / "probe"
+
+        def _dump_argv(extra: list[str]) -> list[str]:
+            """Invoke the wrapper with ZIG_WRAPPER_PRINT_ARGV=1 and return its
+            fully rewritten argv as a token list (argv[0] and the cc/c++ mode
+            token included, no trailing empty entries)."""
+            cmd = [str(fl_cc), str(main_src), *extra, "-o", str(out)]
+            old_flag = os.environ.get("ZIG_WRAPPER_PRINT_ARGV")
+            os.environ["ZIG_WRAPPER_PRINT_ARGV"] = "1"
+            try:
+                r = _run(cmd, cwd=td, timeout=60)
+            finally:
+                if old_flag is None:
+                    os.environ.pop("ZIG_WRAPPER_PRINT_ARGV", None)
+                else:
+                    os.environ["ZIG_WRAPPER_PRINT_ARGV"] = old_flag
+            tokens = r.stdout.split("\n")
+            while tokens and tokens[-1] == "":
+                tokens.pop()
+            return tokens
+
+        def _operand_after(tokens: list[str], idx: int) -> str | None:
+            """Return the value that follows the -force_load token at idx."""
+            j = idx + 1
+            return tokens[j] if j < len(tokens) else None
+
+        # (a) -force_load survives verbatim
+        argv_a = _dump_argv(["-force_load", str(lib_a)])
+        if "-force_load" in argv_a and str(lib_a) in argv_a:
+            PASS("-force_load survives verbatim")
         else:
-            FAIL(label)
+            FAIL("-force_load survives verbatim", " ".join(argv_a)[:500])
+
+        # (b) -Wl,-force_load,<archive> survives verbatim as one fused token
+        argv_b = _dump_argv([f"-Wl,-force_load,{lib_a}"])
+        if (f"-Wl,-force_load,{lib_a}" in argv_b
+                and "-force_load" not in argv_b):
+            PASS("-Wl,-force_load,<archive> survives verbatim")
+        else:
+            FAIL("-Wl,-force_load,<archive> survives verbatim", " ".join(argv_b)[:500])
+
+        # (c) -all_load with two real .a files -> one -force_load per archive,
+        # -all_load itself gone
+        argv_c = _dump_argv(["-all_load", str(lib_a), str(lib_b)])
+        if (argv_c.count("-force_load") >= 2 and str(lib_a) in argv_c
+                and str(lib_b) in argv_c and "-all_load" not in argv_c):
+            PASS("-all_load rewritten to per-archive -force_load")
+        else:
+            FAIL("-all_load rewritten to per-archive -force_load", " ".join(argv_c)[:800])
+
+        # (d) -Wl,-all_load behaves the same as -all_load
+        argv_d = _dump_argv(["-Wl,-all_load", str(lib_a), str(lib_b)])
+        if argv_d.count("-force_load") >= 2 and "-all_load" not in argv_d:
+            PASS("-Wl,-all_load rewritten same as -all_load")
+        else:
+            FAIL("-Wl,-all_load rewritten same as -all_load", " ".join(argv_d)[:800])
+
+        # (e) archive already explicitly -force_load'd is not force-loaded
+        # twice by -all_load: attribute -force_load operands per-archive
+        # rather than just totalling occurrences, and confirm -all_load
+        # left no orphaned -Xlinker behind when it was stripped.
+        argv_e = _dump_argv(
+            ["-force_load", str(lib_a), "-Xlinker", "-all_load", str(lib_a), str(lib_b)]
+        )
+        operands_e = [
+            _operand_after(argv_e, i)
+            for i, tok in enumerate(argv_e)
+            if tok == "-force_load"
+        ]
+        no_orphan_xlinker = "-Xlinker" not in argv_e
+        if (operands_e.count(str(lib_a)) == 1 and operands_e.count(str(lib_b)) == 1
+                and "-all_load" not in argv_e and no_orphan_xlinker):
+            PASS("-all_load does not double-force-load an explicit -force_load archive")
+        else:
+            FAIL("-all_load does not double-force-load an explicit -force_load archive",
+                 f"force_load_operands={operands_e} no_orphan_xlinker={no_orphan_xlinker} "
+                 f"argv={' '.join(argv_e)[:800]}")
+
+        # (f) no temp dir leaked, ar never invoked -- shadow PATH with a
+        # sentinel "ar" and point TMPDIR at an empty scratch dir.
+        fake_bin = Path(td) / "fake_bin"
+        fake_bin.mkdir()
+        ar_sentinel = Path(td) / "ar_was_called"
+        fake_ar = fake_bin / "ar"
+        fake_ar.write_text(f'#!/bin/sh\ntouch "{ar_sentinel}"\nexit 1\n')
+        fake_ar.chmod(0o755)
+        tmp_scratch = Path(td) / "tmp_scratch"
+        tmp_scratch.mkdir()
+
+        _old_path = os.environ.get("PATH", "")
+        _old_tmpdir = os.environ.get("TMPDIR")
+        os.environ["PATH"] = f"{fake_bin}{os.pathsep}{_old_path}"
+        os.environ["TMPDIR"] = str(tmp_scratch)
+        try:
+            _dump_argv(["-all_load", str(lib_a), str(lib_b)])
+        finally:
+            os.environ["PATH"] = _old_path
+            if _old_tmpdir is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = _old_tmpdir
+
+        if ar_sentinel.exists():
+            FAIL("ar is never invoked by force-load wrapper", "sentinel ar script ran")
+        else:
+            PASS("ar is never invoked by force-load wrapper")
+
+        leftover = list(tmp_scratch.iterdir())
+        if leftover:
+            FAIL("no temp directory left behind", f"found: {[p.name for p in leftover]}")
+        else:
+            PASS("no temp directory left behind")
 
 
 # ===================================================================

@@ -15,6 +15,9 @@
  *   - profile "win"  -> is_win=1, is_win_target=1
  *   - conda_prefix   -> $CONDA_PREFIX if set, else "/opt/conda"
  *   - zig_target_arch -> "x86_64" (fixed; not exercised by the golden table)
+ *   - sysroot        -> "" (fixed; mirrors the empty _sr the bash leg
+ *                       resolves in the parity test's tmpdir env -- see the
+ *                       comment at the profile.sysroot assignment below)
  *   - *out_mode_is_cxx is initialized to 1 for "cxx" mode, 0 for "cc" mode
  *     BEFORE calling zig_translate_flags, per the caller-owns-init
  *     convention documented in _translate.inc (R4 only ever downgrades
@@ -60,6 +63,11 @@ int main(int argc, char *argv[]) {
     }
     profile.conda_prefix = conda_prefix;
     profile.zig_target_arch = "x86_64";
+    /* The parity env yields an empty _sr on the bash leg: CONDA_PREFIX is a
+     * tmpdir with no <arch>-conda-linux-gnu/sysroot, and CONDA_BUILD_SYSROOT is
+     * popped by the test (test_flag_translation_parity.py:161). "" is the
+     * faithful mirror. Real sysroot resolution belongs to the Phase 3a shim. */
+    profile.sysroot = "";
 
     /* Caller-owned init per _translate.inc contract: 1 for "cxx", 0 for "cc". */
     int out_mode_is_cxx = (strcmp(mode_name, "cxx") == 0) ? 1 : 0;
