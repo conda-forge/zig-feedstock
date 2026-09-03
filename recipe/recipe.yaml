@@ -12,7 +12,7 @@ context:
   bootstrap_via_upstream: false
 
   # Single switch for langref; build-env export derives from this. Revert to "1" only for local iteration.
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -281,6 +281,7 @@ source:
 
 build:
   number: ${{ build_number }}
+  string: ${{ hash }}_experimental_${{ build_number }}
 
 outputs:
   # ==========================================================================
