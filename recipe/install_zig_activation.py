@@ -26,6 +26,11 @@ import tempfile
 from pathlib import Path
 
 
+def _dbg(msg: str) -> None:
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print(msg, flush=True)
+
+
 def main():
     if os.environ.get("DEBUG_ZIG_BUILD") == "1":
         print("=== Installing Zig Activation Package ===")
@@ -66,7 +71,6 @@ def main():
         print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
         print(f"CONDA_ZIG_HOST: {conda_zig_host}")
         print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
-        print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
 
     # 1. Install activation/deactivation scripts
     install_activation_scripts(
@@ -211,22 +215,6 @@ def _assert_x86_baseline(binary: Path, target: str | None) -> None:
         )
 
 
-def _emulator_prefix() -> list[str]:
-    """qemu-execve argv prefix for running a target-arch zig on the build machine."""
-    qemu_execve = os.environ.get("QEMU_EXECVE", "")
-    if qemu_execve and os.access(qemu_execve, os.X_OK):
-        return [qemu_execve]
-    arch = os.environ.get("QEMU_ARCH", "")
-    found = shutil.which(f"qemu-execve-{arch}") if arch else None
-    if not found:
-        raise RuntimeError(
-            f"Resolved zig is target-arch but no emulator found: "
-            f"QEMU_ARCH={arch!r}, QEMU_EXECVE={qemu_execve!r}. "
-            f"Refusing to exec a foreign binary bare."
-        )
-    return [found]
-
-
 def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple = (), target: str | None = None):
     """Compile a C shim with @PLACEHOLDER@ substitution using zig cc.
 
@@ -258,23 +246,25 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
     zig_bin, zig_is_foreign = _find_zig_compiler()
     # osx-64-on-osx-arm64 is zig_is_foreign but runs under Rosetta, not qemu.
     needs_emulation = os.environ.get("NEEDS_EMULATION", "false").strip().lower() == "true"
-    qemu_prefix = _emulator_prefix() if zig_is_foreign and needs_emulation else []
+    if zig_is_foreign and needs_emulation:
+        raise RuntimeError(
+            "C shim must be compiled by the build-arch zig (CONDA_ZIG_BUILD); "
+            f"resolved a target-arch zig instead: {zig_bin}"
+        )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_src = Path(tmpdir) / src.name
         tmp_src.write_text(content)
         target_args = ["-target", target] if target else []
-        env = None
-        if qemu_prefix:
-            env = dict(os.environ)
-            build_prefix = env.get("BUILD_PREFIX", "")
-            qemu_sysroot = env.get("QEMU_SYSROOT", "")
-            if not env.get("QEMU_LD_PREFIX") and build_prefix and qemu_sysroot:
-                env["QEMU_LD_PREFIX"] = build_prefix + qemu_sysroot
+        # ppc64le: IEEE-128 long double redirects printf to __printfieee128
+        # (glibc 2.32+); this recipe targets 2.17, so pin the double-double ABI.
+        abi_args = ["-mabi=ibmlongdouble"] if (target or "").startswith("powerpc64le") else []
+        _dbg(f"[shim] zig={zig_bin!r} target={target!r} abi={abi_args!r}")
         subprocess.check_call(
             [
-                *qemu_prefix, zig_bin, "cc",
+                zig_bin, "cc",
                 *target_args,
+                *abi_args,
             "-O2",
             "-mcpu=baseline",
             f"-I{src.parent}",
@@ -282,7 +272,6 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
             str(tmp_src),
                 *extra_args,
             ],
-            **({"env": env} if env is not None else {}),
         )
 
     pdb = dst.with_suffix(".pdb")

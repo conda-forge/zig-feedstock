@@ -1,11 +1,11 @@
 schema_version: 1
 
 context:
-  build_number: 1
+  build_number: 0
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
-  snapshot: "1941+71115f0ab"
+  snapshot: "1963+e00c6c439"
   snapshot_ref: "1933"
   build_ref: "1"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
@@ -17,6 +17,9 @@ context:
 
   # Single switch; export derives from this. TEMPORARY "1" skips ~2h langref -- revert to "0" before merge.
   skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
+
+  # runs-on (cross-compiled) and generates-code-for (cross-compilers)
+  skip_long_xbuild: ${{ env.get("SKIP_LONG_XBUILD", default="0") == "1" }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -142,7 +145,12 @@ context:
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
   is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
-  xc_build_platform: ${{ build_platform }}
+  xc_build_platform: >-
+    ${{
+      build_platform                         if is_hosted_xcompiler                 else
+      target_platform                        if is_unhosted_xcompiler               else
+      "unknown_xc_build_platform"
+    }}
 
   xc_build_triplet: ${{ build_triplet if not is_unhosted_xcompiler else target_triplet }}
   xc_build_zig_triplet: ${{ zig_build_triplet if not is_unhosted_xcompiler else zig_target_triplet }}
@@ -164,7 +172,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: efe2e2ede676caa9c7785d5191d61fa5bdbe6bc7f756a963625bc35d73a634e4
+    sha256: f0e3f98d5332fe8a9c9865525ac267465d3ab0709c203f3ee3f3a80d773504be
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -220,12 +228,6 @@ source:
           - patches/ppc64le/0003-linker-redirect-link.zig.patch
           - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
           # Phase 0006: CMake ppc64le lld bundle override.
-          # 0005 (mlongcall) removed 2026-08-11: proven no-op against snapshot 1662.
-          # Its hunks guard on CMAKE_SYSTEM_PROCESSOR STREQUAL "powerpc64le" but the
-          # recipe passes -DCMAKE_SYSTEM_PROCESSOR=ppc64le, so the block never fired
-          # (marker zig-0005-debug absent from the PR #138 ppc64le log); its second
-          # hunk targeted zig2, which _build.sh no longer builds; and build.sh:100-109
-          # already injects -mlongcall via CMAKE_C_FLAGS/CMAKE_CXX_FLAGS regardless.
           - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
       - if: not unix
         then:
@@ -251,32 +253,32 @@ source:
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 7624bef4c57dd4608930f77334a87778f9335a8051d562b7b43ecb254d683489
+            sha256: bde1e44e56610410142d6fcf45925bf94ea31000c5c3a7b6ee95839e7d26c44e
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 0cdc08fadecb11d3abd78c0be006a02cfd03cd8e565ff1c84e12cf9d9916baf7
+            sha256: d2279bff3e09e19473877a96906295145ce237db25278ac53896d279d25cd6e4
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 5a2fffbf7bc7dc4fd391541d7b4be99a46baeae4a757c66c788aa7705529f562
+            sha256: f211067bd3408d70b8b42044f5d022d19bcddfda5e3e8e1f7abf2330bb027fba
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: b2f6b2fa2cd462c10c86fbb160099c1c8848d2d5bc0c1e0c2dc28a73313902ff
+            sha256: d9202688fc47f931fd64cc77b198412b070b21a3669d00ec469b58df35501e7d
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 2a7229463826c35d937582ccaa0ecd444d0f3a6c3e1f936f2d8a82081b9e1169
+            sha256: 39a83fad0c86ddfb947c597b5d0fb72536254f06772b8f6b4464c22cfb94a047
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
           - url: https://ziglang.org/builds/zig-powerpc64le-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 7b526f584ca5befaf3917845d0c43d0569da55c50a579633c991b416fc3fa47f
+            sha256: 561932988a9a7bcbc969ede7bd5c5ca9642746272c492b2bd4a44d3ee067e8ff
             target_directory: zig-bootstrap
 
 build:
@@ -325,8 +327,15 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
+          # auto = absolute GROUP paths for the riscv64 sysroot only. legacy/abs force one form.
+          ZIG_SYSROOT_MODE: ${{ env.get("ZIG_SYSROOT_MODE", default="auto") }}
+
           # Derived from the single skip_langref switch above; do not re-add an env.get here.
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
+          SKIP_LONG_XBUILD: ${{ "1" if skip_long_xbuild else "0" }}
+
+          # Local debug switch.
+          DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
       python:
         skip_pyc_compilation:
           - lib/zig/lldb/pretty_printers.py
@@ -360,7 +369,6 @@ outputs:
                 - libxml2-devel
 
         # Self-hosting: build zig with zig.
-        # build_ref is a MINIMUM: rejects older builds, fails loudly until one is published.
         - if: not bootstrap_via_upstream
           then:
             - 'zig_impl_${{ build_platform }}${{ zig_impl_pin }}'
@@ -434,6 +442,7 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
           - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
         requirements:
           build:
@@ -458,6 +467,7 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
               - python testing/test_dtneeded.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
               - echo "SKIP DT_NEEDED test (non-linux)"
@@ -582,6 +592,7 @@ outputs:
                 - sysroot_${{ target_platform }}
 
       # Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common
+      # presence/size for all three targets is asserted inside _mingw.sh itself.
       - script:
           - if: xc_w64
             then:
@@ -611,41 +622,29 @@ outputs:
           ZIG_TRIPLET: ${{ zig_triplet }}
           CONDA_TRIPLET: ${{ conda_triplet }}
           CROSS_COMPILER: ${{ is_cross_compiler }}
+          SHIM_RUNS_ON_TARGET: ${{ shim_runs_on_target }}
           NATIVE_TRIPLET: ${{ xc_build_triplet }}
           NATIVE_ZIG_TRIPLET: ${{ xc_build_zig_triplet }}
           # Zig toolchain identification (independent of gcc TOOLCHAIN)
-          # Includes -zig suffix so value is directly usable as binary name
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
-
-          LLVM_VERSION: ${{ llvm_version }}
-          QEMU_SYSROOT: ${{ sysroot }}
-          QEMU_ARCH: ${{ qemu_arch }}
           NEEDS_EMULATION: ${{ linux and build_platform != target_platform }}
-          SHIM_RUNS_ON_TARGET: ${{ shim_runs_on_target }}
+
+          DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
     requirements:
       build:
-        - ${{ m2 }}bash
         - python 3.12.*
-        - llvm-tools ${{ llvm_version }}.*
-        - if: linux and build_platform != target_platform
-          then:
-            - ${{ qemu_pkg }}
-        # Need zig to compile the C shim (all cross-compiler lanes, unix included)
+        - llvm-tools ${{ llvm_version }}.*  # llvm-objdump asserts CPU baseline
         - if: is_cross_compiler or is_cross_target
           then:
-            - 'zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}'
-        - if: xc_ppc64le
-          then:
-            - binutils_impl_${{ cross_target_platform_ }} >=2.45
-            - gcc_impl_${{ cross_target_platform_ }} >=14.3
-            - sysroot_${{ target_platform }}
-        - if: not unix
-          then:
-            - ${{ compiler('c') }}
-            - ${{ stdlib("c") }}
+            - zig_impl_${{ build_platform }}${{ zig_impl_pin }}
+            - if: ppc64le
+              then:
+                - binutils_impl_${{ cross_target_platform_ }} >=2.45
+                - gcc_impl_${{ cross_target_platform_ }} >=14.3
+                - sysroot_${{ target_platform }} ${{ _c_v }}.*
       host:
-        - if: not is_cross_compiler
+        - if: not (is_cross_compiler or is_cross_target)
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
@@ -653,7 +652,7 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            - 'zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}'
+            - zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
@@ -683,8 +682,9 @@ outputs:
             - ${{ library }}bin/${{ conda_triplet }}-zig-windres${{ exe }}
             - if: unix
               then:
-                - bin/${{ conda_triplet }}-zig-force-load-cc
-                - bin/${{ conda_triplet }}-zig-force-load-cxx
+                # Compiled multiplexer copies, unix-only (no Windows arm).
+                - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc
+                - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx
             # Native-triplet compiler suite (cross-compiler builds only) —
             # the build machine's own zig-cc/cxx/etc, mirroring the target
             # suite above but keyed on xc_build_triplet instead of conda_triplet.
@@ -700,10 +700,11 @@ outputs:
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-windres${{ exe }}
             - if: is_cross_compiler and unix
               then:
-                - bin/${{ xc_build_triplet }}-zig-force-load-cc
-                - bin/${{ xc_build_triplet }}-zig-force-load-cxx
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cc
+                - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cxx
             # Post-install tests
             - etc/conda/test-files/zig*
+
       - script:
           # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
           - if: unix
@@ -723,19 +724,14 @@ outputs:
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
-          - if: unix
-            then: PYTHONIOENCODING=utf-8 python testing/test_zig_toolchain.py
-          - if: not unix
-            then: set PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
-          # Cross-compiler .exe shim test (non-Unix only)
-          - if: is_cross_compiler and not unix
-            then:
-              - set "CONDA_TRIPLET=${{ conda_triplet }}" && testing\test-cross-shim.bat
-          # Verify zig cc wrapper silently drops /MANIFEST* flags (Windows only).
-          # CMake injects /MANIFEST:NO and /MANIFESTUAC:NO alongside -fuse-ld=lld;
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
+          - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
           # the cc wrapper must filter them before forwarding to zig cc.
           - if: not unix
             then:
+              - if: is_cross_compiler
+                then:
+                  - set "CONDA_TRIPLET=${{ conda_triplet }}" && testing\test-cross-shim.bat
               - echo void f(void){} > %TEMP%\test_manifest.c
               - ${{ conda_triplet }}-zig-cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o %TEMP%\test_manifest.dll %TEMP%\test_manifest.c
               - if not exist %TEMP%\test_manifest.dll exit /b 1
@@ -747,19 +743,22 @@ outputs:
               then:
                 - ${{ qemu_pkg }}
           run:
-            - if: ppc64le
+            - if: (build_platform != target_platform) and linux
               then:
-                - bash >=5.2
-                - libclang-cpp ${{ llvm_version }}.*
+                - ${{ stdlib("c") }}
             - if: linux
               then:
+                # QEMU_LD_PREFIX resolves against the cross_target_platform_ sysroot.
                 - sysroot_${{ cross_target_platform_ }}
-                - binutils_impl_${{ cross_target_platform_ }}
+            - if: ppc64le
+              then:
+                - libclang-cpp ${{ llvm_version }}.*
         files:
           recipe:
             - testing/_test_utils.py
             - testing/test-cross-shim.bat
             - testing/test_zig_toolchain.py
+
       # Verify <triplet>-zig-windres wrapper: -o flag translation works
       - script:
           - if: xc_w64
@@ -773,6 +772,7 @@ outputs:
         requirements:
           build:
             - python >=3.10
+
       # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
       - script:
           - if: xc_w64
@@ -845,11 +845,7 @@ outputs:
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
-                - if: unix
-                  then:
-                    - _zig="${PREFIX}/bin/zig"
-                  else:
-                    - _zig="${PREFIX}/Library/bin/zig.bat"
+                - _zig="${PREFIX}"/${{ library }}bin/zig${{ "" if unix else ".bat" }}
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
               else:
                 - echo "Not testable on this system"
@@ -889,11 +885,7 @@ outputs:
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
-                - if: unix
-                  then:
-                    - _zig="${PREFIX}/bin/zig"
-                  else:
-                    - _zig="${PREFIX}/Library/bin/zig.bat"
+                - _zig="${PREFIX}"/${{ library }}bin/zig${{ "" if unix else ".bat" }}
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc --version
               else:
                 - echo "Not testable on this system"
@@ -910,10 +902,24 @@ outputs:
 
 about:
   homepage: https://ziglang.org/
-  license: MIT AND LicenseRef-Public-Domain
+  license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
   license_file:
     - zig-source/LICENSE
     - building/mingw-defs/DISCLAIMER.PD
+    - zig-source/lib/libcxx/LICENSE.TXT
+    - zig-source/lib/libcxxabi/LICENSE.TXT
+    - zig-source/lib/libunwind/LICENSE.TXT
+    - zig-source/lib/libc/glibc/LICENSES
+    - zig-source/lib/libc/mingw/COPYING
+    - zig-source/lib/libc/musl/COPYRIGHT
+    - zig-source/lib/libc/freebsd/COPYRIGHT
+    - zig-source/lib/libc/wasi/LICENSE
+    - zig-source/lib/libc/wasi/LICENSE-APACHE
+    - zig-source/lib/libc/wasi/LICENSE-APACHE-LLVM
+    - zig-source/lib/libc/wasi/LICENSE-MIT
+    - zig-source/lib/libc/wasi/libc-bottom-half/cloudlibc/LICENSE
+    - zig-source/lib/libc/wasi/libc-top-half/musl/COPYRIGHT
+    - zig-source/lib/libc/wasi/fts/musl-fts/COPYING
   summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
   description: |
     Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
@@ -930,4 +936,4 @@ extra:
     - MementoRC
     - xmnlab
     - tdejager
-  feedstock_name: zig
+  feedstock-name: zig
