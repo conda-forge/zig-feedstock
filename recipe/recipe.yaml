@@ -136,7 +136,7 @@ context:
     }}
 
   qemu_arch: ${{ target_platform | replace("linux-64", "x86_64") | replace("linux-", "") }}
-  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=5"]' if linux and build_platform != target_platform else "" }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=10"]' if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
