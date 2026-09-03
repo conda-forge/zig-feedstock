@@ -26,6 +26,11 @@ import tempfile
 from pathlib import Path
 
 
+def _dbg(msg: str) -> None:
+    if os.environ.get("DEBUG_ZIG_BUILD") == "1":
+        print(msg, flush=True)
+
+
 def main():
     if os.environ.get("DEBUG_ZIG_BUILD") == "1":
         print("=== Installing Zig Activation Package ===")
@@ -34,22 +39,17 @@ def main():
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
     zig_triplet = os.environ.get("ZIG_TRIPLET", "native")
     conda_triplet = os.environ.get("CONDA_TRIPLET", "")
-    # recipe.yaml passes CROSS_COMPILER as a jinja boolean; rattler-build's
-    # serialization of it is version-dependent ("true" <=0.73, "True" >=0.74),
+    # Both booleans are capitalization-normalized: rattler-build's jinja-boolean
+    # serialization is version-dependent and a mismatch fails silently. See
+    # ZIG_RECIPE_LLM_REFERENCE.md §3 "Activation env-var contract".
     cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
-    # so normalize instead of comparing against a literal. A mismatch is silent:
-    # the triplet-prefixed wrapper suite below is simply never installed.
-    # machine. This covers unhosted cross-compilers AND is_cross_target lanes;
-    # UNHOSTED_XCOMPILER missed the latter (its cross_target_platform_ !=
-    # target_platform clause is false there). Same capitalization normalization.
     shim_on_target = os.environ.get("SHIM_RUNS_ON_TARGET", "false").strip().lower() == "true"
 
-    # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
-    target_triplet = os.environ.get("CONDA_TRIPLET", "")
-    is_nonunix = "mingw32" in target_triplet
+    # Unix vs non-Unix (mingw32 = non-Unix)
+    is_nonunix = "mingw32" in conda_triplet
 
     # Cross-target triplet: only set for cross-compiler builds
-    cross_target_triplet = target_triplet if cross_compiler == "true" else ""
+    cross_target_triplet = conda_triplet if cross_compiler == "true" else ""
 
     # Zig toolchain identification — compute from collision-free recipe env vars
     # (CONDA_ZIG_BUILD/HOST in os.environ may be polluted by activation of
@@ -66,7 +66,6 @@ def main():
         print(f"CONDA_ZIG_BUILD: {conda_zig_build}")
         print(f"CONDA_ZIG_HOST: {conda_zig_host}")
         print(f"Platform: {'Non-Unix' if is_nonunix else 'Unix'}")
-        print(f"BUILD_NATIVE_ZIG: {os.environ.get('BUILD_NATIVE_ZIG', '<unset>')}")
 
     # 1. Install activation/deactivation scripts
     install_activation_scripts(
@@ -94,7 +93,7 @@ def main():
 
         print(f"Native triplet: {native_triplet}")
         print(f"Native zig triplet: {native_zig_triplet}")
-        print(f"Target triplet: {target_triplet}")
+        print(f"Target triplet: {conda_triplet}")
 
         # Native-triplet compiler suite (zig-cc/cxx/ar/ranlib/asm/rc/lld/
         # windres/force-load-cc/force-load-cxx targeting the build machine
@@ -114,9 +113,9 @@ def main():
         )
 
         if is_nonunix:
-            install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
+            install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet)
         else:
-            install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
+            install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet)
 
     print("=== Zig Activation Package Installation Complete ===")
 
@@ -211,22 +210,6 @@ def _assert_x86_baseline(binary: Path, target: str | None) -> None:
         )
 
 
-def _emulator_prefix() -> list[str]:
-    """qemu-execve argv prefix for running a target-arch zig on the build machine."""
-    qemu_execve = os.environ.get("QEMU_EXECVE", "")
-    if qemu_execve and os.access(qemu_execve, os.X_OK):
-        return [qemu_execve]
-    arch = os.environ.get("QEMU_ARCH", "")
-    found = shutil.which(f"qemu-execve-{arch}") if arch else None
-    if not found:
-        raise RuntimeError(
-            f"Resolved zig is target-arch but no emulator found: "
-            f"QEMU_ARCH={arch!r}, QEMU_EXECVE={qemu_execve!r}. "
-            f"Refusing to exec a foreign binary bare."
-        )
-    return [found]
-
-
 def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple = (), target: str | None = None):
     """Compile a C shim with @PLACEHOLDER@ substitution using zig cc.
 
@@ -258,23 +241,25 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
     zig_bin, zig_is_foreign = _find_zig_compiler()
     # osx-64-on-osx-arm64 is zig_is_foreign but runs under Rosetta, not qemu.
     needs_emulation = os.environ.get("NEEDS_EMULATION", "false").strip().lower() == "true"
-    qemu_prefix = _emulator_prefix() if zig_is_foreign and needs_emulation else []
+    if zig_is_foreign and needs_emulation:
+        raise RuntimeError(
+            "C shim must be compiled by the build-arch zig (CONDA_ZIG_BUILD); "
+            f"resolved a target-arch zig instead: {zig_bin}"
+        )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_src = Path(tmpdir) / src.name
         tmp_src.write_text(content)
         target_args = ["-target", target] if target else []
-        env = None
-        if qemu_prefix:
-            env = dict(os.environ)
-            build_prefix = env.get("BUILD_PREFIX", "")
-            qemu_sysroot = env.get("QEMU_SYSROOT", "")
-            if not env.get("QEMU_LD_PREFIX") and build_prefix and qemu_sysroot:
-                env["QEMU_LD_PREFIX"] = build_prefix + qemu_sysroot
+        # ppc64le: IEEE-128 long double redirects printf to __printfieee128
+        # (glibc 2.32+); this recipe targets 2.17, so pin the double-double ABI.
+        abi_args = ["-mabi=ibmlongdouble"] if (target or "").startswith("powerpc64le") else []
+        _dbg(f"[shim] zig={zig_bin!r} target={target!r} abi={abi_args!r}")
         subprocess.check_call(
             [
-                *qemu_prefix, zig_bin, "cc",
+                zig_bin, "cc",
                 *target_args,
+                *abi_args,
             "-O2",
             "-mcpu=baseline",
             f"-I{src.parent}",
@@ -282,7 +267,6 @@ def _compile_c_shim(src: Path, dst: Path, replacements: dict, extra_args: tuple 
             str(tmp_src),
                 *extra_args,
             ],
-            **({"env": env} if env is not None else {}),
         )
 
     pdb = dst.with_suffix(".pdb")
@@ -481,7 +465,7 @@ def install_zig_cc_wrappers(
 
 def install_unix_cross_wrappers(
     prefix: Path, recipe_dir: Path,
-    native_triplet: str, target_triplet: str, zig_triplet: str,
+    native_triplet: str, conda_triplet: str, zig_triplet: str,
 ):
     """Install Unix cross-compiler wrapper from template."""
     bin_dir = prefix / "bin"
@@ -499,14 +483,14 @@ def install_unix_cross_wrappers(
     }
     _install_template(
         recipe_dir / "building" / "cross-zig.sh",
-        bin_dir / f"{target_triplet}-zig",
+        bin_dir / f"{conda_triplet}-zig",
         replacements, executable=True,
     )
 
 
 def install_nonunix_cross_wrappers(
     prefix: Path, recipe_dir: Path,
-    native_triplet: str, target_triplet: str, zig_triplet: str,
+    native_triplet: str, conda_triplet: str, zig_triplet: str,
 ):
     """Install non-Unix cross-compiler .exe shim (replaces .bat/.cmd).
 
@@ -529,7 +513,7 @@ def install_nonunix_cross_wrappers(
     }
     _compile_c_shim(
         recipe_dir / "building" / "cross-zig-shim.c",
-        bin_dir / f"{target_triplet}-zig.exe",
+        bin_dir / f"{conda_triplet}-zig.exe",
         replacements,
         extra_args=("-lkernel32",),
     )

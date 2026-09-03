@@ -321,6 +321,25 @@ def timed_out(proc: subprocess.CompletedProcess[str]) -> bool:
 _can_execute_cache: dict[tuple[str, str | None], bool] = {}
 
 
+def _probe_diag(triplet: str, stage: str, proc: subprocess.CompletedProcess[str],
+                note: str = "") -> None:
+    """Explain a can_execute_target failure.
+
+    A silent False is indistinguishable from a broken probe, which is exactly
+    the ambiguity that made the ppc64le skips unreadable.
+    """
+    why = "TIMEOUT" if timed_out(proc) else f"rc={proc.returncode}"
+    line = f"  can_execute_target({triplet}): {stage} failed ({why})"
+    if note:
+        line += f" -- {note}"
+    print(line)
+    for label in ("stdout", "stderr"):
+        text = (getattr(proc, label, "") or "").strip()
+        if text:
+            for out in text.splitlines()[-15:]:
+                print(f"    {stage} {label}: {out}")
+
+
 def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
     """Measure -- don't infer -- whether a `triplet` binary can run here.
 
@@ -344,10 +363,17 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
             r_compile = _run([zig_cc, "-o", str(exe), str(src)], cwd=td,
                              target=triplet, timeout=120)
             produced = exe if exe.exists() else exe.with_suffix(".exe")
-            if r_compile.returncode == 0 and produced.exists():
+            if r_compile.returncode != 0 or not produced.exists():
+                _probe_diag(triplet, "compile", r_compile,
+                            "" if produced.exists() else "no output binary produced")
+            else:
                 r_exec = _run([str(produced)], target=triplet, timeout=120)
                 result = r_exec.returncode == 0
-    except Exception:
+                if not result:
+                    _probe_diag(triplet, "exec", r_exec)
+    except Exception as exc:
+        print(f"  can_execute_target({triplet}): probe raised "
+              f"{type(exc).__name__}: {exc}")
         result = False
     _can_execute_cache[key] = result
     return result
