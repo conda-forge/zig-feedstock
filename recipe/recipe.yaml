@@ -5,7 +5,7 @@ context:
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
-  snapshot: "1963+e00c6c439"
+  snapshot: "1970+67f39b551"
   snapshot_ref: "1933"
   build_ref: "1"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
@@ -140,7 +140,7 @@ context:
     }}
 
   qemu_arch: ${{ target_platform | replace("linux-64", "x86_64") | replace("linux-", "") }}
-  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=5"]' if linux and build_platform != target_platform else "" }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=10"]' if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
@@ -172,7 +172,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: f0e3f98d5332fe8a9c9865525ac267465d3ab0709c203f3ee3f3a80d773504be
+    sha256: ddb874974eadcf0e0f21d794f37388eaeba6c97018d7b85afa46a3b9d183ff81
     patches:
       # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
       # macho-lld-support must apply before prefer-shared-libcxx because the
@@ -253,32 +253,32 @@ source:
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: bde1e44e56610410142d6fcf45925bf94ea31000c5c3a7b6ee95839e7d26c44e
+            sha256: 0b8cf47f4042a1a043d3eafe1baf6b12f3c344e08fc0577434b9f028012af01d
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: d2279bff3e09e19473877a96906295145ce237db25278ac53896d279d25cd6e4
+            sha256: 6e6131f80b92b5e47c454e2c5f2dd697c12634eaa5c10eff31c81ebd29b6330b
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: f211067bd3408d70b8b42044f5d022d19bcddfda5e3e8e1f7abf2330bb027fba
+            sha256: c0bd8afcd58ef7d066c47a09a79de42c91a57efa973b5a096c3926f47e36d5d0
             target_directory: zig-bootstrap
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: d9202688fc47f931fd64cc77b198412b070b21a3669d00ec469b58df35501e7d
+            sha256: 878323a2abafc101741ce48f6af9832177269f6c3261ccc1d2272db5d1a83ab2
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 39a83fad0c86ddfb947c597b5d0fb72536254f06772b8f6b4464c22cfb94a047
+            sha256: 7f3b62d7d31baf7b1a6a3beac7b5a67664d0cd04496b0bf67e4760fa99ee034c
             target_directory: zig-bootstrap
       - if: build_platform == "linux-ppc64le"
         then:
           - url: https://ziglang.org/builds/zig-powerpc64le-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 561932988a9a7bcbc969ede7bd5c5ca9642746272c492b2bd4a44d3ee067e8ff
+            sha256: d54b86517ac5bf20ca2a3f3776f79da4827144f77c2f8bef69418274cf90b0ae
             target_directory: zig-bootstrap
 
 build:
@@ -454,7 +454,7 @@ outputs:
             - if: osx
               then:
                 - libcxx
-            - if: linux
+            - if: linux and build_platform != target_platform
               then:
                 - sysroot_${{ target_platform }}
         files:
@@ -488,29 +488,26 @@ outputs:
             - testing/test_dtneeded.py
       # Functional test using triplet-prefixed binary
       - script:
-          - if: linux or is_native or is_rosetta
-            then:
-              - if: unix
-                then:
-                  - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
-                  - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
-                  - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-                  - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
-                  - _zig="${PREFIX}/bin/${{ conda_triplet }}-zig"
-                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
-                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" zen
-                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" init
-                  - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" test zig-source/test/behavior.zig
-                else:
-                  - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
-                  - ${{ conda_triplet }}-zig version
-                  - ${{ conda_triplet }}-zig zen
-                  - ${{ conda_triplet }}-zig init
-                  - ${{ conda_triplet }}-zig test zig-source/test/behavior.zig
-            else:
-              - echo "Skip test on non-emulated archs"
+          interpreter: bash
+          content:
+            - if: is_testable
+              then:
+                - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+                - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+                - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
+                - _zig="${PREFIX}/${{ library }}bin/${{ conda_triplet }}-zig"
+                - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
+                - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" zen
+                - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" init
+                - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" test zig-source/test/behavior.zig
+              else:
+                - echo "Not testable on this system"
         requirements:
           build:
+            - if: not unix
+              then:
+                - ${{ m2 }}bash >=5.2
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -535,54 +532,37 @@ outputs:
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
-          - if: unix
-            then:
-              - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
-            else:
-              - set ZIG_GLOBAL_CACHE_DIR=%TEMP%\zig-cache
-          - if: linux and not ppc64le
-            then:
-              # Linux: test with ELF --dynamic-list
-              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
-              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
-              - _zig="${PREFIX}/bin/${{ conda_triplet }}-zig"
-              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
-              - echo '{ main; };' > /tmp/test_lld.dyn
-              - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
-              - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
-          - if: not unix
-            then:
-              # NonUnix: test with COFF -- verify -fuse-ld=lld compiles+links+runs
-              # Running the binary validates MSYS2 UCRT DLL resolution (api-ms-win-crt-*)
-              - echo int main(void){return 0;} > %TEMP%\test_lld.c
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o %TEMP%\test_lld.exe %TEMP%\test_lld.c
-              - '%TEMP%\test_lld.exe'
-              - echo PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)
-          - if: osx and (is_native or is_rosetta) and not arm64
-            then:
-              # macOS (native x86_64 only): test with Mach-O -exported_symbols_list via LLD.
-              # Native osx-arm64 is excluded below -- self-hosted backend panic, see arm64 arm.
-              - echo 'int main(void){return 0;}' > /tmp/test_lld.c
-              - echo '_main' > /tmp/test_lld.exp
-              - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
-              - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
-          - if: osx and is_native and arm64
-            then:
-              # Native osx-arm64 is the only lane where build_platform == target_platform == host,
-              # so zig uses its self-hosted aarch64 backend instead of the LLVM backend used by
-              # every other lane (incl. native osx-64). That self-hosted backend panics with
-              # "reached unreachable code" (SIGABRT) on this exact `zig cc -fuse-ld=lld
-              # -Wl,-exported_symbols_list,...` invocation -- an upstream zig 0.17 self-hosted
-              # codegen bug, not an lld or recipe issue. Re-enable once upstream fixes it.
-              - echo "Skip -fuse-ld=lld Mach-O test on native osx-arm64 (upstream self-hosted-backend panic)"
-          - if: ppc64le and linux
-            then:
-              # LLD lacks ppc64le relocation support; wrapper guard tested via
-              # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
-              - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
+          interpreter: bash
+          content:
+            - if: is_testable and not ppc64le
+              then:
+                - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+                - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+                - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
+                - _zig="${PREFIX}"/${{ library }}bin/${{ conda_triplet }}"-zig"${{ exe }}
+                - echo 'int main(void){return 0;}' > /tmp/test_lld.c
+                - if: osx
+                  then:
+                    - echo '_main' > /tmp/test_lld.exp
+                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
+                    - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
+                - if: linux
+                  then:
+                    - echo '{ main; };' > /tmp/test_lld.dyn
+                    - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+                    - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
+                - if: not unix
+                  then:
+                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o /tmp/test_lld.exe /tmp/test_lld.c && /tmp/test_lld.exe
+                    - echo "PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)"
+              else:
+                # LLD lacks ppc64le relocation support; wrapper guard tested via
+                # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
+                - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
         requirements:
           build:
+            - ${{ m2 }}bash >=5.2
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -746,9 +726,9 @@ outputs:
             - if: (build_platform != target_platform) and linux
               then:
                 - ${{ stdlib("c") }}
-            - if: linux
+            - if: linux and is_cross_compiler
               then:
-                # QEMU_LD_PREFIX resolves against the cross_target_platform_ sysroot.
+                # On cross-compilers, QEMU_LD_PREFIX needs to resolve against the cross_target_platform_ sysroot.
                 - sysroot_${{ cross_target_platform_ }}
             - if: ppc64le
               then:
