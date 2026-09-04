@@ -12,6 +12,9 @@ cxx_compiler_version:
     then:
       - "21"
 
+channel_targets:
+  - conda-forge zig_experimental
+
 zig_compiler:
   - zig
 zig_compiler_version:
@@ -28,4 +31,3 @@ cross_target_platform_:
   - win-32
   - win-64
   - win-arm64
-

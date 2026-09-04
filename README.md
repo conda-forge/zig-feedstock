@@ -1,7 +1,7 @@
 About zig-feedstock
 ===================
 
-Feedstock license: [BSD-3-Clause](https://github.com/conda-forge/zig-feedstock/blob/main/LICENSE.txt)
+Feedstock license: [BSD-3-Clause](https://github.com/conda-forge/zig-feedstock-2-feedstock/blob/main/LICENSE.txt)
 
 Home: https://ziglang.org/
 
@@ -27,8 +27,8 @@ Current build status
 <table><tr>
     <td>GitHub Actions</td>
     <td>
-      <a href="https://github.com/conda-forge/zig-feedstock/actions/workflows/conda-build.yml">
-        <img src="https://github.com/conda-forge/zig-feedstock/actions/workflows/conda-build.yml/badge.svg?event=push&branch=main">
+      <a href="https://github.com/conda-forge/zig-feedstock-2-feedstock/actions/workflows/conda-build.yml">
+        <img src="https://github.com/conda-forge/zig-feedstock-2-feedstock/actions/workflows/conda-build.yml/badge.svg?event=push&branch=main">
       </a>
     </td>
   </tr>
@@ -38,8 +38,8 @@ Current build status
     <td>
       <details>
         <summary>
-          <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
-            <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main">
+          <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+            <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main">
           </a>
         </summary>
         <table>
@@ -47,29 +47,29 @@ Current build status
           <tbody><tr>
               <td>osx_64_cross_target_platform_osx-64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_cross_target_platform_osx-64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_cross_target_platform_osx-64" alt="variant">
                 </a>
               </td>
             </tr><tr>
               <td>osx_64_cross_target_platform_osx-arm64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_cross_target_platform_osx-arm64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_cross_target_platform_osx-arm64" alt="variant">
                 </a>
               </td>
             </tr><tr>
               <td>osx_arm64_cross_target_platform_osx-64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-64" alt="variant">
                 </a>
               </td>
             </tr><tr>
               <td>osx_arm64_cross_target_platform_osx-arm64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-arm64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-2-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_cross_target_platform_osx-arm64" alt="variant">
                 </a>
               </td>
             </tr>
@@ -108,10 +108,10 @@ Current release info
 Installing zig
 ==============
 
-Installing `zig` from the `conda-forge` channel can be achieved by adding `conda-forge` to your channels with:
+Installing `zig` from the `conda-forge/label/zig_experimental` channel can be achieved by adding `conda-forge/label/zig_experimental` to your channels with:
 
 ```
-conda config --add channels conda-forge
+conda config --add channels conda-forge/label/zig_experimental
 conda config --set channel_priority strict
 ```
 
@@ -157,7 +157,7 @@ It is possible to list all of the versions of `zig` available on your platform:
 <summary>With conda</summary>
 
 ```
-conda search zig --channel conda-forge
+conda search zig --channel conda-forge/label/zig_experimental
 ```
 
 </details>
@@ -166,7 +166,7 @@ conda search zig --channel conda-forge
 <summary>With mamba</summary>
 
 ```
-mamba search zig --channel conda-forge
+mamba search zig --channel conda-forge/label/zig_experimental
 ```
 
 </details>
@@ -175,7 +175,7 @@ mamba search zig --channel conda-forge
 <summary>With pixi</summary>
 
 ```
-pixi search zig --channel conda-forge
+pixi search zig --channel conda-forge/label/zig_experimental
 ```
 
 </details>
@@ -185,13 +185,13 @@ pixi search zig --channel conda-forge
 
 ```
 # Search all versions available on your platform:
-mamba repoquery search zig --channel conda-forge
+mamba repoquery search zig --channel conda-forge/label/zig_experimental
 
 # List packages depending on `zig`:
-mamba repoquery whoneeds zig --channel conda-forge
+mamba repoquery whoneeds zig --channel conda-forge/label/zig_experimental
 
 # List dependencies of `zig`:
-mamba repoquery depends zig --channel conda-forge
+mamba repoquery depends zig --channel conda-forge/label/zig_experimental
 ```
 
 </details>
