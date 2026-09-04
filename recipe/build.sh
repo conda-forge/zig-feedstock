@@ -132,14 +132,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   )
 fi
 
-# Strip host-arch flags injected by conda-build for cross builds.
-# Safe for ppc64le/aarch64: intentional target-arch flags (e.g. -mlongcall,
-# -march=armv8-a) are added in target-specific blocks elsewhere and don't
-# match the sanitize filter for their own arch family.
-if is_cross; then
-  sanitize_and_export_cross_flags
-fi
-
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
 # Phase 2 (zig build langref) handles it separately when stage3 is runnable.
 EXTRA_ZIG_ARGS+=(-Dno-langref)
@@ -207,6 +199,10 @@ if is_linux && is_cross; then
   _qemu_shadow_dir=""
   if [ -n "${_zig_qemu}" ]; then
     export QEMU_EXECVE="${_zig_qemu}"
+    case "$(basename "${_zig_qemu}")" in
+      qemu-execve-*) export QEMU_EXECVE_NATIVE_PASSTHROUGH=1 ;;
+      *) dbg echo "qemu: ${_zig_qemu} is not qemu-execve-*; native passthrough NOT armed" ;;
+    esac
     _qemu_shadow_dir="$(mktemp -d)"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${target_platform#linux-}"

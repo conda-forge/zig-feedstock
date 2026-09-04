@@ -115,6 +115,12 @@ def _run(
     """
     if target is not None:
         cmd = emulation_prefix(target) + cmd
+    elif cmd:
+        # No explicit target: sniff argv[0] so callers don't have to know
+        # they're invoking a target-arch binary (e.g. riscv64-...-zig-cc).
+        foreign = _elf_foreign_arch(cmd[0])
+        if foreign and foreign != _canonical_arch(_native_machine):
+            cmd = _emulation_prefix_for_arch(foreign) + cmd
     try:
         proc = subprocess.Popen(
             cmd,
@@ -183,6 +189,15 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
     if not zig_cc:
         _can_execute_cache[key] = False
         return False
+
+    def _report(stage: str, proc: subprocess.CompletedProcess[str]) -> None:
+        kind = f"{stage} (timeout)" if timed_out(proc) else stage
+        tail = "\n".join(proc.stderr.splitlines()[-20:])[-2000:]
+        print(
+            f"can_execute_target[{triplet}]: {kind} failed rc={proc.returncode}\n{tail}",
+            file=sys.stderr,
+        )
+
     result = False
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -192,12 +207,25 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
             # target= on the compile too: on an unhosted lane zig_cc is itself a
             # target-arch binary and needs the emulator.
             r_compile = _run([zig_cc, "-o", str(exe), str(src)], cwd=td,
-                             target=triplet, timeout=120)
+                             target=triplet, timeout=600)
             produced = exe if exe.exists() else exe.with_suffix(".exe")
-            if r_compile.returncode == 0 and produced.exists():
-                r_exec = _run([str(produced)], target=triplet, timeout=120)
+            if r_compile.returncode != 0:
+                _report("compile", r_compile)
+            elif not produced.exists():
+                print(
+                    f"can_execute_target[{triplet}]: compile succeeded, no output binary",
+                    file=sys.stderr,
+                )
+            else:
+                r_exec = _run([str(produced)], target=triplet, timeout=600)
+                if r_exec.returncode != 0:
+                    _report("execute", r_exec)
                 result = r_exec.returncode == 0
-    except Exception:
+    except Exception as exc:
+        print(
+            f"can_execute_target[{triplet}]: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         result = False
     _can_execute_cache[key] = result
     return result
@@ -276,11 +304,9 @@ def _qemu_binary_arch(arch: str) -> str:
     return "ppc64le" if canonical == "powerpc64le" else canonical
 
 
-def emulation_prefix(triplet: str) -> list[str]:
-    """Emulator argv prefix for running a `triplet` binary, or [] if native."""
-    if not is_foreign_target(triplet):
-        return []
-    arch = _qemu_binary_arch(target_arch_from_triplet(triplet))
+def _emulation_prefix_for_arch(canonical_arch: str) -> list[str]:
+    """Emulator argv prefix for `canonical_arch`, or [] if none is found."""
+    arch = _qemu_binary_arch(canonical_arch)
     qemu_execve = os.environ.get("QEMU_EXECVE", "")
     # $QEMU_EXECVE is target_platform-keyed and there is one per lane, so it is
     # honoured only when it names the arch actually requested; otherwise fall
@@ -293,11 +319,49 @@ def emulation_prefix(triplet: str) -> list[str]:
     return [found] if found else []
 
 
+def emulation_prefix(triplet: str) -> list[str]:
+    """Emulator argv prefix for running a `triplet` binary, or [] if native."""
+    if not is_foreign_target(triplet):
+        return []
+    return _emulation_prefix_for_arch(target_arch_from_triplet(triplet))
+
+
+def _elf_foreign_arch(exe: str) -> str | None:
+    """Canonical arch of `exe`'s e_machine, or None (not ELF / unreadable).
+
+    Lets `_run` auto-detect a target-arch binary from argv[0] alone. Any read
+    failure degrades to None -- same as "no prefix", i.e. today's behaviour.
+    """
+    resolved = shutil.which(exe) or exe
+    try:
+        with open(resolved, "rb") as f:
+            header = f.read(20)
+        if len(header) < 20 or header[:4] != b"\x7fELF":
+            return None
+        ei_class = header[4]  # 1=32-bit, 2=64-bit
+        ei_data = header[5]  # 1=little-endian, 2=big-endian
+        endian = "little" if ei_data == 1 else "big"
+        e_machine = int.from_bytes(header[18:20], endian)
+    except (OSError, IndexError):
+        return None
+    if e_machine == 0xF3:  # EM_RISCV: class disambiguates the two widths
+        return "riscv64" if ei_class == 2 else "riscv32"
+    machine_map = {
+        0x03: "i386",  # EM_386
+        0x3E: "x86_64",  # EM_X86_64
+        0x28: "arm",  # EM_ARM
+        0xB7: "aarch64",  # EM_AARCH64
+        0x15: "powerpc64le",  # EM_PPC64 -- matches _canonical_arch's ppc64le spelling
+        0x16: "s390x",  # EM_S390
+    }
+    return machine_map.get(e_machine)
+
+
 def check_emulation_env(triplet: str) -> bool:
     """Preflight emulation setup. True if safe to proceed (native is a no-op).
 
-    Not yet called anywhere in this tree; present so the mechanism matches the
-    0.17 track.
+    Callers may ignore the bool: FAIL() records into the shared _results, which
+    main() turns into a non-zero exit.
     """
     if not is_foreign_target(triplet):
         return True

@@ -47,6 +47,7 @@ from _test_utils import (
     FAIL,
     WARN,
     SKIP,
+    check_emulation_env,
     resolve_test_prefix,
     setup_zig_global_cache_dir,
     timed_out,
@@ -806,6 +807,8 @@ def main() -> int:
     print(f"  ppc64le       = {is_ppc64le}")
     print(f"  emulated      = {_is_emulated}")
     print()
+
+    check_emulation_env(_conda_triplet)
 
     test_libcxx_fallback_static()
     test_libcxx_probe_paths()

@@ -5,7 +5,7 @@ Feedstock license: [BSD-3-Clause](https://github.com/conda-forge/zig-feedstock/b
 
 Home: https://ziglang.org/
 
-Package license: MIT AND LicenseRef-Public-Domain
+Package license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
 
 Summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
 

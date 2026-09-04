@@ -1,7 +1,7 @@
-# Purpose: Lower exe.max_rss from 8 GB to 7.5 GB to fit conda-forge Windows runners
+# Purpose: Lower exe.max_rss from 8 GB to 7.8 GB to fit conda-forge Windows runners
 # Affects: build.zig
 # Upstream: not filed
-# Drop-when: Upstream lowers base value to <=7.5 GB
+# Drop-when: Upstream lowers base value to <=7.8 GB (build.sh --maxrss global budget)
 # Last-verified: 2026-05-13 (zig 0.16.0)
 
 --- a/build.zig

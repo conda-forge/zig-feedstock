@@ -11,23 +11,51 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 
+from _test_utils import _run, check_emulation_env
+
 
 def _build(triplet: str, src: str, binary: str, zig_target: str,
            *, verbose: bool = False, extra: list[str] | None = None) -> subprocess.CompletedProcess:
-    cmd = [f"{triplet}-zig", "cc"]
+    # qemu-user does not PATH-search argv[0]; resolve it ourselves.
+    zig = shutil.which(f"{triplet}-zig") or f"{triplet}-zig"
+    cmd = [zig, "cc"]
     if verbose:
         cmd += ["-v", "-Wl,--verbose"]
     if extra:
         cmd += extra
     cmd += ["-target", zig_target, "-Wl,--no-as-needed", "-lm", src, "-o", binary]
-    return subprocess.run(cmd, capture_output=True, text=True)
+    # _run's 30s default is too low: clang+LLD under qemu has measured >149s.
+    return _run(cmd, timeout=600, target=triplet)
+
+
+def _dump_verbose(triplet: str, src: str, binary: str, zig_target: str) -> None:
+    # Diagnostic re-run 1: bare, with -v (zig cc default linker path)
+    print("--- re-running with -v -Wl,--verbose (default linker) ---", file=sys.stderr)
+    verbose1 = _build(triplet, src, binary + ".v1", zig_target, verbose=True)
+    print("[exit_code]", verbose1.returncode, file=sys.stderr)
+    print("[stdout]", file=sys.stderr)
+    print(verbose1.stdout, file=sys.stderr)
+    print("[stderr]", file=sys.stderr)
+    print(verbose1.stderr, file=sys.stderr)
+
+    # Diagnostic re-run 2: with -fuse-ld=lld forced, -v -Wl,--verbose
+    print("--- re-running with -v -Wl,--verbose -fuse-ld=lld (forced LLD) ---", file=sys.stderr)
+    verbose2 = _build(triplet, src, binary + ".v2", zig_target, verbose=True, extra=["-fuse-ld=lld"])
+    print("[exit_code]", verbose2.returncode, file=sys.stderr)
+    print("[stdout]", file=sys.stderr)
+    print(verbose2.stdout, file=sys.stderr)
+    print("[stderr]", file=sys.stderr)
+    print(verbose2.stderr, file=sys.stderr)
 
 
 def main(triplet: str, zig_target: str = "") -> int:
+    if not check_emulation_env(triplet):
+        return 1
     if not zig_target:
         zig_target = triplet.replace("-conda", "") + ".2.17"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -42,6 +70,7 @@ def main(triplet: str, zig_target: str = "") -> int:
             print("FAIL: zig cc failed to compile/link", file=sys.stderr)
             print(result.stdout, file=sys.stderr)
             print(result.stderr, file=sys.stderr)
+            _dump_verbose(triplet, src, binary, zig_target)
             return 1
 
         readelf = subprocess.run(
@@ -70,23 +99,7 @@ def main(triplet: str, zig_target: str = "") -> int:
             if val is not None:
                 print(f"{key}={val}", file=sys.stderr)
 
-        # Diagnostic re-run 1: bare, with -v (zig cc default linker path)
-        print("--- re-running with -v -Wl,--verbose (default linker) ---", file=sys.stderr)
-        verbose1 = _build(triplet, src, binary + ".v1", zig_target, verbose=True)
-        print("[exit_code]", verbose1.returncode, file=sys.stderr)
-        print("[stdout]", file=sys.stderr)
-        print(verbose1.stdout, file=sys.stderr)
-        print("[stderr]", file=sys.stderr)
-        print(verbose1.stderr, file=sys.stderr)
-
-        # Diagnostic re-run 2: with -fuse-ld=lld forced, -v -Wl,--verbose
-        print("--- re-running with -v -Wl,--verbose -fuse-ld=lld (forced LLD) ---", file=sys.stderr)
-        verbose2 = _build(triplet, src, binary + ".v2", zig_target, verbose=True, extra=["-fuse-ld=lld"])
-        print("[exit_code]", verbose2.returncode, file=sys.stderr)
-        print("[stdout]", file=sys.stderr)
-        print(verbose2.stdout, file=sys.stderr)
-        print("[stderr]", file=sys.stderr)
-        print(verbose2.stderr, file=sys.stderr)
+        _dump_verbose(triplet, src, binary, zig_target)
         return 1
 
 
