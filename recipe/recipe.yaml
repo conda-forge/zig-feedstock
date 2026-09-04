@@ -631,9 +631,9 @@ outputs:
             - zig_impl_${{ build_platform }} ${{ abi_version }}.*
             - if: ppc64le
               then:
+                - ${{ stdlib('c') }}
                 - binutils_impl_${{ cross_target_platform_ }} >=2.45
                 - gcc_impl_${{ cross_target_platform_ }} >=14.3
-                - sysroot_${{ target_platform }} >=${{ c_stdlib_version }}
       host:
         - if: not (is_cross_compiler or is_cross_target)
           then:
