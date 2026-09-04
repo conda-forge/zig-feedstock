@@ -39,22 +39,17 @@ def main():
     recipe_dir = Path(os.environ.get("RECIPE_DIR", Path(__file__).parent))
     zig_triplet = os.environ.get("ZIG_TRIPLET", "native")
     conda_triplet = os.environ.get("CONDA_TRIPLET", "")
-    # recipe.yaml passes CROSS_COMPILER as a jinja boolean; rattler-build's
-    # serialization of it is version-dependent ("true" <=0.73, "True" >=0.74),
+    # Both booleans are capitalization-normalized: rattler-build's jinja-boolean
+    # serialization is version-dependent and a mismatch fails silently. See
+    # ZIG_RECIPE_LLM_REFERENCE.md §3 "Activation env-var contract".
     cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
-    # so normalize instead of comparing against a literal. A mismatch is silent:
-    # the triplet-prefixed wrapper suite below is simply never installed.
-    # machine. This covers unhosted cross-compilers AND is_cross_target lanes;
-    # UNHOSTED_XCOMPILER missed the latter (its cross_target_platform_ !=
-    # target_platform clause is false there). Same capitalization normalization.
     shim_on_target = os.environ.get("SHIM_RUNS_ON_TARGET", "false").strip().lower() == "true"
 
-    # Check target triplet for Unix vs non-Unix (mingw32 = non-Unix)
-    target_triplet = os.environ.get("CONDA_TRIPLET", "")
-    is_nonunix = "mingw32" in target_triplet
+    # Unix vs non-Unix (mingw32 = non-Unix)
+    is_nonunix = "mingw32" in conda_triplet
 
     # Cross-target triplet: only set for cross-compiler builds
-    cross_target_triplet = target_triplet if cross_compiler == "true" else ""
+    cross_target_triplet = conda_triplet if cross_compiler == "true" else ""
 
     # Zig toolchain identification — compute from collision-free recipe env vars
     # (CONDA_ZIG_BUILD/HOST in os.environ may be polluted by activation of
@@ -98,7 +93,7 @@ def main():
 
         print(f"Native triplet: {native_triplet}")
         print(f"Native zig triplet: {native_zig_triplet}")
-        print(f"Target triplet: {target_triplet}")
+        print(f"Target triplet: {conda_triplet}")
 
         # Native-triplet compiler suite (zig-cc/cxx/ar/ranlib/asm/rc/lld/
         # windres/force-load-cc/force-load-cxx targeting the build machine
@@ -118,9 +113,9 @@ def main():
         )
 
         if is_nonunix:
-            install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
+            install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet)
         else:
-            install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, target_triplet, zig_triplet)
+            install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet)
 
     print("=== Zig Activation Package Installation Complete ===")
 
@@ -470,7 +465,7 @@ def install_zig_cc_wrappers(
 
 def install_unix_cross_wrappers(
     prefix: Path, recipe_dir: Path,
-    native_triplet: str, target_triplet: str, zig_triplet: str,
+    native_triplet: str, conda_triplet: str, zig_triplet: str,
 ):
     """Install Unix cross-compiler wrapper from template."""
     bin_dir = prefix / "bin"
@@ -488,14 +483,14 @@ def install_unix_cross_wrappers(
     }
     _install_template(
         recipe_dir / "building" / "cross-zig.sh",
-        bin_dir / f"{target_triplet}-zig",
+        bin_dir / f"{conda_triplet}-zig",
         replacements, executable=True,
     )
 
 
 def install_nonunix_cross_wrappers(
     prefix: Path, recipe_dir: Path,
-    native_triplet: str, target_triplet: str, zig_triplet: str,
+    native_triplet: str, conda_triplet: str, zig_triplet: str,
 ):
     """Install non-Unix cross-compiler .exe shim (replaces .bat/.cmd).
 
@@ -518,7 +513,7 @@ def install_nonunix_cross_wrappers(
     }
     _compile_c_shim(
         recipe_dir / "building" / "cross-zig-shim.c",
-        bin_dir / f"{target_triplet}-zig.exe",
+        bin_dir / f"{conda_triplet}-zig.exe",
         replacements,
         extra_args=("-lkernel32",),
     )
