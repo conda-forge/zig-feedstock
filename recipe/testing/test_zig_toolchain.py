@@ -38,6 +38,7 @@ from _test_utils import (
     _results,
     _run,
     can_execute_target,
+    check_emulation_env,
     timed_out,
     PASS,
     FAIL,
@@ -1541,6 +1542,8 @@ def main() -> int:
     print(f"  build OS        = {sys.platform}")
     print(f"  wrapper dir     = {_wrapper_dir}")
     print()
+
+    check_emulation_env(_triplet)
 
     # Overlay patched native zig if stashed by build (BUILD_NATIVE_ZIG=true)
     # Must target the NATIVE zig binary (CONDA_ZIG_BUILD), not the cross wrapper.

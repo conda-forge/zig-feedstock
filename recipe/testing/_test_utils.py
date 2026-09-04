@@ -360,8 +360,8 @@ def _elf_foreign_arch(exe: str) -> str | None:
 def check_emulation_env(triplet: str) -> bool:
     """Preflight emulation setup. True if safe to proceed (native is a no-op).
 
-    Not yet called anywhere in this tree; present so the mechanism matches the
-    0.17 track.
+    Callers may ignore the bool: FAIL() records into the shared _results, which
+    main() turns into a non-zero exit.
     """
     if not is_foreign_target(triplet):
         return True

@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 
-from _test_utils import _run
+from _test_utils import _run, check_emulation_env
 
 
 def _build(triplet: str, src: str, binary: str, zig_target: str,
@@ -54,6 +54,8 @@ def _dump_verbose(triplet: str, src: str, binary: str, zig_target: str) -> None:
 
 
 def main(triplet: str, zig_target: str = "") -> int:
+    if not check_emulation_env(triplet):
+        return 1
     if not zig_target:
         zig_target = triplet.replace("-conda", "") + ".2.17"
     with tempfile.TemporaryDirectory() as tmpdir:
