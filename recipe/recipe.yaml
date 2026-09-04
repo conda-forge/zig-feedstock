@@ -6,8 +6,8 @@ context:
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "1978+c961124d9"
-  snapshot_ref: "1933"
-  build_ref: "1"
+  snapshot_ref: "1970"
+  build_ref: "0"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   llvm_src_version: "22.1.6"
@@ -15,11 +15,9 @@ context:
 
   bootstrap_via_upstream: false
 
-  # Single switch; export derives from this. TEMPORARY "1" skips ~2h langref -- revert to "0" before merge.
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
-
-  # runs-on (cross-compiled) and generates-code-for (cross-compilers)
-  skip_long_xbuild: ${{ env.get("SKIP_LONG_XBUILD", default="0") == "1" }}
+  # Single visible switch; SKIP_LANGREF export derives from it. ppc64le: stage3 runs under qemu but the
+  # gcc link driver in $BUILD_PREFIX is build-arch, so it cannot load. See reference doc ROUND 3.
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -332,7 +330,6 @@ outputs:
 
           # Derived from the single skip_langref switch above; do not re-add an env.get here.
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
-          SKIP_LONG_XBUILD: ${{ "1" if skip_long_xbuild else "0" }}
 
           # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
@@ -412,8 +409,7 @@ outputs:
               then:
                 - zig-lld-bundle
           files:
-            # qemu-ppc64le doesn't faithfully emulate traps
-            - if: (is_native or (linux and not xc_ppc64le)) and not skip_langref
+            - if: (build_platform == target_platform or linux) and not skip_langref
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
