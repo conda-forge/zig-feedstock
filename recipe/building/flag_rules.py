@@ -22,7 +22,7 @@ hand-written in the wrappers and is intentionally left OUT of this
 manifest.
 
 Grounded against (2026-07-15):
-  - recipe/scripts/_zig-cc-common.sh
+  - recipe/scripts/_zig-cc-common.sh (removed bash original, superseded by recipe/building/zig-cc-unix.c)
   - recipe/building/zig-cc-nonunix.c
   - recipe/building/nonunix_common.h
 

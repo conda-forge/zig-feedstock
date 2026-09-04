@@ -11,7 +11,7 @@ context:
 
   bootstrap_via_upstream: false
 
-  # Single switch; export derives from this. TEMPORARY "1" skips ~2h langref -- revert to "0" before merge.
+  # Single switch; export derives from this. Set SKIP_LANGREF=1 to skip the ~2h langref build locally.
   skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
 
   # Umbrella switch for long cross-build test legs; runs by default.

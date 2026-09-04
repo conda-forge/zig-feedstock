@@ -110,10 +110,12 @@ static inline int zig_sysroot_is_dir(const char *path) {
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
-/* C mirror of recipe/scripts/_zig-cc-common.sh:29-38 -- the two must stay in
- * step until the bash wrappers are retired.
+/* Resolve sysroot for the target platform (sysroot_*-conda-*-gnu/sysroot or
+ * CONDA_BUILD_SYSROOT). Originally mirrored recipe/scripts/_zig-cc-common.sh:29-38
+ * (bash original since removed during the bash→C wrapper port). This C implementation
+ * is now the authoritative source.
  *
- * The return value is exactly what bash leaves in its _sr global, and is
+ * The return value is exactly what bash used to leave in its _sr global, and is
  * what feeds zig_translate_profile.sysroot for R12 (-print-sysroot).
  * Callers must use zig_sysroot_is_dir() separately to decide on -isysroot/-L
  * injection, because R12 prints the value even when it is not a directory. */
