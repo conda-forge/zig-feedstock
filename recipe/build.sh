@@ -54,13 +54,108 @@ zig_build_dir="${SRC_DIR}/conda-zig-source"
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
 
+# --- Host-targeted zig C wrappers -------------------------------------------
+# Self-hosting: this track builds zig with zig, so recipe.yaml's zig_impl output
+# intentionally carries NO compiler('c')/compiler('cxx') and CC/CXX arrive unset.
+# Do not "fix" that by re-adding the conda compilers -- replacing them is the
+# point of this track.
+#
+# The zig-llvm component already compiled BUILD-arch wrappers into BUILD_PREFIX
+# (zig-llvm/building/_zig_wrappers.sh) and they persist across the component
+# boundary, but they bake ZIG_TARGET_BUILD and so are only correct for
+# host-runnable tools (llvm-config, tblgen).  Everything in THIS component --
+# zigcpp, the ppc64le lld bundle, and the four create_*_stub helpers below --
+# emits TARGET-linked objects and therefore needs a wrapper baked at the HOST
+# triple.  Those helpers take a compiler PATH as an argument, so there is
+# nowhere to append -target at the call site: it must be baked into the binary.
+#
+# TWO TRIPLES, deliberately different (unlike _zig_wrappers.sh where they
+# coincide):
+#   * the wrapper BINARY is compiled -target <build arch> so it RUNS here;
+#   * @ZIG_TARGET@ is baked as ${ZIG_TRIPLET} (host) so what it EMITS is
+#     target-arch.
+_zig_bootstrap="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"
+_host_wrap_dir="${BUILD_PREFIX}/bin"
+_host_wrap_ext=""
+if is_not_unix; then
+  _zig_bootstrap="${BUILD_PREFIX}/Library/bin/${CONDA_ZIG_BUILD}.exe"
+  _host_wrap_dir="${BUILD_PREFIX}/Library/bin"
+  _host_wrap_ext=".exe"
+fi
+[[ -x "${_zig_bootstrap}" ]] || {
+  echo "FATAL: bootstrap zig not found at ${_zig_bootstrap}" >&2
+  exit 1
+}
+
+_host_wrap_src="${RECIPE_DIR}/building/zig-cc-unix.c"
+[[ -f "${_host_wrap_src}" ]] || {
+  echo "FATAL: wrapper source missing: ${_host_wrap_src}" >&2
+  exit 1
+}
+
+# Build-arch triple for the wrapper BINARY (mirrors _zig_wrappers.sh:145-158,
+# including the .2.17 glibc floor precedent).
+_host_wrap_buildtgt="${ZIG_TARGET_BUILD:-}"
+if [[ -z "${_host_wrap_buildtgt}" || "${_host_wrap_buildtgt}" == "native" ]]; then
+  echo "FATAL: ZIG_TARGET_BUILD is unusable ('${ZIG_TARGET_BUILD:-}')" >&2
+  exit 1
+fi
+case "${_host_wrap_buildtgt}" in
+  *-linux-gnu) _host_wrap_buildtgt="${_host_wrap_buildtgt}.2.17" ;;
+esac
+
+# NAMING IS LOAD-BEARING: mode_from_argv0() (zig-cc-unix.c) strips
+# WRAPPER_PREFIX off basename(argv[0]) and compares the remainder against
+# "zig-cc" / "zig-cxx" / "zig-asm".  CONDA_ZIG_HOST is "${CONDA_TRIPLET}-zig"
+# (recipe.yaml:379), so the prefix must be "${CONDA_TRIPLET}-" for the strip to
+# leave exactly "zig-cc".  A mismatched prefix resolves to MODE_UNKNOWN.
+_host_wrap_tmp="$(mktemp -d)"
+sed -e "s|@ZIG_BIN@|${_zig_bootstrap}|g" \
+    -e "s|@ZIG_TARGET@|${ZIG_TRIPLET}|g" \
+    -e "s|@ZIG_TARGET_ARCH@|${ZIG_TRIPLET%%-*}|g" \
+    -e "s|@WRAPPER_PREFIX@|${CONDA_TRIPLET}-|g" \
+    "${_host_wrap_src}" > "${_host_wrap_tmp}/zig-cc-unix.c"
+
+_host_cc="${_host_wrap_dir}/${CONDA_ZIG_HOST}-cc${_host_wrap_ext}"
+echo "=== building host-arch zig wrappers (binary -target ${_host_wrap_buildtgt}, emits -target ${ZIG_TRIPLET}) ==="
+"${_zig_bootstrap}" cc -O2 -target "${_host_wrap_buildtgt}" -I"${RECIPE_DIR}/building" \
+  -o "${_host_cc}" "${_host_wrap_tmp}/zig-cc-unix.c" || {
+  echo "FATAL: failed to compile ${_host_wrap_src} for host target" >&2
+  rm -rf "${_host_wrap_tmp}"
+  exit 1
+}
+rm -rf "${_host_wrap_tmp}"
+
+# One binary, many names -- dispatch is by basename only.
+for _host_n in cxx asm ar ranlib force-load-cc force-load-cxx; do
+  cp -f "${_host_cc}" "${_host_wrap_dir}/${CONDA_ZIG_HOST}-${_host_n}${_host_wrap_ext}"
+  chmod +x "${_host_wrap_dir}/${CONDA_ZIG_HOST}-${_host_n}${_host_wrap_ext}"
+done
+chmod +x "${_host_cc}"
+
+# Consumed as bare "${CC}"/"${CXX}" by configure_cmake (building/_build.sh),
+# build_lld_bundle_ppc64le, and the four create_*_stub helpers further down.
+export CC="${_host_cc}"
+export CXX="${_host_wrap_dir}/${CONDA_ZIG_HOST}-cxx${_host_wrap_ext}"
+export AR="${_host_wrap_dir}/${CONDA_ZIG_HOST}-ar${_host_wrap_ext}"
+export RANLIB="${_host_wrap_dir}/${CONDA_ZIG_HOST}-ranlib${_host_wrap_ext}"
+unset _host_wrap_src _host_wrap_tmp _host_wrap_buildtgt _host_n
+
 # --- Common CMake/zig configuration ---
 
+# CMAKE_{C,CXX}_COMPILER are passed EXPLICITLY: configure_cmake() sets no
+# compiler of its own and CC/CXX are not supplied by a conda compiler
+# activation on this track.  No CMAKE_*_COMPILER_TARGET is needed -- the host
+# triple is already baked into these wrappers.
 EXTRA_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
   -DZIG_TARGET_MCPU=baseline
   -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
   -DZIG_USE_LLVM_CONFIG=ON
+  -DCMAKE_C_COMPILER="${CC}"
+  -DCMAKE_CXX_COMPILER="${CXX}"
+  -DCMAKE_AR="${AR}"
+  -DCMAKE_RANLIB="${RANLIB}"
 )
 
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)

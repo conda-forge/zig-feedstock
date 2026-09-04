@@ -1,7 +1,7 @@
-c_stdlib_version:
-  - if: linux and not (aarch64 or ppc64le or s390x or x86_64)
-    then:
-      - 2.39
+channel_sources:
+  - conda-forge/label/zig_experimental,conda-forge
+channel_targets:
+  - conda-forge zig_experimental
 
 c_compiler_version:
   - if: osx
@@ -11,9 +11,6 @@ cxx_compiler_version:
   - if: osx
     then:
       - "21"
-
-channel_targets:
-  - conda-forge zig_experimental
 
 zig_compiler:
   - zig

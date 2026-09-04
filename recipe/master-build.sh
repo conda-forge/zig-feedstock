@@ -21,7 +21,11 @@ export LLVM_RECIPE_DIR="${RECIPE_DIR}/zig-llvm"
 # Override from recipe.yaml's env: block to add, drop or reorder components.
 : "${ZIG_BUILD_COMPONENTS:=zig-llvm zig}"
 
-for _component in ${ZIG_BUILD_COMPONENTS}; do
+# ZIG_BUILD_COMPONENTS is space-separated, but the strict IFS above deliberately
+# excludes space, so split it explicitly instead of relying on word splitting.
+IFS=' ' read -r -a _components <<< "${ZIG_BUILD_COMPONENTS}"
+
+for _component in "${_components[@]}"; do
   case "${_component}" in
     zig) _script="${RECIPE_DIR}/build.sh" ;;
     *)   _script="${RECIPE_DIR}/${_component}/build.sh" ;;
@@ -33,4 +37,4 @@ for _component in ${ZIG_BUILD_COMPONENTS}; do
   echo "=== component: ${_component} -> ${_script} ==="
   bash "${_script}" || exit 1
 done
-unset _component _script
+unset _component _script _components

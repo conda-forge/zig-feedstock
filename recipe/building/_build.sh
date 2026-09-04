@@ -35,8 +35,13 @@ function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array -- always use conda's CC/CXX (clang/gcc),
-  # never zig-cc (which has a baked-in target that conflicts with cross-builds).
+  # Build local cmake args array.  The caller supplies the compiler explicitly
+  # via EXTRA_CMAKE_ARGS (-DCMAKE_C_COMPILER/-DCMAKE_CXX_COMPILER); this
+  # function sets none of its own.  NOTE: an earlier comment here said to
+  # always use conda's CC/CXX and never zig-cc -- that predates self-hosting
+  # and is no longer true.  On this track zig IS the compiler, and the wrapper
+  # passed in is baked at the HOST triple, so it does not conflict with
+  # cross-builds.
   local cmake_args=()
 
   # Merge with global EXTRA_CMAKE_ARGS if it exists

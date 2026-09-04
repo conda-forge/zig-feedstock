@@ -105,44 +105,103 @@ PYEOF
 # No wrapper-level patching is needed — the build system handles it end-to-end.
 if is_osx; then
   setup_macos_sysroot
-
-  # macOS libLLVM.dylib link needs -Wl,-all_load / -Wl,-force_load semantics
-  # (LLVM's CMake injects -Wl,-all_load to prevent dead-strip of LLVM*.a archive
-  # members from the dylib — without it, ld64 only links symbols referenced by
-  # libllvm.cpp.o and the dylib ends up nearly empty, failing the
-  # _LLVMInitializeAArch64AsmParser export check).
-  #
-  # Upstream zig 0.15.2 build 27 ships bin/${CONDA_BUILD_ZIG}-force-load-cc
-  # and -cxx as copies of the compiled zig-wrapper.c, but that wrapper's
-  # detect_mode() lacks cases for -force-load-cc/-cxx suffixes — invocation
-  # errors with `zig-wrapper: cannot determine mode from basename(...)` and
-  # exit 1. The wrapper also has no archive extraction (it would only inject
-  # -fuse-ld=lld, which doesn't help: zig's MachO ld64 rejects -Wl,-all_load
-  # and -Wl,-force_load,X as unsupported linker args).
-  #
-  # Workaround: use the shell-script force-load shim. The 3 tiny stubs below
-  # source the canonical shipped script (recipe/scripts/_zig-force-load-common.sh,
-  # same one templated into the activation-time wrappers) with build-time env
-  # gates (ZIG_FL_*). It extracts .o members from each force-loaded archive
-  # via `ar x` and execs upstream's bin/${CONDA_BUILD_ZIG}-cc / -cxx with the
-  # modified argv + extracted .o files appended. The upstream wrapper still
-  # injects -target/-mcpu correctly in CC/CXX mode.
-  _fl_shim_cc="${RECIPE_DIR}/zig-llvm/building/zig-force-load-cc.sh"
-  _fl_shim_cxx="${RECIPE_DIR}/zig-llvm/building/zig-force-load-cxx.sh"
-  _fl_shim_asm="${RECIPE_DIR}/zig-llvm/building/zig-force-load-asm.sh"
-  _fl_shim_common="${RECIPE_DIR}/scripts/_zig-force-load-common.sh"
-  if [[ ! -f "${_fl_shim_cc}" || ! -f "${_fl_shim_cxx}" || ! -f "${_fl_shim_asm}" || ! -f "${_fl_shim_common}" ]]; then
-    echo "ERROR: force-load shim missing in ${RECIPE_DIR}/zig-llvm/building/" >&2
-    exit 1
-  fi
-  # git may not preserve the executable bit (depending on commit history /
-  # checkout settings); chmod just-in-time so cmake/ninja can invoke them.
-  chmod +x "${_fl_shim_cc}" "${_fl_shim_cxx}" "${_fl_shim_asm}" "${_fl_shim_common}"
-  export ZIG_CC="${_fl_shim_cc}"
-  export ZIG_CXX="${_fl_shim_cxx}"
-  # Route ASM through the force-load shim (cc mode) on macOS so that CMake's
-  # CMAKE_ASM_COMPILER gets the same -target ${ZIG_TARGET_HOST} injection as
-  # CC/CXX. Without this, CMake passes --target=x86_64-apple-darwin (LLVM format)
-  # which zig rejects with UnknownOperatingSystem for .S files.
-  export ZIG_ASM="${_fl_shim_asm}"
 fi
+
+# ---------------------------------------------------------------------------
+# Build-arch zig C wrappers.
+#
+# zig_impl_<platform> -- our only zig build dep (recipe.yaml:434) -- ships ONLY
+# the bare `${CONDA_ZIG_BUILD}` binary.  The `<triplet>-zig-cc` / `-cxx`
+# wrappers live in the zig_<platform> ACTIVATION output, which this build
+# environment cannot depend on: that output run-requires zig_impl_<platform>,
+# so naming it here would be a same-recipe cycle.
+#
+# So compile the canonical wrapper source ourselves.  recipe/building/zig-cc-unix.c
+# is the single source of truth for flag translation and -- since its STEP 10b --
+# for the macOS force-load handling that the old recipe/scripts/*.sh shims used
+# to provide.  Those shims no longer exist, so this replaces them everywhere.
+#
+# NAMING IS LOAD-BEARING: mode_from_argv0() (zig-cc-unix.c:684-708) strips
+# WRAPPER_PREFIX off basename(argv[0]) and string-compares the remainder against
+# "zig-cc" / "zig-cxx" / "zig-asm".  With WRAPPER_PREFIX="${CONDA_TOOLCHAIN_BUILD}-"
+# each file must be named "${CONDA_ZIG_BUILD}-<mode>".  A differently-named copy
+# resolves to MODE_UNKNOWN, or silently to the wrong mode.
+# ---------------------------------------------------------------------------
+_zig_bootstrap="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"
+if [[ ! -x "${_zig_bootstrap}" ]]; then
+  # Conda on Windows installs executables under Library/bin and they carry .exe
+  # (cf. _runtimes_build.sh:196, and the same probe in recipe/build.sh).
+  _zig_bootstrap="${BUILD_PREFIX}/Library/bin/${CONDA_ZIG_BUILD}.exe"
+fi
+if [[ ! -x "${_zig_bootstrap}" ]]; then
+  echo "FATAL: bootstrap zig not found at ${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD} nor ${BUILD_PREFIX}/Library/bin/${CONDA_ZIG_BUILD}.exe" >&2
+  exit 1
+fi
+
+_wrap_src="${RECIPE_DIR}/building/zig-cc-unix.c"
+if [[ ! -f "${_wrap_src}" ]]; then
+  echo "FATAL: wrapper source missing: ${_wrap_src}" >&2
+  exit 1
+fi
+
+# Bake the BUILD-arch triple, not the target one: these wrappers compile
+# host-runnable objects (llvm-config, tblgen).  ZIG_TARGET_BUILD is the
+# zig-format build triple (recipe.yaml:397).
+_wrap_target="${ZIG_TARGET_BUILD}"
+if [[ -z "${_wrap_target}" || "${_wrap_target}" == "native" ]]; then
+  # STEP 10 (zig-cc-unix.c:377-387) sets inject_target=!has_target and then
+  # injects `-target ${ZIG_TARGET}` verbatim, with NO special case for
+  # "native".  Baking an unusable value here would make every later wrapper
+  # invocation fail obscurely, so refuse loudly now instead.
+  echo "FATAL: ZIG_TARGET_BUILD is unusable ('${ZIG_TARGET_BUILD}')" >&2
+  exit 1
+fi
+case "${_wrap_target}" in
+  # glibc floor, matching the existing precedent at _native_llvm_config.sh:78-80
+  # and _cross_compile.sh:83 ("${ZIG_TARGET_BUILD}.2.17").
+  *-linux-gnu) _wrap_target="${_wrap_target}.2.17" ;;
+esac
+_wrap_arch="${_wrap_target%%-*}"
+
+_wrap_tmp="$(mktemp -d)"
+sed -e "s|@ZIG_BIN@|${_zig_bootstrap}|g" \
+    -e "s|@ZIG_TARGET@|${_wrap_target}|g" \
+    -e "s|@ZIG_TARGET_ARCH@|${_wrap_arch}|g" \
+    -e "s|@WRAPPER_PREFIX@|${CONDA_TOOLCHAIN_BUILD}-|g" \
+    "${_wrap_src}" > "${_wrap_tmp}/zig-cc-unix.c"
+
+_wrap_cc="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}-cc"
+echo "=== building build-arch zig wrappers (-target ${_wrap_target}) ==="
+"${_zig_bootstrap}" cc -O2 -target "${_wrap_target}" -I"${RECIPE_DIR}/building" \
+  -o "${_wrap_cc}" "${_wrap_tmp}/zig-cc-unix.c" || {
+  echo "FATAL: failed to compile ${_wrap_src}" >&2
+  rm -rf "${_wrap_tmp}"
+  exit 1
+}
+rm -rf "${_wrap_tmp}"
+
+# One binary, many names -- dispatch is by basename only.
+for _wrap_n in cxx asm ar ranlib force-load-cc force-load-cxx; do
+  cp -f "${_wrap_cc}" "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}-${_wrap_n}"
+done
+chmod +x "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-cc \
+         "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-cxx \
+         "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-asm \
+         "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-ar \
+         "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-ranlib \
+         "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-force-load-cc \
+         "${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}"-force-load-cxx
+
+export ZIG_CC="${_wrap_cc}"
+export ZIG_CXX="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}-cxx"
+export ZIG_ASM="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}-asm"
+# Consumed unguarded as -DCMAKE_AR / -DCMAKE_RANLIB by _runtimes_build.sh:15-16
+# AND _llvm_build.sh:204,208.  Left unset, cmake emits an EMPTY archiver, so the
+# archive rule runs `"" qc lib/foo.a ...` and /bin/sh reports exit 127
+# "Permission denied" -- shared libs still link (they go through the compiler),
+# only STATIC archives fail, which is why the resulting install error names a
+# different missing file from run to run.
+export ZIG_AR="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}-ar"
+export ZIG_RANLIB="${BUILD_PREFIX}/bin/${CONDA_ZIG_BUILD}-ranlib"
+
+unset _wrap_src _wrap_tmp _wrap_target _wrap_arch _wrap_n

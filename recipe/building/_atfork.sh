@@ -8,7 +8,11 @@ function _compile_stub_object() {
   local out="${3}"
   local label="${4}"
 
-  "${cc}" -c "${src}" -o "${out}" || {
+  # -fno-sanitize=undefined: under self-hosting ${CC} is a zig-cc wrapper, and
+  # zig cc instruments C with UBSan by default.  The final `zig build-exe` links
+  # no ubsan runtime, so instrumented stubs leave __ubsan_handle_* undefined.
+  # These are tiny ABI shims; they gain nothing from UBSan.
+  "${cc}" -fno-sanitize=undefined -c "${src}" -o "${out}" || {
     echo "ERROR: Failed to compile ${label} stub" >&2
     return 1
   }
