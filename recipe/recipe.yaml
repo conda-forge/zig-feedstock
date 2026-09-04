@@ -12,7 +12,7 @@ context:
   bootstrap_via_upstream: false
 
   # Single switch; export derives from this. TEMPORARY "1" skips ~2h langref -- revert to "0" before merge.
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
 
   # Umbrella switch for long cross-build test legs; runs by default.
   skip_long_xbuild: ${{ env.get("SKIP_LONG_XBUILD", default="0") == "1" }}
