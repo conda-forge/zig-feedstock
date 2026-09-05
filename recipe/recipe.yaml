@@ -336,6 +336,8 @@ outputs:
 
           # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
+          ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
+          ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="45m") }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -621,6 +623,8 @@ outputs:
           NEEDS_EMULATION: ${{ linux and build_platform != target_platform }}
 
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
+          ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
+          ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="45m") }}
     requirements:
       build:
         - python 3.12.*
