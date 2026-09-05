@@ -317,10 +317,6 @@ fi
 
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 _can_run_stage3() {
-  if ! is_unix; then return 1; fi
-  # Skip Phase 2 langref on ppc64le (glibc 2.17 cross-link lacks -lpthread) and on
-  # riscv64 (qemu-emulated docgen is prohibitively slow); docs come from other platforms.
-  case "${target_platform}" in linux-ppc64le|linux-riscv64) return 1 ;; esac
   if ! is_cross; then return 0; fi
   if is_linux; then
     [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ] && return 0
@@ -337,9 +333,10 @@ elif _can_run_stage3; then
     _stage3_runner=("${QEMU_EXECVE}")
   fi
 
+  # Passthrough lets the emulated stage3 exec the build-arch cross-gcc natively (opt-in, off by default).
   (
     cd "${cmake_source_dir}" &&
-    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+    env QEMU_EXECVE_NATIVE_PASSTHROUGH=1 "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
       --prefix "${PREFIX}" \
       -Dversion-string="${PKG_VERSION}" \
       -Ddoctest-target="${ZIG_TRIPLET}"
@@ -351,7 +348,7 @@ elif _can_run_stage3; then
     echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
   }
 else
-  echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
+  echo "INFO: Phase 2 langref skipped: cross build with no usable stage3 runner (need qemu on linux, wine on windows)" >&2
 fi
 
 dbg echo "Post-install implementation package: ${PKG_NAME}"
