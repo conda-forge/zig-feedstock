@@ -85,8 +85,8 @@ def main():
         shim_on_target=shim_on_target,
     )
 
-
-    # 3. Cross-compiler: install triplet-prefixed wrappers
+    # 3. Cross-compiler: install the native-triplet compiler suite, then the
+    # triplet-prefixed cross-compiler wrappers
     if cross_compiler == "true":
         native_triplet = os.environ.get("NATIVE_TRIPLET", "x86_64-conda-linux-gnu")
         native_zig_triplet = os.environ.get("NATIVE_ZIG_TRIPLET", "native")

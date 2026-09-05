@@ -134,6 +134,9 @@ SYNCHRONIZATION_DEF
       echo "INFO: using bootstrap zig for mingw CRT cache warm: ${_zig_bin}"
       echo "WARN: staged mingw CRT archives will derive from the BOOTSTRAP zig's mingw sources, not this recipe's patched tree"
     fi
+    if [[ -x "${_zig_bin}" ]]; then
+      echo "INFO: [_mingw] cache-warm compiler: ${_zig_bin} (version $("${_zig_bin}" version 2>&1 || true))" >&2
+    fi
     _def_include="${_mingw_common}/../def-include"
     _mingw_libsrc="${_mingw_common}/../libsrc"
 
@@ -501,21 +504,127 @@ SYNCHRONIZATION_DEF
         dbg echo "=== Compiling MinGW CRT startup objects from ${_mingw_crt} -> ${_crt_outdir} ==="
         dbg echo "=== CRT sources: $(ls "${_mingw_crt}" | tr '\n' ' ') ==="
 
+        # Diagnostic: confirm both header search roots exist in the installed tree
+        # before the CRT compiles depend on them. Informational only, never fatal.
+        for _inc_probe in "${_win_inc}" "${_mingw_inc}"; do
+          if [[ -d "${_inc_probe}" ]]; then
+            echo "INFO: [_mingw] include root present: ${_inc_probe} ($(ls -1 "${_inc_probe}" 2>/dev/null | wc -l) entries)"
+          else
+            echo "WARN: [_mingw] include root MISSING: ${_inc_probe}" >&2
+          fi
+        done
+        if [[ -f "${_win_inc}/crtdefs.h" ]]; then
+          echo "INFO: [_mingw] crtdefs.h resolved at ${_win_inc}/crtdefs.h"
+        else
+          echo "WARN: [_mingw] crtdefs.h NOT present at ${_win_inc}/crtdefs.h" >&2
+        fi
+
+        # ZIGDIAG[mingw-incdir]: full listing of the SMALL include root.
+        # Round-20 established that the -cc1 -v search list is CORRECT and that
+        # any-windows-any is on it carrying crtdefs.h, yet clang still fails with
+        #   cannot open file '<mingw_inc>/crtdefs.h': No such file or directory
+        # That is a resolved-then-failed-open, not a search miss. Entry COUNTS
+        # alone (the loop above) cannot reveal a broken symlink or an unreadable
+        # entry, so list the directory itself. Only _mingw_inc is listed in full:
+        # any-windows-any holds ~1463 entries and would flood the log.
+        echo "ZIGDIAG[mingw-incdir]: ls -la ${_mingw_inc}"
+        ls -la "${_mingw_inc}" 2>&1 | sed 's/^/ZIGDIAG[mingw-incdir]: /' || true
+        echo "ZIGDIAG[mingw-incdir]: realpath = $(readlink -f "${_mingw_inc}" 2>/dev/null || echo '(unresolvable)')"
+
+        # ZIGDIAG[crt-hdrs]: per-directory verdict for every CRT-internal header in
+        # crtdefs.h's include chain. Distinguishes the states that a bare `-f` test
+        # collapses into one: absent, present+readable, present-but-unreadable, and
+        # BROKEN SYMLINK (-L true, -e false). The last is the only state that explains
+        # a successful existence probe followed by a failed open, which is exactly the
+        # observed failure signature.
+        #
+        # Round-27 widened this from crtdefs.h alone to the whole cluster. Round 26
+        # probed only crtdefs.h, so when buildId 1565182 then failed on corecrt.h we
+        # had no stat verdict for it at all -- its presence was inferable from the log
+        # but never measured. Probing the whole set costs nothing and means ONE log
+        # reports the full state, instead of learning about one header per ~2h round.
+        _crt_hdrs=(crtdefs.h corecrt.h _mingw.h _mingw_mac.h _mingw_secapi.h
+                   _mingw_unicode.h vadefs.h)
+        for _cd_dir in "${_mingw_inc}" "${_win_inc}"; do
+          for _cd_name in "${_crt_hdrs[@]}"; do
+            _cd="${_cd_dir}/${_cd_name}"
+            if [[ -L "${_cd}" && ! -e "${_cd}" ]]; then
+              echo "ZIGDIAG[crt-hdrs]: BROKEN SYMLINK ${_cd} -> $(readlink "${_cd}" 2>/dev/null)" >&2
+            elif [[ -L "${_cd}" ]]; then
+              echo "ZIGDIAG[crt-hdrs]: symlink ${_cd} -> $(readlink "${_cd}" 2>/dev/null) (target exists)"
+            elif [[ -f "${_cd}" && -r "${_cd}" ]]; then
+              echo "ZIGDIAG[crt-hdrs]: regular file ${_cd} ($(wc -c <"${_cd}" 2>/dev/null) bytes, readable)"
+            elif [[ -e "${_cd}" ]]; then
+              echo "ZIGDIAG[crt-hdrs]: present but NOT a readable regular file: ${_cd}" >&2
+            else
+              echo "ZIGDIAG[crt-hdrs]: absent: ${_cd}"
+            fi
+          done
+        done
+
+        # PR #123 round 27. buildId 1565182 CONFIRMED the round-26 single-file staging
+        # worked -- `crtdefs.h absent` did not recur -- but the SAME failure reappeared
+        # one header deeper, on the staged crtdefs.h's own `#include <corecrt.h>`.
+        #
+        # It is still NOT a missing-file bug: that same -H dump shows corecrt.h opening
+        # successfully four times in the SAME translation unit off the SAME 3-entry
+        # search list (_mingw_inc -> zig/include -> _win_inc). The discriminating
+        # pattern across both rounds is the INCLUDER, not the includee:
+        #   oscalls.h        (in _mingw_inc) -> <crtdefs.h>  FAILED   (buildId 1565080)
+        #   crtdefs.h staged (in _mingw_inc) -> <corecrt.h>  FAILED   (buildId 1565182)
+        #   windows.h chain  (in _win_inc)   -> <corecrt.h>  SUCCEEDED x4
+        # i.e. an angled include issued from a file sitting in _mingw_inc does not
+        # reach _win_inc, while the same include from _win_inc resolves fine. If that
+        # holds, satisfying the whole chain locally inside _mingw_inc ends it in one
+        # round -- hence the widening below from one header to the cluster.
+        #
+        # This remains symptom-treatment: a green lane does NOT explain the mechanism.
+        # Deliberately NOT mirroring all of any-windows-any (~1463 entries) -- that
+        # would bloat the shipped package for no additional diagnostic value. Note the
+        # staged copies DO change shipped package contents under
+        # $PREFIX/lib/zig/libc/mingw/include; real mingw-w64 ships these headers in its
+        # include root, so zig is the outlier for keeping them only in any-windows-any.
+        for _cd_name in "${_crt_hdrs[@]}"; do
+          if [[ ! -e "${_mingw_inc}/${_cd_name}" && -f "${_win_inc}/${_cd_name}" ]]; then
+            if cp -f "${_win_inc}/${_cd_name}" "${_mingw_inc}/${_cd_name}"; then
+              echo "  [_mingw] staged ${_cd_name} into ${_mingw_inc} (from ${_win_inc})"
+            else
+              echo "WARN: [_mingw] failed to stage ${_cd_name} into ${_mingw_inc}" >&2
+            fi
+          fi
+        done
+
         # CRT compile flags must match zig's internal addCrtCcArgs (src/libs/mingw.zig)
         # exactly, otherwise oscalls.h and other internal headers reject inclusion via
         # `#error ERROR: Use of C runtime library internal header file.`. Keep this in
-        # lockstep with upstream zig's addCcArgs+addCrtCcArgs flag set.
+        # lockstep with upstream zig's addCcArgs+addCrtCcArgs flag set: -isystem
+        # any-windows-any right after -D__USE_MINGW_ANSI_STDIO=0, THEN the CRT -D flags,
+        # THEN -I mingw/include last (verified against zig-0.16.0 src/libs/mingw.zig
+        # addCcArgs/addCrtCcArgs, 2026-08-06).
+        #
+        # any-windows-any is ALSO listed via -I (in addition to -isystem): a confirmed CI
+        # failure (osx-64, Azure buildId 1563426) showed crtdefs.h -- which lives only under
+        # libc/include/any-windows-any -- failing to resolve from oscalls.h's
+        # `#include <crtdefs.h>`, even though the compiler's own -v search-list dump proved
+        # any-windows-any was present in the isystem group. zig cc's own target
+        # auto-detection already injects "-isystem .../any-windows-any" ahead of these flags
+        # for any windows-gnu target, so our explicit -isystem copy gets clang-deduped away
+        # as a "duplicate directory". -I populates a separate, independently-deduped search
+        # group (searched before -isystem), giving crtdefs.h a resolution path that survives
+        # the isystem-group dedup. The original -isystem copy is kept too, since other
+        # windows-gnu cross targets (aarch64/i386) may not get the same auto-detected list.
         _crt_flags=(-target "${_win_target}" -mcpu=baseline -c
                     -std=gnu11
                     -D__USE_MINGW_ANSI_STDIO=0
+                    -isystem "${_win_inc}"
                     -D__MSVCRT_VERSION__=0x700
                     -D_CRTBLD
                     -D_SYSCRT=1
                     -D_WIN32_WINNT=0x0f00
                     -DCRTDLL=1
                     -DHAVE_CONFIG_H
-                    -isystem "${_win_inc}"
-                    -I"${_mingw_inc}")
+                    -I"${_mingw_inc}"
+                    -I"${_win_inc}")
 
         # Helper: compile one CRT object, surface errors (do NOT swallow).
         # Captures stderr to a log; on success emits dbg trace; on failure
@@ -531,8 +640,22 @@ SYNCHRONIZATION_DEF
             return 0
           fi
           echo "ERROR: failed to compile $(basename "${obj}") for ${_win_target}:" >&2
+          echo "  invocation: ${_zig_bin} cc ${_crt_flags[*]} ${extra} ${src} -o ${obj}" >&2
           cat "${log}" >&2
           rm -f "${log}"
+          # Diagnostic re-run: -v prints the resolved include search list; -H
+          # prints the header-inclusion tree with the FULL resolved path of every
+          # header actually opened. Round-20 proved the search list is correct, so
+          # -H is the probe that matters: it shows which directory clang committed
+          # crtdefs.h to before the open failed. Never fatal, never affects the
+          # return code below.
+          local vlog; vlog=$(mktemp)
+          # shellcheck disable=SC2086
+          "${_zig_bin}" cc "${_crt_flags[@]}" ${extra} -v -H "${src}" -o /dev/null >"${vlog}" 2>&1 || true
+          echo "  --- diagnostic -v include search dump ---" >&2
+          cat "${vlog}" >&2
+          echo "  --- end -v dump ---" >&2
+          rm -f "${vlog}"
           return 1
         }
 
@@ -648,10 +771,12 @@ WARM_EOF
           mkdir -p "${_warm_cache}"
 
           # Real link (NOT -c compile-only) to force libmingw32 materialization.
-          if ! ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
+          local _warm_rc=0
+          ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
                   "${_zig_bin}" cc -target "${_warm_tgt}" -pthread \
                   "${_warm_dir}/warm.c" \
-                  -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err"; then
+                  -o "${_warm_cache}/warm.exe" 2>"${_warm_cache}/warm.err" || _warm_rc=$?
+          if [[ ${_warm_rc} -ne 0 ]]; then
               echo "ERROR: cache-warm link failed for ${_warm_tgt}; no CRT archives can be staged for this arch. Errors:" >&2
               tail -20 "${_warm_cache}/warm.err" >&2 || true
               _warm_failed_count=$((_warm_failed_count + 1))

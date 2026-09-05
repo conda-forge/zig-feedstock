@@ -28,21 +28,27 @@ function build_lld_bundle_ppc64le() {
 
   mkdir -p "${output_dir}"
 
-  echo "[lld-bundle] Building ${output_so} from \${PREFIX}/lib/liblld*.a"
+  echo "[lld-bundle] Building ${output_so} from \${PREFIX}/lib/zig-llvm/lib/liblld*.a"
 
+  # LLD static archives and libLLVM both install under ${prefix}/lib/zig-llvm/lib
+  # (the LLVM_INSTALL convention used throughout recipe/zig-llvm/), NOT bare
+  # ${prefix}/lib -- confirmed via live CI: CMake's own find_package(LLD) finds
+  # them at $PREFIX/lib/zig-llvm/lib/liblldELF.a etc, but this function was
+  # still pointing at the bare prefix, causing "file not found" on ppc64le.
+  local llvm_lib="${prefix}/lib/zig-llvm/lib"
   "${cxx_compiler}" -shared -fPIC \
     -Wl,--whole-archive \
-    "${prefix}/lib/liblldELF.a" \
-    "${prefix}/lib/liblldCOFF.a" \
-    "${prefix}/lib/liblldMachO.a" \
-    "${prefix}/lib/liblldWasm.a" \
-    "${prefix}/lib/liblldMinGW.a" \
-    "${prefix}/lib/liblldCommon.a" \
+    "${llvm_lib}/liblldELF.a" \
+    "${llvm_lib}/liblldCOFF.a" \
+    "${llvm_lib}/liblldMachO.a" \
+    "${llvm_lib}/liblldWasm.a" \
+    "${llvm_lib}/liblldMinGW.a" \
+    "${llvm_lib}/liblldCommon.a" \
     -Wl,--no-whole-archive \
     -Wl,--export-dynamic \
-    -Wl,-rpath,"${prefix}/lib" \
+    -Wl,-rpath,"${llvm_lib}" \
     -L"${prefix}/lib" \
-    "${prefix}/lib/libLLVM-21.so" \
+    "${llvm_lib}/libLLVM-21.so" \
     -lzstd -lxml2 -lz -lpthread \
     -o "${output_so}" || {
     echo "[lld-bundle] FAILED: compiler error building ${output_so}" >&2

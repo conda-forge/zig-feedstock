@@ -1,0 +1,30 @@
+--- a/src/zig_clang_cc1_main.cpp
++++ b/src/zig_clang_cc1_main.cpp
+@@ -52,6 +52,8 @@
+ #include "llvm/TargetParser/ARMTargetParser.h"
+ #include "llvm/TargetParser/RISCVISAInfo.h"
+ #include <cstdio>
++#include <cstdlib>
++#include <iterator>
+ 
+ #ifdef CLANG_HAVE_RLIMITS
+ #include <sys/resource.h>
+@@ -230,6 +232,18 @@
+   llvm::InitializeAllAsmPrinters();
+   llvm::InitializeAllAsmParsers();
+ 
++  if (::getenv("ZIG_DEBUG_TARGET_REGISTRY")) {
++    auto Targets = llvm::TargetRegistry::targets();
++    auto Count = std::distance(Targets.begin(), Targets.end());
++    llvm::errs() << "ZIGDIAG[cc1-post-init]: registered target count = "
++                 << Count << "\n";
++    llvm::errs() << "ZIGDIAG[cc1-post-init]: registry head = "
++                 << (Count ? (const void *)&*Targets.begin()
++                           : (const void *)nullptr) << "\n";
++    for (const auto &T : Targets)
++      llvm::errs() << "ZIGDIAG[cc1-post-init]: target = " << T.getName() << "\n";
++  }
++
+   // Buffer diagnostics from argument parsing so that we can output them using a
+   // well formed diagnostic object.
+   DiagnosticOptions DiagOpts;

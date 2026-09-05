@@ -5,11 +5,11 @@ c_stdlib:
 channel_sources:
 - conda-forge
 channel_targets:
-- conda-forge main
+- conda-forge zig_experimental
 cross_target_platform_:
 - win-arm64
-cxx_compiler:
-- vs2022
+libxml2:
+- '2.15'
 libxml2_devel:
 - '2.15'
 target_platform:

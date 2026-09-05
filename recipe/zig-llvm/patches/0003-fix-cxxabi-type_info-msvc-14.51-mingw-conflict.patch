@@ -1,0 +1,21 @@
+--- a/libcxxabi/include/cxxabi.h
++++ b/libcxxabi/include/cxxabi.h
+@@ -26,9 +26,15 @@
+ #ifdef __cplusplus
+
+ namespace std {
+ #if defined(_WIN32)
+-class _LIBCXXABI_TYPE_VIS type_info; // forward declaration
++// MSVC 14.51+ (VS 2022 17.11+) injects `_VCRT_EXPORT_STD using ::type_info`
++// in vcruntime_typeinfo.h; this conflicts with the class declaration below in
++// MinGW cross-compile environments (zig -windows-gnu) where zig and MSVC SDK
++// headers are both visible. On __MINGW32__ targets, type_info comes from vcruntime.
++// Exception: when building the runtime library itself (-nostdinc++ is set, so no
++// MSVC SDK headers are present), the forward declaration must always be emitted.
++#  if !defined(__MINGW32__) || defined(_LIBCXXABI_BUILDING_LIBRARY) || defined(_LIBCPP_BUILDING_LIBRARY)
++class _LIBCXXABI_TYPE_VIS type_info; // forward declaration
++#  endif
+ #else
+ class type_info; // forward declaration
+ #endif
+ }

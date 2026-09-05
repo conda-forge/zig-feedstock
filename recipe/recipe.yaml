@@ -9,6 +9,11 @@ context:
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
+  # RISCV64/s390x only: bundled library versions (no conda-forge packages available)
+  libxml2_version: "2.15.3"
+  zlib_version: "1.3.2"
+  zstd_version: "1.5.6"
+
   bootstrap_via_upstream: false
 
   # Single switch for langref; build-env export derives from this. Revert to "1" only for local iteration.
@@ -25,6 +30,7 @@ context:
   xc_w64:        ${{ cross_target_platform_ == "win-64" }}
   xc_warm64:     ${{ cross_target_platform_ == "win-arm64" }}
   xc_win32:      ${{ cross_target_platform_ == "win-32" }}
+  xc_w32:        ${{ xc_win32 }}  # alias used by LLVM output blocks
 
   xc_lnx:        ${{ "linux" in cross_target_platform_ and "linux" in build_platform }}
   xc_osx:        ${{ "osx"   in cross_target_platform_ and "osx"   in build_platform }}
@@ -38,12 +44,16 @@ context:
   library: ${{ "Library/" if not unix else "" }}
   m2: ${{ "m2-" if not unix else "" }}
   sh: ${{ ".bat" if not unix else ".sh" }}
+  so: ${{ "so" if unix else "dll" }}
 
   # Zig target mapping https://github.com/ziglang/zig-bootstrap
   _c_v: ${{ c_stdlib_version | default("") }}
-  _zig_glibc: ${{ "2.27" if xc_riscv64 else _c_v }}
-  # Same 2.27 riscv64 floor as _zig_glibc, keyed on target_platform (not cross_target_platform_)
-  _zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else _c_v }}
+  # riscv64 floor is 2.39, matching install_zig_activation.py:231
+  # (_SHIM_GLIBC_FLOOR_BY_ARCH).  2.27 is merely the earliest glibc with any
+  # riscv64 support; conda-forge riscv64 binaries import pthread_*@GLIBC_2.34.
+  _zig_glibc: ${{ "2.39" if xc_riscv64 else _c_v }}
+  # Same 2.39 riscv64 floor as _zig_glibc, keyed on target_platform (not cross_target_platform_)
+  _zig_glibc_tgt: ${{ "2.39" if target_platform == "linux-riscv64" else _c_v }}
   zig_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ _zig_glibc        if xc_l64                              else
@@ -53,22 +63,40 @@ context:
       "s390x-linux-gnu." ~ _zig_glibc         if xc_s390x                            else
       "x86_64-macos." ~ _zig_glibc ~ "-none"  if xc_o64                              else
       "aarch64-macos." ~ _zig_glibc ~ "-none" if xc_oarm64                           else
-      "x86_64-windows-msvc"                   if xc_w64                              else
-      "aarch64-windows-msvc"                  if xc_warm64                           else
-      "x86-windows-msvc"                      if xc_win32                            else
+      "x86_64-windows-gnu"                    if xc_w64                              else
+      "aarch64-windows-gnu"                   if xc_warm64                           else
+      "x86-windows-gnu"                       if xc_win32                            else
       "native"
     }}
   zig_short_triplet: ${{ zig_triplet | split(".") | first }}
 
   # Known conda-forge build_platforms (zig -target format, no glibc suffix)
+  # macOS branches need a trailing "-none" ABI segment: zig-cc-unix.c's
+  # deployment-target rewrite finds the ABI via the last "-" in the triple,
+  # so without it the OS field gets duplicated and zig rejects the target.
   zig_build_triplet: >-
     ${{
       "x86_64-linux-gnu"                     if build_platform == "linux-64"        else
       "aarch64-linux-gnu"                    if build_platform == "linux-aarch64"   else
-      "x86_64-macos." ~ _c_v                 if build_platform == "osx-64"          else
-      "aarch64-macos." ~ _c_v                if build_platform == "osx-arm64"       else
+      "x86_64-macos." ~ _c_v ~ "-none"       if build_platform == "osx-64"          else
+      "aarch64-macos." ~ _c_v ~ "-none"      if build_platform == "osx-arm64"       else
       "x86_64-windows-gnu"                   if build_platform == "win-64"          else
       "native"
+    }}
+
+  # LLVM target triple (standard format, no glibc version suffix)
+  llvm_triplet: >-
+    ${{
+      "x86_64-unknown-linux-gnu"        if xc_l64                              else
+      "aarch64-unknown-linux-gnu"       if xc_aarch64                          else
+      "powerpc64le-unknown-linux-gnu"   if xc_ppc64le                          else
+      "riscv64-unknown-linux-gnu"       if xc_riscv64                          else
+      "s390x-unknown-linux-gnu"         if xc_s390x                            else
+      "x86_64-apple-darwin"             if xc_o64                              else
+      "aarch64-apple-darwin"            if xc_oarm64                           else
+      "x86_64-w64-windows-gnu"          if xc_w64                              else
+      "aarch64-w64-windows-gnu"         if xc_warm64                           else
+      "unknown_llvm_triplet"
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
@@ -175,6 +203,8 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
+      - patches/zig_clang_driver.cpp-diag-target-registry.patch
+      - patches/zig_clang_cc1_main.cpp-diag-target-registry.patch
       # mingw CRT patches: _mingw.sh warms all three windows-gnu triples on EVERY
       # lane regardless of the output's own target OS, so these must apply
       # unconditionally -- gating them to `not unix` / win-32 left the freshly
@@ -279,8 +309,39 @@ source:
             sha256: 18800b45c08bf40b335ca5ab79aea70aca287ca969036e938155772becaeebeb
             target_directory: zig-bootstrap
 
+  - url: https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-${{ llvm_src_version }}.tar.gz
+    sha256: 7ba3f2a8d8fda88be18a31d011e8195d3b7f87f9fa92b20c94cba2d7f65b0e3f
+    patches:
+      - zig-llvm/patches/0001-pass-through-QEMU_LD_PREFIX-SDKROOT.patch
+      - zig-llvm/patches/0002-fix-non-unix-zstd-shared-lib-finding.patch
+      - zig-llvm/patches/0006-fix-cmake-cfg-intdir-windows.patch
+      - zig-llvm/patches/0007-fix-ppc64le-elfv2-gpr-fpr-argument-independence.patch
+      - if: not unix
+        then:
+          - zig-llvm/patches/0003-fix-cxxabi-type_info-msvc-14.51-mingw-conflict.patch
+          - zig-llvm/patches/0004-add-llvm-dylib-export-all-symbols-mingw.patch
+          - zig-llvm/patches/0005-disable-clang-interpreter-dllexport-mingw.patch
+    target_directory: llvm-source
+
+  - if: s390x
+    then:
+      - url: https://gitlab.gnome.org/GNOME/libxml2/-/archive/v${{ libxml2_version }}/libxml2-v${{ libxml2_version }}.tar.gz
+        sha256: 0da50c1415f4ec0364569d2119b1436ba837b31df44af28569d234272c23cf1f
+        target_directory: libxml2-source
+
+  - if: s390x
+    then:
+      - url: https://github.com/madler/zlib/releases/download/v${{ zlib_version }}/zlib-${{ zlib_version }}.tar.xz
+        sha256: d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3
+        target_directory: zlib-source
+
+      - url: https://github.com/facebook/zstd/releases/download/v${{ zstd_version }}/zstd-${{ zstd_version }}.tar.gz
+        sha256: 8c29e06cf42aacc1eafc4077ae2ec6c6fcb96a626157e0593d5e82a34fd403c1
+        target_directory: zstd-source
+
 build:
   number: ${{ build_number }}
+  string: ${{ hash }}_experimental_${{ build_number }}
 
 outputs:
   # ==========================================================================
@@ -315,7 +376,7 @@ outputs:
               - "*/ld-linux-*.so.*"
               - "*/ld64.so.*"
       script:
-        file: build.sh
+        file: master-build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
           ZIG_TRIPLET: ${{ zig_triplet }}
@@ -334,11 +395,18 @@ outputs:
 
           # Derived from the single skip_langref switch above; do not re-add an env.get here.
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
+
+          LLVM_TRIPLET: ${{ llvm_triplet }}
+          LLVM_SRC_VERSION: ${{ llvm_src_version }}
+          PKG_VERSION: ${{ version }}
+          ZIG_TARGET_HOST: ${{ zig_short_triplet }}
+          ZIG_TARGET_BUILD: ${{ zig_build_triplet }}
+
+          CONDA_TOOLCHAIN_BUILD: ${{ build_triplet }}
+          CONDA_TOOLCHAIN_HOST: ${{ target_triplet }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
-        - ${{ compiler('c') }}
-        - ${{ compiler('cxx') }}
         - ${{ stdlib("c") }}
         - ${{ m2 }}bash >=5.2
         - ${{ m2 }}file
@@ -351,33 +419,31 @@ outputs:
             - ${{ m2 }}coreutils
             - ${{ m2 }}findutils
             - ${{ m2 }}gawk
+            - ${{ m2 }}grep
             - ${{ m2 }}which
+            - pkg-config
         - llvm-tools ${{ llvm_version }}.*  # llvm-ar for mingw stub archives (_mingw.sh)
         - if: (build_platform != target_platform)
           then:
-            - llvmdev ${{ llvm_version }}.*  # llvm-config
             - if: linux
               then:
                 - ${{ qemu_pkg }}
-            - if: osx
-              then:
-                - libxml2-devel
+
+        - if: ppc64le
+          then:
+            - binutils_impl_${{ cross_target_platform_ }} >=2.45
+            - gcc_impl_${{ cross_target_platform_ }} >=14.3
 
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
             - zig_impl_${{ build_platform }} ${{ abi_version }}.*
       host:
-        - clangdev ${{ llvm_version }}.*
-        - libclang-cpp ${{ llvm_version }}.*
-        - llvm ${{ llvm_version }}.*
-        - libxml2-devel
-        - lld ${{ llvm_version }}.*
-        - zlib
-        - zstd
-        - if: osx
+        - if: not s390x
           then:
-            - libcxx ${{ llvm_version }}.*
+            - zlib
+            - zstd
+            - libxml2
             - libxml2-devel
       run:
         - if: ppc64le
@@ -385,9 +451,6 @@ outputs:
             # We redirect linking to gcc/ld.bfd
             - binutils_impl_${{ target_platform }} >=2.45
             - gcc_impl_${{ target_platform }} >=14.3
-        - if: osx
-          then:
-            - libcxx ${{ llvm_version }}.*
       ignore_run_exports:
         by_name:
           - if: linux and not ppc64le
@@ -429,6 +492,17 @@ outputs:
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
+            # Vendored zig-llvm toolchain bundle
+            - ${{ library }}lib/zig-llvm/**
+            - ${{ library }}lib/zig-llvm-path.txt
+            - if: s390x
+              then:
+                - ${{ library }}lib/zig-libxml2/include/.keep
+                - ${{ library }}lib/zig-libxml2/lib/libxml2.so*
+                - ${{ library }}lib/zig-zlib/include/.keep
+                - ${{ library }}lib/zig-zlib/lib/libz.so*
+                - ${{ library }}lib/zig-zstd/include/.keep
+                - ${{ library }}lib/zig-zstd/lib/libzstd.so*
             # Post-install tests
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
@@ -606,9 +680,14 @@ outputs:
         # exists in subdir <X>. Requesting zig_impl_<xc_build_platform> when that
         # differs from build_platform (i.e. on unhosted lanes) can NEVER resolve.
         # Same spec the zig_impl_ output uses for its own self-hosting.
-        - if: is_cross_compiler
+        - if: is_cross_compiler or is_cross_target
           then:
             - zig_impl_${{ build_platform }} ${{ abi_version }}.*
+            - if: ppc64le
+              then:
+                - binutils_impl_${{ cross_target_platform_ }} >=2.45
+                - gcc_impl_${{ cross_target_platform_ }} >=14.3
+                - sysroot_${{ target_platform }} ${{ _c_v }}.*
         - if: not unix
           then:
             - ${{ compiler('c') }}
@@ -619,7 +698,7 @@ outputs:
         - if: linux
           then:
             - sysroot_${{ target_platform }} ${{ _c_v }}.*
-        - if: not is_cross_compiler
+        - if: not (is_cross_compiler or is_cross_target)
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
