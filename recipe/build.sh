@@ -319,9 +319,6 @@ fi
 _can_run_stage3() {
   if ! is_cross; then return 0; fi
   if ! is_unix; then return 1; fi
-  # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
-  # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
   if is_linux; then
     command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
   fi
@@ -347,11 +344,8 @@ elif _can_run_stage3; then
       -Dversion-string="${PKG_VERSION}" \
       -Ddoctest-target="${ZIG_TRIPLET}"
   ) || {
-    if ! is_cross; then
-      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
-      exit 1
-    fi
-    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
+    echo "ERROR: Phase 2 langref build failed" >&2
+    exit 1
   }
 
   if [ -n "${_qemu_shadow_dir:-}" ]; then
