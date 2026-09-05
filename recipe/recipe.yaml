@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 16
+  build_number: 17
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -11,7 +11,7 @@ context:
 
   bootstrap_via_upstream: false
 
-  # Single switch; export derives from this. TEMPORARY "1" skips ~2h langref -- revert to "0" before merge.
+  # Single switch; export derives from this. Set SKIP_LANGREF=1 to skip the ~2h langref build locally.
   skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" }}
 
   # Umbrella switch for long cross-build test legs; runs by default.
@@ -336,6 +336,8 @@ outputs:
 
           # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
+          ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
+          ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="45m") }}
     requirements:
       build:
         # --- Common build deps (all cases) ---
@@ -409,8 +411,7 @@ outputs:
               then:
                 - zig-lld-bundle
           files:
-            # qemu-ppc64le doesn't faithfully emulate traps
-            - if: (is_native or (linux and not xc_ppc64le)) and not skip_langref and not skip_long_xbuild
+            - if: (is_native or linux) and not skip_langref
               then:
                 - ${{ library }}doc/langref.html
             - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
@@ -622,6 +623,8 @@ outputs:
           NEEDS_EMULATION: ${{ linux and build_platform != target_platform }}
 
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
+          ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
+          ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="45m") }}
     requirements:
       build:
         - python 3.12.*

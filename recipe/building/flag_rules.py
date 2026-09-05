@@ -9,20 +9,22 @@ gen_translators.py, which turns it into:
   - recipe/building/_translate.inc      (portable C translation function,
                                           included by zig-cc-nonunix.c /
                                           zig-tool-nonunix.c)
-  - recipe/building/_translate.gen.sh   (bash translation function, sourced
-                                          by _zig-cc-common.sh)
+  - recipe/building/_translate.gen.sh   (bash-style translation function,
+                                          consumed by install_zig_activation.py
+                                          and testing/test_flag_translation_parity.py)
 
 SCOPE: rules R1-R13 below are de-duplicated here. Everything else in
-_zig-cc-common.sh / zig-cc-nonunix.c that is NOT one of these rules
-(sysroot *detection* itself -- R12 only prints the already-computed _sr
-value, -Xlinker general trigger/drop besides Bsymbolic, -march/-mtune/
+zig-cc-unix.c / zig-cc-nonunix.c that is NOT one of these rules (sysroot
+*detection* itself -- R12 only prints the sysroot value the caller
+already computed via zig_resolve_sysroot() and passed in via the profile,
+-Xlinker general trigger/drop besides Bsymbolic, -march/-mtune/
 -fstack-protector/... drops, MSVC /MANIFEST* handling, -Wl,-e<sym> entry
 translation, cache-dir init, MACOSX_DEPLOYMENT_TARGET override) stays
 hand-written in the wrappers and is intentionally left OUT of this
 manifest.
 
 Grounded against (2026-07-15):
-  - recipe/scripts/_zig-cc-common.sh
+  - recipe/building/zig-cc-unix.c
   - recipe/building/zig-cc-nonunix.c
   - recipe/building/nonunix_common.h
 
@@ -114,12 +116,12 @@ ACTION KINDS (action["op"])
                                  dir) for the named program, print
                                  resolved path or the bare name (mirrors
                                  R3's fallback), then exit 0
-  "intercept_print_sysroot"     (R12, unix profile only) print the _sr
-                                 shell variable that _zig-cc-common.sh's
-                                 sysroot-detection block already computed
-                                 (empty string if unset/empty -- mirrors
-                                 that an empty _sr means no -isysroot is
-                                 injected either), then exit 0
+  "intercept_print_sysroot"     (R12, unix profile only) print the sysroot
+                                 value the caller computed and passed in
+                                 via the profile (empty string if
+                                 unset/empty -- mirrors that an empty
+                                 sysroot means no -isysroot is injected
+                                 either), then exit 0
   "intercept_print_multiarch"   (R13) synthesize this profile/arch's
                                  conda-style triplet and reuse R5's
                                  target_translate function/logic to
@@ -307,9 +309,7 @@ R5_TRIPLET_TRANSLATE = dict(
 )
 
 # ---------------------------------------------------------------------------
-# R6 -- [WINNER] preserve user -mcpu=<val>; inject -mcpu=baseline only if
-# absent. NOTE: bash currently has a pre-existing BUG this rule fixes -- see
-# the returned report's ambiguity/grounding notes.
+# R6 -- preserve user -mcpu=<val>; inject -mcpu=baseline only if absent.
 # ---------------------------------------------------------------------------
 R6_MCPU_PRESERVE = dict(
     id="R6_mcpu_preserve",
@@ -322,19 +322,17 @@ R6_MCPU_PRESERVE = dict(
 )
 
 # ---------------------------------------------------------------------------
-# R7 -- [NARROWED 2026-07-15] wl_drop_hybrid is restricted to the 3 flags
-# that are GENUINELY SHARED between the C wrapper's is_wl_drop() and the
-# bash wrapper's unconditional drop set, all gate=always:
-#   -Wl,--color-diagnostics, -Wl,-rpath-link*, -Wl,--disable-new-dtags
+# R7 -- wl_drop_hybrid covers exactly these 3 shared flags, all
+# gate=always: -Wl,--color-diagnostics, -Wl,-rpath-link*,
+# -Wl,--disable-new-dtags.
 #
-# The other historical C is_wl_drop() members (--allow-shlib-undefined,
-# --no-allow-shlib-undefined, --version-script*, -soname*, --gc-sections,
-# --no-gc-sections, --build-id*, --as-needed, --no-as-needed) are C-ONLY
-# (bash never dropped them) and REMAIN hand-written in zig-cc-nonunix.c
-# unchanged (block-gated by !use_lld); they are out of the shared de-dup
-# scope. -soname is win-only. Trigger-overlap members (-Bsymbolic* -> R8,
+# Other members (--allow-shlib-undefined, --no-allow-shlib-undefined,
+# --version-script*, -soname*, --gc-sections, --no-gc-sections,
+# --build-id*, --as-needed, --no-as-needed) remain hand-written in
+# zig-cc-nonunix.c (block-gated by !use_lld) and are out of scope here.
+# -soname is win-only. Trigger-overlap members (-Bsymbolic* -> R8,
 # -Wl,-z,*/-Wl,-O* -> R9) keep+trigger via the caller's out-of-scope
-# trigger scan, same as before this narrowing.
+# trigger scan.
 # ---------------------------------------------------------------------------
 R7_WL_DROP_HYBRID = dict(
     id="R7_wl_drop_hybrid",
@@ -345,10 +343,8 @@ R7_WL_DROP_HYBRID = dict(
     match=dict(form="n/a"),
     action=dict(op="drop"),
     members=[
-        # gate=always: unconditionally dropped regardless of use_lld. This
-        # is now the ONLY gate value present in R7 -- the "gate" key is
-        # retained per-member (and at the schema level) for extensibility,
-        # not because a second value is currently in use.
+        # gate=always: unconditionally dropped regardless of use_lld. The
+        # only gate value in R7; kept per-member for schema extensibility.
         dict(form="exact", value="-Wl,--color-diagnostics", gate="always"),
         dict(form="prefix", value="-Wl,-rpath-link", gate="always"),
         dict(form="exact", value="-Wl,--disable-new-dtags", gate="always"),
@@ -356,13 +352,10 @@ R7_WL_DROP_HYBRID = dict(
 )
 
 # ---------------------------------------------------------------------------
-# R8 -- [WINNER] -Bsymbolic(-functions) in ANY form (bare, -Wl,-prefixed, or
-# -Xlinker-passed) is kept verbatim and forces use_lld=1. Current wrappers
-# already do this for the bare and -Wl, forms; the fix is adding the
-# -Xlinker pair form to the trigger set (currently C silently DROPS
-# "-Xlinker -Bsymbolic(-functions)" via is_xlinker_drop() without
-# triggering LLD -- that special-case drop must be removed in favor of
-# this rule).
+# R8 -- -Bsymbolic(-functions) in ANY form (bare, -Wl,-prefixed, or
+# -Xlinker-passed) is kept verbatim and forces use_lld=1. The -Xlinker
+# pair form is included in the trigger set alongside the bare and -Wl,
+# forms.
 # ---------------------------------------------------------------------------
 R8_BSYMBOLIC_LLD_TRIGGER = dict(
     id="R8_bsymbolic_lld_trigger",
@@ -385,13 +378,9 @@ R8_BSYMBOLIC_LLD_TRIGGER = dict(
 )
 
 # ---------------------------------------------------------------------------
-# R9 -- [WINNER] -Wl,-z,* / -Wl,-O* family split. NEVER dropped (fixes a
-# real bug in the current C is_wl_drop(), which blanket-drops the entire
-# -Wl,-z,* / -Wl,-O* prefix families when use_lld is 0 -- e.g. -Wl,-z,now
-# is currently silently dropped in C, which is wrong: bash's current
-# filter loop never drops these at all). The trigger subset additionally
-# forces use_lld=1; everything else in the same prefix family is a plain
-# keep/passthrough.
+# R9 -- -Wl,-z,* / -Wl,-O* family split. NEVER dropped. The trigger
+# subset additionally forces use_lld=1; everything else in the same
+# prefix family is a plain keep/passthrough.
 # ---------------------------------------------------------------------------
 R9_Z_O_PASSTHROUGH = dict(
     id="R9_z_o_passthrough",
@@ -445,8 +434,8 @@ R11_PRINT_PROG_NAME = dict(
 # shim (zig-cc-nonunix.c) has no sysroot concept (confirmed via grep), so
 # there is nothing to mirror on the win profile -- gen_translators.py must
 # filter this rule out of its C/win output via rules_for_profile("win").
-# Prints the _sr shell variable _zig-cc-common.sh's sysroot-detection
-# block already computes (empty string if unset/empty).
+# Prints the sysroot value the caller computed and passed in via the
+# profile (empty string if unset/empty).
 # ---------------------------------------------------------------------------
 R12_PRINT_SYSROOT = dict(
     id="R12_print_sysroot",

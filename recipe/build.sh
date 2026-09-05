@@ -26,6 +26,7 @@ export build_platform="${build_platform:-${target_platform}}"
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_common.sh"
+source "${RECIPE_DIR}/building/_zig_diag.sh"
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
 
 # --- Early exits ---
@@ -295,6 +296,8 @@ if is_linux; then
 fi
 
 
+zig_diag_env "pre-phase1"
+zig_diag_note "PHASE 1: building zig"
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
@@ -319,9 +322,6 @@ fi
 _can_run_stage3() {
   if ! is_cross; then return 0; fi
   if ! is_unix; then return 1; fi
-  # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
-  # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
   if is_linux; then
     command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
   fi
@@ -331,7 +331,7 @@ _can_run_stage3() {
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
 elif _can_run_stage3; then
-  dbg echo "=== PHASE 2: building langref via stage3 zig ==="
+  zig_diag_note "PHASE 2: building langref via stage3 zig"
   _stage3_runner=()
   if is_cross && is_linux; then
     _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
@@ -340,19 +340,34 @@ elif _can_run_stage3; then
   # PATH already carries the qemu-<llvm-arch> shadow set up before -fqemu was
   # decided; _stage3_runner below resolves through it.
 
+  _phase2_diag_flags=()
+  zig_diag_on && _phase2_diag_flags=(--verbose --summary all)
+
+  # Bound langref so a hung lane ends instead of hitting the CI job ceiling.
+  _phase2_timeout=()
+  if [[ "${ZIG_LANGREF_TIMEOUT:-45m}" != "0" ]] && command -v timeout &>/dev/null; then
+    _phase2_timeout=(timeout --kill-after=60s "${ZIG_LANGREF_TIMEOUT:-45m}")
+  fi
+
+  zig_diag_heartbeat_start "phase2-langref"
   (
     cd "${cmake_source_dir}" &&
-    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+    zig_diag_exec "phase2-langref" -- \
+      "${_phase2_timeout[@]+"${_phase2_timeout[@]}"}" \
+      "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
       --prefix "${PREFIX}" \
       -Dversion-string="${PKG_VERSION}" \
-      -Ddoctest-target="${ZIG_TRIPLET}"
+      -Ddoctest-target="${ZIG_TRIPLET}" \
+      ${_phase2_diag_flags[@]+"${_phase2_diag_flags[@]}"}
   ) || {
-    if ! is_cross; then
-      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
-      exit 1
+    _phase2_rc=$?
+    if [[ ${_phase2_rc} -eq 124 || ${_phase2_rc} -eq 137 ]]; then
+      echo "ERROR: Phase 2 langref TIMED OUT after ${ZIG_LANGREF_TIMEOUT:-45m} (rc=${_phase2_rc})" >&2
     fi
-    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
+    echo "ERROR: Phase 2 langref build failed" >&2
+    exit 1
   }
+  zig_diag_heartbeat_stop
 
   if [ -n "${_qemu_shadow_dir:-}" ]; then
     rm -rf "${_qemu_shadow_dir}"
