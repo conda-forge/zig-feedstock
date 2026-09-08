@@ -1,0 +1,15 @@
+--- a/llvm/cmake/modules/Findzstd.cmake
++++ b/llvm/cmake/modules/Findzstd.cmake
+@@ -45,7 +45,12 @@
+       set_target_properties(zstd::libzstd_shared PROPERTIES
+           INTERFACE_INCLUDE_DIRECTORIES "${zstd_INCLUDE_DIR}"
+           IMPORTED_LOCATION "${zstd_DIRNAME}/${zstd_BASENAME}"
+-          IMPORTED_IMPLIB "${zstd_LIBRARY}")
++          IMPORTED_IMPLIB "${zstd_LIBRARY}"
++          # Declare supported configurations and set config-specific properties
++          # This fixes "IMPORTED_IMPLIB not set for configuration Release" error
++          IMPORTED_CONFIGURATIONS "Release"
++          IMPORTED_LOCATION_RELEASE "${zstd_DIRNAME}/${zstd_BASENAME}"
++          IMPORTED_IMPLIB_RELEASE "${zstd_LIBRARY}")
+       unset(zstd_DIRNAME)
+       unset(zstd_BASENAME)

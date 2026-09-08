@@ -6,11 +6,43 @@
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -147,6 +147,8 @@
+@@ -147,6 +147,40 @@
      find_library(ZLIB NAMES libz.a libzlibstatic.a z zlib libz NAMES_PER_DIR)
      list(APPEND LLVM_LIBRARIES "${ZLIB}")
  endif()
-+string(REPLACE ".dll" "" LLVM_LIBRARIES "${LLVM_LIBRARIES}")
++string(REGEX REPLACE "\\.dll(;|$)" "${CMAKE_IMPORT_LIBRARY_SUFFIX}\\1" LLVM_LIBRARIES "${LLVM_LIBRARIES}") # mingw can resolve LLVM_LIBRARIES to a bare .dll; a naive .dll strip yields an extensionless path zig rejects - map trailing .dll to the platform import-lib suffix (.dll.a mingw / .lib msvc), anchored to end-of-item so an existing .dll.a is left untouched
++set(_ZIG_LLVM_LIBRARIES_RESOLVED "")
++foreach(_zig_llvm_lib IN LISTS LLVM_LIBRARIES)
++    set(_zig_llvm_lib_resolved "${_zig_llvm_lib}")
++    set(_zig_llvm_lib_is_path FALSE)
++    if(IS_ABSOLUTE "${_zig_llvm_lib}" AND NOT "${_zig_llvm_lib}" MATCHES "^-" AND NOT "${_zig_llvm_lib}" MATCHES "\\$<")
++        set(_zig_llvm_lib_is_path TRUE)
++    endif()
++    set(_zig_llvm_lib_status "pass-through") # not path-like (bare lib name, -flag, or generator expression): never touched, never checked
++    if(_zig_llvm_lib_is_path)
++        set(_zig_llvm_lib_status "as-is")
++        if(NOT EXISTS "${_zig_llvm_lib_resolved}")
++            get_filename_component(_zig_llvm_lib_dir "${_zig_llvm_lib}" DIRECTORY)
++            get_filename_component(_zig_llvm_lib_name "${_zig_llvm_lib}" NAME)
++            set(_zig_llvm_lib_retried FALSE)
++            if(_zig_llvm_lib_dir MATCHES "/bin$")
++                string(REGEX REPLACE "/bin$" "/lib" _zig_llvm_lib_dir_alt "${_zig_llvm_lib_dir}")
++                set(_zig_llvm_lib_alt "${_zig_llvm_lib_dir_alt}/${_zig_llvm_lib_name}")
++                if(EXISTS "${_zig_llvm_lib_alt}")
++                    set(_zig_llvm_lib_resolved "${_zig_llvm_lib_alt}")
++                    set(_zig_llvm_lib_status "rewritten")
++                    set(_zig_llvm_lib_retried TRUE)
++                endif()
++            endif()
++            if(NOT _zig_llvm_lib_retried)
++                message(FATAL_ERROR "derived LLVM import lib path does not exist: ${_zig_llvm_lib_resolved}")
++            endif()
++        endif()
++    endif()
++    message(STATUS "ZIG: LLVM_LIBRARIES entry (${_zig_llvm_lib_status}): ${_zig_llvm_lib_resolved}")
++    list(APPEND _ZIG_LLVM_LIBRARIES_RESOLVED "${_zig_llvm_lib_resolved}")
++endforeach()
++set(LLVM_LIBRARIES "${_ZIG_LLVM_LIBRARIES_RESOLVED}")
 +list(APPEND LLVM_LIBRARIES "msvcrt.lib")
 
  if(ZIG_STATIC_ZSTD)

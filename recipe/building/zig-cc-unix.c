@@ -632,17 +632,52 @@ static int run_windres(const char *zig_bin, const char *prog, int argc, char *ar
 
 /* zig-asm.sh:5-14.  Note this is inventory item 2's DUPLICATED sysroot block:
  * unlike run_cc it injects -isysroot ONLY (no -L group).  Preserved as-is --
- * unifying it is a behavior change and belongs in its own commit. */
+ * unifying it is a behavior change and belongs in its own commit.
+ *
+ * run_asm always injects its own -target ZIG_TARGET below (unlike run_cc's
+ * STEP 10, which only injects when the caller hasn't already supplied one).
+ * A caller-supplied -target/--target= is no longer dropped: CI proved that
+ * unconditionally dropping it breaks builds where the caller's target is
+ * load-bearing (Azure build 1581992, osx-64 native: LLVM's own CMake passes
+ * "-target x86_64-apple-darwin" to compile its BLAKE3 x86-64 .S sources;
+ * dropping it let the wrapper's baked aarch64 ZIG_TARGET win instead, so
+ * blake3_avx512_x86-64_unix.S was assembled for aarch64 and zig aborted with
+ * "target architecture aarch64 has no LLVM CPU feature named 'avx512vl'").
+ * Instead, any caller-supplied target is run through the same
+ * zig_tr_translate_target() (R5, _translate.inc) that run_cc uses, so a
+ * conda-style triple (e.g. x86_64-apple-darwin) becomes a zig-parseable one
+ * (x86_64-macos-none) and is then forwarded *after* the injected -target
+ * ZIG_TARGET, so it wins under clang-style last-wins semantics -- which is
+ * the intended result: the caller's real target for that translation unit,
+ * not the wrapper's baked default. See the translate logic in the
+ * argv-forwarding loop below. */
 static int run_asm(const char *zig_bin, const char *prog, int argc, char *argv[]) {
     int target_is_native = str_eq(ZIG_TARGET, "native");
     const char *sysroot = zig_resolve_sysroot(getenv("CONDA_PREFIX"),
                                               ZIG_TARGET_ARCH, target_is_native);
     int have_sysroot = zig_sysroot_is_dir(sysroot);
 
+    /* R5 profile for translating a caller-supplied -target/--target= value
+     * (zig_tr_translate_target(), _translate.inc:80-100).  Only is_win is
+     * read by that function; the remaining fields are filled in for
+     * consistency with run_cc's profile (STEP 4 above). */
+    zig_translate_profile profile;
+    profile.is_win = 0;
+    profile.is_win_target = strstr(ZIG_TARGET, "-windows-") != NULL;
+    profile.conda_prefix = getenv("CONDA_PREFIX");
+    profile.zig_target_arch = ZIG_TARGET_ARCH;
+    profile.sysroot = sysroot;
+
     /* zig_bin, "cc", "-target", <t>, "-mcpu=baseline", [-isysroot, <sr>],
-     * args..., NULL */
+     * args..., NULL.  A caller-supplied "--target=X" now expands into two
+     * forwarded tokens ("-target", translated-X) instead of one, so the
+     * loop's worst case is 2 output slots per source arg rather than 1:
+     * fixed prefix (7 max: zig_bin, "cc", "-target", ZIG_TARGET,
+     * "-mcpu=baseline", "-isysroot", sysroot) + loop worst case
+     * 2*(argc-1) + NULL terminator (1) = 2*argc + 6.  Allocate argc*2 + 8
+     * for headroom. */
     const char **new_argv =
-        (const char **)malloc(sizeof(char *) * (size_t)(argc + 8));
+        (const char **)malloc(sizeof(char *) * (size_t)(argc * 2 + 8));
     if (!new_argv) {
         fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         return 1;
@@ -657,8 +692,61 @@ static int run_asm(const char *zig_bin, const char *prog, int argc, char *argv[]
         new_argv[ni++] = "-isysroot";
         new_argv[ni++] = sysroot;
     }
-    for (i = 1; i < argc; i++)
+    for (i = 1; i < argc; i++) {
+        const char *target_val = NULL;
+        int is_target_flag = 0;
+        if (str_eq(argv[i], "-target")) {
+            is_target_flag = 1;
+            if (i + 1 < argc) target_val = argv[++i];
+        } else if (starts_with(argv[i], "--target=")) {
+            is_target_flag = 1;
+            target_val = argv[i] + strlen("--target=");
+        }
+        if (is_target_flag) {
+            /* CI-confirmed (Azure build 1581992, osx-64 native): LLVM's own
+             * CMake passes a raw Clang-style "-target x86_64-apple-darwin"
+             * when compiling its BLAKE3 .S sources.  Previously this loop
+             * dropped that flag so the injected -target ZIG_TARGET above
+             * would stand; that was wrong -- it let the wrapper's baked
+             * aarch64 triple win over CMake's deliberate x86_64 request, so
+             * blake3_avx512_x86-64_unix.S (and, almost certainly, its sse2/
+             * sse41/avx2 siblings) got assembled for the wrong architecture.
+             * Instead, translate the caller's triple through the same R5
+             * rule run_cc uses (zig_tr_translate_target(), _translate.inc)
+             * and forward it *after* the injected -target ZIG_TARGET, so it
+             * wins under clang-style last-wins semantics -- preserving
+             * CMake's intended architecture while making the triple
+             * parseable by zig.  zig_tr_translate_target() returns the
+             * value unchanged (never NULL) when it has no mapping, so an
+             * already zig-valid triple still passes through as-is. */
+            if (target_val) {
+                const char *translated = zig_tr_translate_target(target_val, &profile);
+                /* zig_tr_translate_target() may return a pointer into its
+                 * own function-local static buffer (the "-conda-linux-gnu"
+                 * case in _translate.inc).  LLVM can pass -target more than
+                 * once, and a second call would clobber that shared buffer
+                 * while a first translated value is still sitting in
+                 * new_argv.  Give each translated value its own storage so
+                 * it stays valid through exec_zig() below. */
+                char *owned = (char *)malloc(strlen(translated) + 1);
+                if (!owned) {
+                    fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
+                    free(new_argv);
+                    return 1;
+                }
+                strcpy(owned, translated);
+                new_argv[ni++] = "-target";
+                new_argv[ni++] = owned;
+            } else {
+                /* Trailing "-target" with no following value: nothing to
+                 * translate.  Forward the bare flag unchanged rather than
+                 * dropping it or substituting ZIG_TARGET. */
+                new_argv[ni++] = argv[i];
+            }
+            continue;
+        }
         new_argv[ni++] = argv[i];
+    }
     new_argv[ni] = NULL;
     return exec_zig(zig_bin, (char *const *)new_argv);
 }

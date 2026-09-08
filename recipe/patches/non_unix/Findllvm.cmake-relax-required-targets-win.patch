@@ -1,0 +1,23 @@
+--- a/cmake/Findllvm.cmake
++++ b/cmake/Findllvm.cmake
+@@ -85,6 +85,20 @@
+
+     set(ZIG_LLVM_REQUIRED_TARGETS "AArch64;AMDGPU;ARM;AVR;BPF;Hexagon;Lanai;LoongArch;Mips;MSP430;NVPTX;PowerPC;RISCV;SPIRV;Sparc;SystemZ;VE;WebAssembly;X86;XCore")
+
++    # conda-forge zig-feedstock: win-64 and win-arm64 build LLVM with a pruned
++    # 7-backend LLVM_TARGETS_TO_BUILD (X86;AArch64;ARM;PowerPC;RISCV;SystemZ;
++    # WebAssembly -- see recipe/zig-llvm/building/_native_llvm_config.sh
++    # compute_llvm_targets()) to avoid PE/COFF export limits (win-arm64) and
++    # the Azure Pipelines 360-min budget (win-64). Drop the backends neither
++    # windows lane actually builds from the required-targets check so
++    # configure does not FATAL_ERROR on a target that was intentionally
++    # never built for these platforms.
++    if (CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|arm64|aarch64|ARM64|AArch64)$")
++      foreach(_unbuilt_target IN ITEMS AMDGPU AVR BPF Hexagon Lanai LoongArch Mips MSP430 NVPTX SPIRV Sparc VE XCore)
++        list(REMOVE_ITEM ZIG_LLVM_REQUIRED_TARGETS "${_unbuilt_target}")
++      endforeach()
++    endif()
++
+     set(ZIG_LLVM_REQUIRED_TARGETS_ENABLED TRUE)
+     foreach(TARGET_NAME IN LISTS ZIG_LLVM_REQUIRED_TARGETS)
+       list (FIND LLVM_TARGETS_BUILT "${TARGET_NAME}" _index)

@@ -1,0 +1,55 @@
+--- a/src/zig_clang_driver.cpp	2026-08-06 21:48:54.493196906 -0500
++++ b/src/zig_clang_driver.cpp	2026-08-06 21:48:54.493196906 -0500
+@@ -45,12 +45,15 @@
+ #include "llvm/Support/Program.h"
+ #include "llvm/Support/Signals.h"
+ #include "llvm/Support/StringSaver.h"
++#include "llvm/MC/TargetRegistry.h"
+ #include "llvm/Support/TargetSelect.h"
+ #include "llvm/Support/Timer.h"
+ #include "llvm/Support/VirtualFileSystem.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include "llvm/TargetParser/Host.h"
+ #include <memory>
++#include <cstdlib>
++#include <iterator>
+ #include <optional>
+ #include <set>
+ #include <system_error>
+@@ -240,6 +243,18 @@
+ 
+   llvm::InitializeAllTargets();
+ 
++  if (::getenv("ZIG_DEBUG_TARGET_REGISTRY")) {
++    auto Targets = llvm::TargetRegistry::targets();
++    auto Count = std::distance(Targets.begin(), Targets.end());
++    llvm::errs() << "ZIGDIAG[post-init]: registered target count = "
++                 << Count << "\n";
++    llvm::errs() << "ZIGDIAG[post-init]: registry head = "
++                 << (Count ? (const void *)&*Targets.begin()
++                           : (const void *)nullptr) << "\n";
++    for (const auto &T : Targets)
++      llvm::errs() << "ZIGDIAG[post-init]: target = " << T.getName() << "\n";
++  }
++
+   llvm::BumpPtrAllocator A;
+   llvm::StringSaver Saver(A);
+ 
+@@ -398,6 +413,17 @@
+     FailingCommand = &*C->getJobs().begin();
+   if (C && !C->containsError()) {
+     SmallVector<std::pair<int, const Command *>, 4> FailingCommands;
++    if (::getenv("ZIG_DEBUG_TARGET_REGISTRY")) {
++      auto Targets = llvm::TargetRegistry::targets();
++      auto Count = std::distance(Targets.begin(), Targets.end());
++      llvm::errs() << "ZIGDIAG[pre-execute]: registered target count = "
++                   << Count << "\n";
++      llvm::errs() << "ZIGDIAG[pre-execute]: registry head = "
++                   << (Count ? (const void *)&*Targets.begin()
++                             : (const void *)nullptr) << "\n";
++      for (const auto &T : Targets)
++        llvm::errs() << "ZIGDIAG[pre-execute]: target = " << T.getName() << "\n";
++    }
+     Res = TheDriver.ExecuteCompilation(*C, FailingCommands);
+ 
+     for (const auto &P : FailingCommands) {

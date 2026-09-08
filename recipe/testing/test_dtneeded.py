@@ -11,9 +11,50 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+
+from _test_utils import _run, _qemu_binary_arch, target_arch_from_triplet
+
+
+def _diag(triplet: str) -> None:
+    """Print binfmt_misc / qemu-execve diagnostics for `triplet`.
+
+    Called immediately before every compiler invocation, on both the
+    success and failure paths, so a passing lane leaves a baseline to
+    diff against. Best-effort only -- must never raise.
+    """
+    qemu_arch = "unknown"
+    try:
+        arch = target_arch_from_triplet(triplet)
+        if arch:
+            qemu_arch = _qemu_binary_arch(arch)
+    except Exception as exc:
+        print(f"[diag] arch derivation failed -> {exc}")
+
+    try:
+        qemu_bin = shutil.which(f"qemu-execve-{qemu_arch}")
+        print(f"[diag] qemu-execve-{qemu_arch} -> {qemu_bin or 'NOT FOUND'}")
+    except Exception as exc:
+        print(f"[diag] qemu-execve-{qemu_arch} lookup failed -> {exc}")
+
+    try:
+        print(f"[diag] QEMU_EXECVE -> {os.environ.get('QEMU_EXECVE') or '(unset)'}")
+    except Exception as exc:
+        print(f"[diag] QEMU_EXECVE lookup failed -> {exc}")
+
+    try:
+        binfmt_path = f"/proc/sys/fs/binfmt_misc/qemu-{qemu_arch}"
+        if os.path.exists(binfmt_path):
+            with open(binfmt_path) as f:
+                status = f.readline().strip()
+            print(f"[diag] {binfmt_path} -> {status}")
+        else:
+            print(f"[diag] {binfmt_path} -> does not exist")
+    except Exception as exc:
+        print(f"[diag] binfmt_misc check failed -> {exc}")
 
 
 def _build(triplet: str, src: str, binary: str, zig_target: str,
@@ -24,7 +65,11 @@ def _build(triplet: str, src: str, binary: str, zig_target: str,
     if extra:
         cmd += extra
     cmd += ["-target", zig_target, "-Wl,--no-as-needed", "-lm", src, "-o", binary]
-    return subprocess.run(cmd, capture_output=True, text=True)
+    _diag(triplet)
+    # `{triplet}-zig` is itself a target-arch binary on a cross lane, so it
+    # must run through _run's emulation_prefix routing rather than a bare
+    # subprocess.run -- binfmt_misc is not guaranteed inside the CI container.
+    return _run(cmd, target=triplet, timeout=120)
 
 
 def main(triplet: str, zig_target: str = "") -> int:

@@ -104,7 +104,8 @@ int statx(int dirfd, const char *pathname, int flags,
 }
 EOF
 
-  "${cc_compiler}" -c "${output_dir}/glibc217_syscall_stubs.c" \
+  # -fno-sanitize=undefined: see _atfork.sh:_compile_stub_object
+  "${cc_compiler}" -fno-sanitize=undefined -c "${output_dir}/glibc217_syscall_stubs.c" \
     -o "${output_dir}/glibc217_syscall_stubs.o" || {
     echo "ERROR: Failed to compile glibc 2.17 syscall stubs" >&2
     return 1

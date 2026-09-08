@@ -1,83 +1,101 @@
 --- a/build.zig
 +++ b/build.zig
-@@ -1469,6 +1469,8 @@
+@@ -1469,6 +1469,10 @@
  };
 
  fn generateLangRef(b: *std.Build) std.Build.LazyPath {
 +    const doctest_target = b.option([]const u8, "doctest-target",
 +        "Default target for langref doctest compilations (e.g., x86_64-linux-gnu.2.17)");
++    const doctest_libc = b.option([]const u8, "doctest-libc",
++        "Libc installation file forwarded to langref doctest compilations alongside doctest-target");
      const io = b.graph.io;
 
      const doctest_exe = b.addExecutable(.{
-@@ -1509,6 +1511,9 @@
+@@ -1509,6 +1513,12 @@
 
          cmd.addArgs(&.{"-o"});
          _ = wf.addCopyFile(cmd.addOutputFileArg(out_basename), out_basename);
 +        if (doctest_target) |dt| {
 +            cmd.addArgs(&.{ "--default-target", dt });
 +        }
++        if (doctest_libc) |lc| {
++            cmd.addArgs(&.{ "--default-libc", lc });
++        }
      }
 
      const docgen_exe = b.addExecutable(.{
 --- a/tools/doctest.zig
 +++ b/tools/doctest.zig
-@@ -26,6 +26,7 @@
+@@ -26,6 +26,8 @@
      \\   --zig zig              Path to the zig compiler
      \\   --zig-lib-dir dir      Override the zig compiler library path
      \\   --cache-root dir       Path to local .zig-cache/
 +    \\   --default-target t     Default target for doctests without // target=
++    \\   --default-libc file    Libc installation file forwarded alongside --default-target
      \\
  ;
 
-@@ -45,6 +46,7 @@
+@@ -45,6 +47,8 @@
      var opt_zig: ?[]const u8 = null;
      var opt_zig_lib_dir: ?[]const u8 = null;
      var opt_cache_root: ?[]const u8 = null;
 +    var opt_default_target: ?[]const u8 = null;
++    var opt_default_libc: ?[]const u8 = null;
 
      while (args_it.next()) |arg| {
          if (mem.startsWith(u8, arg, "-")) {
-@@ -61,6 +63,8 @@
+@@ -61,6 +65,10 @@
                  opt_zig_lib_dir = args_it.next() orelse fatal("expected parameter after --zig-lib-dir", .{});
              } else if (mem.eql(u8, arg, "--cache-root")) {
                  opt_cache_root = args_it.next() orelse fatal("expected parameter after --cache-root", .{});
 +            } else if (mem.eql(u8, arg, "--default-target")) {
 +                opt_default_target = args_it.next() orelse fatal("expected parameter after --default-target", .{});
++            } else if (mem.eql(u8, arg, "--default-libc")) {
++                opt_default_libc = args_it.next() orelse fatal("expected parameter after --default-libc", .{});
              } else {
                  fatal("unrecognized option: '{s}'", .{arg});
              }
-@@ -108,6 +112,7 @@
+@@ -108,6 +116,8 @@
              try Dir.path.relative(arena, cwd_path, environ_map, tmp_dir_path, zig_lib_dir)
          else
              null,
 +        opt_default_target,
++        opt_default_libc,
          environ_map,
      );
 
-@@ -127,6 +132,8 @@
+@@ -127,6 +137,10 @@
      input_path: []const u8,
      /// Relative to `tmp_dir_path`.
      opt_zig_lib_dir: ?[]const u8,
 +    /// Default target for doctests without explicit // target= directive.
 +    opt_default_target: ?[]const u8,
++    /// Libc installation file, forwarded alongside opt_default_target.
++    opt_default_libc: ?[]const u8,
      environ_map: *const process.Environ.Map,
  ) !void {
      const host = try std.zig.system.resolveTargetQuery(io, .{});
-@@ -175,6 +182,8 @@
+@@ -175,6 +189,11 @@
              if (code.target_str) |triple| {
                  try build_args.appendSlice(&[_][]const u8{ "-target", triple });
                  try shell_out.print("-target {s} ", .{triple});
 +            } else if (opt_default_target) |dt| {
 +                try build_args.appendSlice(&[_][]const u8{ "-target", dt });
++                if (opt_default_libc) |lc| {
++                    try build_args.appendSlice(&[_][]const u8{ "--libc", lc });
++                }
              }
              if (code.use_llvm) |use_llvm| {
                  if (use_llvm) {
-@@ -328,6 +337,21 @@
+@@ -328,6 +347,24 @@
                          try shell_out.writeAll("--test-no-exec");
                      },
                  }
 +            } else if (opt_default_target) |dt| {
 +                try test_args.appendSlice(&[_][]const u8{ "-target", dt });
++                if (opt_default_libc) |lc| {
++                    try test_args.appendSlice(&[_][]const u8{ "--libc", lc });
++                }
 +
 +                const target_query = try std.Target.Query.parse(.{
 +                    .arch_os_abi = dt,

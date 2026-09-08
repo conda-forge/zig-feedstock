@@ -2,12 +2,22 @@
 # Affects: src/link/Lld.zig
 # Upstream: TBD
 # Drop-when: Upstream LLD gains full PowerPC64 ELF relocation support (R_PPC64_REL24, TOC, etc.)
-# Last-verified: 2026-06-01
+# Last-verified: 2026-07-30
+# Fix (2026-07-30): the libunwind branch previously emitted a bare -Wl,-lunwind,
+# which requires an -L search path that the packaged/installed zig binary never
+# receives (the build-time-only linker wrapper injecting -L.../zig-llvm/lib is
+# not shipped). Confirmed via CI: PR #123,
+# linux_ppc64le_cross_target_platform_linux-ppc64le failed with
+# "cannot find -lunwind: No such file or directory" at package-test time.
+# Fix mirrors the sibling libc++ branch: resolve libunwind.so's absolute path
+# (co-located with libc++.so.1/libc++.so in zig-llvm/lib/, confirmed via
+# recipe/zig-llvm/building/_cmake_flags.sh:161 and _runtimes_build.sh) instead
+# of relying on -L + bare -lunwind.
 
 diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -872,7 +872,428 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -872,6 +872,431 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
              .{},
          );
      } else {
@@ -312,11 +322,15 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 +                // Zig's static libunwind.a has hidden visibility which conflicts
 +                // with shared libc++.so that depends on libunwind symbols.
 +                if (comp.config.link_libunwind) {
-+                    if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |_| {
-+                        // Shared libunwind.so is co-located with libc++.so.
-+                        // Use -lunwind so ld.bfd resolves it from the same -L path.
++                    if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
++                        // Shared libunwind.so is co-located with libc++.so — resolve
++                        // its absolute path directly (mirroring the libc++ branch
++                        // above) instead of a bare -lunwind, which requires an -L
++                        // path the installed/packaged zig binary never receives.
++                        const unwind_dir = std.fs.path.dirname(shared_path) orelse ".";
++                        const unwind_path = try std.fs.path.join(arena, &[_][]const u8{ unwind_dir, "libunwind.so" });
 +                        try argv.append("-Wl,--no-as-needed");
-+                        try argv.append("-Wl,-lunwind");
++                        try argv.append(unwind_path);
 +                        try argv.append("-Wl,--as-needed");
 +                    } else {
 +                        try argv.append(try comp.libunwind_static_lib.?.full_object_path.toString(arena));
@@ -435,4 +449,3 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
          // Create an LLD command line and invoke it.
          var argv = std.array_list.Managed([]const u8).init(gpa);
          defer argv.deinit();
-         // We will invoke ourselves as a child process to gain access to LLD.

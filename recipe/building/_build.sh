@@ -16,8 +16,18 @@ function build_zig_with_zig() {
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1
       local rc=0
+      # DIAGNOSTIC (do not remove): --color off makes lib/compiler/build_runner.zig
+      # start std.Progress with disable_printing=true (see build_runner.zig
+      # "--color" handling and std.Progress.start()'s disable_printing check),
+      # which skips the spinner render thread entirely instead of emitting
+      # carriage-return-driven redraws. On PR #175 the ppc64le lane's real
+      # compile/link error was scrolled over by ~8 minutes of spinner
+      # overwrite control characters and never reached the log. This is a
+      # rendering-only flag - it does not affect what gets built - and is
+      # required to capture the actual failure text on the next CI round.
       "${zig}" build \
         --prefix "${install_dir}" \
+        --color off \
         ${EXTRA_ZIG_ARGS[@]+"${EXTRA_ZIG_ARGS[@]}"} \
         -Dversion-string="${PKG_VERSION}" 2>&1 || rc=$?
     cd "${current_dir}" || return 1
@@ -35,8 +45,13 @@ function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array -- always use conda's CC/CXX (clang/gcc),
-  # never zig-cc (which has a baked-in target that conflicts with cross-builds).
+  # Build local cmake args array.  The caller supplies the compiler explicitly
+  # via EXTRA_CMAKE_ARGS (-DCMAKE_C_COMPILER/-DCMAKE_CXX_COMPILER); this
+  # function sets none of its own.  NOTE: an earlier comment here said to
+  # always use conda's CC/CXX and never zig-cc -- that predates self-hosting
+  # and is no longer true.  On this track zig IS the compiler, and the wrapper
+  # passed in is baked at the HOST triple, so it does not conflict with
+  # cross-builds.
   local cmake_args=()
 
   # Merge with global EXTRA_CMAKE_ARGS if it exists

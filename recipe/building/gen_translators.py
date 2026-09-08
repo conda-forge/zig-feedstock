@@ -234,6 +234,28 @@ static void zig_tr_print_file_name(const char *name, const zig_translate_profile
     static const char *dirs_win[2] = {"Library\\\\lib\\\\zig-llvm\\\\lib", "Library\\\\lib"};
     char probe[1024];
     int d;
+    /* ZIG_TR_HOST_PREFIX is an opt-in override that takes precedence over
+     * profile->conda_prefix below. It lets a caller (e.g. the recipe
+     * build script) redirect -print-file-name= resolution to a
+     * different prefix without touching CONDA_PREFIX itself, which some
+     * callers still rely on for other purposes. Unset or empty
+     * reproduces today's behavior exactly -- the loop below is skipped
+     * and we fall through to the conda_prefix probe unchanged. */
+    const char *host_prefix = getenv("ZIG_TR_HOST_PREFIX");
+    if (host_prefix != NULL && host_prefix[0] != '\\0') {
+        for (d = 0; d < 2; d++) {
+            if (profile->is_win)
+                snprintf(probe, sizeof(probe), "%s\\\\%s\\\\%s", host_prefix, dirs_win[d], name);
+            else
+                snprintf(probe, sizeof(probe), "%s/%s/%s", host_prefix, dirs_unix[d], name);
+            FILE *f = fopen(probe, "rb");
+            if (f) {
+                fclose(f);
+                printf("%s\\n", probe);
+                return;
+            }
+        }
+    }
     for (d = 0; d < 2; d++) {
         if (profile->is_win)
             snprintf(probe, sizeof(probe), "%s\\\\%s\\\\%s", profile->conda_prefix, dirs_win[d], name);
@@ -676,6 +698,20 @@ def _sh_intercept_body(rule: dict, unix: dict) -> str:
             exit 0"""
     if op == "intercept_print_file_name":
         return """            _name="${_a#-print-file-name=}"
+            # ZIG_TR_HOST_PREFIX is an opt-in override that takes precedence
+            # over _tr_conda_prefix below. It lets a caller redirect
+            # -print-file-name= resolution to a different prefix without
+            # touching CONDA_PREFIX itself. Unset or empty reproduces
+            # today's behavior exactly -- this block is skipped and we fall
+            # through to the conda_prefix probe unchanged.
+            if [[ -n "${ZIG_TR_HOST_PREFIX:-}" ]]; then
+                for _dir in "${ZIG_TR_HOST_PREFIX}/lib/zig-llvm/lib" "${ZIG_TR_HOST_PREFIX}/lib"; do
+                    if [[ -e "${_dir}/${_name}" ]]; then
+                        echo "${_dir}/${_name}"
+                        exit 0
+                    fi
+                done
+            fi
             for _dir in "${_tr_conda_prefix}/lib/zig-llvm/lib" "${_tr_conda_prefix}/lib"; do
                 if [[ -e "${_dir}/${_name}" ]]; then
                     echo "${_dir}/${_name}"

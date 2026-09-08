@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: MementoRC <MementoRC@users.noreply.github.com>
+Date: Mon, 30 Mar 2026 00:00:00 +0000
+Subject: [PATCH] Disable clang interpreter dllexport on MinGW
+
+On MinGW, __declspec(dllexport) on clang::Value and the interpreter
+runtime symbols (__clang_Interpreter_SetValueWithAlloc etc.) causes
+duplicate-export conflicts when building libclang-cpp.dll: these
+symbols are already exported via --export-all-symbols on the whole
+DLL, and adding an explicit dllexport annotation makes lld-link emit
+them as named exports AND as auto-exports, triggering multiply-defined-
+symbol or ODR errors at link time when a consumer also defines them.
+
+The _WIN32 guard was originally intended to catch MSVC builds. MinGW
+also defines _WIN32, but uses GNU visibility semantics: the
+__attribute__((visibility("default"))) branch below is correct for
+MinGW. Restrict the dllexport branch to _MSC_VER only.
+
+---
+ clang/include/clang/Interpreter/Value.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/clang/include/clang/Interpreter/Value.h b/clang/include/clang/Interpreter/Value.h
+--- a/clang/include/clang/Interpreter/Value.h
++++ b/clang/include/clang/Interpreter/Value.h
+@@ -53,7 +53,7 @@ class QualType;
+
+-#if defined(_WIN32)
++#if defined(_MSC_VER)
+ // REPL_EXTERNAL_VISIBILITY are symbols that we need to be able to locate
+ // at runtime. On Windows, this requires them to be exported from any of the
+ // modules loaded at runtime. Marking them as dllexport achieves this; both

@@ -53,6 +53,20 @@ _zig_translate_flags() {
             ;;
         -print-file-name=*)
             _name="${_a#-print-file-name=}"
+            # ZIG_TR_HOST_PREFIX is an opt-in override that takes precedence
+            # over _tr_conda_prefix below. It lets a caller redirect
+            # -print-file-name= resolution to a different prefix without
+            # touching CONDA_PREFIX itself. Unset or empty reproduces
+            # today's behavior exactly -- this block is skipped and we fall
+            # through to the conda_prefix probe unchanged.
+            if [[ -n "${ZIG_TR_HOST_PREFIX:-}" ]]; then
+                for _dir in "${ZIG_TR_HOST_PREFIX}/lib/zig-llvm/lib" "${ZIG_TR_HOST_PREFIX}/lib"; do
+                    if [[ -e "${_dir}/${_name}" ]]; then
+                        echo "${_dir}/${_name}"
+                        exit 0
+                    fi
+                done
+            fi
             for _dir in "${_tr_conda_prefix}/lib/zig-llvm/lib" "${_tr_conda_prefix}/lib"; do
                 if [[ -e "${_dir}/${_name}" ]]; then
                     echo "${_dir}/${_name}"

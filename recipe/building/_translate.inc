@@ -141,6 +141,28 @@ static void zig_tr_print_file_name(const char *name, const zig_translate_profile
     static const char *dirs_win[2] = {"Library\\lib\\zig-llvm\\lib", "Library\\lib"};
     char probe[1024];
     int d;
+    /* ZIG_TR_HOST_PREFIX is an opt-in override that takes precedence over
+     * profile->conda_prefix below. It lets a caller (e.g. the recipe
+     * build script) redirect -print-file-name= resolution to a
+     * different prefix without touching CONDA_PREFIX itself, which some
+     * callers still rely on for other purposes. Unset or empty
+     * reproduces today's behavior exactly -- the loop below is skipped
+     * and we fall through to the conda_prefix probe unchanged. */
+    const char *host_prefix = getenv("ZIG_TR_HOST_PREFIX");
+    if (host_prefix != NULL && host_prefix[0] != '\0') {
+        for (d = 0; d < 2; d++) {
+            if (profile->is_win)
+                snprintf(probe, sizeof(probe), "%s\\%s\\%s", host_prefix, dirs_win[d], name);
+            else
+                snprintf(probe, sizeof(probe), "%s/%s/%s", host_prefix, dirs_unix[d], name);
+            FILE *f = fopen(probe, "rb");
+            if (f) {
+                fclose(f);
+                printf("%s\n", probe);
+                return;
+            }
+        }
+    }
     for (d = 0; d < 2; d++) {
         if (profile->is_win)
             snprintf(probe, sizeof(probe), "%s\\%s\\%s", profile->conda_prefix, dirs_win[d], name);

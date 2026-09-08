@@ -1,0 +1,129 @@
+--- a/src/codegen/llvm.zig
++++ b/src/codegen/llvm.zig
+@@ -4721,6 +4721,15 @@
+ pub const optional_layout_version = 3;
+
+ pub fn initializeLLVMTarget(arch: std.Target.Cpu.Arch) void {
++    // conda-forge zig-feedstock: win-64 and win-arm64 build LLVM with a pruned
++    // 7-backend LLVM_TARGETS_TO_BUILD (see cmake/Findllvm.cmake's matching
++    // relaxed ZIG_LLVM_REQUIRED_TARGETS and recipe/zig-llvm/building/
++    // _native_llvm_config.sh compute_llvm_targets()). Neither windows lane
++    // links the LLVMInitialize<Backend>* symbols below for the backends they
++    // did not build, so guard those call sites to avoid an undefined-symbol
++    // link failure; every other platform keeps calling them unconditionally.
++    const windows_llvm_pruned = builtin.os.tag == .windows and
++        (builtin.cpu.arch == .x86_64 or builtin.cpu.arch == .aarch64);
+     switch (arch) {
+         .aarch64, .aarch64_be => {
+             bindings.LLVMInitializeAArch64Target();
+@@ -4729,7 +4738,7 @@
+             bindings.LLVMInitializeAArch64AsmPrinter();
+             bindings.LLVMInitializeAArch64AsmParser();
+         },
+-        .amdgcn => {
++        .amdgcn => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeAMDGPUTarget();
+             bindings.LLVMInitializeAMDGPUTargetInfo();
+             bindings.LLVMInitializeAMDGPUTargetMC();
+@@ -4743,49 +4752,49 @@
+             bindings.LLVMInitializeARMAsmPrinter();
+             bindings.LLVMInitializeARMAsmParser();
+         },
+-        .avr => {
++        .avr => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeAVRTarget();
+             bindings.LLVMInitializeAVRTargetInfo();
+             bindings.LLVMInitializeAVRTargetMC();
+             bindings.LLVMInitializeAVRAsmPrinter();
+             bindings.LLVMInitializeAVRAsmParser();
+         },
+-        .bpfel, .bpfeb => {
++        .bpfel, .bpfeb => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeBPFTarget();
+             bindings.LLVMInitializeBPFTargetInfo();
+             bindings.LLVMInitializeBPFTargetMC();
+             bindings.LLVMInitializeBPFAsmPrinter();
+             bindings.LLVMInitializeBPFAsmParser();
+         },
+-        .hexagon => {
++        .hexagon => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeHexagonTarget();
+             bindings.LLVMInitializeHexagonTargetInfo();
+             bindings.LLVMInitializeHexagonTargetMC();
+             bindings.LLVMInitializeHexagonAsmPrinter();
+             bindings.LLVMInitializeHexagonAsmParser();
+         },
+-        .lanai => {
++        .lanai => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeLanaiTarget();
+             bindings.LLVMInitializeLanaiTargetInfo();
+             bindings.LLVMInitializeLanaiTargetMC();
+             bindings.LLVMInitializeLanaiAsmPrinter();
+             bindings.LLVMInitializeLanaiAsmParser();
+         },
+-        .mips, .mipsel, .mips64, .mips64el => {
++        .mips, .mipsel, .mips64, .mips64el => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeMipsTarget();
+             bindings.LLVMInitializeMipsTargetInfo();
+             bindings.LLVMInitializeMipsTargetMC();
+             bindings.LLVMInitializeMipsAsmPrinter();
+             bindings.LLVMInitializeMipsAsmParser();
+         },
+-        .msp430 => {
++        .msp430 => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeMSP430Target();
+             bindings.LLVMInitializeMSP430TargetInfo();
+             bindings.LLVMInitializeMSP430TargetMC();
+             bindings.LLVMInitializeMSP430AsmPrinter();
+             bindings.LLVMInitializeMSP430AsmParser();
+         },
+-        .nvptx, .nvptx64 => {
++        .nvptx, .nvptx64 => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeNVPTXTarget();
+             bindings.LLVMInitializeNVPTXTargetInfo();
+             bindings.LLVMInitializeNVPTXTargetMC();
+@@ -4806,7 +4815,7 @@
+             bindings.LLVMInitializeRISCVAsmPrinter();
+             bindings.LLVMInitializeRISCVAsmParser();
+         },
+-        .sparc, .sparc64 => {
++        .sparc, .sparc64 => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeSparcTarget();
+             bindings.LLVMInitializeSparcTargetInfo();
+             bindings.LLVMInitializeSparcTargetMC();
+@@ -4843,7 +4852,7 @@
+                 bindings.LLVMInitializeXtensaAsmParser();
+             }
+         },
+-        .xcore => {
++        .xcore => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeXCoreTarget();
+             bindings.LLVMInitializeXCoreTargetInfo();
+             bindings.LLVMInitializeXCoreTargetMC();
+@@ -4868,7 +4877,7 @@
+                 bindings.LLVMInitializeCSKYAsmParser();
+             }
+         },
+-        .ve => {
++        .ve => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeVETarget();
+             bindings.LLVMInitializeVETargetInfo();
+             bindings.LLVMInitializeVETargetMC();
+@@ -4884,7 +4893,7 @@
+                 // There is no LLVMInitializeARCAsmParser function.
+             }
+         },
+-        .loongarch32, .loongarch64 => {
++        .loongarch32, .loongarch64 => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeLoongArchTarget();
+             bindings.LLVMInitializeLoongArchTargetInfo();
+             bindings.LLVMInitializeLoongArchTargetMC();
+@@ -4893,7 +4902,7 @@
+         },
+         .spirv32,
+         .spirv64,
+-        => {
++        => if (comptime windows_llvm_pruned) unreachable else {
+             bindings.LLVMInitializeSPIRVTarget();
+             bindings.LLVMInitializeSPIRVTargetInfo();
+             bindings.LLVMInitializeSPIRVTargetMC();
