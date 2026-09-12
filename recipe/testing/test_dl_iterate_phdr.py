@@ -30,8 +30,12 @@ INCONCLUSIVE result rather than exercising the patch; a follow-up measured
 that `-fuse-ld=bfd` is inert -- see below -- so LLD-then-linked is the only
 buildable starting point). So this file builds two cases:
   - lld            : expect PT_PHDR present  (the normal, now-default path)
-  - synth-no-pt-phdr : PT_PHDR surgically removed from an LLD probe after
-                       the fact (the patched `else 0` fallback path)
+  - synth-no-pt-phdr : PT_PHDR removed from the same LLD probe two ways --
+                       null-in-place (zero the entry's p_type, touch nothing
+                       else) and delete-and-shrink (remove the entry and
+                       decrement e_phnum); comparing the two outcomes decides
+                       whether an unloadable result means the image itself
+                       is invalid or the surgery is.
 
 BFD REACHABILITY -- INVESTIGATED, NEGATIVE RESULT: `-fuse-ld=bfd` is not
 wired to anything in this toolchain and cannot currently be used to force
@@ -94,6 +98,7 @@ def _build(triplet: str, src: str, binary: str, zig_target: str,
 
 
 _PT_PHDR = 6
+_PT_NULL = 0
 
 
 def _parse_ehdr(ehdr: bytes) -> tuple[str, int, int, int, int] | None:
@@ -103,8 +108,9 @@ def _parse_ehdr(ehdr: bytes) -> tuple[str, int, int, int, int] | None:
     `ehdr` (the first bytes of a file) is not a parsable ELF header.
     e_phnum_off is the file offset of the e_phnum field itself (2 bytes,
     same width in both ELF classes), needed by callers that rewrite it.
-    Shared by _read_program_header_types (read-only) and _strip_pt_phdr
-    (in-place edit) so the offset table exists in exactly one place.
+    Shared by _read_program_headers (read-only) and _strip_pt_phdr /
+    _null_pt_phdr (in-place edits) so the offset table exists in exactly
+    one place.
     """
     if len(ehdr) < 20 or ehdr[:4] != b"\x7fELF":
         return None
@@ -126,9 +132,23 @@ def _parse_ehdr(ehdr: bytes) -> tuple[str, int, int, int, int] | None:
     return endian, e_phoff, e_phentsize, e_phnum, e_phnum_off
 
 
-def _read_program_header_types(binary: str) -> list[int] | None:
-    """ELF program header p_type values for `binary`, or None if unparsable.
+_PHDR64_FIELDS = [
+    ("p_type", 0, 4), ("p_flags", 4, 4), ("p_offset", 8, 8), ("p_vaddr", 16, 8),
+    ("p_paddr", 24, 8), ("p_filesz", 32, 8), ("p_memsz", 40, 8), ("p_align", 48, 8),
+]
+_PHDR32_FIELDS = [
+    ("p_type", 0, 4), ("p_offset", 4, 4), ("p_vaddr", 8, 4), ("p_paddr", 12, 4),
+    ("p_filesz", 16, 4), ("p_memsz", 20, 4), ("p_flags", 24, 4), ("p_align", 28, 4),
+]
 
+
+def _read_program_headers(binary: str) -> tuple[int, int, int, list[dict]] | None:
+    """Full ELF program-header table for `binary`, or None if unparsable.
+
+    Returns (e_phoff, e_phentsize, e_phnum, entries), each entry a dict of
+    every Phdr field (p_type, p_flags, p_offset, p_vaddr, p_paddr, p_filesz,
+    p_memsz, p_align) as integers. 32/64-bit field layout is picked from
+    e_phentsize (56 => ELF64, 32 => ELF32); anything else is unparsable.
     Raw-byte reader (mirrors _test_utils._elf_foreign_arch) so this does not
     depend on readelf/llvm-readelf being on PATH; ELF headers are
     self-describing regardless of the binary's target arch.
@@ -140,16 +160,34 @@ def _read_program_header_types(binary: str) -> list[int] | None:
             if parsed is None:
                 return None
             endian, e_phoff, e_phentsize, e_phnum, _e_phnum_off = parsed
+            if e_phentsize == 56:
+                fields = _PHDR64_FIELDS
+            elif e_phentsize == 32:
+                fields = _PHDR32_FIELDS
+            else:
+                return None
             f.seek(e_phoff)
-            types = []
+            entries = []
             for _ in range(e_phnum):
-                entry = f.read(e_phentsize)
-                if len(entry) < 4:
+                raw = f.read(e_phentsize)
+                if len(raw) < e_phentsize:
                     break
-                types.append(int.from_bytes(entry[0:4], endian))
-            return types
+                entries.append({
+                    fname: int.from_bytes(raw[off:off + size], endian)
+                    for fname, off, size in fields
+                })
+            return e_phoff, e_phentsize, e_phnum, entries
     except OSError:
         return None
+
+
+def _read_program_header_types(binary: str) -> list[int] | None:
+    """ELF program header p_type values for `binary`, or None if unparsable."""
+    parsed = _read_program_headers(binary)
+    if parsed is None:
+        return None
+    _e_phoff, _e_phentsize, _e_phnum, entries = parsed
+    return [e["p_type"] for e in entries]
 
 
 def _strip_pt_phdr(src: str, dst: str) -> None:
@@ -161,7 +199,8 @@ def _strip_pt_phdr(src: str, dst: str) -> None:
     hardcoded, so this works unchanged on big-endian or 32-bit probes too).
     Raises ValueError if `src` has no PT_PHDR entry to strip.
     """
-    shutil.copyfile(src, dst)
+    shutil.copy(src, dst)
+    os.chmod(dst, 0o755)
     with open(dst, "r+b") as f:
         ehdr = f.read(64)
         parsed = _parse_ehdr(ehdr)
@@ -185,6 +224,35 @@ def _strip_pt_phdr(src: str, dst: str) -> None:
         f.write(len(kept).to_bytes(2, endian))
 
 
+def _null_pt_phdr(src: str, dst: str) -> None:
+    """Non-invasive counterpart to _strip_pt_phdr: zero the PT_PHDR entry's
+    p_type field in place and touch nothing else. Preserving every other
+    byte -- e_phnum, e_phoff, and every other Phdr field -- is the point.
+    Raises ValueError if `src` has no PT_PHDR entry to null.
+    """
+    shutil.copy(src, dst)
+    os.chmod(dst, 0o755)
+    with open(dst, "r+b") as f:
+        ehdr = f.read(64)
+        parsed = _parse_ehdr(ehdr)
+        if parsed is None:
+            raise ValueError(f"{src!r} is not a parsable ELF")
+        endian, e_phoff, e_phentsize, e_phnum, _e_phnum_off = parsed
+
+        f.seek(e_phoff)
+        index = None
+        for i in range(e_phnum):
+            entry = f.read(e_phentsize)
+            if int.from_bytes(entry[0:4], endian) == _PT_PHDR:
+                index = i
+                break
+        if index is None:
+            raise ValueError(f"{src!r} has no PT_PHDR entry to null")
+
+        f.seek(e_phoff + index * e_phentsize)
+        f.write(_PT_NULL.to_bytes(4, endian))
+
+
 def _has_pt_phdr(binary: str) -> bool:
     types = _read_program_header_types(binary)
     if types is not None:
@@ -202,11 +270,20 @@ def _has_pt_phdr(binary: str) -> bool:
     return bool(re.search(r"^\s*PHDR\b", result.stdout, re.MULTILINE))
 
 
-def _dump_segments(binary: str) -> None:
-    """Best-effort diagnostic dump of binary's program header segment types."""
-    types = _read_program_header_types(binary)
-    if types is not None:
-        print(f"program header p_type values: {types}", file=sys.stderr)
+def _dump_segments(binary: str, label: str = "") -> None:
+    """Best-effort diagnostic dump of binary's full program header table."""
+    tag = f"{binary} ({label})" if label else binary
+    parsed = _read_program_headers(binary)
+    if parsed is not None:
+        e_phoff, e_phentsize, e_phnum, entries = parsed
+        print(f"program headers for {tag}: e_phoff=0x{e_phoff:x} "
+              f"e_phnum={e_phnum} e_phentsize={e_phentsize}", file=sys.stderr)
+        for i, e in enumerate(entries):
+            print(f"  [{i}] p_type={e['p_type']} p_flags=0x{e['p_flags']:x} "
+                  f"p_offset=0x{e['p_offset']:x} p_vaddr=0x{e['p_vaddr']:x} "
+                  f"p_paddr=0x{e['p_paddr']:x} p_filesz=0x{e['p_filesz']:x} "
+                  f"p_memsz=0x{e['p_memsz']:x} p_align=0x{e['p_align']:x}",
+                  file=sys.stderr)
         return
     if shutil.which("readelf"):
         subprocess.run(["readelf", "-l", binary], check=False)
@@ -246,7 +323,11 @@ LINKER_CASES = [
     },
     {
         "name": "synth-no-pt-phdr",
-        "kind": "synthesized",  # PT_PHDR removed by post-build ELF surgery.
+        "kind": "synthesized",
+        "methods": [
+            ("null-in-place", _null_pt_phdr),
+            ("delete-and-shrink", _strip_pt_phdr),
+        ],
     },
 ]
 
@@ -312,16 +393,16 @@ def _run_direct_case(triplet: str, zig_target: str, zig_lib_dir: str,
 
 def _run_synth_case(triplet: str, zig_target: str, zig_lib_dir: str,
                      tmpdir: str, case: dict) -> int:
-    """Build a normal LLD probe, strip its PT_PHDR entry, and run the result.
+    """Build one base LLD probe, then run every case['methods'] against it.
 
-    This is the case that actually exercises patch 0004's `else 0` fallback,
-    since -fuse-ld=bfd cannot produce a PT_PHDR-less link (see comment above
-    LINKER_CASES).
+    The base build is the expensive step (zig build-exe under qemu has
+    measured >149s), so it happens exactly once and is shared by both
+    synthesis methods; comparing their outcomes is what lets a single CI
+    run tell an unloadable image apart from invalid surgery.
     """
     name = case["name"]
     src = os.path.join(tmpdir, f"probe_{name}.zig")
     base_binary = os.path.join(tmpdir, f"probe_{name}_base")
-    binary = os.path.join(tmpdir, f"probe_{name}")
     with open(src, "w") as f:
         f.write(PROBE_SRC)
 
@@ -339,55 +420,73 @@ def _run_synth_case(triplet: str, zig_target: str, zig_lib_dir: str,
               "before surgery, so stripping it proves nothing", file=sys.stderr)
         return 1
 
-    try:
-        _strip_pt_phdr(base_binary, binary)
-    except ValueError as exc:
-        print(f"FAIL [{name}]: ELF surgery could not strip PT_PHDR: {exc}",
-              file=sys.stderr)
-        return 1
+    _dump_segments(base_binary, label="control, before surgery")
 
-    if _has_pt_phdr(binary):
-        print(f"FAIL [{name}]: synthesis broke -- rewritten binary STILL "
-              "HAS a PT_PHDR segment after surgery", file=sys.stderr)
-        _dump_segments(binary)
-        return 1
+    rc = 0
+    for method_name, method_fn in case["methods"]:
+        label = f"synth-{method_name}"
+        binary = os.path.join(
+            tmpdir, f"probe_synth_{method_name.replace('-', '_')}")
 
-    try:
-        result = _run([binary], timeout=600, target=triplet)
-    except OSError as exc:
-        # The kernel/qemu loader refused to even start the process (as
-        # opposed to starting it and it crashing) -- distinct, louder
-        # finding: the synthesis approach itself may be invalid.
-        print(f"INVALID [{name}]: rewritten probe could not be executed at "
-              f"all ({type(exc).__name__}: {exc}) -- a PT_PHDR-less static "
-              "ET_EXEC is expected to be loadable but was not; the "
-              "ld.bfd-direct route may be needed instead", file=sys.stderr)
-        return 1
+        try:
+            method_fn(base_binary, binary)
+        except ValueError as exc:
+            print(f"FAIL [{label}]: ELF surgery could not apply "
+                  f"{method_name!r}: {exc}", file=sys.stderr)
+            rc |= 1
+            continue
 
-    combined = (result.stdout or "") + (result.stderr or "")
+        if _has_pt_phdr(binary):
+            print(f"FAIL [{label}]: synthesis broke -- rewritten binary "
+                  "STILL HAS a PT_PHDR segment after surgery", file=sys.stderr)
+            _dump_segments(binary, label=method_name)
+            rc |= 1
+            continue
 
-    if result.returncode == 0 and not PANIC_RE.search(combined):
-        print(f"PASS [{name}] dl_iterate_phdr survives a synthesized ELF "
-              "without PT_PHDR")
-        return 0
+        try:
+            result = _run([binary], timeout=600, target=triplet)
+        except OSError as exc:
+            # The kernel/qemu loader refused to even start the process (as
+            # opposed to starting it and it crashing) -- distinct, louder
+            # finding: this method's synthesis may itself be invalid.
+            print(f"INVALID [{label}]: rewritten probe could not be "
+                  f"executed at all ({type(exc).__name__}: {exc}) -- a "
+                  "PT_PHDR-less static ET_EXEC is expected to be loadable "
+                  "but was not; if null-in-place runs and delete-and-shrink "
+                  "does not, the surgery is at fault -- if neither runs, "
+                  "the image itself is rejected", file=sys.stderr)
+            _dump_segments(binary, label=method_name)
+            rc |= 1
+            continue
 
-    if PANIC_RE.search(combined):
-        print(f"FAIL [{name}]: probe exited {result.returncode} on a "
-              "PT_PHDR-less binary (unreachable hit -- patch 0004 not in "
-              "effect)", file=sys.stderr)
-    else:
-        print(f"INVALID [{name}]: rewritten probe exited {result.returncode} "
-              "without panicking and without exiting cleanly -- the loader "
-              "may be rejecting the PT_PHDR-less ELF outright; the synthesis "
-              "approach may not be valid, consider the ld.bfd-direct route "
-              "instead", file=sys.stderr)
-    print("--- stdout ---", file=sys.stderr)
-    print(result.stdout, file=sys.stderr)
-    print("--- stderr ---", file=sys.stderr)
-    print(result.stderr, file=sys.stderr)
-    print("--- program headers (probe) ---", file=sys.stderr)
-    _dump_segments(binary)
-    return 1
+        combined = (result.stdout or "") + (result.stderr or "")
+
+        if result.returncode == 0 and not PANIC_RE.search(combined):
+            print(f"PASS [{label}] dl_iterate_phdr survives a synthesized "
+                  "ELF without PT_PHDR")
+            continue
+
+        if PANIC_RE.search(combined):
+            print(f"FAIL [{label}]: probe exited {result.returncode} on a "
+                  "PT_PHDR-less binary (unreachable hit -- patch 0004 not "
+                  "in effect)", file=sys.stderr)
+        else:
+            print(f"INVALID [{label}]: rewritten probe exited "
+                  f"{result.returncode} without panicking and without "
+                  "exiting cleanly -- the loader may be rejecting the "
+                  "PT_PHDR-less ELF outright; if null-in-place runs and "
+                  "delete-and-shrink does not, the surgery is at fault -- "
+                  "if neither runs, the image itself is rejected",
+                  file=sys.stderr)
+        print("--- stdout ---", file=sys.stderr)
+        print(result.stdout, file=sys.stderr)
+        print("--- stderr ---", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        print("--- program headers (probe) ---", file=sys.stderr)
+        _dump_segments(binary, label=method_name)
+        rc |= 1
+
+    return rc
 
 
 def main(triplet: str, zig_target: str = "", zig_lib_dir: str = "") -> int:

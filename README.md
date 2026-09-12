@@ -65,8 +65,48 @@ Reusable: The same code works in many environments which have different constrai
 Maintainable: Precisely communicate intent to the compiler and other programmers.
   The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
 
-About zig_impl_linux-ppc64le
+About zig_impl_linux-aarch64
 ----------------------------
+
+Home: https://ziglang.org/
+
+Package license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
+
+Summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+
+Development: https://github.com/ziglang/zig
+
+Documentation: https://ziglang.org/documentation/0.16.0/
+
+Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+Robust: Behavior is correct even for edge cases such as out of memory.
+Optimal: Write programs the best way they can behave and perform.
+Reusable: The same code works in many environments which have different constraints.
+Maintainable: Precisely communicate intent to the compiler and other programmers.
+  The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
+
+About zig_linux-64
+------------------
+
+Home: https://ziglang.org/
+
+Package license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
+
+Summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+
+Development: https://github.com/ziglang/zig
+
+Documentation: https://ziglang.org/documentation/0.16.0/
+
+Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+Robust: Behavior is correct even for edge cases such as out of memory.
+Optimal: Write programs the best way they can behave and perform.
+Reusable: The same code works in many environments which have different constraints.
+Maintainable: Precisely communicate intent to the compiler and other programmers.
+  The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
+
+About zig_linux-aarch64
+-----------------------
 
 Home: https://ziglang.org/
 
@@ -87,6 +127,66 @@ Maintainable: Precisely communicate intent to the compiler and other programmers
 
 About zig_linux-ppc64le
 -----------------------
+
+Home: https://ziglang.org/
+
+Package license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
+
+Summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+
+Development: https://github.com/ziglang/zig
+
+Documentation: https://ziglang.org/documentation/0.16.0/
+
+Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+Robust: Behavior is correct even for edge cases such as out of memory.
+Optimal: Write programs the best way they can behave and perform.
+Reusable: The same code works in many environments which have different constraints.
+Maintainable: Precisely communicate intent to the compiler and other programmers.
+  The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
+
+About zig_linux-riscv64
+-----------------------
+
+Home: https://ziglang.org/
+
+Package license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
+
+Summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+
+Development: https://github.com/ziglang/zig
+
+Documentation: https://ziglang.org/documentation/0.16.0/
+
+Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+Robust: Behavior is correct even for edge cases such as out of memory.
+Optimal: Write programs the best way they can behave and perform.
+Reusable: The same code works in many environments which have different constraints.
+Maintainable: Precisely communicate intent to the compiler and other programmers.
+  The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
+
+About zig_linux-s390x
+---------------------
+
+Home: https://ziglang.org/
+
+Package license: MIT AND Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND ZPL-2.1 AND LicenseRef-Public-Domain
+
+Summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+
+Development: https://github.com/ziglang/zig
+
+Documentation: https://ziglang.org/documentation/0.16.0/
+
+Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
+Robust: Behavior is correct even for edge cases such as out of memory.
+Optimal: Write programs the best way they can behave and perform.
+Reusable: The same code works in many environments which have different constraints.
+Maintainable: Precisely communicate intent to the compiler and other programmers.
+  The language imposes a low overhead to reading code and is resilient to changing requirements and environments.
+
+About zig_impl_linux-ppc64le
+----------------------------
 
 Home: https://ziglang.org/
 
@@ -158,8 +258,13 @@ Current release info
 | --- | --- | --- | --- |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig-green.svg)](https://anaconda.org/conda-forge/zig) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig.svg)](https://anaconda.org/conda-forge/zig) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig.svg)](https://anaconda.org/conda-forge/zig) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig.svg)](https://anaconda.org/conda-forge/zig) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig--compiler-green.svg)](https://anaconda.org/conda-forge/zig-compiler) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig-compiler.svg)](https://anaconda.org/conda-forge/zig-compiler) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig-compiler.svg)](https://anaconda.org/conda-forge/zig-compiler) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig-compiler.svg)](https://anaconda.org/conda-forge/zig-compiler) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__linux--aarch64-green.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_impl_linux-aarch64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__impl__linux--ppc64le-green.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_impl_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_impl_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_impl_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_impl_linux-ppc64le) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--64-green.svg)](https://anaconda.org/conda-forge/zig_linux-64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-64.svg)](https://anaconda.org/conda-forge/zig_linux-64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-64.svg)](https://anaconda.org/conda-forge/zig_linux-64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-64.svg)](https://anaconda.org/conda-forge/zig_linux-64) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--aarch64-green.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-aarch64.svg)](https://anaconda.org/conda-forge/zig_linux-aarch64) |
 | [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--ppc64le-green.svg)](https://anaconda.org/conda-forge/zig_linux-ppc64le) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_linux-ppc64le) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_linux-ppc64le) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-ppc64le.svg)](https://anaconda.org/conda-forge/zig_linux-ppc64le) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--riscv64-green.svg)](https://anaconda.org/conda-forge/zig_linux-riscv64) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-riscv64.svg)](https://anaconda.org/conda-forge/zig_linux-riscv64) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-riscv64.svg)](https://anaconda.org/conda-forge/zig_linux-riscv64) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-riscv64.svg)](https://anaconda.org/conda-forge/zig_linux-riscv64) |
+| [![Conda Recipe](https://img.shields.io/badge/recipe-zig__linux--s390x-green.svg)](https://anaconda.org/conda-forge/zig_linux-s390x) | [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/zig_linux-s390x.svg)](https://anaconda.org/conda-forge/zig_linux-s390x) | [![Conda Version](https://img.shields.io/conda/vn/conda-forge/zig_linux-s390x.svg)](https://anaconda.org/conda-forge/zig_linux-s390x) | [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/zig_linux-s390x.svg)](https://anaconda.org/conda-forge/zig_linux-s390x) |
 
 Installing zig
 ==============
@@ -178,7 +283,7 @@ How to use
 <summary>With conda</summary>
 
 ```
-conda install zig zig-compiler zig_impl_linux-ppc64le zig_linux-ppc64le
+conda install zig zig-compiler zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x
 ```
 
 </details>
@@ -187,7 +292,7 @@ conda install zig zig-compiler zig_impl_linux-ppc64le zig_linux-ppc64le
 <summary>With mamba</summary>
 
 ```
-mamba install zig zig-compiler zig_impl_linux-ppc64le zig_linux-ppc64le
+mamba install zig zig-compiler zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x
 ```
 
 </details>
@@ -197,9 +302,9 @@ mamba install zig zig-compiler zig_impl_linux-ppc64le zig_linux-ppc64le
 
 ```
 # for adding to your local project
-pixi add zig zig-compiler zig_impl_linux-ppc64le zig_linux-ppc64le
+pixi add zig zig-compiler zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x
 # for installing globally
-pixi global install zig zig-compiler zig_impl_linux-ppc64le zig_linux-ppc64le
+pixi global install zig zig-compiler zig_impl_linux-aarch64 zig_impl_linux-ppc64le zig_linux-64 zig_linux-aarch64 zig_linux-ppc64le zig_linux-riscv64 zig_linux-s390x
 ```
 
 </details>

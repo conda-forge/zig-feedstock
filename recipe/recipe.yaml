@@ -12,7 +12,7 @@ context:
   # Build controls
   bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}
   bootstrap_via_upstream: false
-  ci_focus_skip: ${{ not ppc64le }}  # TEMP triage PR 176, revert to 0 skip before merge
+  ci_focus_skip: ${{ not (linux and (ppc64le or aarch64)) }}  # TEMP triage PR 176, revert to 0 skip before merge
   skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" or ppc64le or riscv64 }}  # TEMP triage PR 176, revert riscv64 before merge
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
@@ -482,7 +482,7 @@ outputs:
             - testing/_test_utils.py
             - testing/test_dtneeded.py
       - script:
-          - if: linux and ppc64le
+          - if: linux
             then:
               - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
@@ -591,7 +591,7 @@ outputs:
                 - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
             - if: ppc64le and linux
               then:
-                # ppc64le links go through the GCC redirect in production, not LLD.
+                # ppc64le links via LLD (GCC-driver redirect, patch 0003, removed in build 9).
                 # This tests that link path; -fuse-ld=lld is intentionally not used.
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
@@ -599,7 +599,7 @@ outputs:
                 - _zig="${PREFIX}/bin/${{ conda_triplet }}-zig"
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc -Wno-unused-command-line-argument -o "$t/test_lld" "$t/test_lld.c"
                 - test -f "$t/test_lld"
-                - echo "PASS link via GCC redirect (ppc64le, no LLD)"
+                - echo "PASS zig cc produced a ppc64le binary"
         requirements:
           build:
             - ${{ m2 }}bash >=5.2
@@ -681,8 +681,6 @@ outputs:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
           then:
-            # ppc64le patches redirect zig linking to gcc/ld.bfd
-            # (LLD lacks PowerPC64 relocation support)
             - binutils_impl_${{ cross_target_platform_ }} >=2.45
             - gcc_impl_${{ cross_target_platform_ }} >=14.3
     tests:
