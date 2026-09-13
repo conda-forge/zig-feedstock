@@ -1,4 +1,5 @@
 """Compile the shared argument encoder and check CRT-compatible quoting."""
+# NOTE: not wired into recipe.yaml yet - needs a C compiler and zig_impl build 1.
 import argparse
 import json
 from pathlib import Path
@@ -32,7 +33,7 @@ int main(void) {
     const char *cases[][2] = {
 ''' + rows + '''};
     for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
-        char *actual = zig_quote_windows_arg(cases[i][0]);
+        char *actual = zig_quote_nonunix_arg(cases[i][0]);
         assert(actual && strcmp(actual, cases[i][1]) == 0);
         free(actual);
     }

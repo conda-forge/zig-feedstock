@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# brush 0.4.0 (#1245): xtrace clobbers $?, breaking set -e. Keep it off.
+set +x
 IFS=$'\n\t'
 
 if [[ ${BASH_VERSINFO[0]} -lt 5 || (${BASH_VERSINFO[0]} -eq 5 && ${BASH_VERSINFO[1]} -lt 2) ]]; then
@@ -93,6 +95,7 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
     echo "[build_native] Bootstrap zig (upstream tarball): ${ZIG_BIN}"
     echo "[build_native] Using zig-lib-dir: ${SRC_DIR}/zig-bootstrap/lib"
 else
+    : # brush 0.4.0 $? guard
     # Conda-installed zig_impl provides the bootstrap binary
     ZIG_BIN=$(ls "${ENV_DIR}"/bin/*-zig 2>/dev/null | head -1)
     if [[ -z "${ZIG_BIN}" ]]; then
@@ -225,17 +228,8 @@ echo "[Stage 1] SUCCESS: ${STAGE1_ZIG}"
 echo "[Stage 1] Verify ZSTD support:"
 "${STAGE1_ZIG}" version
 
-# When BUILD_NATIVE_STAGE1_ONLY=1 (e.g., ppc64le bootstrap use-case), skip
-# Stage 2 doctest run and stash Stage 1 as the deliverable directly.
-#
-# Stash deliverable: copy the .real ELF binary AND install a wrapper that
-# (a) uses readlink to find its own location so it can locate its sibling
-# .real binary regardless of where TARGET_DIR is placed, and (b) bakes in
-# the absolute path to ${ENV_DIR}/lib for LD_LIBRARY_PATH. The original
-# patchelf --set-rpath '$ORIGIN/../lib' was incorrect for this deployment
-# layout (TARGET_DIR has no ../lib sibling); the libs actually live in
-# build_native.sh's mamba env at ${ENV_DIR}/lib, which persists for the
-# remainder of the build inside _native_build_tmp.
+# BUILD_NATIVE_STAGE1_ONLY=1 skips Stage 2 and stashes Stage 1 as the
+# deliverable directly (wrapper + .real binary). See reference doc S5.
 if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
     echo "[build_native] BUILD_NATIVE_STAGE1_ONLY=1 — skipping Stage 2 doctest run"
     mkdir -p "${TARGET_DIR}"

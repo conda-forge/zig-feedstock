@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# brush 0.4.0 (#1245): xtrace clobbers $?, breaking set -e. Keep it off.
+set +x
 IFS=$'\n\t'
 
 export build_platform="${build_platform:-${target_platform}}"
 
 source "${RECIPE_DIR}/building/_bash_check.sh"
+source "${RECIPE_DIR}/building/_tool_check.sh"
 
 # --- Functions ---
 
@@ -46,8 +49,8 @@ fi
 source "${RECIPE_DIR}/building/_upstream_bootstrap.sh"
 setup_upstream_zig_bootstrap
 
-# Bootstrap zig runs on the build machine — always use CONDA_ZIG_BUILD
-BUILD_ZIG="${CONDA_ZIG_BUILD}"
+# Bootstrap zig: upstream-bootstrap path if set, else CONDA_ZIG_BUILD
+BUILD_ZIG="${ZIG_BOOTSTRAP_EXE:-${CONDA_ZIG_BUILD}}"
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
@@ -90,6 +93,12 @@ EXTRA_ZIG_ARGS=(
 # Gated to linux/osx where the patch applies and where doctest target forwarding matters.
 if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
+fi
+
+# -fno-plt makes GCC emit inline-PLT relocations LLD cannot handle
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  export CFLAGS="${CFLAGS:-} -fplt"
+  export CXXFLAGS="${CXXFLAGS:-} -fplt"
 fi
 
 # --- ppc64le R_PPC64_REL24 mitigation (defense in depth) ---
@@ -140,6 +149,7 @@ if is_osx; then
   )
   EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
 else
+  : # brush 0.4.0 $? guard
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   # --maxrss + the build.zig max_rss patch are linux-only.  Adding
   # them to osx (commit 22a8ddb) capped zig's build-graph scheduler
@@ -159,6 +169,7 @@ if is_not_unix; then
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
   )
 else
+  : # brush 0.4.0 $? guard
   EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
 fi
 
@@ -198,7 +209,10 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
   create_gcc14_glibc28_compat_lib
 
-  is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+  if is_cross; then
+    rm "${PREFIX}"/bin/llvm-config
+    cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+  fi
 fi
 
 if is_osx && is_cross; then
@@ -220,24 +234,16 @@ fi
 
 # --- Post CMake Configuration ---
 
-# Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
-# Append LLVM deps that conda's split packaging doesn't bake into
-# config.h's ZIG_LLVM_LIBRARIES: zlib (adler32 refs in lld-ELF),
-# zstd (compression), libxml2. Needed on every native + cross linux
-# build — linux-aarch64 failed linking zig2 with undefined adler32
-# when this was gated on `is_cross`.
+# Append zlib/zstd/libxml2 to config.h's ZIG_LLVM_LIBRARIES: conda's split
+# packaging doesn't bake them in. Needed on every linux build.
 is_linux && _cfg_subst "${cmake_build_dir}/config.h" '(ZIG_LLVM_LIBRARIES ".*)"' '\1;-lzstd;-lxml2;-lz"'
 # Cross builds resolve LLVM on the build machine, so config.h's ZIG_LLVM_* paths
-# point into ${BUILD_PREFIX} — the wrong architecture. Windows needs the literal
-# form: CMake writes native paths (C:/… or C:\…), ${BUILD_PREFIX} is MSYS (/c/…).
+# point into ${BUILD_PREFIX} -- the wrong architecture. Windows needs the literal
+# form: CMake writes native paths (C:/... or C:\...), ${BUILD_PREFIX} is MSYS (/c/...).
 is_osx      && is_cross && _cfg_subst     "${cmake_build_dir}/config.h" "(ZIG_LLVM_\\w+ \")${BUILD_PREFIX}" "\\1${PREFIX}"
 is_not_unix && is_cross && _cfg_subst_lit "${cmake_build_dir}/config.h" "${BUILD_PREFIX}" "${PREFIX}"
-# Note: do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS.
-# build.zig sets mod.link_libcpp = true for darwin targets, which (via patches/
-# Lld.zig-prefer-shared-libcxx.patch) already resolves to ${PREFIX}/lib/libc++.1.dylib.
-# Injecting libc++.dylib here would add a second LC_LOAD_DYLIB to the same dylib;
-# macOS SDK >= 26 dyld aborts on duplicate linked dylibs ("duplicate linked dylib
-# '@rpath/libc++.1.dylib'" — Abort trap: 6).
+# Do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS:
+# duplicate LC_LOAD_DYLIB, dyld aborts on SDK >= 26. See reference doc S8.
 
 # zig2.c (the pre-generated C bootstrap from 0.16) calls getrandom,
 # copy_file_range, and statx — all absent from conda-forge's glibc 2.17
@@ -264,7 +270,9 @@ if is_linux; then
   # Fix sysroot libc.so linker scripts 2.17 to use relative paths
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
 
-  ls -ld "${CONDA_BUILD_SYSROOT:-/nonexistent}"/{usr/lib,lib64,lib64/lp64d} 2>&1 | sed 's/^/[sysroot-layout] /' || true
+  for _sysroot_probe in usr/lib lib64 lib64/lp64d; do
+    ls -ld "${CONDA_BUILD_SYSROOT:-/nonexistent}/${_sysroot_probe}" 2>&1 | sed 's/^/[sysroot-layout] /' || true
+  done
 
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
   _cfg_subst "${cmake_build_dir}/config.h" '(#define ZIG_LLVM_LIBRARIES ".*)"' "\\1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"" g
@@ -365,12 +373,6 @@ else
 fi
 
 dbg echo "Post-install implementation package: ${PKG_NAME}"
-# DIAG: the pre-mv filename has never been captured in any CI log. win-64
-# native ends up with zig.exe, win-arm64 cross with an unsuffixed zig, from
-# this same mv on the same host and shell. This listing is the missing
-# measurement; remove it once the mechanism is settled.
-echo "DIAG pre-mv listing of \${PREFIX}/bin:"
-ls -la "${PREFIX}/bin/" || true
 # Name Windows executables explicitly: MSYS's implicit .exe handling is not
 # reliable for an ARM64 PE produced by an x64 cross-build.
 _zig_exe_suffix=""
@@ -383,7 +385,12 @@ if is_not_unix; then
   mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}/bin/${CONDA_TRIPLET}-zig.exe" "${PREFIX}/Library/bin/${CONDA_TRIPLET}-zig.exe"
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
-  [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
+  if [[ -d "${PREFIX}/doc" ]]; then
+    _doc_entries=("${PREFIX}"/doc/*)
+    if [[ -e "${_doc_entries[0]}" ]]; then
+      mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
+    fi
+  fi
 fi
 
 source "${RECIPE_DIR}/building/_mingw.sh"

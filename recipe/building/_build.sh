@@ -79,32 +79,7 @@ function build_native_zig() {
   echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
 }
 
-# build_native_zig_bootstrap — two-stage bootstrap for ppc64le cross builds.
-#
-# WHY THIS IS NEEDED:
-#   The upstream ziglang.org linux-64 bootstrap binary (used when
-#   bootstrap_via_upstream=true) was built from upstream 0.17 source
-#   WITHOUT our patches.  In particular it lacks:
-#     - ppc64le LdScript support (our patches/ppc64le/0001-arch-support-LdScript.zig.patch
-#       and friends): the upstream bootstrap panics when it encounters the ppc64le
-#       sysroot's text linker scripts during the cross-compile of zig itself.
-#     - DWARF64 eh_frame skip (Elf-eh_frame-skip-dwarf64.patch): can trigger
-#       additional panics in the bootstrap stage.
-#   Our patched source fixes both issues, but those fixes only take effect in
-#   the zig binary we *produce* — not in the upstream bootstrap we *use*.
-#   Solution: build a native linux-64 zig from our patched source first (using
-#   the upstream bootstrap which works fine for x86_64-linux-gnu), then use
-#   THAT patched-native zig as the bootstrap for the ppc64le cross-compile.
-#
-# WHEN IT ACTIVATES:
-#   Only for linux-ppc64le cross builds with bootstrap_via_upstream=true.
-#   This is the only combination where the upstream bootstrap lacks our patches
-#   and those patches are needed by the bootstrap stage of the cross-compile.
-#
-# WHEN IT CAN BE REMOVED:
-#   When upstream 0.17 (or later) restores ppc64le LdScript support in their
-#   shipped binary, OR when conda-forge publishes a matching zig_impl_linux-64
-#   0.17 package so bootstrap_via_upstream can be set to false.
+# ppc64le two-stage bootstrap. Rationale and removal condition: reference doc S7.
 #
 # OUTPUTS:
 #   Sets the variable ZIG_TWO_STAGE_BOOTSTRAP_ZIG to the path of the patched

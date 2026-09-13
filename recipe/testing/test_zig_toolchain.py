@@ -56,7 +56,6 @@ is_win_target = "mingw32" in _triplet
 is_macos_target = "apple" in _triplet or "darwin" in _triplet
 is_linux_target = "linux" in _triplet
 _arch = _triplet.split("-")[0] if _triplet else platform.machine()
-is_ppc64le_target = "powerpc64le" in _triplet or _arch == "powerpc64le"
 is_aarch64_win = is_win_target and _arch == "aarch64"
 
 # Normalise: arm64 == aarch64
@@ -269,19 +268,7 @@ def test_flag_filtering() -> None:
 
             # Step 1 & 2: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
-            if is_ppc64le_target:
-                # ppc64le: LLD lacks relocation support -- verify wrapper blocks it
-                r_block = _run([zig_cc, "-fuse-ld=lld", "-o", "/dev/null",
-                                str(main_src)], cwd=td, timeout=30)
-                if r_block.returncode != 0 and "not supported on ppc64le" in r_block.stderr:
-                    PASS("-fuse-ld=lld blocked on ppc64le (wrapper guard)")
-                else:
-                    FAIL("-fuse-ld=lld ppc64le guard",
-                         f"expected rejection, got rc={r_block.returncode} "
-                         f"stdout={r_block.stdout[:500]} stderr={r_block.stderr[:500]}")
-                SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
-                SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
-            elif not is_linux_target:
+            if not is_linux_target:
                 _reason = f"non-Linux target ({_triplet}), see zig_impl tests"
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
@@ -476,9 +463,8 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
 # Section 4b — Executable linking (verifies CRT + libc handling)
 # ===================================================================
 def test_exe_linking() -> None:
-    """Link a trivial executable.  On ppc64le this exercises the GCC linker
-    redirect with CRT files, verifying that no build-time artifacts (like
-    pthread_atfork_stub.o) are required at runtime."""
+    """Link a trivial executable, verifying that no build-time artifacts
+    (like pthread_atfork_stub.o) are required at runtime."""
     print("--- Executable linking ---")
 
     if _is_emulated or _is_cross_compiler:
@@ -614,20 +600,8 @@ def test_windows_import_libs() -> None:
                 and "SelfInfo" in r.stderr
                 and "increases pointer alignment" in r.stderr
             ):
-                # Looks like an upstream zig 0.16.0 stdlib issue rather than a
-                # regression on our side: the error points at
-                # lib/std/debug/SelfInfo/Windows.zig:670 (a @ptrCast on
-                # *anyopaque without @alignCast), surfaced by libubsan's
-                # alignment check during sub-compilation for aarch64-Windows
-                # targets.  What we've checked: the file is verbatim against
-                # upstream 0.16.0 on codeberg and no feedstock patch touches
-                # it, so we don't appear to be the cause.  We haven't found
-                # an existing upstream issue, but we also can't rule out that
-                # one exists under different search terms — so this is an
-                # informed guess, not a confirmed upstream bug.  The
-                # synchronization.def workaround the test was meant to
-                # exercise is independent: zig errors out before reaching the
-                # link step.
+                # Suspected upstream zig 0.16.0 stdlib issue (not a regression
+                # here), so this warns instead of failing. See ZIG_RECIPE_LLM_REFERENCE.md S7.
                 WARN(
                     "windows import libs (-lsynchronization)",
                     "suspected upstream stdlib issue in zig 0.16.0 "
@@ -1133,13 +1107,6 @@ def test_force_load_wrappers() -> None:
         FAIL("zig-force-load-cxx exists")
         return
     PASS("zig-force-load-cxx exists")
-
-    if is_ppc64le_target:
-        # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()), and
-        # LLD is unsupported on ppc64le -- the wrapper hard-errors before it
-        # ever gets to build an argv worth inspecting.
-        SKIP("force-load wrapper behaviour", "LLD not supported on ppc64le")
-        return
 
     zig_cc = _env_var("ZIG_CC")
     zig_ar = _wrapper_dir / f"{_triplet}-zig-ar"

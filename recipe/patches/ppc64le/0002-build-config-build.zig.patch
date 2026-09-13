@@ -6,11 +6,11 @@
      const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
 -    exe.use_llvm = use_llvm;
 +
-+    // PowerPC64LE: LLVM backend + system linker (not LLD).
-+    // LLD doesn't support PowerPC64 TOC relocations (R_PPC64_* = 31/60/119/
-+    // 120), so use_lld=false falls back to the system toolchain (`cc` via
-+    // GCC / ld.bfd) for linking. Also applies to the bootstrap zig that
-+    // compiles our zig — otherwise its built-in LLD chokes on zigcpp.a.
++    // PowerPC64LE: force the LLVM backend and link libc.
++    // This block does NOT set use_lld. Final links are redirected to the
++    // GCC driver by 0003-gcc-linker-comprehensive-Lld.zig.patch, which
++    // intercepts Lld.zig::elfLink. A previous comment here claimed a
++    // use_lld=false fallback; no code ever did that. See reference doc 7.
 +    if (target.result.cpu.arch == .powerpc64le) {
 +        exe.use_llvm = true;
 +        exe.root_module.link_libc = true;

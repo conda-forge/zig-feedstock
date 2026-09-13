@@ -1,22 +1,5 @@
 function prepare_sysroot_script_fallback() {
-  # Failover workaround for bootstrap zig 0.17 LdScript regression on ppc64le.
-  #
-  # The bootstrap zig binary downloaded from ziglang.org/builds/ has a compiled-in
-  # src/link/LdScript.zig parser that only recognises elf64-x86-64 and
-  # elf64-littleaarch64.  When cross-compiling to ppc64le it reads the conda
-  # sysroot's text-format linker scripts (libc.so, libpthread.so, …) which
-  # contain "OUTPUT_FORMAT(elf64-powerpcle)" and raises error.UnknownCpuArch,
-  # aborting the build before our patched final binary is produced.
-  #
-  # Without OUTPUT_FORMAT the parser skips the arch-dispatch entirely and
-  # follows the GROUP directive straight to the real ELF .so.6 binary, where
-  # zig handles ppc64le natively.  Stripping that single line from each text
-  # script is therefore safe and sufficient.
-  #
-  # Trigger: "failed to parse shared library: UnknownCpuArch" in the zig build log.
-  # Scope:   ppc64le cross-builds with a glibc sysroot using text linker scripts.
-  # Removal: When upstream zig restores ppc64le to its LdScript arch table this
-  #          failover can be deleted.
+  # Failover for bootstrap zig 0.17 LdScript regression on ppc64le. See reference doc S7.
   #
   # Args:
   #   $1 - Source sysroot path (e.g. $CONDA_BUILD_SYSROOT)
@@ -136,7 +119,9 @@ function prepare_sysroot_script_fallback() {
 
     # Skip vars that are unset
     _orig="${!_var-__UNSET__}"
-    [[ "${_orig}" == "__UNSET__" ]] && continue
+    if [[ "${_orig}" == "__UNSET__" ]]; then
+      continue
+    fi
 
     _updated="${_orig//$_old/$_new}"
     if [[ "${_updated}" != "${_orig}" ]]; then
