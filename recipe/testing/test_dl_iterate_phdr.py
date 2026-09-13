@@ -318,7 +318,8 @@ LINKER_CASES = [
     {
         "name": "lld",
         "kind": "direct",
-        "extra_flags": ["-flld"],
+        # -fllvm required: self-hosted backends cannot link with LLD (x86_64 default)
+        "extra_flags": ["-fllvm", "-flld"],
         "expect_pt_phdr": True,  # LLD emits PT_PHDR even under -static (measured).
     },
     {
@@ -406,8 +407,9 @@ def _run_synth_case(triplet: str, zig_target: str, zig_lib_dir: str,
     with open(src, "w") as f:
         f.write(PROBE_SRC)
 
+    # -fllvm required: self-hosted backends cannot link with LLD (x86_64 default)
     build = _build(triplet, src, base_binary, zig_target, zig_lib_dir,
-                    extra_flags=["-flld"])
+                    extra_flags=["-fllvm", "-flld"])
     if build.returncode != 0:
         print(f"FAIL [{name}]: could not build the base probe for ELF "
               "surgery (API drift, not a PT_PHDR result?)", file=sys.stderr)
