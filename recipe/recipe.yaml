@@ -12,7 +12,7 @@ context:
   # Build controls
   bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}
   bootstrap_via_upstream: false
-  ci_focus_skip: ${{ not (linux and (ppc64le or aarch64)) and not osx }}  # TEMP triage PR 176 + osx libc++ probe, revert to 0 skip before merge
+  ci_focus_skip: ${{ false }}  # TEMP triage PR 176 + osx libc++ probe, revert to false skip before merge - REQUIRES rerender
   skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" or ppc64le or riscv64 }}  # TEMP triage PR 176, revert riscv64 before merge
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
