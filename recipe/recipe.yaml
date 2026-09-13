@@ -6,17 +6,28 @@ context:
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "2125+0d600e488"
-  snapshot_ref: "2056"
-  build_ref: "1"
+  snapshot_ref: "2085"
+  build_ref: "0"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
+  # This can change with upstream versions (although not too likely)
+  zig_glibc: ${{ "2.27" if cross_target_platform_ == "linux-riscv64" else c_stdlib_version | default("2.17") }}
+  zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else c_stdlib_version | default("2.17") }}
+
+  # LLVM
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: ${{ true if build_platform == "win-arm64" else false }}
+  bootstrap_via_upstream: false
 
   # Manual global override for local dev only; SKIP_LANGREF export derives from it.
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" }}
+  is_testable: >-
+    ${{
+      not (build_platform in ["osx-64", "win-64"] and target_platform in ["osx-arm64", "win-32", "win-arm64"]) and
+      not (build_platform in ["win-arm64"] and target_platform in ["win-32", "win-64"])
+    }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" or ppc64le or riscv64 or not is_testable }}
+  skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="0") == "1" or not is_testable }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
@@ -38,68 +49,65 @@ context:
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
 
   # Silly shortcuts
-  exe: ${{ ".exe" if not unix else "" }}
+  exe:     ${{ ".exe" if not unix else "" }}
   library: ${{ "Library/" if not unix else "" }}
-  m2: ${{ "m2-" if not unix else "" }}
-  sh: ${{ ".bat" if not unix else ".sh" }}
+  m2:      ${{ "m2-" if not unix else "" }}
+  sh:      ${{ ".bat" if not unix else ".sh" }}
 
   # Zig target mapping https://github.com/ziglang/zig-bootstrap
-  _c_v: ${{ c_stdlib_version | default("") }}
-  _zig_glibc: ${{ "2.27" if xc_riscv64 else _c_v }}
-  # Same 2.27 riscv64 floor as _zig_glibc, keyed on target_platform (not cross_target_platform_)
-  _zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else _c_v }}
   zig_triplet: >-
     ${{
-      "x86_64-linux-gnu." ~ _zig_glibc           if xc_l64                             else
-      "aarch64-linux-gnu." ~ _zig_glibc          if xc_aarch64                         else
-      "powerpc64le-linux-gnu." ~ _zig_glibc      if xc_ppc64le                         else
-      "riscv64-linux-gnu." ~ _zig_glibc          if xc_riscv64                         else
-      "s390x-linux-gnu." ~ _zig_glibc            if xc_s390x                           else
-      "x86_64-macos." ~ _zig_glibc ~ "-none"     if xc_o64                             else
-      "aarch64-macos." ~ _zig_glibc ~ "-none"    if xc_oarm64                          else
-      "x86_64-windows-msvc"                      if xc_w64                             else
-      "aarch64-windows-msvc"                     if xc_warm64                          else
-      "x86-windows-msvc"                         if xc_win32                           else
+      "x86_64-linux-gnu." ~ zig_glibc          if xc_l64                              else
+      "aarch64-linux-gnu." ~ zig_glibc         if xc_aarch64                          else
+      "powerpc64le-linux-gnu." ~ zig_glibc     if xc_ppc64le                          else
+      "riscv64-linux-gnu." ~ zig_glibc         if xc_riscv64                          else
+      "s390x-linux-gnu." ~ zig_glibc           if xc_s390x                            else
+      "x86_64-macos." ~ zig_glibc ~ "-none"    if xc_o64                              else
+      "aarch64-macos." ~ zig_glibc ~ "-none"   if xc_oarm64                           else
+      "x86_64-windows-msvc"                    if xc_w64                              else
+      "aarch64-windows-msvc"                   if xc_warm64                           else
+      "x86-windows-msvc"                       if xc_win32                            else
       "native"
     }}
 
   # Known conda-forge build_platforms (zig -target format, no glibc suffix)
+  _c_v: ${{ c_stdlib_version | default("") }}
   zig_build_triplet: >-
     ${{
-      "x86_64-linux-gnu"                        if build_platform == "linux-64"        else
-      "aarch64-linux-gnu"                       if build_platform == "linux-aarch64"   else
-      "x86_64-macos." ~ _c_v                    if build_platform == "osx-64"          else
-      "aarch64-macos." ~ _c_v                   if build_platform == "osx-arm64"       else
-      "x86_64-windows-gnu"                      if build_platform == "win-64"          else
-      "aarch64-windows-gnu"                     if build_platform == "win-arm64"       else
+      "x86_64-linux-gnu"                       if build_platform == "linux-64"        else
+      "aarch64-linux-gnu"                      if build_platform == "linux-aarch64"   else
+      "x86_64-macos." ~ _c_v                   if build_platform == "osx-64"          else
+      "aarch64-macos." ~ _c_v                  if build_platform == "osx-arm64"       else
+      "x86_64-windows-gnu"                     if build_platform == "win-64"          else
+      "aarch64-windows-gnu"                    if build_platform == "win-arm64"       else
       "native"
     }}
 
   # Conda-style triplet for binary prefixes (e.g., x86_64-conda-linux-gnu-zig)
   conda_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"                  if xc_l64                              else
-      "aarch64-conda-linux-gnu"                 if xc_aarch64                          else
-      "powerpc64le-conda-linux-gnu"             if xc_ppc64le                          else
-      "riscv64-conda-linux-gnu"                 if xc_riscv64                          else
-      "s390x-conda-linux-gnu"                   if xc_s390x                            else
-      "x86_64-apple-darwin13.4.0"               if xc_o64                              else
-      "arm64-apple-darwin20.0.0"                if xc_oarm64                           else
-      "x86_64-w64-mingw32"                      if xc_w64                              else
-      "aarch64-w64-mingw32"                     if xc_warm64                           else
-      "i686-w64-mingw32"                        if xc_win32                            else
+      "x86_64-conda-linux-gnu"                 if xc_l64                              else
+      "aarch64-conda-linux-gnu"                if xc_aarch64                          else
+      "powerpc64le-conda-linux-gnu"            if xc_ppc64le                          else
+      "riscv64-conda-linux-gnu"                if xc_riscv64                          else
+      "s390x-conda-linux-gnu"                  if xc_s390x                            else
+      "x86_64-apple-darwin13.4.0"              if xc_o64                              else
+      "arm64-apple-darwin20.0.0"               if xc_oarm64                           else
+      "x86_64-w64-mingw32"                     if xc_w64                              else
+      "aarch64-w64-mingw32"                    if xc_warm64                           else
+      "i686-w64-mingw32"                       if xc_win32                            else
       "unknown_conda_triplet"
     }}
 
   # Build mode detection helpers
   build_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"                  if build_platform == "linux-64"        else
-      "aarch64-conda-linux-gnu"                 if build_platform == "linux-aarch64"   else
-      "x86_64-apple-darwin13.4.0"               if build_platform == "osx-64"          else
-      "arm64-apple-darwin20.0.0"                if build_platform == "osx-arm64"       else
-      "x86_64-w64-mingw32"                      if build_platform == "win-64"          else
-      "aarch64-w64-mingw32"                     if build_platform == "win-arm64"       else
+      "x86_64-conda-linux-gnu"                 if build_platform == "linux-64"        else
+      "aarch64-conda-linux-gnu"                if build_platform == "linux-aarch64"   else
+      "x86_64-apple-darwin13.4.0"              if build_platform == "osx-64"          else
+      "arm64-apple-darwin20.0.0"               if build_platform == "osx-arm64"       else
+      "x86_64-w64-mingw32"                     if build_platform == "win-64"          else
+      "aarch64-w64-mingw32"                    if build_platform == "win-arm64"       else
       "unknown_build_triplet"
     }}
 
@@ -107,16 +115,16 @@ context:
   # Used by xc_build_triplet for unhosted cross-compilers (runs on target_platform).
   target_triplet: >-
     ${{
-      "x86_64-conda-linux-gnu"                  if target_platform == "linux-64"       else
-      "aarch64-conda-linux-gnu"                 if target_platform == "linux-aarch64"  else
-      "powerpc64le-conda-linux-gnu"             if target_platform == "linux-ppc64le"  else
-      "riscv64-conda-linux-gnu"                 if target_platform == "linux-riscv64"  else
-      "s390x-conda-linux-gnu"                   if target_platform == "linux-s390x"    else
-      "x86_64-apple-darwin13.4.0"               if target_platform == "osx-64"         else
-      "arm64-apple-darwin20.0.0"                if target_platform == "osx-arm64"      else
-      "x86_64-w64-mingw32"                      if target_platform == "win-64"         else
-      "aarch64-w64-mingw32"                     if target_platform == "win-arm64"      else
-      "i686-w64-mingw32"                        if target_platform == "win-32"         else
+      "x86_64-conda-linux-gnu"                 if target_platform == "linux-64"       else
+      "aarch64-conda-linux-gnu"                if target_platform == "linux-aarch64"  else
+      "powerpc64le-conda-linux-gnu"            if target_platform == "linux-ppc64le"  else
+      "riscv64-conda-linux-gnu"                if target_platform == "linux-riscv64"  else
+      "s390x-conda-linux-gnu"                  if target_platform == "linux-s390x"    else
+      "x86_64-apple-darwin13.4.0"              if target_platform == "osx-64"         else
+      "arm64-apple-darwin20.0.0"               if target_platform == "osx-arm64"      else
+      "x86_64-w64-mingw32"                     if target_platform == "win-64"         else
+      "aarch64-w64-mingw32"                    if target_platform == "win-arm64"      else
+      "i686-w64-mingw32"                       if target_platform == "win-32"         else
       "unknown_target_triplet"
     }}
 
@@ -124,16 +132,16 @@ context:
   # Used by xc_build_zig_triplet for unhosted cross-compilers (runs on target_platform).
   zig_target_triplet: >-
     ${{
-      "x86_64-linux-gnu." ~ _zig_glibc_tgt      if target_platform == "linux-64"       else
-      "aarch64-linux-gnu." ~ _zig_glibc_tgt     if target_platform == "linux-aarch64"  else
-      "powerpc64le-linux-gnu." ~ _zig_glibc_tgt if target_platform == "linux-ppc64le"  else
-      "riscv64-linux-gnu." ~ _zig_glibc_tgt     if target_platform == "linux-riscv64"  else
-      "s390x-linux-gnu." ~ _zig_glibc_tgt       if target_platform == "linux-s390x"    else
-      "x86_64-macos." ~ _c_v ~ "-none"          if target_platform == "osx-64"         else
-      "aarch64-macos." ~ _c_v ~ "-none"         if target_platform == "osx-arm64"      else
-      "x86_64-windows-gnu"                      if target_platform == "win-64"         else
-      "aarch64-windows-gnu"                     if target_platform == "win-arm64"      else
-      "x86-windows-gnu"                         if target_platform == "win-32"         else
+      "x86_64-linux-gnu." ~ zig_glibc_tgt      if target_platform == "linux-64"       else
+      "aarch64-linux-gnu." ~ zig_glibc_tgt     if target_platform == "linux-aarch64"  else
+      "powerpc64le-linux-gnu." ~ zig_glibc_tgt if target_platform == "linux-ppc64le"  else
+      "riscv64-linux-gnu." ~ zig_glibc_tgt     if target_platform == "linux-riscv64"  else
+      "s390x-linux-gnu." ~ zig_glibc_tgt       if target_platform == "linux-s390x"    else
+      "x86_64-macos." ~ _c_v ~ "-none"         if target_platform == "osx-64"         else
+      "aarch64-macos." ~ _c_v ~ "-none"        if target_platform == "osx-arm64"      else
+      "x86_64-windows-gnu"                     if target_platform == "win-64"         else
+      "aarch64-windows-gnu"                    if target_platform == "win-arm64"      else
+      "x86-windows-gnu"                        if target_platform == "win-32"         else
       "native"
     }}
 
@@ -145,8 +153,8 @@ context:
   is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
   xc_build_platform: >-
     ${{
-      build_platform                            if is_hosted_xcompiler                 else
-      target_platform                           if is_unhosted_xcompiler               else
+      build_platform                           if is_hosted_xcompiler                 else
+      target_platform                          if is_unhosted_xcompiler               else
       "unknown_xc_build_platform"
     }}
 
@@ -156,11 +164,7 @@ context:
   is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
   is_cross_target: ${{ build_platform != target_platform and cross_target_platform_ == target_platform }}
-
-  is_testable: ${{ not (build_platform in ["osx-64", "win-64"] and target_platform in ["osx-arm64", "win-arm64"]) }}
-
-  # C shims run where the package installs, so build them for target_platform
-  # whenever it differs from the build machine.
+ 
   shim_runs_on_target: ${{ target_platform != build_platform }}
 
 recipe:
@@ -275,7 +279,7 @@ source:
       - if: build_platform == "win-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 0b10b3bcc3a2143f45a7219c83c386d2335989a03a884ed735cbdde5d41ac72a
+            sha256: 9f656171e031071aefc220b0bf33e828bc6f6d54fdc9868561070d356edfdb5f
             target_directory: zig-bootstrap
 
 build:
@@ -297,7 +301,6 @@ outputs:
         rpath_allowlist:
           - if: osx
             then:
-              - "@loader_path/../lib/zig-llvm/lib"
               - "@loader_path/../lib"
         missing_dso_allowlist:
           - if: osx
@@ -325,7 +328,7 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
-          # Derived from the single skip_langref switch above; do not re-add an env.get here.
+          # ppc64le passes langref but exhaust the 6hrs window
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
 
           # Local debug switch.
@@ -339,18 +342,16 @@ outputs:
         - ${{ compiler('c') }}
         - ${{ compiler('cxx') }}
         - ${{ stdlib("c") }}
-        # - ${{ m2 }}file
         - brush
         - cmake >=3.5
         - llvm-tools ${{ llvm_version }}.*
         - ninja
         - python >=3.10
-        - if: not unix and not arm64
-          then:
-            - ${{ m2 }}coreutils
-            - ${{ m2 }}findutils
-            - ${{ m2 }}gawk
-            # - ${{ m2 }}which
+        # - if: not unix and not arm64
+        #   then:
+        #     - ${{ m2 }}coreutils
+        #     - ${{ m2 }}findutils
+        #     - ${{ m2 }}gawk
         - if: (build_platform != target_platform)
           then:
             - llvmdev ${{ llvm_version }}.*  # llvm-config
@@ -364,7 +365,7 @@ outputs:
         # Self-hosting: build zig with zig.
         - if: not bootstrap_via_upstream
           then:
-            - 'zig_impl_${{ build_platform }}${{ zig_impl_pin }}'
+            - zig_impl_${{ build_platform }}${{ zig_impl_pin }}
       host:
         - clangdev ${{ llvm_version }}.*
         - libclang-cpp ${{ llvm_version }}.*
@@ -474,8 +475,8 @@ outputs:
           run:
             - if: linux
               then:
-                - sysroot_${{ target_platform }}
                 - binutils_impl_${{ target_platform }}
+                - sysroot_${{ target_platform }}
         files:
           recipe:
             - testing/_test_utils.py
@@ -499,8 +500,8 @@ outputs:
           run:
             - if: linux
               then:
-                - sysroot_${{ target_platform }}
                 - binutils_impl_${{ target_platform }}
+                - sysroot_${{ target_platform }}
         files:
           recipe:
             - testing/_test_utils.py
@@ -519,7 +520,7 @@ outputs:
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" zen
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" init
-                - if: not skip_langref
+                - if: not skip_long_test
                   then:
                     - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" test zig-source/test/behavior.zig
               else:
@@ -638,7 +639,6 @@ outputs:
               then:
                 - binutils_impl_${{ cross_target_platform_ }} >=2.45
                 - gcc_impl_${{ cross_target_platform_ }} >=14.3
-                - sysroot_${{ target_platform }} ${{ _c_v }}.*
       host:
         - if: not (is_cross_compiler or is_cross_target)
           then:

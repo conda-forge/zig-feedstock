@@ -101,13 +101,18 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   export CXXFLAGS="${CXXFLAGS:-} -fplt"
 fi
 
-# --- ppc64le R_PPC64_REL24 mitigation (defense in depth) ---
-# Two mechanisms: -mlongcall via the CFLAGS/CXXFLAGS below, and the
-# libzig-lld-bundle.so split (cmake patch 0006 + _lld_bundle.sh) that spreads
-# the 24-bit branch relocation domain across separate PLT sections.
+# --- ppc64le R_PPC64_REL24 mitigation ---
+# REL24 range is handled by the libzig-lld-bundle.so split (cmake patch 0006
+# + _lld_bundle.sh), which gives each liblld archive its own address space.
+# -mlongcall/-mcmodel=large were a second mechanism for the same problem, but
+# they forbid the short bl and so force GCC back to the inline-PLT sequence
+# (R_PPC64_ENTRY/PLT16_HA/PLT16_LO_DS/PLTSEQ/PLTCALL) that the -fplt export
+# above exists to suppress, and which LLD does not implement. Removed:
+# PR #185 ppc64le, 10645 'ld.lld: unknown relocation' errors on libzigcpp.a.
+# The 0.16 track sets -fplt with no -mlongcall and links ppc64le via LLD green.
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
-  export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export CFLAGS="${CFLAGS:-} -fno-partial-inlining -fno-ipa-cp-clone"
+  export CXXFLAGS="${CXXFLAGS:-} -fno-partial-inlining -fno-ipa-cp-clone"
   export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=0"
   export NINJA_FLAGS="-v"
   EXTRA_CMAKE_ARGS+=(
@@ -329,19 +334,9 @@ if is_linux; then
 fi
 
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
-_can_run_stage3() {
-  if ! is_cross; then return 0; fi
-  if is_linux; then
-    [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ] && return 0
-  fi
-  return 1
-}
-
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
-  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
-elif [[ "${target_platform}" != "linux-ppc64le" ]]; then
-  echo "INFO: Phase 2 langref skipped: temporarily ppc64le-only while validating the PT_PHDR fix" >&2
-elif _can_run_stage3; then
+  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1" >&2
+else
   dbg echo "=== PHASE 2: building langref via stage3 zig ==="
   _stage3_runner=()
   if is_cross && is_linux; then
@@ -362,14 +357,9 @@ elif _can_run_stage3; then
   ) || _langref_rc=$?
   zig_diag_span "END phase2-langref: rc=${_langref_rc} elapsed=$((SECONDS - _langref_start))s"
   if [[ ${_langref_rc} -ne 0 ]]; then
-    if ! is_cross; then
-      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
-      exit 1
-    fi
-    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
+    echo "ERROR: Phase 2 langref build failed (rc=${_langref_rc})" >&2
+    exit 1
   fi
-else
-  echo "INFO: Phase 2 langref skipped: cross build with no usable stage3 runner (need qemu on linux, wine on windows)" >&2
 fi
 
 dbg echo "Post-install implementation package: ${PKG_NAME}"
