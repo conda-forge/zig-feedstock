@@ -10,11 +10,9 @@ context:
   zig_glibc: ${{ "2.27" if cross_target_platform_ == "linux-riscv64" else c_stdlib_version | default("2.17") }}
   zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else c_stdlib_version | default("2.17") }}
 
-  # LLVM
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  # Build controls
   bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}
   bootstrap_via_upstream: false
   ci_focus_skip: false
@@ -45,7 +43,6 @@ context:
   xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-arm64', 'win-32'] }}
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
 
-  # Silly shortcuts
   exe:     ${{ ".exe" if not unix else "" }}
   library: ${{ "Library/" if not unix else "" }}
   m2:      ${{ "m2-" if not unix else "" }}
@@ -95,7 +92,6 @@ context:
       "unknown_conda_triplet"
     }}
 
-  # Build mode detection helpers
   build_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"                 if build_platform == "linux-64"        else
@@ -106,8 +102,7 @@ context:
       "unknown_build_triplet"
     }}
 
-  # Same mapping as build_triplet but keyed on target_platform.
-  # Used by xc_build_triplet for unhosted cross-compilers (runs on target_platform).
+  # target_triplet mapping (mirrors build_triplet). See recipe/NOTES.md 2.1.
   target_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"                 if target_platform == "linux-64"       else
@@ -123,8 +118,7 @@ context:
       "unknown_target_triplet"
     }}
 
-  # Same mapping as zig_build_triplet but keyed on target_platform (zig -target format).
-  # Used by xc_build_zig_triplet for unhosted cross-compilers (runs on target_platform).
+  # zig_target_triplet mapping (mirrors zig_build_triplet). See recipe/NOTES.md 2.1.
   zig_target_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ zig_glibc_tgt      if target_platform == "linux-64"       else
@@ -170,22 +164,14 @@ source:
   - url: https://ziglang.org/download/${{ version }}/zig-${{ version }}.tar.xz
     sha256: 43186959edc87d5c7a1be7b7d2a25efffd22ce5807c7af99067f86f99641bfdf
     patches:
-      # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
-      # macho-lld-support must apply before prefer-shared-libcxx because the
-      # latter patches code inside the machoLink function added by the former.
+      # macho-lld-support must precede prefer-shared-libcxx. See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
       - patches/Lld.zig-prefer-shared-libcxx.patch
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
-      # mingw CRT patches: _mingw.sh warms all three windows-gnu triples on EVERY
-      # lane regardless of the output's own target OS, so these must apply
-      # unconditionally -- gating them to `not unix` / win-32 left the freshly
-      # built zig blind to them everywhere else (undefined __setjmp3, _fpreset).
-      # Order: setjmp-s first (creates lib/libc/mingw/misc/setjmp.S and wires it
-      # into mingw32_x86_src), then arm64-stubs (fpreset_arm64.c + .aarch64
-      # dispatch), which assumes the +11 line shift ahead of the setjmp hunk.
+      # patch order: setjmp-s before arm64-stubs. See recipe/NOTES.md 1.2.
       - patches/non_unix/mingw-include-setjmp-s.patch
       - patches/non_unix/mingw-arm64-stubs.patch
       - if: linux
@@ -197,33 +183,17 @@ source:
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
           # Drop when conda-forge linux glibc floor reaches a version that no longer forces libunwind.
           - patches/linux/target.zig-glibc-needs-libunwind.patch
-          # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
-          # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
+          # ppc64le glibc-2.17-min patch rationale. See recipe/NOTES.md 1.3.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
-          # Honour -Wl,--no-as-needed for bundled glibc libs (e.g. -lm).
-          # Without this patch, zig drops -lm from DT_NEEDED even when the caller
-          # explicitly requested --no-as-needed, breaking dlsym(sin) at runtime.
-          # Three-part fix: Config.zig flag + main.zig recorder + Lld.zig bracket.
+          # --no-as-needed glibc-bundled libs fix. See recipe/NOTES.md 1.4.
           - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
-          # LLVM backend: downgrade .shr_exact -> .shr when safety checks are on.
-          # LLVM InstCombine folds shl(lshr_exact(x,N),N) -> x, making the runtime
-          # back-shift comparison trivially true and silently dropping the panic.
-          # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, ...).
+          # shr_exact safety downgrade rationale. See recipe/NOTES.md 1.5.
           - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
-      # ppc64le patches are gated on `linux` (any linux variant) so the
-      # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
-      # can also `zig cc -target powerpc64le-linux-gnu`.
+      # ppc64le patches gated on linux (any variant). See recipe/NOTES.md 1.6.
       - if: linux
         then:
-          # Architecture Support. Only LdScript is required here: its
-          # outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch
-          # arms (relocation, Elf, Atom, LinkerDefined, ZigObject, synthetic_sections,
-          # eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
-          # build + ppc64le tests confirmed they are dead code: 0003-linker-redirect
-          # forces the LLD backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted
-          # final-link path is never instantiated.
+          # LdScript arch support; self-hosted arms removed. See recipe/NOTES.md 1.7.
           - patches/ppc64le/LdScript.zig-arch-support.patch
-          # Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/build.zig-llvm-lld-config.patch
           - patches/ppc64le/posix.zig-dl-iterate-phdr-no-pt-phdr.patch
       - if: not unix
@@ -239,9 +209,7 @@ source:
           - patches/non_unix/mingw-crtexe-no-atexit.patch
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
-          # win-64/arm64: bound zig's mingw __do_global_ctors walk so a malformed
-          # flexlink-merged __CTOR_LIST__ (no -1 head / no NULL terminator) cannot
-          # run off the end (0xC00000FD STATUS_STACK_OVERFLOW pre-main).
+          # gccmain do_global_ctors guard rationale. See recipe/NOTES.md 1.8.
           - patches/non_unix/gccmain-do-global-ctors-guard.patch
     target_directory: zig-source
 
@@ -282,11 +250,7 @@ build:
   number: ${{ build_number }}
 
 outputs:
-  # ==========================================================================
-  # IMPLEMENTATION: zig_impl_$cross_target_platform_ (binaries + stdlib ONLY)
-  # Contains actual zig compiler binary (triplet-prefixed) and standard library
-  # NO activation scripts, NO wrappers - just the implementation
-  # ==========================================================================
+  # zig_impl output: binaries + stdlib only. See recipe/NOTES.md 2.12.
   - package:
       name: zig_impl_${{ cross_target_platform_ }}
     build:
@@ -321,13 +285,12 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
-          # auto = absolute GROUP paths for the riscv64 sysroot only. legacy/abs force one form.
+          # ZIG_SYSROOT_MODE values explained. See recipe/NOTES.md 2.2.
           ZIG_SYSROOT_MODE: ${{ env.get("ZIG_SYSROOT_MODE", default="auto") }}
 
           # Derived from the single skip_langref switch above; do not re-add an env.get here.
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
 
-          # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
           ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
           ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="5h") }}
@@ -336,7 +299,6 @@ outputs:
           ZIG_BOOTSTRAP_NATIVE_REBUILD: ${{ "1" if bootstrap_native_rebuild else "0" }}
     requirements:
       build:
-        # --- Common build deps (all cases) ---
         - ${{ compiler('c') }}
         - ${{ compiler('cxx') }}
         - ${{ stdlib("c") }}
@@ -368,8 +330,7 @@ outputs:
           then:
             - zig_impl_${{ build_platform }} ${{ abi_version }}.*
 
-        # bootstrap_native_rebuild links clang_libs/lld_libs directly (static-llvm); llvmdev alone lacks them.
-        # gcc_impl/binutils_impl(build_platform) give a build-arch (not cross) gcc for zig's C++ glue.
+        # bootstrap_native_rebuild deps rationale. See recipe/NOTES.md 2.3.
         - if: bootstrap_native_rebuild
           then:
             - clangdev ${{ llvm_version }}.*
@@ -405,7 +366,6 @@ outputs:
             then:
               - libxml2-16
     tests:
-      # Package contents verification - impl has triplet-prefixed binary
       - package_contents:
           strict: true
           bin:
@@ -431,7 +391,6 @@ outputs:
             - ${{ library }}lib/zig/libunwind/*
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
-            # Post-install tests
             - etc/conda/test-files/zig*
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
@@ -508,7 +467,6 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_dl_iterate_phdr.py
-      # Functional test using triplet-prefixed binary
       - script:
           interpreter: bash
           content:
@@ -544,7 +502,6 @@ outputs:
             - zig-source/test/behavior.zig
             - zig-source/test/behavior/**
 
-      # Verify zig cc compile+run works (MSYS2 UCRT DLL resolution on Windows)
       - script:
           interpreter: bash
           content:
@@ -562,8 +519,7 @@ outputs:
               then:
                 - ${{ m2 }}bash >=5.2
 
-      # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
-      # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
+      # -fuse-ld=lld pass-through rationale. See recipe/NOTES.md 2.4.
       - script:
           interpreter: bash
           content:
@@ -573,7 +529,6 @@ outputs:
             - printf 'int main(void){return 0;}\n' > "$t/test_lld.c"
             - if: linux and not ppc64le
               then:
-                # Linux: test with ELF --dynamic-list
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
@@ -583,21 +538,18 @@ outputs:
                 - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
             - if: not unix
               then:
-                # NonUnix: test with COFF -- verify -fuse-ld=lld compiles+links+runs
-                # Running the binary validates MSYS2 UCRT DLL resolution (api-ms-win-crt-*)
+                # NonUnix COFF + UCRT DLL note. See recipe/NOTES.md 2.5.
                 - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o "$t/test_lld.exe" "$t/test_lld.c"
                 - "$t/test_lld.exe"
                 - echo "PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)"
             - if: osx and is_testable
               then:
-                # macOS: test with Mach-O -exported_symbols_list via LLD
                 - printf '_main\n' > "$t/test_lld.exp"
                 - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,"$t/test_lld.exp" -o "$t/test_lld" "$t/test_lld.c"
                 - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
             - if: ppc64le and linux
               then:
-                # ppc64le links via LLD (GCC-driver redirect, patch 0003, removed in build 9).
-                # This tests that link path; -fuse-ld=lld is intentionally not used.
+                # ppc64le LLD link path note. See recipe/NOTES.md 2.6.
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
@@ -616,8 +568,7 @@ outputs:
               then:
                 - sysroot_${{ target_platform }} ${{ (c_stdlib_version ~ ".*") if ppc64le else (">=" ~ c_stdlib_version) }}
 
-      # NOTE: test_mingw_crt.py's deep content checks are win-64-only (xc_w64 below);
-      # presence/size for all three targets is asserted inside _mingw.sh itself.
+      # test_mingw_crt.py coverage split note. See recipe/NOTES.md 2.7.
       - script:
           - if: xc_w64
             then:
@@ -632,11 +583,7 @@ outputs:
           build:
             - python >=3.10
 
-  # ==========================================================================
-  # ACTIVATION: zig_$cross_target_platform_ (scripts)
-  # Contains activation scripts, depends on zig_impl_$cross_target_platform_
-  # NO binaries - just the environment setup
-  # ==========================================================================
+  # zig_ output: activation scripts only. See recipe/NOTES.md 2.12.
   - package:
       name: zig_${{ cross_target_platform_ }}
     build:
@@ -677,8 +624,7 @@ outputs:
           then:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
       run:
-        # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
-        # For cross-compiler: depend on zig_impl for BUILD platform (external package)
+        # pin_subpackage vs external zig_impl dep. See recipe/NOTES.md 2.8.
         - if: is_cross_compiler
           then:
             - zig_impl_${{ xc_build_platform }} ${{ abi_version }}.*
@@ -712,9 +658,7 @@ outputs:
                 # Compiled multiplexer copies, unix-only (no Windows arm).
                 - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc
                 - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx
-            # Native-triplet compiler suite (cross-compiler builds only) --
-            # the build machine's own zig-cc/cxx/etc, mirroring the target
-            # suite above but keyed on xc_build_triplet instead of conda_triplet.
+            # native-triplet compiler suite note. See recipe/NOTES.md 2.9.
             - if: is_cross_compiler
               then:
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-cc${{ exe }}
@@ -729,26 +673,22 @@ outputs:
               then:
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cc
                 - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cxx
-            # Post-install tests
             - etc/conda/test-files/zig*
 
       - script:
           interpreter: bash
           content:
-            # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
             - test -n "$CONDA_ZIG_BUILD"
             - test -n "$CONDA_ZIG_HOST"
             - echo "CONDA_ZIG_BUILD=$CONDA_ZIG_BUILD"
             - echo "CONDA_ZIG_HOST=$CONDA_ZIG_HOST"
             - test "$CONDA_ZIG_HOST" = "${{ conda_triplet }}-zig"
-            # Wrapper + functional validation tests (Python, cross-platform).
             - if: linux
               then:
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
                 - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
             - export PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
-            # Cross-compiler .exe shim test (non-Unix only)
             - if: not unix
               then:
                 - if: is_cross_compiler
@@ -786,7 +726,6 @@ outputs:
             - testing/test-cross-shim.bat
             - testing/test_zig_toolchain.py
 
-      # Verify <triplet>-zig-windres wrapper: -o flag translation works
       - script:
           - if: xc_w64
             then:
@@ -800,7 +739,6 @@ outputs:
           build:
             - python >=3.10
 
-      # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
       - script:
           - if: xc_w64
             then:
@@ -814,8 +752,7 @@ outputs:
           build:
             - python >=3.10
 
-      # Shim target selection is pure logic; the guarded .c sources must be
-      # copied or _compile_c_shim is skipped and the count assertion misfires.
+      # test_nonunix_shim_target.py rationale. See recipe/NOTES.md 2.10.
       - script:
           - python testing/test_nonunix_shim_target.py
         files:
@@ -831,7 +768,6 @@ outputs:
         requirements:
           build:
             - python >=3.10
-      # Golden/characterization parity tests for the zig-cc wrapper flag
       - script:
           - python testing/test_flag_translation_parity.py
           - python building/gen_translators.py --check
@@ -844,20 +780,14 @@ outputs:
             - building/gen_translators.py
             - building/_translate.gen.sh
             - building/_translate.inc
-            # Leg (C) syntax-checks the unix shim. Both are needed: the .c
-            # #includes unix_common.h. Without these two the leg SKIPs and the
-            # shim can silently rot uncompiled again.
+            # unix shim leg: needs both .c and header. See recipe/NOTES.md 2.11.
             - building/zig-cc-unix.c
             - building/unix_common.h
         requirements:
           build:
             - python >=3.10
 
-  # ==========================================================================
-  # METAPACKAGE: zig (native symlinks)
-  # Creates unprefixed symlinks: zig -> $TRIPLET-zig
-  # Only built when cross_target_platform_ == target_platform
-  # ==========================================================================
+  # zig metapackage: unprefixed symlinks, native-only. See recipe/NOTES.md 2.12.
   - package:
       name: zig
     build:
@@ -904,10 +834,7 @@ outputs:
               then:
                 - sysroot_${{ target_platform }} ${{ (c_stdlib_version ~ ".*") if target_platform == "linux-ppc64le" else (">=" ~ c_stdlib_version) }}
 
-  # ==========================================================================
-  # TOOLCHAIN META-PACKAGE: zig-compiler (toolchain metapackage)
-  # Bundles zig with C toolchain for full development environment
-  # ==========================================================================
+  # zig-compiler metapackage: zig + C toolchain. See recipe/NOTES.md 2.12.
   - package:
       name: zig-compiler
     build:
