@@ -12,7 +12,7 @@ activation = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(activation)
 
 
-class WindowsShimTargetTests(unittest.TestCase):
+class NonunixShimTargetTests(unittest.TestCase):
     def test_execution_architecture_is_not_codegen_architecture(self):
         for cross, on_target, codegen, native, expected in [
             (False, True, 'aarch64', 'x86_64', 'aarch64-windows-gnu'),

@@ -1,13 +1,13 @@
 schema_version: 1
 
 context:
-  build_number: 1
+  build_number: 0
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "2125+0d600e488"
   snapshot_ref: "2056"
-  build_ref: "0"
+  build_ref: "1"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   llvm_src_version: "22.1.6"
@@ -217,19 +217,11 @@ source:
       - if: linux
         then:
           # Phase 0001: Architecture Support. Only LdScript is required here: its
-          # outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch
-          # arms (relocation, Elf, Atom, LinkerDefined, ZigObject, synthetic_sections,
-          # eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
-          # build + ppc64le tests confirmed they are dead code: 0003-linker-redirect
-          # forces the LLD backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted
-          # final-link path is never instantiated.
+          # outputFormat() runs on every backend; the 8 self-hosted ELF-linker arch
+          # arms were removed in build 9.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
-          # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
-          - patches/ppc64le/0003-linker-redirect-link.zig.patch
-          # needs Lld.zig-prefer-shared-libcxx (unconditional list): calls libcxx_shared.* with no import of its own
-          - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
           # Phase 0006: CMake ppc64le lld bundle override.
           - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
       - if: not unix
@@ -283,7 +275,7 @@ source:
       - if: build_platform == "win-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: f63987d4f4e90e9b5aff9e38d4265696d9abd83de2e70d4bb9b4ac22d6febf2c
+            sha256: 0b10b3bcc3a2143f45a7219c83c386d2335989a03a884ed735cbdde5d41ac72a
             target_directory: zig-bootstrap
 
 build:
@@ -324,6 +316,7 @@ outputs:
               - "*/ld-linux-*.so.*"
               - "*/ld64.so.*"
       script:
+        interpreter: brush
         file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -346,18 +339,18 @@ outputs:
         - ${{ compiler('c') }}
         - ${{ compiler('cxx') }}
         - ${{ stdlib("c") }}
-        - ${{ m2 }}bash >=5.2
-        - ${{ m2 }}file
+        # - ${{ m2 }}file
+        - brush
         - cmake >=3.5
         - llvm-tools ${{ llvm_version }}.*
         - ninja
-        - python 3.12.*
-        - if: not unix
+        - python >=3.10
+        - if: not unix and not arm64
           then:
             - ${{ m2 }}coreutils
             - ${{ m2 }}findutils
             - ${{ m2 }}gawk
-            - ${{ m2 }}which
+            # - ${{ m2 }}which
         - if: (build_platform != target_platform)
           then:
             - llvmdev ${{ llvm_version }}.*  # llvm-config
@@ -386,7 +379,6 @@ outputs:
       run:
         - if: ppc64le
           then:
-            # We redirect linking to gcc/ld.bfd
             - binutils_impl_${{ target_platform }} >=2.45
             - gcc_impl_${{ target_platform }} >=14.3
         - if: osx
@@ -488,9 +480,34 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_dtneeded.py
+      # Regression test: dl_iterate_phdr must tolerate a missing PT_PHDR.
+      - script:
+          - if: linux
+            then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
+              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
+              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
+              - python testing/test_dl_iterate_phdr.py ${{ conda_triplet }} ${{ zig_triplet }}
+            else:
+              - echo "SKIP dl_iterate_phdr PT_PHDR test (non-linux)"
+        requirements:
+          build:
+            - python >=3.10
+            - if: build_platform != target_platform
+              then:
+                - ${{ qemu_pkg }}
+          run:
+            - if: linux
+              then:
+                - sysroot_${{ target_platform }}
+                - binutils_impl_${{ target_platform }}
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_dl_iterate_phdr.py
       # Functional test using triplet-prefixed binary
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -509,9 +526,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -536,37 +551,33 @@ outputs:
       # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
       # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
-            - if: is_testable and not ppc64le
+            - if: is_testable
               then:
                 - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
                 - _zig="${PREFIX}"/${{ library }}bin/${{ conda_triplet }}"-zig"${{ exe }}
-                - echo 'int main(void){return 0;}' > /tmp/test_lld.c
+                - echo 'int main(void){return 0;}' > test_lld.c
                 - if: osx
                   then:
-                    - echo '_main' > /tmp/test_lld.exp
-                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,/tmp/test_lld.exp -o /tmp/test_lld /tmp/test_lld.c
+                    - echo '_main' > test_lld.exp
+                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,test_lld.exp -o test_lld test_lld.c
                     - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
                 - if: linux
                   then:
-                    - echo '{ main; };' > /tmp/test_lld.dyn
-                    - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=/tmp/test_lld.dyn -o /tmp/test_lld /tmp/test_lld.c
+                    - echo '{ main; };' > test_lld.dyn
+                    - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc -Wno-unused-command-line-argument -fuse-ld=lld -Wl,--dynamic-list=test_lld.dyn -o test_lld test_lld.c
                     - echo "PASS -fuse-ld=lld with --dynamic-list (Linux/ELF)"
                 - if: not unix
                   then:
-                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o /tmp/test_lld.exe /tmp/test_lld.c && /tmp/test_lld.exe
+                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o test_lld.exe test_lld.c && ./test_lld.exe
                     - echo "PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)"
-              else:
-                # LLD lacks ppc64le relocation support; wrapper guard tested via
-                # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
-                - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -618,7 +629,7 @@ outputs:
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
     requirements:
       build:
-        - python 3.12.*
+        - python >=3.10
         - llvm-tools ${{ llvm_version }}.*  # llvm-objdump asserts CPU baseline
         - if: is_cross_compiler or is_cross_target
           then:
@@ -637,17 +648,11 @@ outputs:
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
-            # Published ARM64 build 0 lacks the compiler executable suffix.
-            # Require this corrected build for ARM64-hosted wrappers.
-            - if: xc_build_platform == "win-arm64"
-              then: 'zig_impl_win-arm64 ==${{ version }} *_${{ snapshot | replace("+", "_") }}_${{ build_number }}'
-              else: zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}
+            - zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}
           else:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
           then:
-            # ppc64le patches redirect zig linking to gcc/ld.bfd
-            # (LLD lacks PowerPC64 relocation support)
             - binutils_impl_${{ cross_target_platform_ }} >=2.45
             - gcc_impl_${{ cross_target_platform_ }} >=14.3
     tests:
@@ -778,6 +783,24 @@ outputs:
             requirements:
               build:
                 - python >=3.10
+
+          # Shim target selection is pure logic; the guarded .c sources must be
+          # copied or _compile_c_shim is skipped and the count assertion misfires.
+          - script:
+              - python testing/test_nonunix_shim_target.py
+            files:
+              recipe:
+                - testing/test_nonunix_shim_target.py
+                - install_zig_activation.py
+                - scripts/activate.bat
+                - scripts/deactivate.bat
+                - building/zig-cc-nonunix.c
+                - building/zig-tool-nonunix.c
+                - building/zig-windres-nonunix.c
+                - building/cross-zig-shim.c
+            requirements:
+              build:
+                - python >=3.10
           # Golden/characterization parity tests for the zig-cc wrapper flag
           - script:
               - python testing/test_flag_translation_parity.py
@@ -815,7 +838,8 @@ outputs:
           CONDA_TRIPLET: ${{ conda_triplet }}
     requirements:
       build:
-        - python 3.12.*
+        - python >=3.10
+        - brush
       host:
         # Host dep ensures targets exist during build for symlink validation
         - ${{ pin_subpackage("zig_" ~ cross_target_platform_, exact=True) }}
@@ -829,7 +853,7 @@ outputs:
           bin:
             - zig
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -842,7 +866,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: linux and build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -861,6 +885,8 @@ outputs:
       skip: cross_target_platform_ != target_platform
       script: echo "zig-compiler metapackage"
     requirements:
+      build:
+        - brush
       run:
         - ${{ pin_subpackage("zig", exact=True) }}
         - if: osx
@@ -869,7 +895,7 @@ outputs:
             - llvm-tools ${{ llvm_version }}.*
     tests:
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -882,7 +908,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: linux and build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}

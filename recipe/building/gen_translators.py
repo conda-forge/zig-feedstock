@@ -911,7 +911,7 @@ _zig_translate_flags() {{
 # Main / --check
 # ---------------------------------------------------------------------------
 def _write(path: Path, content: str) -> None:
-    path.write_text(content)
+    path.write_text(content, newline="\n")
 
 
 def _regenerate_into(dest_dir: Path) -> tuple[Path, Path]:

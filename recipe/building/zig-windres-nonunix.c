@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     restore_msys2_system32_path();
 
     /* Execute zig rc */
-    int ret = zig_spawn_wait(zig_path, new_argv);
+    int ret = zig_spawn_wait(zig_path, (const char *const *)new_argv);
 
     if (ret == -1) {
         fprintf(stderr, "ERROR: zig-windres: failed to exec %s: %s\n",

@@ -311,17 +311,6 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
      * above. ---- */
     int use_lld = use_lld_raw || use_lld_gen;
 
-    /* ---- STEP 6 (_zig-cc-common.sh:130-135): ppc64le hard error.
-     * Both stderr lines below are VERBATIM from :132-133, including
-     * the "zig cc:" prefix even in c++ mode -- the bash source hardcodes
-     * it that way regardless of _ZIG_MODE, so it is reproduced as-is. */
-    if (use_lld && str_eq(ZIG_TARGET_ARCH, "powerpc64le")) {
-        fprintf(stderr, "zig cc: error: -fuse-ld=lld is not supported on ppc64le (LLD lacks ppc64le relocation support)\n");
-        fprintf(stderr, "  Remove -fuse-ld=lld or any LLD-only flags (--dynamic-list, --version-script, etc.)\n");
-        free(out_argv);
-        return 1;
-    }
-
     /* ---- STEP 7 (_zig-cc-common.sh:140-161): post-translation drop
      * filter over the translated args. ---- */
     const char **filtered = (const char **)malloc(sizeof(char *) * (size_t)(out_argc + 1));

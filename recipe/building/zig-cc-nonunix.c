@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
     restore_msys2_system32_path();
 
     /* Execute zig */
-    int ret = zig_spawn_wait(zig_path, new_argv);
+    int ret = zig_spawn_wait(zig_path, (const char *const *)new_argv);
     free(filtered);
     free(new_argv);
 

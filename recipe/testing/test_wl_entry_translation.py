@@ -140,27 +140,7 @@ void MyEntry(void) { ExitProcess(0); }
 void OtherEntry(void) { ExitProcess(1); }
 """
 
-    # FAIL-OVER LADDER. Each entry is one hypothesis for making a custom-entry
-    # link succeed, so a single CI run yields the whole matrix instead of one
-    # hypothesis per round trip.
-    #
-    # Why it is needed: the baseline link fails on aarch64 (`undefined symbol:
-    # WinMain`) and on i386 (`_WinMain@16`) but not on x86_64. The TU has no
-    # main, so the mingw CRT startup's reference to `main` is satisfied by
-    # libmingw32's crtexewin.obj -- a GUI shim that defines main and calls
-    # WinMain -- which is then undefined.
-    #
-    # STRICT vs WEAK is the important distinction. STRICT variants drop the CRT
-    # startup, so the link can only succeed if -Wl,-e was genuinely honoured (a
-    # dropped flag leaves lld defaulting to an undefined mainCRTStartup). Only
-    # STRICT variants may be used as acceptance. WEAK variants keep the CRT,
-    # which supplies an entry no matter what, so they can pass even when the
-    # flag under test was silently dropped -- they are recorded as EVIDENCE and
-    # must never gate the result.
-    #
-    # This test runs on EVERY Windows lane, so comparing the printed matrices
-    # across the x86_64, i386 and aarch64 lanes is itself the experiment for
-    # the unexplained arch split; no cell may be pruned for that reason.
+    # Fail-over ladder for custom -Wl,-e entry translation. Open question: reference doc S6.
     #
     # (name, extra_flags, extra_source, strict)
     VARIANTS = [

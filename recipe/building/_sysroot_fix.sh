@@ -14,12 +14,23 @@ function fix_sysroot_libc_scripts() {
     arch_name=$(basename "$(dirname "${sysroot_dir}")")
     dbg echo "  Processing sysroot: ${arch_name}"
 
+    local _patched=0
+
     # Fix libc.so, libpthread.so, libm.so, etc. in usr/lib and usr/lib64
-    for lib_dir in "${sysroot_dir}"/usr/lib "${sysroot_dir}"/usr/lib64; do
+    local -a _lib_dirs=( "${sysroot_dir}"/usr/lib "${sysroot_dir}"/usr/lib64 )
+    # zig gets --libc-runtimes <sysroot>/lib64 (build.sh:190-192); those scripts
+    # need rewriting too. riscv64 only: its branch emits sysroot-ABSOLUTE paths,
+    # which are position-independent. The other arches emit paths RELATIVE to the
+    # script's depth, so widening the list would corrupt them.
+    if [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]]; then
+      _lib_dirs+=( "${sysroot_dir}"/lib64 "${sysroot_dir}"/lib64/lp64d "${sysroot_dir}"/lib )
+    fi
+    for lib_dir in "${_lib_dirs[@]}"; do
       [[ -d "${lib_dir}" ]] || continue
 
       # Find all .so files that are actually linker scripts
-      for script_file in "${lib_dir}"/{libc,libpthread,libm,librt,libdl}.so; do
+      for _script_base in libc libpthread libm librt libdl; do
+        local script_file="${lib_dir}/${_script_base}.so"
         [[ -f "${script_file}" ]] || continue
 
         # Check if it's a linker script (contains "GROUP" or "INPUT")
@@ -54,10 +65,17 @@ function fix_sysroot_libc_scripts() {
           fi
 
           dbg echo "      patched $(basename "${script_file}") ($(wc -c < "${script_file}") bytes)"
+          _patched=$(( _patched + 1 ))
           rm -f "${script_file}.orig"
         fi
       done
     done
+
+    if [[ "${_patched}" -eq 0 ]]; then
+      echo "WARNING: [sysroot_fix] ${arch_name}: patched 0 linker scripts (searched: ${_lib_dirs[*]:-none})" >&2
+    else
+      echo "INFO: [sysroot_fix] ${arch_name}: patched ${_patched} linker script(s)" >&2
+    fi
   done
 
   dbg echo "Sysroot linker scripts fixed successfully"

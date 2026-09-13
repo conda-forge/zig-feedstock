@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
     new_argv[ni] = NULL;
 
     /* _spawnv replaces this process, returns exit code */
-    int ret = zig_spawn_wait(zig_path, new_argv);
+    int ret = zig_spawn_wait(zig_path, (const char *const *)new_argv);
     free(new_argv);
 
     if (ret == -1) {

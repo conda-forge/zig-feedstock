@@ -41,13 +41,8 @@ from typing import Callable
 
 from _test_utils import PASS, FAIL, WARN, SKIP, _results
 
-# Anchor: __file__ is <base>/testing/<thisfile>. At local-dev time <base> is
-# recipe/; at rattler-build test time the `files: recipe:` entries (recipe.yaml)
-# stage under the test-step dir with the SAME scripts/ building/ testing/ layout,
-# so <base> is the step dir. parents[1] is correct for BOTH layouts; do NOT
-# prepend a "recipe" segment (it only exists in the local checkout, and adding
-# it makes the path resolve one level too deep at rattler test time, which is
-# the FileNotFoundError seen across all CI columns in PR #115).
+# Anchor: __file__ is <base>/testing/<thisfile>; parents[1] walks up one level
+# to <base>, valid both locally (recipe/) and at rattler-build test time.
 _RECIPE_DIR = Path(__file__).resolve().parents[1]
 
 _BASH = shutil.which("bash")

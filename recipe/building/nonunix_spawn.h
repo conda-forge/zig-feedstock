@@ -11,7 +11,7 @@
  * Quote each argument using the Microsoft CRT backslash/quote rules.
  * https://learn.microsoft.com/cpp/c-language/parsing-c-command-line-arguments
  */
-static char *zig_quote_windows_arg(const char *arg) {
+static char *zig_quote_nonunix_arg(const char *arg) {
     size_t len = strlen(arg);
     if (len > (SIZE_MAX - 3) / 2) {
         errno = ENOMEM;
@@ -41,7 +41,7 @@ static int zig_spawn_wait(const char *path, const char *const *argv) {
     if (!quoted) return -1;
     size_t i;
     for (i = 0; i < count; i++) {
-        quoted[i] = zig_quote_windows_arg(argv[i]);
+        quoted[i] = zig_quote_nonunix_arg(argv[i]);
         if (!quoted[i]) break;
     }
     int ret = i == count ? (int)_spawnv(_P_WAIT, path, (const char *const *)quoted) : -1;

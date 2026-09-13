@@ -11,7 +11,9 @@
 # Never fails the build -- every external command is guarded (command -v /
 # || true) so this file is safe under set -euo pipefail.
 
-[[ -n "${_ZIG_DIAG_SH_SOURCED:-}" ]] && return 0
+if [[ -n "${_ZIG_DIAG_SH_SOURCED:-}" ]]; then
+  return 0
+fi
 _ZIG_DIAG_SH_SOURCED=1
 
 source "${RECIPE_DIR}/building/_common.sh"

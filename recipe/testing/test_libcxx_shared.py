@@ -89,6 +89,9 @@ PROBE_SUBDIRS = [
     "../../lib",               # fallback: standard lib dir
 ]
 
+# Optional until the zig-llvm package ships; matched by name, not position.
+OPTIONAL_PROBE_SUBDIR = "../../lib/zig-llvm/lib"
+
 # Platform-specific shared library names (mirrors sharedLibCxxNames)
 LIBCXX_NAMES: dict[str, list[str]] = {
     "linux": ["libc++.so.1", "libc++.so"],
@@ -341,7 +344,7 @@ def test_libcxx_probe_paths() -> None:
         label = str(resolved.relative_to(_prefix)) if resolved.is_relative_to(_prefix) else str(resolved)
         if resolved.is_dir():
             PASS(f"probe dir exists: {label}")
-        elif subdir == PROBE_SUBDIRS[0]:
+        elif subdir == OPTIONAL_PROBE_SUBDIR:
             SKIP("optional zig-llvm probe directory", f"{label} is absent")
         else:
             WARN(f"probe dir missing: {label}", "standard library directory absent")

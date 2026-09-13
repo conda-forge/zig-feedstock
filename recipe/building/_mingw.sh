@@ -6,16 +6,12 @@
 source "${RECIPE_DIR}/building/_common.sh"
 
 function generate_mingw_import_libs() {
-  # Workaround for ziglang/zig#14919: add synchronization.def so zig can generate
-  # libsynchronization.a when cross-compiling to Windows (consumers using -lsynchronization).
-  # IMPORTANT: LIBRARY must be api-ms-win-core-synch-l1-2-0.dll, NOT synchronization.dll.
-  # "synchronization.dll" is neither a real DLL on disk nor a valid API Set Schema name -- it doesn't
-  # exist as a physical file in Windows or MSYS2. The real MinGW-w64 alias points to
-  # libapi-ms-win-core-synch-l1-2-0.a, whose LIBRARY directive is api-ms-win-core-synch-l1-2-0.dll.
-  # Windows API Set Schema resolves api-ms-win-* names to the actual host DLL at runtime.
+  # Workaround for ziglang/zig#14919: synchronization.def is absent upstream.
+  # Rationale: reference doc S4.
   if is_not_unix; then
     _zig_lib="${PREFIX}/Library/lib/zig"
   else
+    : # brush 0.4.0 $? guard
     _zig_lib="${PREFIX}/lib/zig"
   fi
   _mingw_common="${_zig_lib}/libc/mingw/lib-common"
@@ -78,6 +74,7 @@ SYNCHRONIZATION_DEF
     if is_not_unix; then
       _fresh_zig_bin="${PREFIX}/Library/bin/${CONDA_TRIPLET}-zig"
     else
+      : # brush 0.4.0 $? guard
       _fresh_zig_bin="${PREFIX}/bin/${CONDA_TRIPLET}-zig"
     fi
     if [[ -x "${_fresh_zig_bin}" ]] && "${_fresh_zig_bin}" version >/dev/null 2>&1; then
@@ -89,11 +86,13 @@ SYNCHRONIZATION_DEF
         echo "WARN: mingw CRT cache-warm links will be SLOW under emulation; this is expected, NOT a hang."
       fi
     else
+      : # brush 0.4.0 $? guard
       _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
       if [[ -z "${_zig_bin}" ]]; then
         if is_not_unix; then
           _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
         else
+          : # brush 0.4.0 $? guard
           _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
         fi
       fi
@@ -139,9 +138,7 @@ SYNCHRONIZATION_DEF
       _gen_fail=0
       _gen_failed=""
 
-      # Stems that are macro-fragment include helpers (not standalone DLL
-      # defs); zig ships these in its own mingw lib dir and dlltool cannot
-      # produce import libs from them. See PR #181 ac523b5b.
+      # Macro-fragment include-helper stems (not standalone DLL defs). See reference doc S5.6/S3.11.
       function _is_helper_stem() {
         case "$1" in
           func|crt-aliases|ucrtbase-common|vcruntime140-common) return 0 ;;
@@ -158,12 +155,22 @@ SYNCHRONIZATION_DEF
         local stem="$1" def="$2" outdir="$3"
         local lib="${outdir}/lib${stem}.a"
         [[ -f "${lib}" ]] && return 0
-        local dll
-        dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
+        local dll="" _il_line
+        while IFS= read -r _il_line || [[ -n "${_il_line}" ]]; do
+          if [[ "${_il_line}" == LIBRARY* ]]; then
+            local -a _il_fields
+            read -r -a _il_fields <<< "${_il_line}"
+            if [[ ${#_il_fields[@]} -ge 2 ]]; then
+              dll="${_il_fields[1]//\"/}"
+            fi
+            break
+          fi
+        done < "${def}"
         [[ -z "${dll}" ]] && dll="${stem}.dll"
         if "${_dlltool}" -m "${_dlltool_machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null && [[ -s "${lib}" ]]; then
           _gen_count=$(( _gen_count + 1 ))
         else
+          : # brush 0.4.0 $? guard
           _gen_fail=$(( _gen_fail + 1 ))
           _gen_failed="${_gen_failed} ${_dlltool_machine}:${stem}"
           rm -f "${lib}"
@@ -222,9 +229,13 @@ SYNCHRONIZATION_DEF
         for _def_in in "${_mingw_common}"/*.def.in; do
           [[ -f "${_def_in}" ]] || continue
           _stem="$(basename "${_def_in%.def.in}")"
-          _is_helper_stem "${_stem}" && continue
+          if _is_helper_stem "${_stem}"; then
+            continue
+          fi
           _lib="${_ia_outdir}/lib${_stem}.a"
-          [[ -f "${_lib}" ]] && continue
+          if [[ -f "${_lib}" ]]; then
+            continue
+          fi
           _def="${_ia_outdir}/${_stem}.def"
           if [[ ! -f "${_def}" ]]; then
             "${_zig_bin}" cc -E -P \
@@ -247,6 +258,7 @@ SYNCHRONIZATION_DEF
             "${_ar_cmd[@]}" rcs "${_uuid_lib}" "${_uuid_obj}" 2>/dev/null && [[ -s "${_uuid_lib}" ]]; then
             _gen_count=$(( _gen_count + 1 ))
           else
+            : # brush 0.4.0 $? guard
             _gen_fail=$(( _gen_fail + 1 ))
             _gen_failed="${_gen_failed} ${_ia_arch}:uuid"
             rm -f "${_uuid_lib}"
@@ -268,9 +280,13 @@ SYNCHRONIZATION_DEF
           for _supp_in in "${_supp_defs}"/*.def.in; do
             [[ -f "${_supp_in}" ]] || continue
             _supp_stem="$(basename "${_supp_in%.def.in}")"
-            _is_helper_stem "${_supp_stem}" && continue
+            if _is_helper_stem "${_supp_stem}"; then
+              continue
+            fi
             _supp_lib="${_ia_outdir}/lib${_supp_stem}.a"
-            [[ -f "${_supp_lib}" ]] && continue
+            if [[ -f "${_supp_lib}" ]]; then
+              continue
+            fi
             _supp_def="${_ia_outdir}/${_supp_stem}.def"
             if [[ ! -f "${_supp_def}" ]]; then
               "${_zig_bin}" cc -E -P \
@@ -287,7 +303,9 @@ SYNCHRONIZATION_DEF
           for _supp_def in "${_supp_defs}"/*.def; do
             [[ -f "${_supp_def}" ]] || continue
             _supp_stem="$(basename "${_supp_def%.def}")"
-            _is_helper_stem "${_supp_stem}" && continue
+            if _is_helper_stem "${_supp_stem}"; then
+              continue
+            fi
             _supp_lib="${_ia_outdir}/lib${_supp_stem}.a"
             [[ -f "${_supp_lib}" ]] && continue
             _gen_implib "${_supp_stem}" "${_supp_def}" "${_ia_outdir}"
@@ -304,9 +322,7 @@ SYNCHRONIZATION_DEF
         echo "ERROR: [_mingw] failed import libs:${_gen_failed}" >&2
         return 1
       fi
-      # Floor subsumes the old ==0 check. Baseline 2355 measured on
-      # PR #181 / ac523b5b; 2200 leaves room for a snapshot legitimately
-      # adding/removing a handful of .def files while still catching a collapse.
+      # Floor guards against an import-lib generation collapse. See reference doc S5.6/S3.11.
       _gen_count_floor=2200
       if [[ "${_gen_count}" -lt "${_gen_count_floor}" ]]; then
         echo "ERROR: [_mingw] import lib count ${_gen_count} is below floor ${_gen_count_floor} (baseline 2355 measured on PR #181 / ac523b5b)" >&2
@@ -331,7 +347,7 @@ SYNCHRONIZATION_DEF
       # prints log to stderr and returns 1 to abort import-lib generation.
       _compile_crt_obj() {
         local src="$1" obj="$2" extra="${3:-}"
-        local log; log=$(mktemp)
+        local log="${obj}.log"
         # shellcheck disable=SC2086
         if "${_zig_bin}" cc "${_crt_flags[@]}" ${extra} "${src}" -o "${obj}" >"${log}" 2>&1; then
           dbg cat "${log}"
@@ -374,6 +390,7 @@ SYNCHRONIZATION_DEF
             _stub_rel_warned=1
           fi
         else
+          : # brush 0.4.0 $? guard
           stub_mode="empty"
         fi
         if [[ "${stub_mode}" == "empty" ]]; then
@@ -518,6 +535,10 @@ SYNCHRONIZATION_DEF
       local _warm_dir
       _warm_dir="$(mktemp -d 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/zig-warm-$$")"
       mkdir -p "${_warm_dir}"
+      # Normalize to a native path so MSYS argv translation to zig.exe agrees.
+      if command -v cygpath >/dev/null 2>&1; then
+        _warm_dir="$(cygpath -m "${_warm_dir}")"
+      fi
       cat > "${_warm_dir}/warm.c" <<'WARM_EOF'
 #include <stdio.h>
 #include <pthread.h>
@@ -535,6 +556,26 @@ WARM_EOF
       # missing fails the build loudly instead of shipping silently.
       local _warm_failed_count=0
       local _warm_failed_list=""
+
+      # Recursive basename search (find removed). Silent on missing/empty
+      # dir, same tolerance as the old `find ... 2>/dev/null`.
+      function _find_by_basename() {
+        local dir="$1" name="$2" entry found
+        for entry in "${dir}"/* "${dir}"/.[!.]* "${dir}"/..?*; do
+          [[ -e "${entry}" ]] || continue
+          if [[ -d "${entry}" ]]; then
+            found="$(_find_by_basename "${entry}" "${name}")"
+            if [[ -n "${found}" ]]; then
+              printf '%s\n' "${found}"
+              return 0
+            fi
+          elif [[ "${entry##*/}" == "${name}" ]]; then
+            printf '%s\n' "${entry}"
+            return 0
+          fi
+        done
+        return 1
+      }
 
       # Map: zig target triple -> staging dir name under lib/libc/mingw/
       for _warm_pair in \
@@ -560,7 +601,7 @@ WARM_EOF
           fi
 
           local _warm_lib
-          _warm_lib="$(find "${_warm_cache}" -name 'libmingw32.lib' -print -quit 2>/dev/null)"
+          _warm_lib="$(_find_by_basename "${_warm_cache}" 'libmingw32.lib')"
           if [[ -z "${_warm_lib}" || ! -f "${_warm_lib}" ]]; then
               echo "ERROR: libmingw32.lib not found in cache for ${_warm_tgt}; CRT archives will be missing" >&2
               _warm_failed_count=$((_warm_failed_count + 1))
@@ -597,6 +638,7 @@ WARM_EOF
       dbg echo "=== Stub archive generation done ==="
 
     else
+      : # brush 0.4.0 $? guard
       _mingw_skip_reason=""
       if [[ -z "${_dlltool}" ]]; then
         _mingw_skip_reason="${_mingw_skip_reason}dlltool not found; "
