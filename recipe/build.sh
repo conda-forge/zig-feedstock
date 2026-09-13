@@ -95,6 +95,12 @@ if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
+# -fno-plt makes GCC emit inline-PLT relocations LLD cannot handle
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  export CFLAGS="${CFLAGS:-} -fplt"
+  export CXXFLAGS="${CXXFLAGS:-} -fplt"
+fi
+
 # --- ppc64le R_PPC64_REL24 mitigation (defense in depth) ---
 # Two mechanisms: -mlongcall via the CFLAGS/CXXFLAGS below, and the
 # libzig-lld-bundle.so split (cmake patch 0006 + _lld_bundle.sh) that spreads

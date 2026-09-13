@@ -217,19 +217,11 @@ source:
       - if: linux
         then:
           # Phase 0001: Architecture Support. Only LdScript is required here: its
-          # outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch
-          # arms (relocation, Elf, Atom, LinkerDefined, ZigObject, synthetic_sections,
-          # eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
-          # build + ppc64le tests confirmed they are dead code: 0003-linker-redirect
-          # forces the LLD backend (-> gcc/ld) for powerpc64le+elf, so the self-hosted
-          # final-link path is never instantiated.
+          # outputFormat() runs on every backend; the 8 self-hosted ELF-linker arch
+          # arms were removed in build 9.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
-          # Phase 0003: Linker Redirection (comprehensive GCC linker with full flag translation)
-          - patches/ppc64le/0003-linker-redirect-link.zig.patch
-          # needs Lld.zig-prefer-shared-libcxx (unconditional list): calls libcxx_shared.* with no import of its own
-          - patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch
           # Phase 0006: CMake ppc64le lld bundle override.
           - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
       - if: not unix
@@ -387,7 +379,6 @@ outputs:
       run:
         - if: ppc64le
           then:
-            # We redirect linking to gcc/ld.bfd
             - binutils_impl_${{ target_platform }} >=2.45
             - gcc_impl_${{ target_platform }} >=14.3
         - if: osx
@@ -562,7 +553,7 @@ outputs:
       - script:
           interpreter: brush
           content:
-            - if: is_testable and not ppc64le
+            - if: is_testable
               then:
                 - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
                 - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
@@ -584,10 +575,6 @@ outputs:
                   then:
                     - ${{ conda_triplet }}-zig cc -fuse-ld=lld -mconsole -o test_lld.exe test_lld.c && ./test_lld.exe
                     - echo "PASS -fuse-ld=lld compile+link+run (NonUnix/COFF)"
-              else:
-                # LLD lacks ppc64le relocation support; wrapper guard tested via
-                # test_zig_toolchain.py (activation package). Raw binary has no wrapper.
-                - echo "Skip -fuse-ld=lld test on ppc64le (no wrapper in zig_impl_)"
         requirements:
           build:
             - brush
@@ -666,8 +653,6 @@ outputs:
             - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
         - if: xc_ppc64le
           then:
-            # ppc64le patches redirect zig linking to gcc/ld.bfd
-            # (LLD lacks PowerPC64 relocation support)
             - binutils_impl_${{ cross_target_platform_ }} >=2.45
             - gcc_impl_${{ cross_target_platform_ }} >=14.3
     tests:

@@ -63,6 +63,49 @@ def _elf_endian_fmt(data: bytes) -> str:
     raise ValueError(f"unrecognised e_ident[EI_DATA]={ei_data}")
 
 
+_PT_NAMES = {
+    0: "NULL",
+    1: "LOAD",
+    2: "DYNAMIC",
+    3: "INTERP",
+    4: "NOTE",
+    6: "PHDR",
+    7: "TLS",
+    0x6474E550: "GNU_EH_FRAME",
+    0x6474E551: "GNU_STACK",
+    0x6474E552: "GNU_RELRO",
+}
+
+
+def _dump_program_headers(label: str, path: Path) -> None:
+    """Print the ELF program header table for diagnostics only.
+
+    Best-effort: any exception is caught and reported, never raised.
+    """
+    try:
+        data = path.read_bytes()
+        endian = _elf_endian_fmt(data)
+        (e_phoff,) = struct.unpack_from(endian + "Q", data, 0x20)
+        (e_phentsize,) = struct.unpack_from(endian + "H", data, 0x36)
+        (e_phnum,) = struct.unpack_from(endian + "H", data, 0x38)
+        print(f"[phdr-dump] {label}: e_phoff=0x{e_phoff:x} e_phnum={e_phnum} "
+              f"e_phentsize={e_phentsize}")
+        for i in range(e_phnum):
+            off = e_phoff + i * e_phentsize
+            (p_type, p_flags) = struct.unpack_from(endian + "II", data, off)
+            (p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align) = \
+                struct.unpack_from(endian + "QQQQQQ", data, off + 8)
+            name = _PT_NAMES.get(p_type, "")
+            name_suffix = f"({name})" if name else ""
+            print(f"[phdr-dump]   [{i}] p_type=0x{p_type:x}{name_suffix} "
+                  f"p_flags=0x{p_flags:x} p_offset=0x{p_offset:x} "
+                  f"p_vaddr=0x{p_vaddr:x} p_paddr=0x{p_paddr:x} "
+                  f"p_filesz=0x{p_filesz:x} p_memsz=0x{p_memsz:x} "
+                  f"p_align=0x{p_align:x}")
+    except Exception as exc:
+        print(f"[phdr-dump] {label}: dump failed: {exc}")
+
+
 def _flip_pt_phdr_to_null(src: Path, dst: Path) -> bool:
     """Copy src to dst, rewriting a PT_PHDR entry's p_type to PT_NULL.
 
@@ -132,8 +175,22 @@ def main(conda_triplet: str, zig_triplet: str) -> int:
             print(build.stderr, file=sys.stderr)
             return 1
 
+        _dump_program_headers("control (pre-flip)", control)
+
         found = _flip_pt_phdr_to_null(control, modified)
         note = "" if found else "control binary already had no PT_PHDR entry"
+
+        try:
+            if found:
+                print("[linker-diag] control carries PT_PHDR -> linked by LLD")
+            else:
+                print("[linker-diag] control lacks PT_PHDR -> linked by ld.bfd "
+                      "or another linker that omits it")
+        except Exception as exc:
+            print(f"[linker-diag] diagnostic failed: {exc}")
+
+        if modified.is_file():
+            _dump_program_headers("modified (post-flip)", modified)
 
         # CONTROL RUN: only an environment check when a PT_PHDR was actually
         # removed; if none was found, control equals modified and this run
