@@ -13,7 +13,7 @@ context:
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}
+  bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}  # TEMP revert 'or ppc64le' on build 18
   bootstrap_via_upstream: false
   ci_focus_skip: false
   is_testable: >-
@@ -392,6 +392,7 @@ outputs:
             - ${{ library }}lib/zig/libtsan/*
             - ${{ library }}lib/zig/std/*
             - etc/conda/test-files/zig*
+
       # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
       - script:
           - if: linux
@@ -417,6 +418,7 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_libcxx_shared.py
+
       # Regression test: -Wl,--no-as-needed -lm must put libm in DT_NEEDED.
       - script:
           - if: linux
@@ -442,6 +444,7 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_dtneeded.py
+
       # Regression test: dl_iterate_phdr must tolerate a missing PT_PHDR.
       - script:
           - if: linux
@@ -467,6 +470,8 @@ outputs:
           recipe:
             - testing/_test_utils.py
             - testing/test_dl_iterate_phdr.py
+
+      # zig simple test.
       - script:
           interpreter: bash
           content:
@@ -502,6 +507,7 @@ outputs:
             - zig-source/test/behavior.zig
             - zig-source/test/behavior/**
 
+      # zig UCRT DLL.
       - script:
           interpreter: bash
           content:

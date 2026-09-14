@@ -59,6 +59,11 @@ eh_frame, Thunk) were removed in build 9 after a linux-64 -> linux-ppc64le
 build plus ppc64le tests confirmed they are dead code: the 0003
 linker-redirect patch forces the LLD backend (-> gcc/ld) for powerpc64le
 +elf, so the self-hosted final-link path is never instantiated.
+NOTE 2026-09-13: that justification cites the 0003 linker-redirect patch,
+which has since been removed from this tree (see 1.10, 1.11). The removal
+of the arch arms was validated by a build plus ppc64le tests at the time
+and is not being reopened, but the stated reason no longer describes the
+current link path and must not be reused as a premise.
 
 ### 1.8 Patch: gccmain-do-global-ctors-guard <a id="patch-gccmain-do-global-ctors-guard"></a>
 win-64/arm64: bounds zig's mingw `__do_global_ctors` walk so a malformed
@@ -80,9 +85,13 @@ macOS libc++ injection guard depends on this patch's resolution behaviour
 (it deliberately does NOT add `${PREFIX}/lib/libc++.dylib` to
 `ZIG_LLVM_LIBRARIES` there, to avoid a duplicate `LC_LOAD_DYLIB`). The probe
 is inactive when cross-compiling (guarded on `target.cpu.arch !=
-builtin.cpu.arch`), so only NATIVE lanes exercise it; the osx native lane
-builds in a `--test skip` configuration, so the probe's Darwin behaviour has
-not been confirmed by a direct `otool -L` measurement.
+builtin.cpu.arch`), so only NATIVE lanes exercise it. CONFIRMED 2026-09-13
+(PR #176, build 17): both osx native lanes run `test_libcxx_shared.py` at
+5 passed / 2 skipped, and the osx-arm64 leg verifies shared
+`libc++.1.0.dylib` linkage via `@rpath`. The earlier note here claiming the
+osx native lane builds in a `--test skip` configuration was wrong on both
+counts -- no such configuration exists in this feedstock, and the Darwin
+behaviour is now directly measured.
 
 ### 1.10 Patch: ppc64le/build.zig-llvm-lld-config <a id="patch-ppc64le-build-zig-llvm-lld-config"></a>
 Sets `exe.use_lld = false` for powerpc64le, selecting the non-LLD link
@@ -173,9 +182,10 @@ runs. Running the binary also validates MSYS2 UCRT DLL resolution
 (`api-ms-win-crt-*`).
 
 ### 2.6 Tests: zig_impl -fuse-ld=lld ppc64le branch <a id="tests-fuse-ld-lld-ppc64le-branch"></a>
-ppc64le links via LLD (GCC-driver redirect, patch 0003, removed in build
-9). This branch tests that link path; `-fuse-ld=lld` is intentionally not
-used there.
+ppc64le links via LLD. The GCC-driver redirect (the former 0003 patches)
+was removed in build 9 and is NOT what routes this link -- see 1.10 for
+what actually governs the ppc64le link path. This branch tests that link
+path; `-fuse-ld=lld` is intentionally not used there.
 
 ### 2.7 Tests: test_mingw_crt.py coverage split <a id="tests-mingw-crt-coverage-split"></a>
 `test_mingw_crt.py`'s deep content checks are win-64-only (`xc_w64`);
