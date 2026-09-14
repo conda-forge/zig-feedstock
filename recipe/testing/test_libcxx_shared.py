@@ -157,11 +157,11 @@ def _find_zig_cache_dir() -> Path | None:
     return Path(cache) if cache else None
 
 
-def _find_libcxx_static(zig: str, td: Path) -> Path | None:
+def _find_libcxx_static(zig: str, td: Path) -> tuple[Path | None, str]:
     """
     Trigger a C++ compilation to populate zig's cache, then find libc++.a.
 
-    Returns the path to the cached libc++.a, or None if not found.
+    Returns (path, reason); reason names which arm failed when path is None.
     """
     src = td / "find_libcxx.cpp"
     out = td / "libfind.so"
@@ -172,12 +172,14 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
 
     r = _run([zig, "c++", *_target_args, "-shared", "-o", str(out), str(src)],
              cwd=str(td), timeout=_COMPILE_TIMEOUT_S)
+    if timed_out(r):
+        return None, "cache-warming compile timed out after %ds" % _COMPILE_TIMEOUT_S
     if r.returncode != 0:
-        return None
+        return None, "cache-warming compile failed (rc=%s)" % r.returncode
 
     cache_dir = _find_zig_cache_dir()
     if not cache_dir or not cache_dir.is_dir():
-        return None
+        return None, "zig cache dir unresolved (ZIG_GLOBAL_CACHE_DIR=%s)" % os.environ.get("ZIG_GLOBAL_CACHE_DIR", "unset")
 
     # Find the most recently modified libc++.a (the one we just triggered)
     candidates = sorted(
@@ -185,7 +187,9 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
-    return candidates[0] if candidates else None
+    if not candidates:
+        return None, "no libc++.a under %s" % cache_dir
+    return candidates[0], ""
 
 
 # ===================================================================
@@ -250,14 +254,14 @@ def test_libcxx_fallback_static() -> None:
             return
 
         # Precondition: static libc++.a must exist to fall back to
-        libcxx_a = _find_libcxx_static(zig, Path(td))
+        libcxx_a, _why = _find_libcxx_static(zig, Path(td))
         if not libcxx_a:
             zig_lib_candidates = list(zig_lib.rglob("libc++.a")) if zig_lib else []
             if zig_lib_candidates:
                 libcxx_a = zig_lib_candidates[0]
             else:
                 SKIP("libcxx-static-fallback",
-                     "could not find libc++.a in zig cache or lib dir")
+                     "%s; none under %s either" % (_why, zig_lib))
                 return
 
         r = _run([zig, "c++", *_target_args, "-shared", "-o", str(out), str(src)],
@@ -721,7 +725,7 @@ def test_libcxx_shared_simulation() -> None:
             td_path = Path(td)
 
             # Phase 1: Find zig's cached libc++.a
-            libcxx_a = _find_libcxx_static(zig, td_path)
+            libcxx_a, _why = _find_libcxx_static(zig, td_path)
             if not libcxx_a:
                 # Fallback: search zig lib dir for any libc++.a
                 zig_lib_candidates = list(zig_lib.rglob("libc++.a"))
@@ -729,7 +733,7 @@ def test_libcxx_shared_simulation() -> None:
                     libcxx_a = zig_lib_candidates[0]
                 else:
                     SKIP("libcxx-simulation",
-                         "could not find libc++.a in zig cache or lib dir")
+                         "%s; none under %s either" % (_why, zig_lib))
                     return
 
             PASS(f"found libc++.a: {libcxx_a}")
