@@ -2,18 +2,20 @@
 
 Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e90365cd5. This file is the STATE of the improvement work and must be updated in the SAME commit as each change. Improvements go to `dev` as their own PR and must never ride a snapshot-bump branch.
 
+**Deviation note.** Batch 1 (items 1, 2, 3, 8) landed on the snapshot-bump branch `snapshot/dev-2127+e90365cd5` (PR #186) instead of its own dev PR, contrary to the rule above -- recorded so the next session knows this was a knowing deviation, not an oversight.
+
 ## Status table
 
 | ID | Title | Effort | Risk | Status | Validated by |
 |----|-------|--------|------|--------|---------------|
-| 1 | config.h mutation assert instead of silent no-op | S | low | DONE (unverified) | PR #186 board 2 (commit 2d8d33a5) |
-| 2 | Split EXTRA_ZIG_ARGS along maker/configurer boundary | S | low | DONE (unverified) | PR #186 board pending |
-| 3 | Stop mingw layer degrading silently | S-M | low | DONE (unverified) | PR #186 board pending |
+| 1 | config.h mutation assert instead of silent no-op | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
+| 2 | Split EXTRA_ZIG_ARGS along maker/configurer boundary | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
+| 3 | Stop mingw layer degrading silently | S-M | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | TODO | - |
 | 5 | Build-time upstream-assumption ledger | M | low | TODO | - |
 | 6 | Encode patch order in filenames, not comments | M | low-med | TODO | - |
 | 7 | Adopt -Doptimize=safe (SPECULATIVE) | S | low-med | TODO | - |
-| 8 | Retire shipped debug instrumentation | S | low | DONE (unverified) | PR #186 board pending |
+| 8 | Retire shipped debug instrumentation | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 9 | Replace hand-rolled import libs with upstream's (SPECULATIVE) | L | high | TODO | - |
 
 ## Batches
@@ -34,13 +36,15 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 
 **Effort.** S. **Risk.** low.
 
-**Measured 2026-09-14 (PR #186).** The originally specified design (non-zero return on zero matches, `_cfg_require` wrapper, promoted `dbg grep`) shipped on board 1 and was reverted after two defects:
-- Match count is the wrong failure criterion. The osx-64 cross lane legitimately matches ZERO lines for the BUILD_PREFIX->PREFIX rewrite, because cmake already discovered LLVM/lld under PREFIX. `_cfg_require` turned that correct state into a hard failure. Assert outcomes, not match counts.
-- The Windows build shell has no `grep`. Promoting the `dbg grep` of the define to an always-run path exited 127 and killed win-64 and win-arm64. Every external command behind `dbg` in this recipe is a latent Windows landmine; always-run paths must use bash builtins only.
+**Measured 2026-09-14 (PR #186 board 24/24 green @ 6baeee89).** The originally specified design (non-zero return on zero matches, `_cfg_require` wrapper, promoted `dbg grep`) shipped on board 1 and was reverted after four defects found in batch-1 hardening:
+- The Windows build shell has no grep. Promoting a dbg-wrapped grep to an always-run path exits 127 (killed win-64 and win-arm64). Always-run paths use bash builtins only.
+- Match count is the wrong failure criterion. Opportunistic rewrites legitimately match zero lines (osx-64: cmake already resolved LLVM under PREFIX). Assert outcomes, not match counts.
+- set -e kills a helper before it can read $?. `cmd` then `rc=$?` is unsafe; capture inline with `|| rc=$?`. Symptom is a lane dying with NO error text at all.
+- ZIG_CXX_COMPILER legitimately lives in BUILD_PREFIX (it is a host tool), so a BUILD_PREFIX-leak check must be an allowlist of link/load defines, not a scan of every ZIG_/LLVM_ define.
 
 **Validation.** Any linux lane; failure signatures `ERROR: ZIG_LLVM_LIBRARIES_MISSING_TOKEN`, `ERROR: config.h still references BUILD_PREFIX:`, `ERROR: config.h stub injection missing:`; non-fatal `WARNING: config.h substitution matched nothing:`.
 
-Status: DONE (unverified) - implemented 2026-09-14, PR #186 board 2 (commit 2d8d33a5)
+Status: DONE - validated by PR #186 board 24/24 green @ 6baeee89 (2026-09-14)
 Blocked by: nothing
 
 ---
@@ -55,7 +59,7 @@ Blocked by: nothing
 
 **Validation.** Every lane; expect a byte-identical effective command line.
 
-Status: DONE (unverified) - implemented 2026-09-14, awaiting PR #186 board. The effective command line is not byte-identical in ORDER (maker args now emitted first, which is the design goal); the pre-change array never had maker-first ordering either, so token/value set unchanged.
+Status: DONE - validated by PR #186 board 24/24 green @ 6baeee89 (2026-09-14)
 Blocked by: nothing
 
 ---
@@ -68,9 +72,11 @@ Blocked by: nothing
 
 **Effort.** S-M. **Risk.** low.
 
+**Measured 2026-09-14 (PR #186 board 24/24 green @ 6baeee89).** win-64 native ran green: actual import-lib count 2355, derived expectation 2418 (806 def files x 3 arches), hard floor 2200. Confirms the derived value is an overestimate (per-arch .def sets differ), so making it the hard floor would have failed a good build -- which is why it warns only.
+
 **Validation.** win-64 native lane (the only one that sources `_mingw.sh` for generation); signature `ERROR: [_mingw] upstream contract broken: lib/libc/mingw/crt/crtexe.c missing`.
 
-Status: DONE (unverified) - implemented 2026-09-14, awaiting PR #186 board. The import-lib floor was implemented as WARN-only against a derived expectation, with 2200 retained as the sole hard-fail threshold (the derived `def count x arch count` is an overestimate because per-arch .def sets differ, so it must not gate the build).
+Status: DONE - validated by PR #186 board 24/24 green @ 6baeee89 (2026-09-14)
 Blocked by: nothing
 
 ---
@@ -147,7 +153,7 @@ Blocked by: confirming the tag spelling against `lib/std/Build.zig` at the pinne
 
 **Validation.** linux-ppc64le; the `elf64-powerpcle` arm must still be present.
 
-Status: DONE (unverified) - implemented 2026-09-14, awaiting PR #186 board
+Status: DONE - validated by PR #186 board 24/24 green @ 6baeee89 (2026-09-14)
 Blocked by: nothing
 
 ---
