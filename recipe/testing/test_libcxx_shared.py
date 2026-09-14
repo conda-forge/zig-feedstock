@@ -20,7 +20,6 @@ Exit codes:
 
 from __future__ import annotations
 
-import json
 import os
 import platform
 import shutil
@@ -83,13 +82,10 @@ is_ppc64le = _arch == "powerpc64le"
 
 # Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
 
-# Truthful reason string for the `_is_emulated and not is_ppc64le` link-test
-# skip below: reports whichever condition(s) actually fired, with the real arch.
-# TEMP experiment PR 176: ppc64le is exempted from the skip to measure whether
-# LLD really fails here. Revert this block and the three guards if ppc64le goes red.
+# Reason string for the `_is_emulated and not is_ppc64le` link-test skip below.
+# ppc64le is exempt on purpose: the is_ppc64le disjunct (cb67851d) guarded a
+# refuted "LLD lacks PPC64 relocations" premise; CI-VERIFIED green at f5ba9430.
 _link_skip_reasons = []
-if is_ppc64le:
-    _link_skip_reasons.append("ppc64le")
 if _is_emulated:
     _link_skip_reasons.append(f"emulated ({_arch})")
 _LINK_SKIP_REASON = "/".join(_link_skip_reasons)
@@ -152,16 +148,13 @@ def _find_zig_binary() -> str | None:
     return None
 
 
-def _find_zig_cache_dir(zig: str) -> Path | None:
-    """Get zig's global cache directory from 'zig env'."""
-    r = _run([zig, "env"], timeout=10)
-    if r.returncode != 0:
-        return None
-    try:
-        env = json.loads(r.stdout)
-        return Path(env["global_cache_dir"])
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return None
+def _find_zig_cache_dir() -> Path | None:
+    """Return zig's global cache dir from the env var we set at import.
+
+    Not `zig env`: that serializes as ZON, not JSON (src/print_env.zig).
+    """
+    cache = os.environ.get("ZIG_GLOBAL_CACHE_DIR", "")
+    return Path(cache) if cache else None
 
 
 def _find_libcxx_static(zig: str, td: Path) -> Path | None:
@@ -182,7 +175,7 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
     if r.returncode != 0:
         return None
 
-    cache_dir = _find_zig_cache_dir(zig)
+    cache_dir = _find_zig_cache_dir()
     if not cache_dir or not cache_dir.is_dir():
         return None
 

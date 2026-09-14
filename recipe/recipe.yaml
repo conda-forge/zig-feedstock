@@ -43,10 +43,10 @@ context:
   xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-arm64', 'win-32'] }}
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
 
-  exe:     ${{ ".exe" if not unix else "" }}
-  library: ${{ "Library/" if not unix else "" }}
-  m2:      ${{ "m2-" if not unix else "" }}
-  sh:      ${{ ".bat" if not unix else ".sh" }}
+  exe:           ${{ ".exe" if not unix else "" }}
+  library:       ${{ "Library/" if not unix else "" }}
+  m2:            ${{ "m2-" if not unix else "" }}
+  sh:            ${{ ".bat" if not unix else ".sh" }}
 
   # Zig target mapping https://github.com/ziglang/zig-bootstrap
   zig_triplet: >-
@@ -374,7 +374,10 @@ outputs:
             - if: not skip_langref
               then:
                 - ${{ library }}doc/langref.html
-            - ${{ library }}lib/zig/{c,compiler_rt,fuzzer,ubsan_rt}.zig
+            - ${{ library }}lib/zig/c.zig
+            - ${{ library }}lib/zig/compiler_rt.zig
+            - ${{ library }}lib/zig/fuzzer.zig
+            - ${{ library }}lib/zig/ubsan_rt.zig
             - ${{ library }}lib/zig/zig.h
             - ${{ library }}lib/zig/build-web/*
             - ${{ library }}lib/zig/c/*.zig
