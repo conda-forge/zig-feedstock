@@ -17,9 +17,9 @@
 # Consequence in this recipe: the caller is debug/SelfInfo/Elf.zig findModule, so
 # module lookup fails; the panic fires inside the stack-trace printer while it holds
 # the stderr lock, the recursive panic re-enters that non-recursive lock, and the
-# process deadlocks in futex forever. On linux-ppc64le (final links redirected through
-# the conda GCC driver by patches/ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch),
-# this is the confirmed mechanism behind the Phase 2 langref hang at the 6h CI ceiling:
+# process deadlocks in futex forever. On linux-ppc64le (final links go through LLD,
+# no GCC-driver redirect), this is the confirmed mechanism behind the Phase 2
+# langref hang at the 6h CI ceiling:
 # langref runs doc/langref/stack_trace.zig, whose @panic exists precisely to print a
 # stack trace.
 
