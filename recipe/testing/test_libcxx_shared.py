@@ -83,9 +83,10 @@ is_ppc64le = _arch == "powerpc64le"
 
 # Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
 
-# Truthful reason string for the `is_ppc64le or _is_emulated` link-test skip
-# below: reports whichever condition(s) actually fired, with the real arch,
-# instead of hardcoding "ppc64le" (which is wrong on e.g. riscv64/emulated).
+# Truthful reason string for the `_is_emulated and not is_ppc64le` link-test
+# skip below: reports whichever condition(s) actually fired, with the real arch.
+# TEMP experiment PR 176: ppc64le is exempted from the skip to measure whether
+# LLD really fails here. Revert this block and the three guards if ppc64le goes red.
 _link_skip_reasons = []
 if is_ppc64le:
     _link_skip_reasons.append("ppc64le")
@@ -206,7 +207,7 @@ def test_libcxx_fallback_static() -> None:
     """
     print("--- [patch-0008] Fallback to static libc++ ---")
 
-    if is_ppc64le or _is_emulated:
+    if _is_emulated and not is_ppc64le:
         SKIP("libcxx-static-fallback", f"{_LINK_SKIP_REASON}, skip linking tests")
         return
 
@@ -351,7 +352,7 @@ def test_libcxx_probe_paths() -> None:
     """
     print("--- [patch-0008] Shared libc++ probe paths ---")
 
-    if is_ppc64le or _is_emulated:
+    if _is_emulated and not is_ppc64le:
         SKIP("libcxx-probe", f"{_LINK_SKIP_REASON}, skip linking tests")
         return
 
@@ -682,7 +683,7 @@ def test_libcxx_shared_simulation() -> None:
         SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
         return
 
-    if is_ppc64le or _is_emulated:
+    if _is_emulated and not is_ppc64le:
         SKIP("libcxx-simulation", f"{_LINK_SKIP_REASON}, skip linking tests")
         return
 
