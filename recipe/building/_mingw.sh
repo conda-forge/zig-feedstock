@@ -484,7 +484,7 @@ SYNCHRONIZATION_DEF
       if [[ -f "${_bp_setjmp}" ]]; then
         # Unconditional (not dbg-gated): pattern drift here is the expected
         # failure mode when an upstream zig snapshot reformats this declaration.
-        _bp_notfound_msg="WARN: [_mingw] _CRTIMP pattern not found in bootstrap setjmp.h (${_bp_setjmp}); expected only if bootstrap zig no longer marks _setjmp/_setjmp3 dllimport"
+        _bp_notfound_msg="INFO: [_mingw] no _CRTIMP on _setjmp3 in bootstrap setjmp.h (${_bp_setjmp}); expected - our ungated mingw-setjmp-no-crtimp.patch already fixed the bootstrap we pin. Absence is asserted below."
         if command -v grep >/dev/null 2>&1 && command -v sed >/dev/null 2>&1; then
           if grep -qE '^_CRTIMP int __cdecl .*_setjmp3?\(' "${_bp_setjmp}"; then
             sed -i.zigbak -E 's/^_CRTIMP( int __cdecl .*_setjmp3?\()/\1/' "${_bp_setjmp}"
@@ -527,6 +527,25 @@ SYNCHRONIZATION_DEF
           fi
         else
           echo "WARN: [_mingw] bootstrap setjmp.h unreadable; _CRTIMP strip on bootstrap setjmp.h SKIPPED" >&2
+        fi
+
+        # The strip above is warn-and-continue and cannot tell "already fixed"
+        # from "silently still broken", so assert absence here: a surviving
+        # _CRTIMP on _setjmp3 is fatal, not a warning.
+        _bp_still=0
+        if command -v grep >/dev/null 2>&1; then
+          if grep -qE '^_CRTIMP int __cdecl .*_setjmp3?\(' "${_bp_setjmp}"; then _bp_still=1; fi
+        elif [[ -r "${_bp_setjmp}" ]]; then
+          while IFS= read -r line || [[ -n "${line}" ]]; do
+            if [[ "${line}" == "_CRTIMP int __cdecl "* && "${line}" == *"_setjmp"* && "${line}" == *"("* ]]; then
+              _bp_still=1
+              break
+            fi
+          done < "${_bp_setjmp}"
+        fi
+        if [[ "${_bp_still}" == "1" ]]; then
+          echo "FATAL: [_mingw] _CRTIMP still present on _setjmp3 in bootstrap setjmp.h (${_bp_setjmp}) after strip; warm link will fail" >&2
+          return 1
         fi
       else
         echo "WARN: [_mingw] bootstrap setjmp.h not found; warm link may fail on _setjmp3" >&2

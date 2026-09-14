@@ -101,13 +101,12 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   export CXXFLAGS="${CXXFLAGS:-} -fplt"
 fi
 
-# --- ppc64le R_PPC64_REL24 mitigation (defense in depth) ---
-# Two mechanisms: -mlongcall via the CFLAGS/CXXFLAGS below, and the
-# libzig-lld-bundle.so split (cmake patch 0006 + _lld_bundle.sh) that spreads
-# the 24-bit branch relocation domain across separate PLT sections.
+# --- ppc64le R_PPC64_REL24 mitigation ---
+# -fplt (above) is the only mechanism. -mlongcall and the libzig-lld-bundle.so
+# split were both removed; see ZIG_RECIPE_LLM_REFERENCE.md section 6.
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
-  export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
+  export CFLAGS="${CFLAGS:-} -fno-partial-inlining -fno-ipa-cp-clone"
+  export CXXFLAGS="${CXXFLAGS:-} -fno-partial-inlining -fno-ipa-cp-clone"
   export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=0"
   export NINJA_FLAGS="-v"
   EXTRA_CMAKE_ARGS+=(
@@ -115,13 +114,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
     -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
     -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
-  )
-  # Use PREFIX/lib here (not ZIG_LOCAL_CACHE_DIR): these paths are baked into
-  # the zig binary's DT_NEEDED at link time. conda-build's patchelf/prefix
-  # replacement then rewrites PREFIX to the install location correctly.
-  # The lld bundle is installed to PREFIX/lib/ (before zig2 link).
-  EXTRA_CMAKE_ARGS+=(
-    -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
   )
   EXTRA_ZIG_ARGS+=(--verbose-link)
   mkdir -p "${PREFIX}/bin"
@@ -224,14 +216,6 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-# --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
-if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  mkdir -p "${PREFIX}/lib"
-  source "${RECIPE_DIR}/building/_lld_bundle.sh"
-  build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
-  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
-fi
-
 # --- Post CMake Configuration ---
 
 # Append zlib/zstd/libxml2 to config.h's ZIG_LLVM_LIBRARIES: conda's split
@@ -329,19 +313,9 @@ if is_linux; then
 fi
 
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
-_can_run_stage3() {
-  if ! is_cross; then return 0; fi
-  if is_linux; then
-    [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ] && return 0
-  fi
-  return 1
-}
-
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
-  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
-elif [[ "${target_platform}" != "linux-ppc64le" ]]; then
-  echo "INFO: Phase 2 langref skipped: temporarily ppc64le-only while validating the PT_PHDR fix" >&2
-elif _can_run_stage3; then
+  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1" >&2
+else
   dbg echo "=== PHASE 2: building langref via stage3 zig ==="
   _stage3_runner=()
   if is_cross && is_linux; then
@@ -362,14 +336,9 @@ elif _can_run_stage3; then
   ) || _langref_rc=$?
   zig_diag_span "END phase2-langref: rc=${_langref_rc} elapsed=$((SECONDS - _langref_start))s"
   if [[ ${_langref_rc} -ne 0 ]]; then
-    if ! is_cross; then
-      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
-      exit 1
-    fi
-    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
+    echo "ERROR: Phase 2 langref build failed (rc=${_langref_rc})" >&2
+    exit 1
   fi
-else
-  echo "INFO: Phase 2 langref skipped: cross build with no usable stage3 runner (need qemu on linux, wine on windows)" >&2
 fi
 
 dbg echo "Post-install implementation package: ${PKG_NAME}"
