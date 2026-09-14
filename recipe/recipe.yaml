@@ -226,8 +226,6 @@ source:
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
           # Phase 0002: Build Configuration (LLVM backend, library paths)
           - patches/ppc64le/0002-build-config-build.zig.patch
-          # Phase 0006: CMake ppc64le lld bundle override.
-          - patches/cmake/0006-ppc64le-lld-bundle-CMakeLists.txt.patch
       - if: not unix
         then:
           - patches/non_unix/build.zig-01-maxrss.patch
@@ -400,10 +398,6 @@ outputs:
           strict: true
           bin:
             - ${{ conda_triplet }}-zig
-          lib:
-            - if: ppc64le
-              then:
-                - zig-lld-bundle
           files:
             - if: not unix
               then:

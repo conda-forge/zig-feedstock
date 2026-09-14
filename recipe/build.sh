@@ -102,14 +102,8 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
 fi
 
 # --- ppc64le R_PPC64_REL24 mitigation ---
-# REL24 range is handled by the libzig-lld-bundle.so split (cmake patch 0006
-# + _lld_bundle.sh), which gives each liblld archive its own address space.
-# -mlongcall/-mcmodel=large were a second mechanism for the same problem, but
-# they forbid the short bl and so force GCC back to the inline-PLT sequence
-# (R_PPC64_ENTRY/PLT16_HA/PLT16_LO_DS/PLTSEQ/PLTCALL) that the -fplt export
-# above exists to suppress, and which LLD does not implement. Removed:
-# PR #185 ppc64le, 10645 'ld.lld: unknown relocation' errors on libzigcpp.a.
-# The 0.16 track sets -fplt with no -mlongcall and links ppc64le via LLD green.
+# -fplt (above) is the only mechanism. -mlongcall and the libzig-lld-bundle.so
+# split were both removed; see ZIG_RECIPE_LLM_REFERENCE.md section 6.
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then
   export CFLAGS="${CFLAGS:-} -fno-partial-inlining -fno-ipa-cp-clone"
   export CXXFLAGS="${CXXFLAGS:-} -fno-partial-inlining -fno-ipa-cp-clone"
@@ -120,13 +114,6 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
     -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
     -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
-  )
-  # Use PREFIX/lib here (not ZIG_LOCAL_CACHE_DIR): these paths are baked into
-  # the zig binary's DT_NEEDED at link time. conda-build's patchelf/prefix
-  # replacement then rewrites PREFIX to the install location correctly.
-  # The lld bundle is installed to PREFIX/lib/ (before zig2 link).
-  EXTRA_CMAKE_ARGS+=(
-    -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
   )
   EXTRA_ZIG_ARGS+=(--verbose-link)
   mkdir -p "${PREFIX}/bin"
@@ -228,14 +215,6 @@ if is_osx && is_cross; then
 fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-
-# --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
-if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  mkdir -p "${PREFIX}/lib"
-  source "${RECIPE_DIR}/building/_lld_bundle.sh"
-  build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
-  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
-fi
 
 # --- Post CMake Configuration ---
 
