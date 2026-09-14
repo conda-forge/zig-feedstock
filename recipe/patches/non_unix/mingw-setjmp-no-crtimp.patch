@@ -9,7 +9,7 @@
 # DLL (msvcrt/ucrtbase), link against it via an import thunk". zig's generate_mingw_import_libs()
 # builds its .lib/.a files by reading the emitted .def file, not by scanning the static archive
 # that actually defines these symbols (lib/libc/mingw/misc/setjmp.S, see
-# mingw-include-setjmp-s.patch). With _CRTIMP left in place, callers compiled against this header
+# mingw.zig-01-include-setjmp-s.patch). With _CRTIMP left in place, callers compiled against this header
 # emit references to the dllimport thunk (__imp__setjmp / __imp___setjmp3) instead of the plain
 # symbol, so lld-link reports "undefined symbol: _setjmp" (x86_64-windows-gnu) or
 # "undefined symbol: __setjmp3" (x86-windows-gnu) even though setjmp.S defines them locally.

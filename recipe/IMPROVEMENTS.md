@@ -1,8 +1,8 @@
 # Recipe improvements ledger (zig 0.17 track)
 
-Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e90365cd5. This file is the STATE of the improvement work and must be updated in the SAME commit as each change. Improvements go to `dev` as their own PR and must never ride a snapshot-bump branch.
+Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e90365cd5. This file is the STATE of the improvement work and must be updated in the SAME commit as each change. Improvements ride the CURRENT nightly snapshot-bump branch by policy (amended 2026-09-14): separate improvement PRs get no review and cost more than they return, so the nightly snapshot PR doubles as the merge vehicle and work leap-frogs forward on each night's branch. WARNING: the bot cuts each nightly snapshot PR from `dev`, not from the previous snapshot branch -- a snapshot PR that does not merge before the next is cut strands its accumulated improvements and needs a manual merge (precedent: #186 cut from dev at 6c00f159 ~70 min before #185 merged, hence merge commit 8f80f319).
 
-**Deviation note.** Batch 1 (items 1, 2, 3, 8) landed on the snapshot-bump branch `snapshot/dev-2127+e90365cd5` (PR #186) instead of its own dev PR, contrary to the rule above -- recorded so the next session knows this was a knowing deviation, not an oversight.
+**Note.** Batches 1 and 2 (items 1, 2, 3, 8, and 6) both landed on `snapshot/dev-2127+e90365cd5` (PR #186) under the amended rule above.
 
 ## Status table
 
@@ -13,16 +13,17 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 | 3 | Stop mingw layer degrading silently | S-M | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | TODO | - |
 | 5 | Build-time upstream-assumption ledger | M | low | TODO | - |
-| 6 | Encode patch order in filenames, not comments | M | low-med | TODO | - |
+| 6 | Encode patch order in filenames, not comments | M | low-med | DONE (scope narrowed on measurement; board pending) | - |
 | 7 | Adopt -Doptimize=safe (SPECULATIVE) | S | low-med | TODO | - |
 | 8 | Retire shipped debug instrumentation | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 9 | Replace hand-rolled import libs with upstream's (SPECULATIVE) | L | high | TODO | - |
+| 10 | Machine-check patch apply-order via Applies-after headers | M | low | TODO | - |
 
 ## Batches
 
 - **Batch 0 (infrastructure)**: restructure `recipe/SNAPSHOT_TRIAGE.md` into invariant-procedure vs anchor-table, create this ledger, create the thin triage skill. Touches no recipe logic. - DONE 2026-09-14
 - **Batch 1 (silent-degradation sweep)**: items 1, 2, 3 and optionally 8. One theme, all small, one CI board validates all of them. - DONE 2026-09-14
-- **Batch 2**: item 6 (patch order in filenames). Touches many files, own board.
+- **Batch 2**: item 6 (patch order in filenames). Scope narrowed to two-file rename (mingw.zig-01/-02); own board pending. - DONE 2026-09-14
 - **Batch 3**: spikes for items 4 and 7 - investigate and decide, not implementation.
 - **Deferred**: item 9 (large, high risk, speculative).
 
@@ -115,16 +116,22 @@ Blocked by: nothing
 
 ### 6. Encode patch order in filenames, not comments
 
-**Problem.** Ordering is load-bearing but expressed only as prose: `recipe/recipe.yaml:178-180` (macho-lld-support before prefer-shared-libcxx, which patches code the former adds), `:190` (setjmp-s before arm64-stubs), `:240`/`:246` (the three-patch atexit chain). Five patches stack on `src/link/Lld.zig`; three stack inside `addCompilerStep` in `build.zig` within ~25 lines.
+**Problem (measured 2026-09-14).** The original claim -- five patches stacking on `src/link/Lld.zig`, three stacking inside `build.zig` within ~25 lines -- conflated apply-time hunk edges with implementation-order comments; most same-file stacks already conformed or had no real edge. Measured findings:
+- Only ONE stack was both non-conformant and carried a real apply-time edge: `mingw-include-setjmp-s.patch` and `mingw-arm64-stubs.patch` both modify `src/libs/mingw.zig` at the identical hunk range 122,17. Renamed to `mingw.zig-01-include-setjmp-s.patch` and `mingw.zig-02-arm64-stubs.patch`.
+- The other two same-selector-group same-file stacks already conformed: `linux/link.zig-01/02/03` (whose -01 vs -03 hunks genuinely overlap at `src/link.zig` 1226-1229) and `non_unix/build.zig-01/02/03`.
+- Two recipe.yaml ordering comments assert order the hunks do not require. `recipe.yaml:179-180` claims `macho-lld-support` must precede `prefer-shared-libcxx`, but their `src/link/Lld.zig` hunks are at 3-300 and 725+ respectively and do not overlap -- the dependency is a symbol edge, not an apply edge. The atexit trio (`mingw-crtexe-no-atexit`, `ucrtbase-export-atexit-alias`, `gccmain-do-global-ctors-guard`) touches three different files and has no apply edge at all.
+- Filename encoding structurally cannot express edges that cross selector groups, because `if: linux` and `if: not unix` are mutually exclusive.
 
-**Change.** Rename each order-dependent group to a numbered series (`Lld.zig-01-...`, `mingw-atexit-01/02/03-...`) so a reordering in `recipe.yaml` is visible as a sort violation, and note per-file stacks in the reference doc's patch section.
+**Convention audit.** Convention is `<file>(-<id if needed>)-<reason>.patch`. An audit found 12 of 33 filenames off-convention in four modes: component-name instead of upstream file (7 mingw/ucrtbase/selfinfo patches); wrong file token (`linux/llvm.zig-triple-no-glibc-version` actually targets `lib/std/zig/llvm/Builder.zig` while a real `src/codegen/llvm.zig` is patched by `llvm.zig-lld-ofmt-macho`); id with no series plus cross-directory collision (unconditional `build.zig-02/-03` vs `non_unix build.zig-02/-03`); and inverted `<id>-<reason>-<file>` (`ppc64le/0001`, `0002`, which target different files so the ids assert a series that does not exist). Left unfixed by maintainer scope decision.
+
+**Change.** Renamed the one non-conformant stack with a real apply edge (mingw.zig). No other renames performed.
 
 **Effort.** M (rename + recipe.yaml + doc). **Risk.** low-med (pure rename; risk is a missed reference).
 
 **Validation.** Every lane's patch phase must show no `Hunk ... FAILED`.
 
-Status: TODO
-Blocked by: doing it in one commit, not across a snapshot bump.
+Status: DONE (scope narrowed on measurement; board pending)
+Blocked by: nothing
 
 ---
 
@@ -172,3 +179,26 @@ Whether the compiler can be driven to materialize these into the install tree is
 
 Status: TODO
 Blocked by: that investigation; do not schedule alongside a snapshot bump.
+
+---
+
+### 10. Machine-check patch apply-order via Applies-after headers
+
+**Problem.** Four measured apply-time edges are expressible only in prose or ad-hoc patch headers, and three of them cross selector groups where filenames cannot help:
+- `src/link/Lld.zig`: `prefer-shared-libcxx` (1210-1222) vs `linux/Lld.zig-no-unconditional-as-needed` (1224-1241), 2-line gap, crosses groups
+- `build.zig` on windows: `non_unix/build.zig-03-msvc-crt-dynamic` (886-901) vs `non_unix/build.zig-01-maxrss` (900-906), overlap, currently undocumented anywhere
+- `lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in`: `mingw.zig-02-arm64-stubs` vs `ucrtbase-export-atexit-alias`, same file, crosses groups, undocumented
+- `src/link.zig`: `link.zig-01` vs `link.zig-03` overlap at 1226-1229 (currently carried only by the filename ids)
+
+The `Applies-after:` header convention already exists in `recipe/patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch`, which carries `Applies-after: Lld.zig-macho-lld-support.patch, Lld.zig-prefer-shared-libcxx.patch`.
+
+The reference doc section 5 dependency map currently documents a deleted patch (`ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch`) and cites recipe.yaml line markers (:179, :182, :231) that no longer resolve -- line-number markers rot, which is the argument for header-encoded edges.
+
+**Change.** Make the `Applies-after:` header universal for measured edges. Add a checker that parses the headers and validates them against recipe.yaml patch order, same shape as the existing `gen_translators.py --check` gate at `recipe.yaml:783`. Demote the recipe.yaml prose comments to semantic-only notes.
+
+**Effort.** M. **Risk.** low.
+
+**Validation.** not recorded.
+
+Status: TODO
+Blocked by: nothing

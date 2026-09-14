@@ -187,10 +187,10 @@ source:
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
       - patches/build.zig-03-compiler-step-zig-lib-dir.patch
-      # order load-bearing: setjmp-s must precede arm64-stubs
-      - patches/non_unix/mingw-include-setjmp-s.patch
+      # -01/-02 ids encode load-bearing order on src/libs/mingw.zig
+      - patches/non_unix/mingw.zig-01-include-setjmp-s.patch
       - patches/non_unix/mingw-setjmp-no-crtimp.patch
-      - patches/non_unix/mingw-arm64-stubs.patch
+      - patches/non_unix/mingw.zig-02-arm64-stubs.patch
       # General correctness fix: PT_PHDR is absent from static non-PIE ELF images
       # (GNU ld emits none); dl_iterate_phdr's single-image fallback otherwise hits
       # `unreachable`. No-op on any image that has a PT_PHDR (all PIE/dynamic images).
