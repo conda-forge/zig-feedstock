@@ -94,8 +94,8 @@ function prepare_sysroot_script_fallback() {
 
   # Remap conda env vars so that -L/-I flags injected by conda-build activation
   # point at the fallback sysroot instead of the original.  These vars are set
-  # before build.sh runs and are not part of EXTRA_ZIG_ARGS, so they must be
-  # updated here explicitly.
+  # before build.sh runs and are not part of ZIG_MAKER_ARGS/ZIG_PKG_OPTS, so
+  # they must be updated here explicitly.
   #
   # We use bash parameter expansion  ${VAR//$old/$new}  which replaces every
   # occurrence of $src_sysroot with $fallback_dir in the variable's value.
