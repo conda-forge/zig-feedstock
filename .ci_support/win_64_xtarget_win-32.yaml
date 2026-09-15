@@ -6,14 +6,14 @@ channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
-cross_target_platform_:
-- win-64
 cxx_compiler:
 - vs2022
 libxml2_devel:
 - '2.15'
 target_platform:
 - win-64
+xtarget_:
+- win-32
 zlib:
 - '1'
 zstd:

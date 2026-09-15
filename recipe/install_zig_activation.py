@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Build script for zig_$cross_target_platform_ activation package.
+Build script for zig_$xtarget_ activation package.
 
 Installs:
 1. Activation/deactivation scripts (all builds)
@@ -45,7 +45,7 @@ def main():
     # Wrappers execute where the package installs (target_platform), so the C
     # shim must be built for that arch whenever it differs from the build
     # machine. This covers unhosted cross-compilers AND is_cross_target lanes;
-    # UNHOSTED_XCOMPILER missed the latter (its cross_target_platform_ !=
+    # UNHOSTED_XCOMPILER missed the latter (its xtarget_ !=
     # target_platform clause is false there). Same capitalization normalization.
     shim_on_target = os.environ.get("SHIM_RUNS_ON_TARGET", "false").strip().lower() == "true"
 

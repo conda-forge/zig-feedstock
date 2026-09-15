@@ -10,18 +10,18 @@ channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
-cross_target_platform_:
-- linux-s390x
 cxx_compiler:
 - gxx
 cxx_compiler_version:
 - '15'
 docker_image:
-- quay.io/condaforge/linux-anvil-x86_64:alma10
+- quay.io/condaforge/linux-anvil-aarch64:alma10
 libxml2_devel:
 - '2.15'
 target_platform:
-- linux-64
+- linux-aarch64
+xtarget_:
+- linux-ppc64le
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version

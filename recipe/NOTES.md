@@ -194,7 +194,7 @@ itself.
 
 ### 2.8 Requirements.run (zig_ output): pin_subpackage vs external zig_impl <a id="requirements-run-pin-subpackage-vs-external-zig-impl"></a>
 For native/cross-target: depends on `zig_impl` for the same
-`cross_target_platform_` (`pin_subpackage` works). For cross-compiler:
+`xtarget_` (`pin_subpackage` works). For cross-compiler:
 depends on `zig_impl` for the BUILD platform instead (an external package,
 since `pin_subpackage` only reaches same-recipe outputs).
 
@@ -214,13 +214,13 @@ Without both, the leg SKIPs and the shim can silently rot uncompiled again.
 
 ### 2.12 Output packaging layout (zig_impl_ / zig_ / zig / zig-compiler) <a id="output-packaging-layout"></a>
 Four-output split:
-- `zig_impl_${{ cross_target_platform_ }}`: the actual zig compiler binary
+- `zig_impl_${{ xtarget_ }}`: the actual zig compiler binary
   (triplet-prefixed) and standard library. No activation scripts, no
   wrappers -- just the implementation.
-- `zig_${{ cross_target_platform_ }}`: activation scripts, depends on the
-  matching `zig_impl_${{ cross_target_platform_ }}`. No binaries -- just
+- `zig_${{ xtarget_ }}`: activation scripts, depends on the
+  matching `zig_impl_${{ xtarget_ }}`. No binaries -- just
   environment setup.
 - `zig` (metapackage): unprefixed symlinks, `zig -> $TRIPLET-zig`. Only
-  built when `cross_target_platform_ == target_platform`.
+  built when `xtarget_ == target_platform`.
 - `zig-compiler` (toolchain metapackage): bundles `zig` with a C toolchain
   for a full development environment.

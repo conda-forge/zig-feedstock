@@ -7,12 +7,7 @@ cxx_compiler_version:
     then:
       - "21"
 
-zig_compiler:
-  - zig
-zig_compiler_version:
-  - "0.16.0"
-
-cross_target_platform_:
+xtarget_:
   - linux-64
   - linux-aarch64
   - linux-ppc64le
