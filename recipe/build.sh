@@ -75,8 +75,13 @@ EXTRA_CMAKE_ARGS=(
 )
 
 # Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
-EXTRA_ZIG_ARGS=(
+# Split along zig's maker/configurer boundary: ZIG_MAKER_ARGS are non-`-D`
+# flags consumed by Maker.zig (must be spliced in first); ZIG_PKG_OPTS are
+# `-D*` options consumed by the configurer. See _build.sh for the splat site.
+ZIG_MAKER_ARGS=(
   --search-prefix "${PREFIX}"
+)
+ZIG_PKG_OPTS=(
   -Dconfig_h="${cmake_build_dir}"/config.h
   -Dcpu=baseline
   -Denable-llvm
@@ -92,7 +97,7 @@ EXTRA_ZIG_ARGS=(
 # Patch build.zig-02-doctest-forward-target adds -Ddoctest-target to build.zig.
 # Gated to linux/osx where the patch applies and where doctest target forwarding matters.
 if is_unix; then
-  EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
+  ZIG_PKG_OPTS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
 # -fno-plt makes GCC emit inline-PLT relocations LLD cannot handle
@@ -115,7 +120,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]]; then
     -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
     -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
   )
-  EXTRA_ZIG_ARGS+=(--verbose-link)
+  ZIG_MAKER_ARGS+=(--verbose-link)
   mkdir -p "${PREFIX}/bin"
   # Build-time only gcc-lookup lever; stripped before packaging (see below).
   ln -sf "${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc" "${PREFIX}/bin/powerpc64le-conda-linux-gnu-gcc"
@@ -132,14 +137,14 @@ fi
 
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
 # Phase 2 (zig build langref) handles it separately when stage3 is runnable.
-EXTRA_ZIG_ARGS+=(-Dno-langref)
+ZIG_PKG_OPTS+=(-Dno-langref)
 
 if is_osx; then
   EXTRA_CMAKE_ARGS+=(
     -DZIG_SYSTEM_LIBCXX=c++
     -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
   )
-  EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
+  ZIG_MAKER_ARGS+=(--maxrss 8589934592)
 else
   : # brush 0.4.0 $? guard
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
@@ -151,7 +156,7 @@ else
   # Reverted to the no-cap default for osx; the heavy link step
   # uses < 7 GB in practice on osx-arm64 native builds (proven by
   # repeated successes), and lets zig parallelize across cores.
-  EXTRA_ZIG_ARGS+=(--maxrss 8000000000)
+  ZIG_MAKER_ARGS+=(--maxrss 8000000000)
 fi
 
 if is_not_unix; then
@@ -184,14 +189,14 @@ if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
 fi
 
 if is_linux && is_cross; then
-  EXTRA_ZIG_ARGS+=(
+  ZIG_MAKER_ARGS+=(
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
   # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
   # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
   if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
-    EXTRA_ZIG_ARGS+=(-fqemu)
+    ZIG_MAKER_ARGS+=(-fqemu)
   fi
 fi
 
@@ -218,12 +223,22 @@ configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
 # --- Post CMake Configuration ---
 
+# Tokens we append into config.h's ZIG_LLVM_LIBRARIES define; asserted present
+# after all mutations complete (see the ZIG_LLVM_LIBRARIES_MISSING_TOKEN check below).
+_cfg_llvm_libs_expected=()
+
 # Append zlib/zstd/libxml2 to config.h's ZIG_LLVM_LIBRARIES: conda's split
 # packaging doesn't bake them in. Needed on every linux build.
-is_linux && _cfg_subst "${cmake_build_dir}/config.h" '(ZIG_LLVM_LIBRARIES ".*)"' '\1;-lzstd;-lxml2;-lz"'
+if is_linux; then
+  _cfg_subst "${cmake_build_dir}/config.h" '(ZIG_LLVM_LIBRARIES ".*)"' '\1;-lzstd;-lxml2;-lz"'
+  _cfg_llvm_libs_expected+=(-lzstd -lxml2 -lz)
+fi
 # Cross builds resolve LLVM on the build machine, so config.h's ZIG_LLVM_* paths
 # point into ${BUILD_PREFIX} -- the wrong architecture. Windows needs the literal
 # form: CMake writes native paths (C:/... or C:\...), ${BUILD_PREFIX} is MSYS (/c/...).
+# osx-cross's config.h may already resolve via ${PREFIX} (cmake found target-arch
+# LLVM directly) -- zero matches there is a valid outcome, not a failure; see the
+# BUILD_PREFIX post-condition assertion below for the check that actually matters.
 is_osx      && is_cross && _cfg_subst     "${cmake_build_dir}/config.h" "(ZIG_LLVM_\\w+ \")${BUILD_PREFIX}" "\\1${PREFIX}"
 is_not_unix && is_cross && _cfg_subst_lit "${cmake_build_dir}/config.h" "${BUILD_PREFIX}" "${PREFIX}"
 # Do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS:
@@ -240,11 +255,18 @@ if is_linux && [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
   source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
   create_glibc217_syscall_stubs "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   _cfg_subst "${cmake_build_dir}/config.h" '(#define ZIG_LLVM_LIBRARIES ".*)"' "\\1;${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o\"" g
+  _cfg_llvm_libs_expected+=("${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o")
 fi
 
-dbg grep -E '^#define (ZIG_|LLVM_)' "${cmake_build_dir}"/config.h
+echo "[build.sh] config.h ZIG_*/LLVM_* defines:"
+while IFS= read -r _cfg_define_line; do
+  case "${_cfg_define_line}" in
+    '#define ZIG_'*|'#define LLVM_'*) echo "${_cfg_define_line}" ;;
+  esac
+done < "${cmake_build_dir}/config.h"
+unset _cfg_define_line
 
-# --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
+# --- Cross-build setup (must happen BEFORE Stage 1 since ZIG_MAKER_ARGS has --libc) ---
 
 if is_linux; then
   source "${RECIPE_DIR}/building/_cross.sh"
@@ -260,9 +282,76 @@ if is_linux; then
 
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
   _cfg_subst "${cmake_build_dir}/config.h" '(#define ZIG_LLVM_LIBRARIES ".*)"' "\\1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"" g
+  _cfg_llvm_libs_expected+=("${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o")
   create_pthread_atfork_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
   _cfg_subst "${cmake_build_dir}/config.h" '(#define ZIG_LLVM_LIBRARIES ".*)"' "\\1;${ZIG_LOCAL_CACHE_DIR}/libc_single_threaded_stub.o\"" g
+  _cfg_llvm_libs_expected+=("${ZIG_LOCAL_CACHE_DIR}/libc_single_threaded_stub.o")
   create_libc_single_threaded_stub "${CONDA_TRIPLET%%-*}" "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
+fi
+
+# Assert every token appended above actually landed in config.h's
+# ZIG_LLVM_LIBRARIES define. Catches a reshaped upstream define that a
+# regex/literal match silently skipped, regardless of match count.
+if [[ ${#_cfg_llvm_libs_expected[@]} -gt 0 ]]; then
+  _cfg_llvm_libraries_line=""
+  while IFS= read -r _cfg_line; do
+    case "${_cfg_line}" in
+      '#define ZIG_LLVM_LIBRARIES'*) _cfg_llvm_libraries_line="${_cfg_line}" ;;
+    esac
+  done < "${cmake_build_dir}/config.h"
+  unset _cfg_line
+  for _cfg_tok in "${_cfg_llvm_libs_expected[@]}"; do
+    if [[ "${_cfg_llvm_libraries_line}" != *"${_cfg_tok}"* ]]; then
+      echo "ERROR: ZIG_LLVM_LIBRARIES_MISSING_TOKEN: expected '${_cfg_tok}' in config.h ZIG_LLVM_LIBRARIES, got: ${_cfg_llvm_libraries_line}" >&2
+      exit 1
+    fi
+  done
+fi
+
+# Post-condition assertions on the mutated config.h (bash builtins only --
+# no grep/sed/awk on this pass, the Windows build shell has none). These
+# protect outcomes, not match counts: a rewrite that matched zero lines
+# because the value was already correct is fine; one that left a stale
+# BUILD_PREFIX reference or a missing stub token is not.
+if [[ ${#_cfg_llvm_libs_expected[@]} -gt 0 ]] || is_cross; then
+  _cfg_all_defines=""
+  while IFS= read -r _cfg_post_line; do
+    case "${_cfg_post_line}" in
+      '#define ZIG_'*|'#define LLVM_'*)
+        _cfg_all_defines="${_cfg_all_defines}${_cfg_post_line}"$'\n'
+        if is_cross && ! is_linux; then
+          # Host-tool / build-metadata defines (ZIG_CXX_COMPILER,
+          # ZIG_C_COMPILER, ZIG_DIA_GUIDS_LIB, ZIG_CMAKE_*, ...) are
+          # deliberately excluded: they legitimately live in BUILD_PREFIX.
+          case "${_cfg_post_line}" in
+            '#define ZIG_LLVM_LIBRARIES '*|'#define ZIG_LLVM_LIB_PATH '*|'#define ZIG_LLVM_INCLUDE_PATH '*|'#define ZIG_LLD_LIBRARIES '*|'#define ZIG_LLD_INCLUDE_PATH '*|'#define ZIG_CLANG_LIBRARIES '*)
+              case "${_cfg_post_line}" in
+                *"${BUILD_PREFIX}"*)
+                  echo "ERROR: config.h still references BUILD_PREFIX: ${_cfg_post_line}" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+          esac
+        fi
+        ;;
+    esac
+  done < "${cmake_build_dir}/config.h"
+  unset _cfg_post_line
+  for _cfg_tok in "${_cfg_llvm_libs_expected[@]}"; do
+    case "${_cfg_tok}" in
+      *.o)
+        case "${_cfg_all_defines}" in
+          *"${_cfg_tok}"*) : ;;
+          *)
+            echo "ERROR: config.h stub injection missing: ${_cfg_tok}" >&2
+            exit 1
+            ;;
+        esac
+        ;;
+    esac
+  done
+  unset _cfg_all_defines
 fi
 
 
@@ -292,6 +381,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
 fi
 
 zig_diag_fingerprint
+zig_diag_qemu
 if zig_diag_exec phase1-zig-build -- build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else

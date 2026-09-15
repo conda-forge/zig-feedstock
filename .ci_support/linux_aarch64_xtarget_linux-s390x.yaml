@@ -10,8 +10,6 @@ channel_sources:
 - conda-forge/label/zig_dev,conda-forge
 channel_targets:
 - conda-forge zig_dev
-cross_target_platform_:
-- linux-ppc64le
 cxx_compiler:
 - gxx
 cxx_compiler_version:
@@ -22,6 +20,8 @@ libxml2_devel:
 - '2.15'
 target_platform:
 - linux-aarch64
+xtarget_:
+- linux-s390x
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version
