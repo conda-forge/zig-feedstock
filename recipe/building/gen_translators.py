@@ -769,8 +769,9 @@ def generate_bash() -> str:
     body = f"""{header}
 #
 # _zig_translate_flags -- shared flag-translation rules R1-R13 (unix
-# profile only -- this fragment is only ever sourced by the bash wrapper,
-# which always runs on the unix profile).
+# profile only -- the bash wrapper that once sourced this fragment has
+# been ported to C. Nothing sources this file at runtime; it is retained
+# as the golden-parity reference for test_flag_translation_parity.py).
 #
 # Contract:
 #   Inputs (globals, caller sets before calling):
@@ -785,8 +786,8 @@ def generate_bash() -> str:
 #                    injected "-mcpu=baseline" (R6, prepended first) and
 #                    translated -target/--target= values (R5); does NOT
 #                    include the zig binary path, the mode token, or
-#                    "-fuse-ld=lld" (those remain hand-written in the
-#                    sourcing wrapper, out of scope here).
+#                    "-fuse-ld=lld" (those are hand-written in the C
+#                    wrapper, out of scope here).
 #     _tr_use_lld  : 0|1  - caller MUST OR this with its own hand-written
 #                    scan for the remaining out-of-scope LLD triggers
 #                    (--version-script, --dynamic-list, --gc-sections,

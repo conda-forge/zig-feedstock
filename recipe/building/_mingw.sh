@@ -400,6 +400,13 @@ SYNCHRONIZATION_DEF
 
       _gen_failed_count=0
       _gen_failed_list=""
+      # Absolute per-arch floor for generated import libs. Measured 785 per
+      # arch at 98e2f63a, host-invariant (win-64 and osx-64 native lanes
+      # agree). 700 leaves ~11% headroom for per-arch macro skips while still
+      # catching a real collapse, which is orders of magnitude, not percent.
+      # Unlike the derived .def floor in the loop below (WARN-only, and an
+      # overestimate), this one feeds _gen_failed_count and fails the build.
+      _gen_abs_floor=700
       for _gen_pair in \
           "x86_64:${_mingw_common}" \
           "aarch64:${_mingw_libarm64}" \
@@ -422,6 +429,10 @@ SYNCHRONIZATION_DEF
         if [[ "${_gen_arch_count}" -eq 0 ]]; then
           _gen_failed_count=$(( _gen_failed_count + 1 ))
           _gen_failed_list="${_gen_failed_list}  - ${_gen_pair_arch} (${_gen_pair_dir}): 0 import libs generated
+"
+        elif [[ "${_gen_arch_count}" -lt "${_gen_abs_floor}" ]]; then
+          _gen_failed_count=$(( _gen_failed_count + 1 ))
+          _gen_failed_list="${_gen_failed_list}  - ${_gen_pair_arch} (${_gen_pair_dir}): ${_gen_arch_count} import lib(s), below absolute floor ${_gen_abs_floor}
 "
         elif [[ "${_gen_arch_empty}" -gt 0 ]]; then
           _gen_failed_count=$(( _gen_failed_count + 1 ))

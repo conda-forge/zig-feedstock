@@ -185,7 +185,20 @@ def test_bundled_setjmp_h_undecorated(mingw_dir: Path) -> None:
 def test_staged_archives(staged: list[tuple[str, Path]]) -> None:
     """1. All 8 staged real archives exist with size > 1MB, for every target.
 
-    Observed sizes are ~10.8MB (x86_64), ~11.0MB (aarch64), ~11.4MB (x86).
+    Measured libmingw32.lib sizes on THIS tree at 98e2f63a. They vary by
+    BUILD HOST, so each figure names the job it came from:
+      win-64 native, GHA job 104237590828:
+        10303196 (x86_64), 10295200 (aarch64), 10760738 (x86)
+      osx-64 native, Azure build 1588860 log 37:
+        11017194 (x86_64), 10918554 (aarch64), 11472334 (x86)
+    osx-built archives run 0.6-0.7MB larger than win-built ones; osx-64 and
+    osx-arm64 differ by 0.02%, so they are one host class, not two samples.
+    The COUNT (785 per arch) is host-invariant; only sizes move.
+
+    Do not pool these with the 0.17 tree's sizes: same .def symbol set, so
+    the same count, but a different zig/LLVM gives different member sizes.
+    The 1_000_000 byte threshold enforced below is deliberately far under
+    every figure here - it catches a truncated or stub archive, not drift.
     """
     print("--- Staged CRT archives (per target) ---")
     expected_libs = [
