@@ -10,8 +10,6 @@ channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
-cross_target_platform_:
-- linux-aarch64
 cxx_compiler:
 - gxx
 cxx_compiler_version:
@@ -21,7 +19,9 @@ docker_image:
 libxml2_devel:
 - '2.15'
 target_platform:
-- linux-aarch64
+- linux-ppc64le
+xtarget_:
+- linux-ppc64le
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version

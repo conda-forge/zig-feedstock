@@ -26,6 +26,7 @@ export build_platform="${build_platform:-${target_platform}}"
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_common.sh"
+source "${RECIPE_DIR}/building/_zig_diag.sh"
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
 
 # --- Early exits ---
@@ -63,6 +64,21 @@ setup_upstream_zig_bootstrap
 
 # Bootstrap zig runs on the build machine -- always use CONDA_ZIG_BUILD
 BUILD_ZIG="${CONDA_ZIG_BUILD}"
+
+# Operator switch (off by default): rebuild a native bootstrap zig from our
+# patched source (no 0003 GCC redirect) and use it instead of the published,
+# 0003-contaminated CONDA_ZIG_BUILD. See recipe.yaml's bootstrap_native_rebuild
+# and building/_native_bootstrap.sh. Gate is the flag OR the ppc64le carve-out
+# in recipe.yaml (bootstrap_native_rebuild); carve-out is temporary for build 17.
+if [[ "${ZIG_BOOTSTRAP_NATIVE_REBUILD:-0}" == "1" ]]; then
+  if [[ ! -d "${SRC_DIR}/zig-source" ]]; then
+    echo "ERROR: ZIG_BOOTSTRAP_NATIVE_REBUILD=1 but ${SRC_DIR}/zig-source is missing" >&2
+    exit 1
+  fi
+  source "${RECIPE_DIR}/building/_native_bootstrap.sh"
+  build_native_bootstrap_zig "${SRC_DIR}/zig-source" "${BUILD_ZIG}"
+  BUILD_ZIG="${NATIVE_BOOTSTRAP_ZIG}"
+fi
 
 export CMAKE_BUILD_PARALLEL_LEVEL="${CPU_COUNT}"
 export CMAKE_GENERATOR=Ninja
@@ -107,31 +123,6 @@ if is_unix; then
   EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
 fi
 
-# --- ppc64le R_PPC64_REL24 mitigation (defense in depth) ---
-# Bundle approach: build libLLD and libzigcpp as separate .so files to split
-# the 24-bit branch relocation domain across multiple PLT sections.
-# Combined with cmake patch 0005 (-mlongcall via target_compile_options),
-# this prevents R_PPC64_REL24 overflow when linking the full zig2 binary.
-if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  export CFLAGS="${CFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
-  export CXXFLAGS="${CXXFLAGS:-} -mlongcall -mcmodel=large -fno-partial-inlining -fno-ipa-cp-clone"
-  export LDFLAGS="${LDFLAGS:-} -Wl,--stub-group-size=0"
-  export NINJA_FLAGS="-v"
-  EXTRA_CMAKE_ARGS+=(
-    -DCMAKE_C_FLAGS="${CFLAGS}"
-    -DCMAKE_CXX_FLAGS="${CXXFLAGS}"
-    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}"
-    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}"
-  )
-  # Use PREFIX/lib here (not ZIG_LOCAL_CACHE_DIR): these paths are baked into
-  # the zig binary's DT_NEEDED at link time. conda-build's patchelf/prefix
-  # replacement then rewrites PREFIX to the install location correctly.
-  # The lld bundle is installed to PREFIX/lib/ (before zig2 link).
-  EXTRA_CMAKE_ARGS+=(
-    -DZIG_LLD_BUNDLE_SO="${PREFIX}/lib/libzig-lld-bundle.so"
-  )
-fi
-
 # Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
 # Phase 2 (zig build langref) handles it separately when stage3 is runnable.
 EXTRA_ZIG_ARGS+=(-Dno-langref)
@@ -145,6 +136,12 @@ if is_osx; then
 else
   EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
   EXTRA_ZIG_ARGS+=(--maxrss 7800000000)
+fi
+
+# -fno-plt makes GCC emit inline-PLT relocations that LLD cannot handle
+if [[ "${target_platform}" == "linux-ppc64le" ]]; then
+  export CFLAGS="${CFLAGS:-} -fplt"
+  export CXXFLAGS="${CXXFLAGS:-} -fplt"
 fi
 
 if is_not_unix; then
@@ -199,9 +196,20 @@ if is_linux && is_cross; then
   _qemu_shadow_dir=""
   if [ -n "${_zig_qemu}" ]; then
     export QEMU_EXECVE="${_zig_qemu}"
+    # Emulated libc-linked binaries need the loader resolved against the TARGET
+    # sysroot; unset, qemu uses the host root and they SIGSEGV.
+    if [ -z "${QEMU_LD_PREFIX:-}" ] && [ -n "${CONDA_BUILD_SYSROOT:-}" ] && [ -d "${CONDA_BUILD_SYSROOT}" ]; then
+      export QEMU_LD_PREFIX="${CONDA_BUILD_SYSROOT}"
+    fi
+    zig_diag_note "qemu: QEMU_LD_PREFIX=${QEMU_LD_PREFIX:-(unset)}"
     case "$(basename "${_zig_qemu}")" in
-      qemu-execve-*) export QEMU_EXECVE_NATIVE_PASSTHROUGH=1 ;;
-      *) dbg echo "qemu: ${_zig_qemu} is not qemu-execve-*; native passthrough NOT armed" ;;
+      qemu-execve-*)
+        export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
+        zig_diag_note "qemu: native passthrough ARMED via ${_zig_qemu}"
+        ;;
+      *)
+        zig_diag_note "qemu: ${_zig_qemu} is not qemu-execve-*; native passthrough NOT armed"
+        ;;
     esac
     _qemu_shadow_dir="$(mktemp -d)"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
@@ -231,14 +239,6 @@ if is_osx && is_cross; then
 fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
-
-# --- ppc64le bundle .so build (after cmake configure, before zig2 link) ---
-if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  mkdir -p "${PREFIX}/lib"
-  source "${RECIPE_DIR}/building/_lld_bundle.sh"
-  build_lld_bundle_ppc64le "${CXX}" "${PREFIX}" "${ZIG_LOCAL_CACHE_DIR}" || exit 1
-  install -m 755 "${ZIG_LOCAL_CACHE_DIR}/libzig-lld-bundle.so" "${PREFIX}/lib/" || exit 1
-fi
 
 # --- Post CMake Configuration ---
 
@@ -295,6 +295,8 @@ if is_linux; then
 fi
 
 
+zig_diag_env "pre-phase1"
+zig_diag_note "PHASE 1: building zig"
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
@@ -319,19 +321,18 @@ fi
 _can_run_stage3() {
   if ! is_cross; then return 0; fi
   if ! is_unix; then return 1; fi
-  # ppc64le: 0.16.0 std/Io/Threaded uses pthread_*; cross-link to glibc 2.17 lacks -lpthread.
-  # Skip Phase 2 langref on ppc64le; docs are provided by other platforms.
-  if [[ "${target_platform}" == "linux-ppc64le" ]]; then return 1; fi
   if is_linux; then
     command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
   fi
+  # Rosetta 2 runs an x86_64 stage3 on the arm64 macOS runners; not symmetric.
+  is_rosetta && return 0
   return 1
 }
 
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
-  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (local dev override)" >&2
+  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (env override, or lane cannot run stage3)" >&2
 elif _can_run_stage3; then
-  dbg echo "=== PHASE 2: building langref via stage3 zig ==="
+  zig_diag_note "PHASE 2: building langref via stage3 zig"
   _stage3_runner=()
   if is_cross && is_linux; then
     _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
@@ -340,23 +341,69 @@ elif _can_run_stage3; then
   # PATH already carries the qemu-<llvm-arch> shadow set up before -fqemu was
   # decided; _stage3_runner below resolves through it.
 
-  (
+  _phase2_diag_flags=()
+  zig_diag_on && _phase2_diag_flags=(--verbose --summary all)
+
+  # Bound langref so a hung lane ends instead of hitting the CI job ceiling.
+  _phase2_timeout=()
+  _phase2_timed_out=0
+  if [[ "${ZIG_LANGREF_TIMEOUT:-5h}" != "0" ]] && command -v timeout &>/dev/null; then
+    _phase2_timeout=(timeout --kill-after=60s "${ZIG_LANGREF_TIMEOUT:-5h}")
+  fi
+
+  # Crash-probe capture: kept out of ${PREFIX} so it never enters the package.
+  _phase2_log="${SRC_DIR:-/tmp}/zig-phase2-langref.log"
+
+  _phase2_pipefail_state="$(shopt -po pipefail)"
+  set -o pipefail
+  if (
     cd "${cmake_source_dir}" &&
-    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+    zig_diag_exec "phase2-langref" -- \
+      "${_phase2_timeout[@]+"${_phase2_timeout[@]}"}" \
+      "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
       --prefix "${PREFIX}" \
       -Dversion-string="${PKG_VERSION}" \
-      -Ddoctest-target="${ZIG_TRIPLET}"
-  ) || {
-    if ! is_cross; then
-      echo "ERROR: Phase 2 langref build failed (native build, expected to succeed)" >&2
+      -Ddoctest-target="${ZIG_TRIPLET}" \
+      ${_phase2_diag_flags[@]+"${_phase2_diag_flags[@]}"}
+  ) 2>&1 | tee "${_phase2_log}"; then
+    _phase2_rc=0
+  else
+    _phase2_rc=${PIPESTATUS[0]}
+  fi
+  eval "${_phase2_pipefail_state}"
+
+  if [[ ${_phase2_rc} -ne 0 ]]; then
+    if [[ ${_phase2_rc} -eq 124 || ${_phase2_rc} -eq 137 ]]; then
+      # Non-fatal: an emulated lane can legitimately exceed the bound. The
+      # install happens at the END of the phase, so a timeout usually means
+      # NO artifact; the check after this block then fails the build.
+      echo "WARNING: Phase 2 langref TIMED OUT after ${ZIG_LANGREF_TIMEOUT:-5h} (rc=${_phase2_rc}); continuing" >&2
+      zig_diag_note "phase2-langref TIMED OUT rc=${_phase2_rc} -- continuing (non-fatal)"
+      _phase2_timed_out=1
+    else
+      echo "ERROR: Phase 2 langref build failed (rc=${_phase2_rc})" >&2
       exit 1
     fi
-    echo "WARNING: Phase 2 langref build failed (cross build, non-fatal)" >&2
-  }
+  fi
 
   if [ -n "${_qemu_shadow_dir:-}" ]; then
     rm -rf "${_qemu_shadow_dir}"
     unset _qemu_shadow_dir
+  fi
+
+  # panic/error: excluded on purpose -- doctests intentionally panic
+  # (e.g. runtime_division_by_zero.zig, runtime_unwrap_null.zig).
+  _phase2_crash_pattern='uncaught target signal|Illegal instruction|Bus error|core dumped|Segmentation fault|SIGSEGV|SIGILL|SIGBUS|Unable to dump stack trace|qemu: fatal'
+  if [[ -f "${_phase2_log}" ]] && grep -qE "${_phase2_crash_pattern}" "${_phase2_log}"; then
+    echo "ERROR: Phase 2 langref log shows a hard-fault signature" >&2
+    grep -nE "${_phase2_crash_pattern}" "${_phase2_log}" | head -n 20 >&2
+    exit 1
+  fi
+
+  # Phase 2 only runs on lanes that package langref.html, so a missing artifact is fatal.
+  if [[ ${_phase2_timed_out} -eq 1 ]] && [[ ! -f "${PREFIX}/doc/langref.html" ]]; then
+    echo "ERROR: Phase 2 langref timed out BEFORE doc/langref.html was installed" >&2
+    exit 1
   fi
 else
   echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
@@ -376,5 +423,15 @@ fi
 
 source "${RECIPE_DIR}/building/_mingw.sh"
 generate_mingw_import_libs
+
+# rattler-build lints mixed .txt/.TXT in info/licenses; two-step mv also works
+# on the case-insensitive filesystems of the osx and win lanes.
+for _lic_dir in libcxx libcxxabi libunwind; do
+  _lic="${SRC_DIR}/zig-source/lib/${_lic_dir}/LICENSE.TXT"
+  [[ -f "${_lic}" ]] || continue
+  mv "${_lic}" "${_lic}.tmp" && mv "${_lic}.tmp" "${_lic%.TXT}.txt" \
+    || echo "WARNING: could not lowercase ${_lic}" >&2
+done
+unset _lic_dir _lic
 
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="

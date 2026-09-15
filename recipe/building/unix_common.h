@@ -25,7 +25,7 @@
  * also requested (XSI extras plus POSIX.1-2008).
  *
  * This MUST precede every system header, so this header is deliberately
- * included FIRST in zig-cc-unix.c (:33).  Keep it that way.
+ * included FIRST in zig-cc-unix.c.  Keep it that way.
  * _DARWIN_C_SOURCE restores the BSD extras that _POSIX_C_SOURCE alone hides
  * on macOS. */
 #if !defined(_POSIX_C_SOURCE) && !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE)
@@ -110,13 +110,13 @@ static inline int zig_sysroot_is_dir(const char *path) {
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
-/* C mirror of recipe/scripts/_zig-cc-common.sh:29-38 -- the two must stay in
- * step until the bash wrappers are retired.
+/* Resolve sysroot for the target platform (sysroot_*-conda-*-gnu/sysroot or
+ * CONDA_BUILD_SYSROOT). This C implementation is the authoritative source.
  *
- * The return value is exactly what bash leaves in its _sr global, and is
- * what feeds zig_translate_profile.sysroot for R12 (-print-sysroot).
- * Callers must use zig_sysroot_is_dir() separately to decide on -isysroot/-L
- * injection, because R12 prints the value even when it is not a directory. */
+ * The return value feeds zig_translate_profile.sysroot for R12
+ * (-print-sysroot). Callers must use zig_sysroot_is_dir() separately
+ * to decide on -isysroot/-L injection, because R12 prints the value
+ * even when it is not a directory. */
 static inline const char *zig_resolve_sysroot(const char *conda_prefix,
                                               const char *target_arch,
                                               int target_is_native) {
@@ -153,10 +153,9 @@ static inline const char *zig_resolve_sysroot(const char *conda_prefix,
 /* Absolute path of the running executable, written to buf.  Returns 0 on
  * success, -1 if unavailable on this platform or the lookup failed.
  *
- * Model: zig-feedstock-0.15.2/recipe/building/zig-wrapper.c:303-345.  Only the
- * two POSIX arms are needed here (the Windows arm lives in nonunix_common.h).
- * On platforms with neither (e.g. the BSDs) this returns -1 and the caller
- * falls back to the install-time-baked path. */
+ * Only the two POSIX arms are needed here (the Windows arm lives in
+ * nonunix_common.h).  On platforms with neither (e.g. the BSDs) this
+ * returns -1 and the caller falls back to the install-time-baked path. */
 static inline int zig_self_path(char *buf, size_t bufsz) {
 #if defined(__linux__)
     ssize_t n = readlink("/proc/self/exe", buf, bufsz - 1);

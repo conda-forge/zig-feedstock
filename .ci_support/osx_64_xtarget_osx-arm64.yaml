@@ -14,8 +14,6 @@ channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
-cross_target_platform_:
-- osx-arm64
 cxx_compiler:
 - clangxx
 cxx_compiler_version:
@@ -23,8 +21,10 @@ cxx_compiler_version:
 libxml2_devel:
 - '2.15'
 macos_machine:
-- arm64-apple-darwin20.0.0
+- x86_64-apple-darwin13.4.0
 target_platform:
+- osx-64
+xtarget_:
 - osx-arm64
 zip_keys:
 - - c_compiler_version

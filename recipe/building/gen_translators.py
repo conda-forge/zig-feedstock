@@ -23,8 +23,13 @@ PROFILE_DATA) into two generated artifacts, rule-for-rule:
                                          _zig_translate_flags(), unix
                                          profile only (this is the only
                                          profile the bash wrapper ever
-                                         runs under). Sourced by
-                                         _zig-cc-common.sh.
+                                         ran under, historically). No
+                                         shell helpers are installed at
+                                         runtime; this artifact stays in
+                                         recipe/building/ for the parity
+                                         test only -- nothing sources it
+                                         at runtime (see
+                                         recipe/install_zig_activation.py:434-437).
 
 OUT OF SCOPE (left hand-written in the real wrappers, NOT emitted here):
   sysroot detection, the general -Xlinker trigger/drop set besides
@@ -230,11 +235,11 @@ def _c_print_file_name_fn() -> str:
  * Uses fopen() existence probing (portable) instead of the real Windows
  * shim's GetFileAttributesA -- flagged simplification, see report. */
 static void zig_tr_print_file_name(const char *name, const zig_translate_profile *profile) {
-    static const char *dirs_unix[2] = {"lib/zig-llvm/lib", "lib"};
-    static const char *dirs_win[2] = {"Library\\\\lib\\\\zig-llvm\\\\lib", "Library\\\\lib"};
+    static const char *dirs_unix[1] = {"lib"};
+    static const char *dirs_win[1] = {"Library\\\\lib"};
     char probe[1024];
     int d;
-    for (d = 0; d < 2; d++) {
+    for (d = 0; d < 1; d++) {
         if (profile->is_win)
             snprintf(probe, sizeof(probe), "%s\\\\%s\\\\%s", profile->conda_prefix, dirs_win[d], name);
         else
@@ -676,7 +681,7 @@ def _sh_intercept_body(rule: dict, unix: dict) -> str:
             exit 0"""
     if op == "intercept_print_file_name":
         return """            _name="${_a#-print-file-name=}"
-            for _dir in "${_tr_conda_prefix}/lib/zig-llvm/lib" "${_tr_conda_prefix}/lib"; do
+            for _dir in "${_tr_conda_prefix}/lib"; do
                 if [[ -e "${_dir}/${_name}" ]]; then
                     echo "${_dir}/${_name}"
                     exit 0
@@ -764,8 +769,9 @@ def generate_bash() -> str:
     body = f"""{header}
 #
 # _zig_translate_flags -- shared flag-translation rules R1-R13 (unix
-# profile only -- this fragment is only ever sourced by the bash wrapper,
-# which always runs on the unix profile).
+# profile only -- the bash wrapper that once sourced this fragment has
+# been ported to C. Nothing sources this file at runtime; it is retained
+# as the golden-parity reference for test_flag_translation_parity.py).
 #
 # Contract:
 #   Inputs (globals, caller sets before calling):
@@ -780,8 +786,8 @@ def generate_bash() -> str:
 #                    injected "-mcpu=baseline" (R6, prepended first) and
 #                    translated -target/--target= values (R5); does NOT
 #                    include the zig binary path, the mode token, or
-#                    "-fuse-ld=lld" (those remain hand-written in the
-#                    sourcing wrapper, out of scope here).
+#                    "-fuse-ld=lld" (those are hand-written in the C
+#                    wrapper, out of scope here).
 #     _tr_use_lld  : 0|1  - caller MUST OR this with its own hand-written
 #                    scan for the remaining out-of-scope LLD triggers
 #                    (--version-script, --dynamic-list, --gc-sections,

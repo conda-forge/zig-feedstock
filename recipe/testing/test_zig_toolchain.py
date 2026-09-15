@@ -285,16 +285,34 @@ def test_flag_filtering() -> None:
             # Step 1 & 2: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
             if is_ppc64le_target:
-                # ppc64le: LLD lacks relocation support -- verify wrapper blocks it
-                r_block = _run([zig_cc, "-fuse-ld=lld", "-o", "/dev/null",
-                                str(main_src)], cwd=td, timeout=30)
-                if r_block.returncode != 0 and "not supported on ppc64le" in r_block.stderr:
-                    PASS("-fuse-ld=lld blocked on ppc64le (wrapper guard)")
+                # ppc64le: -fuse-ld=lld now WARNS (non-fatal) instead of being
+                # blocked -- ablation round 4 measured PASS lld_link_linux.
+                # Verify the flag passes through (link succeeds) AND the
+                # wrapper still emits its WARNING breadcrumb on stderr.
+                # WARNING: asserts OUR wrapper's warn-and-continue behavior.
+                # If the warning in zig-cc-unix.c is ever removed/reworded,
+                # update this assertion in the same change.
+                exe_ppc = Path(td) / "test_lld_ppc64le"
+                r_warn = _run([zig_cc, "-fuse-ld=lld", "-o", str(exe_ppc),
+                               str(main_src)], cwd=td, timeout=30)
+                if (r_warn.returncode == 0 and exe_ppc.exists()
+                        and "WARNING" in r_warn.stderr
+                        and "ppc64le" in r_warn.stderr):
+                    PASS("-fuse-ld=lld passes through on ppc64le (warning emitted)")
                 else:
-                    FAIL("-fuse-ld=lld ppc64le guard",
-                         f"expected rejection, got rc={r_block.returncode} stderr={r_block.stderr[:500]}")
-                SKIP("--dynamic-list auto-LLD promotion", "LLD not supported on ppc64le")
-                SKIP("-fuse-ld=lld explicit with --dynamic-list", "LLD not supported on ppc64le")
+                    FAIL("-fuse-ld=lld ppc64le warn-and-continue",
+                         f"rc={r_warn.returncode} stderr={r_warn.stderr[:500]}")
+                SKIP("--dynamic-list auto-LLD promotion", "covered by explicit -fuse-ld=lld case above on ppc64le")
+                # -fuse-ld=bfd counterpart: NOT added. Investigated
+                # (see recipe/testing/test_dl_iterate_phdr.py
+                # BFD_UNREACHABLE_REASON) -- zig's own arg parser has no
+                # -fuse-ld= table entry at all, and our patch
+                # (main.zig-fuse-ld-lld-cc-path.patch) only special-cases the
+                # literal string "-fuse-ld=lld". "-fuse-ld=bfd" is an inert
+                # passthrough token here, not a real linker switch, so
+                # asserting it "links successfully" would just be asserting
+                # that zig ignores an unrecognized flag -- not that bfd ran.
+                SKIP("-fuse-ld=bfd explicit link", "flag is inert in this toolchain, see comment above")
             elif not is_linux_target:
                 _reason = f"non-Linux target ({_triplet}), see zig_impl tests"
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
@@ -1142,7 +1160,7 @@ def test_force_load_wrappers() -> None:
         # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()), and
         # LLD is unsupported on ppc64le -- the wrapper hard-errors before it
         # ever gets to build an argv worth inspecting.
-        SKIP("force-load wrapper behaviour", "LLD not supported on ppc64le")
+        SKIP("force-load wrapper behaviour", "force-load + LLD on ppc64le unverified (wrapper now warns and passes)")
         return
 
     zig_cc = _env_var("ZIG_CC")

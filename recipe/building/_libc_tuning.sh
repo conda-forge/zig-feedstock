@@ -30,7 +30,7 @@ function patch_crt_object() {
 
   # Detect architecture of object file
   local file_output
-  file_output=$(file "${crt_path}.backup")
+  file_output=$(file -b "${crt_path}.backup")
 
   local obj_arch linker_cmd stub_obj
   case "${file_output}" in

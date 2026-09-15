@@ -1,8 +1,11 @@
-# Purpose: Downgrade .shr_exact to .shr when safety is enabled to prevent LLVM-20 PowerPC backend from folding the safety back-shift check into a no-op
+# Purpose: Downgrade .shr_exact to .shr when safety is enabled to prevent LLVM's target-independent
+#   InstCombine pass from folding shl(lshr_exact(x,N),N) -> x, which eliminates the runtime safety check
 # Affects: src/Sema.zig
+# Scope: applied to ALL linux targets via recipe.yaml `- if: linux`, not ppc64le-specific
 # Upstream: not filed
-# Drop-when: LLVM-20 PowerPC backend fixes @shrExact codegen, or zig switches to self-hosted backend on ppc64le
-# Last-verified: 2026-05-12 (build 23)
+# Drop-when: LLVM 21 (this recipe's llvm_version) InstCombine stops applying that fold, re-tested
+# Test-coverage: NONE. No test in recipe/testing/ exercises @shrExact; removal cannot be CI-validated
+# Last-verified: 2026-09-09 (checked mechanism attribution and test coverage only; codegen behavior not retested)
 
 --- a/src/Sema.zig
 +++ b/src/Sema.zig

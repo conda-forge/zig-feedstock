@@ -10,6 +10,7 @@ is_osx()      { [[ "${target_platform}" == "osx-"* ]]; }
 is_unix()     { [[ "${target_platform}" == "linux-"* || "${target_platform}" == "osx-"* ]]; }
 is_not_unix() { ! is_unix; }
 is_cross()    { [[ "${build_platform}" != "${target_platform}" ]]; }
+is_rosetta()  { [[ "${build_platform}" == "osx-arm64" && "${target_platform}" == "osx-64" ]]; }
 
 # Debug helper. Gated on DEBUG_ZIG_BUILD=1.
 # Disables xtrace inside the body and restores it afterwards: conda-build runs

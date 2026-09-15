@@ -3,6 +3,7 @@
 
 function fix_sysroot_libc_scripts() {
   local sysroot_base="${1:-${BUILD_PREFIX}}"
+  local only_triplet="${2:-}"
 
   # auto: absolute GROUP paths for the riscv64 sysroot, relative elsewhere.
   # legacy / abs force one form for every sysroot.
@@ -21,6 +22,10 @@ function fix_sysroot_libc_scripts() {
 
     local arch_name
     arch_name=$(basename "$(dirname "${sysroot_dir}")")
+    if [[ -n "${only_triplet}" && "${arch_name}" != "${only_triplet}" ]]; then
+      dbg echo "  Skipping sysroot: ${arch_name} (restricted to ${only_triplet})"
+      continue
+    fi
     dbg echo "  Processing sysroot: ${arch_name} (${sysroot_dir})"
 
     # Fix libc.so, libpthread.so, libm.so, etc. in usr/lib and usr/lib64

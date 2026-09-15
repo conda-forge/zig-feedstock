@@ -5,13 +5,11 @@ c_compiler_version:
 c_stdlib:
 - sysroot
 c_stdlib_version:
-- '2.39'
+- '2.17'
 channel_sources:
 - conda-forge
 channel_targets:
 - conda-forge main
-cross_target_platform_:
-- linux-riscv64
 cxx_compiler:
 - gxx
 cxx_compiler_version:
@@ -21,7 +19,9 @@ docker_image:
 libxml2_devel:
 - '2.15'
 target_platform:
-- linux-riscv64
+- linux-aarch64
+xtarget_:
+- linux-s390x
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version

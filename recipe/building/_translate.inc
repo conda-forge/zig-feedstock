@@ -137,11 +137,11 @@ static void zig_tr_print_search_dirs(const zig_translate_profile *profile) {
  * Uses fopen() existence probing (portable) instead of the real Windows
  * shim's GetFileAttributesA -- flagged simplification, see report. */
 static void zig_tr_print_file_name(const char *name, const zig_translate_profile *profile) {
-    static const char *dirs_unix[2] = {"lib/zig-llvm/lib", "lib"};
-    static const char *dirs_win[2] = {"Library\\lib\\zig-llvm\\lib", "Library\\lib"};
+    static const char *dirs_unix[1] = {"lib"};
+    static const char *dirs_win[1] = {"Library\\lib"};
     char probe[1024];
     int d;
-    for (d = 0; d < 2; d++) {
+    for (d = 0; d < 1; d++) {
         if (profile->is_win)
             snprintf(probe, sizeof(probe), "%s\\%s\\%s", profile->conda_prefix, dirs_win[d], name);
         else

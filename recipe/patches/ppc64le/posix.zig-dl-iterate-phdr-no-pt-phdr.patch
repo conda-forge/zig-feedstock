@@ -1,0 +1,11 @@
+--- a/lib/std/posix.zig
++++ b/lib/std/posix.zig
+@@ -818,7 +818,7 @@ pub fn dl_iterate_phdr(
+             .addr = for (phdrs) |phdr| switch (phdr.type) {
+                 .PHDR => break @intFromPtr(phdrs.ptr) - phdr.vaddr,
+                 else => {},
+-            } else unreachable,
++            } else 0,
+             .name = switch (getauxval(std.elf.AT_EXECFN)) {
+                 0 => "/proc/self/exe",
+                 else => |name| @ptrFromInt(name),
