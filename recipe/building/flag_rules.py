@@ -9,9 +9,13 @@ gen_translators.py, which turns it into:
   - recipe/building/_translate.inc      (portable C translation function,
                                           included by zig-cc-nonunix.c /
                                           zig-tool-nonunix.c)
-  - recipe/building/_translate.gen.sh   (bash-style translation function,
-                                          consumed by install_zig_activation.py
-                                          and testing/test_flag_translation_parity.py)
+  - recipe/building/_translate.gen.sh   (bash-style translation function;
+                                          no shell helpers are installed at
+                                          runtime -- this artifact exists
+                                          for testing/test_flag_translation_parity.py
+                                          only, and nothing sources it at
+                                          runtime; see
+                                          recipe/install_zig_activation.py:434-437)
 
 SCOPE: rules R1-R13 below are de-duplicated here. Everything else in
 zig-cc-unix.c / zig-cc-nonunix.c that is NOT one of these rules (sysroot

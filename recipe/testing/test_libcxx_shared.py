@@ -317,6 +317,8 @@ def test_libcxx_fallback_static() -> None:
                     else:
                         WARN("some libc++ symbols in dynamic table",
                              f"count={len(exported)}")
+            else:
+                SKIP("nm check", "nm not found")
 
         elif is_macos_target and _build_is_mac:
             otool = shutil.which("otool")
@@ -393,6 +395,8 @@ def test_libcxx_probe_paths() -> None:
                 else:
                     FAIL("patch 0008 strings NOT in binary",
                          "libcxx_shared.zig was not compiled into this zig")
+        else:
+            SKIP("strings check", "strings not found")
 
     # --- Diagnostic: verbose link output ---
     if not is_linux_target or _build_is_win:

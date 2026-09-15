@@ -23,8 +23,13 @@ PROFILE_DATA) into two generated artifacts, rule-for-rule:
                                          _zig_translate_flags(), unix
                                          profile only (this is the only
                                          profile the bash wrapper ever
-                                         runs under). Sourced by
-                                         _zig-cc-common.sh.
+                                         ran under, historically). No
+                                         shell helpers are installed at
+                                         runtime; this artifact stays in
+                                         recipe/building/ for the parity
+                                         test only -- nothing sources it
+                                         at runtime (see
+                                         recipe/install_zig_activation.py:434-437).
 
 OUT OF SCOPE (left hand-written in the real wrappers, NOT emitted here):
   sysroot detection, the general -Xlinker trigger/drop set besides

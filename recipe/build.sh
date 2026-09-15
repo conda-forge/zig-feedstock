@@ -68,7 +68,8 @@ BUILD_ZIG="${CONDA_ZIG_BUILD}"
 # Operator switch (off by default): rebuild a native bootstrap zig from our
 # patched source (no 0003 GCC redirect) and use it instead of the published,
 # 0003-contaminated CONDA_ZIG_BUILD. See recipe.yaml's bootstrap_native_rebuild
-# and building/_native_bootstrap.sh. Gate is the flag only -- not auto-derived.
+# and building/_native_bootstrap.sh. Gate is the flag OR the ppc64le carve-out
+# in recipe.yaml (bootstrap_native_rebuild); carve-out is temporary for build 17.
 if [[ "${ZIG_BOOTSTRAP_NATIVE_REBUILD:-0}" == "1" ]]; then
   if [[ ! -d "${SRC_DIR}/zig-source" ]]; then
     echo "ERROR: ZIG_BOOTSTRAP_NATIVE_REBUILD=1 but ${SRC_DIR}/zig-source is missing" >&2

@@ -391,6 +391,13 @@ SYNCHRONIZATION_DEF
       # nothing for one of the three arches. Sweep every outdir, accumulate
       # failures, then FATAL once -- same accumulate-then-FATAL style as
       # the cache-warm final check below.
+      # Derived (not hardcoded) import-lib count floor: total .def/.def.in
+      # source templates available. WARN-only -- per-arch macro-driven skips
+      # (e.g. ucrtbase-common, vcruntime140-common, func, crt-aliases) make
+      # this an overestimate of the true per-arch count, never a failure.
+      _gen_def_available=$(ls -1 "${_mingw_common}"/*.def "${_mingw_common}"/*.def.in "${_supp_defs}"/*.def "${_supp_defs}"/*.def.in 2>/dev/null | wc -l || true)
+      _gen_def_available=$(( _gen_def_available + 0 ))
+
       _gen_failed_count=0
       _gen_failed_list=""
       for _gen_pair in \
@@ -409,6 +416,9 @@ SYNCHRONIZATION_DEF
             _gen_arch_empty=$(( _gen_arch_empty + 1 ))
           fi
         done
+        if [[ "${_gen_def_available}" -gt 0 ]] && [[ "${_gen_arch_count}" -lt "${_gen_def_available}" ]]; then
+          echo "WARN: ${_gen_pair_arch} (${_gen_pair_dir}) generated ${_gen_arch_count} import lib(s), below derived floor of ${_gen_def_available} available .def source(s) (per-arch macro skips make this floor an overestimate, not a failure)" >&2
+        fi
         if [[ "${_gen_arch_count}" -eq 0 ]]; then
           _gen_failed_count=$(( _gen_failed_count + 1 ))
           _gen_failed_list="${_gen_failed_list}  - ${_gen_pair_arch} (${_gen_pair_dir}): 0 import libs generated
@@ -497,6 +507,11 @@ SYNCHRONIZATION_DEF
       _mingw_inc="${_mingw_common}/../include"
       _win_inc="${_zig_lib}/libc/include/any-windows-any"
 
+      # Hoisted here (declared later originally) so Step 5's CRT source-guards
+      # below can feed this same accumulate-then-FATAL counter.
+      local _warm_failed_count=0
+      local _warm_failed_list=""
+
       if [[ -d "${_mingw_crt}" ]]; then
         dbg echo "=== Compiling MinGW CRT startup objects from ${_mingw_crt} -> ${_crt_outdir} ==="
         dbg echo "=== CRT sources: $(ls "${_mingw_crt}" | tr '\n' ' ') ==="
@@ -538,20 +553,41 @@ SYNCHRONIZATION_DEF
 
         # crt2.o -- console application entry (main)
         _crt2_obj="${_crt_outdir}/crt2.o"
-        if [[ ! -f "${_crt2_obj}" ]] && [[ -f "${_mingw_crt}/crtexe.c" ]]; then
-          _compile_crt_obj "${_mingw_crt}/crtexe.c" "${_crt2_obj}" || return 1
+        if [[ ! -f "${_crt2_obj}" ]]; then
+          if [[ -f "${_mingw_crt}/crtexe.c" ]]; then
+            _compile_crt_obj "${_mingw_crt}/crtexe.c" "${_crt2_obj}" || return 1
+          else
+            echo "ERROR: crtexe.c source not found; cannot generate crt2.o for ${_win_target}" >&2
+            _warm_failed_count=$(( _warm_failed_count + 1 ))
+            _warm_failed_list="${_warm_failed_list}  - crt2.o (crtexe.c source missing)
+"
+          fi
         fi
 
         # crt2win.o -- GUI application entry (WinMain)
         _crt2win_obj="${_crt_outdir}/crt2win.o"
-        if [[ ! -f "${_crt2win_obj}" ]] && [[ -f "${_mingw_crt}/crtexewin.c" ]]; then
-          _compile_crt_obj "${_mingw_crt}/crtexewin.c" "${_crt2win_obj}" "-D_WINDOWS" || return 1
+        if [[ ! -f "${_crt2win_obj}" ]]; then
+          if [[ -f "${_mingw_crt}/crtexewin.c" ]]; then
+            _compile_crt_obj "${_mingw_crt}/crtexewin.c" "${_crt2win_obj}" "-D_WINDOWS" || return 1
+          else
+            echo "ERROR: crtexewin.c source not found; cannot generate crt2win.o for ${_win_target}" >&2
+            _warm_failed_count=$(( _warm_failed_count + 1 ))
+            _warm_failed_list="${_warm_failed_list}  - crt2win.o (crtexewin.c source missing)
+"
+          fi
         fi
 
         # dllcrt2.o -- DLL entry (DllMain)
         _dllcrt2_obj="${_crt_outdir}/dllcrt2.o"
-        if [[ ! -f "${_dllcrt2_obj}" ]] && [[ -f "${_mingw_crt}/crtdll.c" ]]; then
-          _compile_crt_obj "${_mingw_crt}/crtdll.c" "${_dllcrt2_obj}" || return 1
+        if [[ ! -f "${_dllcrt2_obj}" ]]; then
+          if [[ -f "${_mingw_crt}/crtdll.c" ]]; then
+            _compile_crt_obj "${_mingw_crt}/crtdll.c" "${_dllcrt2_obj}" || return 1
+          else
+            echo "ERROR: crtdll.c source not found; cannot generate dllcrt2.o for ${_win_target}" >&2
+            _warm_failed_count=$(( _warm_failed_count + 1 ))
+            _warm_failed_list="${_warm_failed_list}  - dllcrt2.o (crtdll.c source missing)
+"
+          fi
         fi
       else
         dbg echo "=== MinGW CRT sources not found at ${_mingw_crt} ==="
@@ -632,9 +668,8 @@ WARM_EOF
       # surfaced downstream as bogus undefined-symbol errors.  Collect failures
       # and fail the build after the loop, so one run reports every bad target.
       # Plain counter + string rather than a bash array: `${#arr[@]}` on an
-      # empty array trips `set -u` under bash 3.2.
-      local _warm_failed_count=0
-      local _warm_failed_list=""
+      # empty array trips `set -u` under bash 3.2. Declared earlier (before
+      # Step 5) so the CRT source-guards there share this counter.
 
       # Map: zig target triple -> staging dir name under lib/libc/mingw/
       for _warm_pair in \
@@ -677,6 +712,7 @@ WARM_EOF
           local _warm_size
           _warm_size="$(wc -c < "${_warm_lib}" 2>/dev/null | tr -d '[:space:]')"
           : "${_warm_size:=0}"
+          echo "INFO: measured libmingw32.lib size for ${_warm_tgt}: ${_warm_size} bytes" >&2
           if [ "${_warm_size}" -lt 1000000 ]; then
               echo "ERROR: libmingw32.lib for ${_warm_tgt} is only ${_warm_size} bytes (expected >1MB); refusing to stage a truncated archive" >&2
               _warm_failed_count=$((_warm_failed_count + 1))
