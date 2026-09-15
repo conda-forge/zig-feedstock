@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 17
+  build_number: 18
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -13,7 +13,7 @@ context:
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}  # TEMP revert 'or ppc64le' on build 18
+  bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" }}
   bootstrap_via_upstream: false
   ci_focus_skip: false
   is_testable: >-
