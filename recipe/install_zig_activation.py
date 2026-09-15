@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Build script for zig_$cross_target_platform_ activation package.
+Build script for zig_$xtarget_ activation package.
 
 Installs:
 1. Activation/deactivation scripts (all builds)

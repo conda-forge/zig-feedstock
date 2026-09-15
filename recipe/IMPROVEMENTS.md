@@ -13,18 +13,27 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 | 3 | Stop mingw layer degrading silently | S-M | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | TODO | - |
 | 5 | Build-time upstream-assumption ledger | M | low | TODO | - |
-| 6 | Encode patch order in filenames, not comments | M | low-med | DONE (scope narrowed on measurement; board pending) | - |
+| 6 | Encode patch order in filenames, not comments | M | low-med | DONE (scope narrowed) | PR #186 board, 24/24 green @ 335fdf83 |
 | 7 | Adopt -Doptimize=safe (SPECULATIVE) | S | low-med | TODO | - |
 | 8 | Retire shipped debug instrumentation | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 9 | Replace hand-rolled import libs with upstream's (SPECULATIVE) | L | high | TODO | - |
 | 10 | Machine-check patch apply-order via Applies-after headers | M | low | TODO | - |
+| 11 | Stop parsing `zig env` output as JSON (upstream emits ZON) | S | low | DONE (uncommitted) | - |
+| 12 | Split collapsed libc++.a skip into four arms + named compile timeout | S | low | DONE (uncommitted) | - |
+| 13 | Emulated-lane coverage gap in libcxx simulation test | S | med | DONE (uncommitted) | - |
+| 14 | Tool-probe checks evaporate when the tool is absent | S | low | DONE (uncommitted) | - |
+| 15 | No byte-size floor on generated mingw artifacts | S | low | DONE (uncommitted) | - |
+| 16 | Harness cannot express expected-but-absent coverage | M | low | TODO | - |
+| 17 | Four disagreeing predicates for "is this lane emulated" | M | med | TODO | - |
 
 ## Batches
 
 - **Batch 0 (infrastructure)**: restructure `recipe/SNAPSHOT_TRIAGE.md` into invariant-procedure vs anchor-table, create this ledger, create the thin triage skill. Touches no recipe logic. - DONE 2026-09-14
 - **Batch 1 (silent-degradation sweep)**: items 1, 2, 3 and optionally 8. One theme, all small, one CI board validates all of them. - DONE 2026-09-14
-- **Batch 2**: item 6 (patch order in filenames). Scope narrowed to two-file rename (mingw.zig-01/-02); own board pending. - DONE 2026-09-14
+- **Batch 2**: item 6 (patch order in filenames). Scope narrowed to two-file rename (mingw.zig-01/-02); validated by PR #186 board 24/24 green @ 335fdf83. - DONE 2026-09-14
 - **Batch 3**: spikes for items 4 and 7 - investigate and decide, not implementation.
+- **Batch 4 (cross-track adoption from 0.16)**: items 11, 12 adopted from the 0.16 track's measurements; item 13 raised by the same comparison. Uncommitted. - 2026-09-14
+- **Batch 5 (second cross-track round from 0.16)**: item 14 adopted from the 0.16 track's `strings` finding and extended (we have two sites, not one); item 15 is a gap the comparison exposed in our tree. Uncommitted. - 2026-09-14
 - **Deferred**: item 9 (large, high risk, speculative).
 
 ## Proposals
@@ -101,7 +110,7 @@ Blocked by: a ppc64le lane run; do not delete the copy in the same commit that a
 
 ### 5. A build-time upstream-assumption ledger
 
-**Problem.** Our upstream dependencies are asserted nowhere and discovered only by failure: the `config.h` define shape, the CRT flag set, `zig env`'s JSON keys (`recipe/testing/test_libcxx_shared.py:141-146` needs `global_cache_dir`; `ci_support/probe_mingw_setjmp.sh:91` needs `lib_dir`), the six-key libc-file format (`recipe/building/_cross.sh:33-40`), and the `_CRTIMP` regex (`_mingw.sh:489-490`). The `gen_translators.py --check` guard already wired into the recipe is the right precedent.
+**Problem.** Our upstream dependencies are asserted nowhere and discovered only by failure: the `config.h` define shape, the CRT flag set, the assumption that `zig env` emits JSON (`recipe/testing/test_libcxx_shared.py:141-146` parsed it for `global_cache_dir`; `ci_support/probe_mingw_setjmp.sh:91` parses it for `lib_dir`) -- CORRECTED: upstream's `print_env.zig` uses `std.zon.Serializer` and emits ZON (`.{ .global_cache_dir = "..." }`), there is no JSON path and no `--json` flag, so the assumption was never "has key X", it was the false belief the output is JSON at all. The `test_libcxx_shared.py` half is now FIXED (see item 11); the `probe_mingw_setjmp.sh` half is still broken but is untracked local-only tooling. Remaining unasserted: the six-key libc-file format (`recipe/building/_cross.sh:33-40`), and the `_CRTIMP` regex (`_mingw.sh:489-490`). The `gen_translators.py --check` guard already wired into the recipe is the right precedent.
 
 **Change.** One `building/_assert_upstream.sh`, sourced once early, that checks each assumption against the extracted source and the bootstrap binary and fails with a named assumption id. Mirror the list into `ZIG_RECIPE_LLM_REFERENCE.md` so the doc and the check share one inventory.
 
@@ -130,7 +139,7 @@ Blocked by: nothing
 
 **Validation.** Every lane's patch phase must show no `Hunk ... FAILED`.
 
-Status: DONE (scope narrowed on measurement; board pending)
+Status: DONE (scope narrowed on measurement) - validated by PR #186 board 24/24 green @ 335fdf83 (2026-09-14)
 Blocked by: nothing
 
 ---
@@ -202,3 +211,118 @@ The reference doc section 5 dependency map currently documents a deleted patch (
 
 Status: TODO
 Blocked by: nothing
+
+---
+
+### 11. Stop parsing `zig env` output as JSON (upstream emits ZON)
+
+**Problem.** `_find_zig_cache_dir` called `zig env` and did `json.loads(r.stdout)`, reading `global_cache_dir`; the except clause swallowed the JSONDecodeError and returned None. Upstream emits ZON via std.zon.Serializer, so this NEVER worked - the cache dir was always unresolved and the libc++.a lookup fell through to a dead rglob over the installed tree, which ships libcxx as source only. Root cause measured on the 0.16 track and confirmed identical here.
+
+**Change.** Drop the `zig env` subprocess entirely; read the ZIG_GLOBAL_CACHE_DIR environment variable, which `setup_zig_global_cache_dir()` (_test_utils.py:59-77, already called at test_libcxx_shared.py:65) guarantees is set. `import json` removed as the sole consumer.
+
+**Effort.** S. **Risk.** low.
+
+**Validation.** Any lane reaching test_libcxx_shared_simulation; the skip must no longer report an unresolved cache dir.
+
+Status: DONE (uncommitted) - adopted from 0.16 track
+Blocked by: nothing
+
+---
+
+### 12. Split collapsed libc++.a skip into four arms + named compile timeout
+
+**Problem.** `_find_libcxx_static` returned a bare Path|None and its single caller emitted one collapsed SKIP string, "could not find libc++.a in zig cache or lib dir". On the 0.16 track that string was PROVEN FALSE in a measured case - the archive existed and a different arm had failed. The cache-warming `zig c++ -shared` compile also used a hardcoded timeout=120 with no named constant.
+
+**Change.** `_find_libcxx_static` returns (path, reason) with four distinct arms - compile timed out / compile returned non-zero / zig cache dir unresolved / no libc++.a archive found. Added `_COMPILE_TIMEOUT_S` = 1800 on emulated lanes, 120 native. Arm wording matches the 0.16 track so the trees converge.
+
+**Effort.** S. **Risk.** low.
+
+**Validation.** The SKIP line must name one specific arm, never the collapsed string.
+
+Status: DONE (uncommitted) - adopted from 0.16 track
+Blocked by: nothing
+
+---
+
+### 13. Emulated-lane coverage gap in the libcxx simulation test
+
+**Problem.** `test_libcxx_fallback_static` and `test_libcxx_shared_simulation` were both gated to SKIP on `is_arm64 or is_ppc64le or _is_emulated`, so on this track the emulated lanes never exercised the compile, and the raised `_COMPILE_TIMEOUT_S` from item 12 was inert. The 0.16 track's gate on both its callers (:207-209 and :683-685) is `_is_emulated and not is_ppc64le`, with no `is_arm64` term. On 0.16, riscv64 is emulated and therefore SKIPS under that same gate; ppc64le is the ONLY emulated lane that reaches the compile, which is why its ~937s measurement came from ppc64le alone, not two lanes. The earlier "two emulated lanes" cost estimate in this item was an overestimate.
+
+**Change.** Adopted the 0.16 carve-out at both sites: `is_arm64 or is_ppc64le or _is_emulated` -> `is_arm64 or (_is_emulated and not is_ppc64le)`. We keep our `is_arm64` disjunct deliberately - the 0.16 track has no evidence on it and we are not dropping it for parity. This opens exactly ONE lane, linux-ppc64le; riscv64 still skips (emulated and not ppc64le), aarch64 and osx-arm64 still skip via `is_arm64`, and linux-64/osx-64/win-64 are unchanged. 0.16's `_COMPILE_TIMEOUT_S = 900` is unconditional (its :94) and its own raise is proposed-not-applied, so 900 is what produced its ~937s timeout arm. Ours is already 1800 on emulated lanes (item 12). Opening ppc64le here with 1800 is therefore a live experiment the 0.16 track cannot run: if the timed-out arm stops firing under our 1800s ceiling, that confirms 900 was the whole story on 0.16.
+
+**Effort.** S. **Risk.** med (adds wall-clock to one emulated lane).
+
+**Validation.** linux-ppc64le wall-clock delta and pass/timeout outcome on the next board; expected observation is recorded above.
+
+Status: DONE (uncommitted) - needs a board; expected cost is added wall-clock on linux-ppc64le only
+Blocked by: nothing
+
+---
+
+### 14. Tool-probe checks evaporate when the tool is absent
+Problem: two `shutil.which(...)` probes in test_libcxx_shared.py had no else-branch - `nm` at :291-302 and `strings` at :364-375. With the tool absent, neither PASS nor FAIL nor SKIP was recorded and the check vanished from the report entirely. Raised by the 0.16 track, which found the `strings` instance in its own tree; we have TWO sites, not one. This is the silent-degradation theme in the one form the item-1 assertion work cannot catch, because nothing fails and nothing is skipped.
+Change: both probes now record a SKIP naming the missing tool.
+Effort S, Risk low.
+Validation: any lane lacking nm or strings must now show a SKIP line instead of silence.
+Status: DONE (uncommitted) - raised by 0.16 track, extended here
+Blocked by: nothing
+
+---
+
+### 15. No byte-size floor on generated mingw artifacts
+Problem: `_mingw.sh` (730 lines) asserts a COUNT floor on generated import libs (`_gen_count_floor=2200` at :355, checked :371-372) but has NO byte-size assertion on any generated artifact - only `[[ -s ... ]]` non-empty tests at :190 and :278. A truncated-but-non-empty artifact passes both. The 0.16 track carries a real byte-size floor at its `_mingw.sh:680` that we lack; conversely it lacks our count floor. The two assertions are independent and neither subsumes the other.
+Change: artifact is `libmingw32.lib`, harvested per target triple inside the cache-warm loop. Floor 1000000 bytes, measured with `wc -c`. Adapted NOT copied: our warm loop already had `_warm_failed_count`/`_warm_failed_list` (declared :632-633) with a post-loop FATAL at :722, so the existing counter was reused rather than adding a parallel one. Inserted at :691-699, inside `generate_mingw_import_libs` (function spans :8-743), after the `_warm_lib` existence check at :679-680. Deliberate deviation from the 0.16 shape: the measured size is logged UNCONDITIONALLY, pass or fail. The 1000000 figure is a round number roughly 10x below the 0.16 track's observed 10.8-11.4MB archives, and we have never measured ours. Logging every size puts our real numbers on the next board so the floor can be tightened on evidence. Reference doc section 5 updated in the same change.
+Effort S, Risk low.
+Validation: win-64 native (the only lane that sources _mingw.sh for generation).
+Status: DONE (uncommitted) - needs a win-64 native board to record our actual sizes
+Blocked by: nothing
+
+---
+
+### 16. Harness cannot express expected-but-absent coverage
+Problem: raised by the 0.16 track and it generalises item 14. Our harness test files end `return 1 if n_fail > 0 else 0`; SKIP and WARN never affect the exit code. So at the exit-code level a check that EVAPORATED, a check legitimately SKIPPED, and "nothing to test on this lane" are indistinguishable. Item 14 converted two evaporating probes into SKIPs, which is honest but still invisible to anything automated - the board cannot tell you coverage went missing. This is the general form of the whole batch-1 silent-degradation theme.
+Change: assert a minimum expected check count per test file, or an expected-coverage manifest keyed by lane, so a vanished check FAILS the board rather than quietly shrinking it. Not designed yet.
+Effort M, Risk low.
+Validation: deliberately delete a probe locally; the board must go red, not merely quieter.
+Status: TODO - raised by 0.16 track
+Blocked by: nothing
+
+---
+
+### 17. Four disagreeing predicates for "is this lane emulated"
+Problem: `_test_utils.py:115-119` defines `_is_emulated` as `sys.platform == "linux" and _native_machine not in ("x86_64","i686") and os.environ.get("CI","") != ""`. That is HOST ARCH, not emulation: it is TRUE on the linux-aarch64 NATIVE lane, where nothing is emulated. The recipe already knows the truth three ways - `NEEDS_EMULATION` (recipe.yaml:622, `linux and build_platform != target_platform`), the `qemu_pkg` gate (recipe.yaml:149, byte-identical condition), and QEMU_EXECVE being non-empty only when the shim is installed, which happens only under that same condition. The harness derived it from `platform.machine()` instead of reading any of them.
+MEASURED - THIS IS NOT A CLEANUP. Enumerated every consumer; flipping the flag to correct on linux-aarch64 native changes NINE of them:
+- `test_zig_toolchain.py` :234, :255, :321, :358, :470, :510 (`if _is_emulated or _is_cross_compiler:`) and :570 (`if _is_emulated:`) - SEVEN tests that currently SKIP on aarch64 native would start RUNNING there. That is a coverage increase and possibly desirable, but it is a behaviour change on a currently-green lane and can turn it red.
+- `test_libcxx_shared.py:82` `_COMPILE_TIMEOUT_S` 1800 -> 120 on that lane (harmless there, it is native, but it changes).
+- `test_libcxx_shared.py:775` diagnostic print flips.
+The three libcxx gates at :204/:334/:659 are NOT affected - `is_arm64` already skips that lane.
+ALSO MEASURED: `NEEDS_EMULATION` is NOT available at test time - it lives in a build `script: env:` block (recipe.yaml:611-624) and is read only by `install_zig_activation.py:245`; zero hits under recipe/testing/. QEMU_EXECVE IS exported in test blocks (recipe.yaml:510, :554, :854, :896 under `if: is_testable`). So the 0.16 track's QEMU_EXECVE-presence test is not merely an acceptable proxy, it is the ONLY correct signal currently visible to the test harness without a recipe change.
+
+MEASURED (session addition, 2026-09-14): four independent semantic encodings of "emulated/cross" coexist in this tree, and two of them DISAGREE:
+1. `build_platform != target_platform` - recipe.yaml:149 (qemu_pkg gate), recipe.yaml:622 (NEEDS_EMULATION), _common.sh:14 (`is_cross()`)
+2. `is_cross && is_linux` - build.sh:191, :410 (wrapper over form 1)
+3. `is_foreign_target(triplet)` - _test_utils.py:144, compares triplet arch against platform.machine()
+4. `_is_emulated` - _test_utils.py:115, host-arch plus a CI env check
+
+THE DISAGREEMENT, and note the POLARITY:
+- SHELL, build.sh:184: `[ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]` - non-empty AND executable, NO basename check. Accepts any executable at that path.
+- PYTHON, _test_utils.py:186: `qemu_execve and os.path.basename(qemu_execve) == f"qemu-execve-{arch}" and os.access(qemu_execve, os.X_OK)` - requires the basename to match EXACTLY.
+So our PYTHON is the stricter side and our SHELL is the looser one. A launcher at e.g. /usr/bin/custom-qemu would be accepted by build.sh and rejected by emulation_prefix.
+
+WHY THE POLARITY MATTERS: the 0.16 track has the identical class of defect but INVERTED - its shell does the basename match (`case "$(basename ...)" in qemu-execve-*`) and its Python tests bare presence, so ITS shell is stricter. Same bug, opposite direction. Consequence: the two tracks need OPPOSITE fixes and neither should copy the other's patch. Here the shell should adopt the basename check its own Python already performs; there the Python should adopt the shell's.
+
+THIRD PREDICATE INSIDE ONE FILE: _test_utils.py alone holds both the strict basename form at :186 and the host-arch `_is_emulated` at :115. The disagreement is not only cross-language, it is intra-file.
+
+GENERALISED RULE, REFINED 2026-09-14 (the 0.16 track raised the crude form and then retracted it; do not reinstate it). The crude form was "never let two consumers hold disagreeing predicates for one fact". That is wrong: two consumers CAN legitimately hold different predicates when they are answering DIFFERENT QUESTIONS. The measured example - on the 0.16 track, its shell asks "is this the passthrough-capable shim" (prefix glob, declines to arm on a vanilla name) while its Python asks "is this a usable emulator for this arch" (substring, tolerates the vanilla name). Both are correct for their own question.
+THE ACTUAL DEFECT is difference that nobody has DISTINGUISHED: a reader cannot tell intentional divergence from drift, because the question each predicate answers is nowhere stated. THE CURE IS NAMING THE QUESTION, not forcing one predicate. Where two predicates genuinely answer one question, unify; where they answer two, say so at both sites.
+
+LOAD-BEARING SUBSTRING (0.16 track, measured): its build.sh falls back to a VANILLA `qemu-<arch>` binary - no `execve-` infix - and re-exports it as QEMU_EXECVE, because the qemu-execve-<arch> package ships BOTH names. Its substring matcher accepts that; an exact-equality matcher like ours at _test_utils.py:186 would reject it. So "adopt the strict matcher" was the wrong instruction and is withdrawn. RESOLVED 2026-09-14, ANSWER IS NO - our exact matcher is CORRECT for our tree. Measured: every assignment of QEMU_EXECVE in this tree uses `command -v qemu-execve-${qemu_arch}` and nothing else (recipe.yaml:432, :457, :482, :510, :554, :716, :854, :896); build.sh never assigns QEMU_EXECVE at all. There is no vanilla-name fallback here. The one bare-name lookup, build.sh:198 `command -v qemu-${ZIG_QEMU_ARCH}`, is a READ-ONLY check gating the `-fqemu` flag and feeds nothing back.
+  THE TWO TREES RESOLVE IN OPPOSITE DIRECTIONS, which is why the matchers must differ. 0.16: vanilla `qemu-<arch>` is discovered and re-exported INTO QEMU_EXECVE, so its matcher must tolerate the vanilla basename. Ours: QEMU_EXECVE is always the strict `qemu-execve-<arch>`, and build.sh:186-188 symlinks FROM it to create a bare `qemu-<arch>` name in a shadow PATH dir for `zig -fqemu`. Their flow is vanilla -> QEMU_EXECVE; ours is QEMU_EXECVE -> vanilla. Exact equality is right here and substring is right there.
+  CAVEAT: this covers values our own code produces. A QEMU_EXECVE pre-set in the inherited environment is not excluded, which is the same unresolved residual as the PATH-probe item.
+  CONSEQUENCE: neither matcher may be ported to the other tree. This is the fourth measured case this session where the correct answer was that the tracks must diverge (after the maker/configurer arg split, the predicate polarity, and launcher naming).
+
+Change: either export NEEDS_EMULATION into the test env and read it, or adopt the QEMU_EXECVE-presence definition. Rename the flag either way. Do NOT bundle with anything else - it needs its own board precisely because it opens seven tests on aarch64 native.
+Effort M, Risk med.
+Validation: linux-aarch64 native, watching those seven test_zig_toolchain checks go from SKIP to a real result; and the shell (build.sh:184) and Python (_test_utils.py:186) QEMU_EXECVE predicates must be compared and reconciled, not just the aarch64 test count observed.
+Status: TODO
+Blocked by: nothing, but must be its own commit and its own board.

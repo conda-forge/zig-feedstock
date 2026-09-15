@@ -526,7 +526,7 @@ SYNCHRONIZATION_DEF
       # Cache-warm + stage real libmingw32.lib for all three Windows targets so
       # non-zig linkers (flexlink, mingw-gcc) can resolve -lmingw32 / -lucrt /
       # -lmingwex / -lwinpthread without falling back to empty stubs. Zig compiles
-      # its full mingw source tree into a single ~10MB libmingw32.lib at link time
+      # its full mingw source tree into a single ~11MB libmingw32.lib at link time
       # and caches it; we trigger materialization with a real link of a tiny program
       # that references snprintf + pthread_self, then harvest the cached artifact.
       # Each target gets its own ZIG_GLOBAL_CACHE_DIR to avoid cross-arch contamination.
@@ -681,6 +681,21 @@ WARM_EOF
               echo "ERROR: libmingw32.lib not found in cache for ${_warm_tgt}; CRT archives will be missing" >&2
               _warm_failed_count=$((_warm_failed_count + 1))
               _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(no-libmingw32)"
+              continue
+          fi
+
+          # Byte-size floor: a truncated-but-non-empty libmingw32.lib would
+          # otherwise pass every check above. 1000000 is ~10x under our own
+          # smallest measured value, 10651820 (x86_64, win-64 host, job
+          # 104231430783); osx hosts run ~0.7MB larger. Size is logged
+          # unconditionally so future boards can tighten the floor on evidence.
+          local _warm_lib_size
+          _warm_lib_size="$(wc -c < "${_warm_lib}" 2>/dev/null || echo 0)"
+          echo "INFO: [_mingw] libmingw32.lib size for ${_warm_tgt}: ${_warm_lib_size} bytes" >&2
+          if [[ "${_warm_lib_size}" -lt 1000000 ]]; then
+              echo "ERROR: libmingw32.lib for ${_warm_tgt} is ${_warm_lib_size} bytes, below floor 1000000 (truncated?)" >&2
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(size-${_warm_lib_size})"
               continue
           fi
 

@@ -22,7 +22,7 @@ jobs:
       max-parallel: 50
       matrix:
         include:
-          - CONFIG: linux_64_cross_target_platform_linux-64
+          - CONFIG: linux_64_xtarget_linux-64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -34,7 +34,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-latest']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_64_cross_target_platform_linux-aarch64
+          - CONFIG: linux_64_xtarget_linux-aarch64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -46,7 +46,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-latest']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_64_cross_target_platform_linux-ppc64le
+          - CONFIG: linux_64_xtarget_linux-ppc64le
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -58,7 +58,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-latest']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_64_cross_target_platform_linux-riscv64
+          - CONFIG: linux_64_xtarget_linux-riscv64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -70,7 +70,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-latest']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_64_cross_target_platform_linux-s390x
+          - CONFIG: linux_64_xtarget_linux-s390x
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-x86_64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -82,7 +82,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-latest']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_aarch64_cross_target_platform_linux-64
+          - CONFIG: linux_aarch64_xtarget_linux-64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -94,7 +94,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_aarch64_cross_target_platform_linux-aarch64
+          - CONFIG: linux_aarch64_xtarget_linux-aarch64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -106,7 +106,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_aarch64_cross_target_platform_linux-ppc64le
+          - CONFIG: linux_aarch64_xtarget_linux-ppc64le
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -118,7 +118,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_aarch64_cross_target_platform_linux-riscv64
+          - CONFIG: linux_aarch64_xtarget_linux-riscv64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -130,7 +130,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_aarch64_cross_target_platform_linux-s390x
+          - CONFIG: linux_aarch64_xtarget_linux-s390x
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -142,7 +142,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_ppc64le_cross_target_platform_linux-ppc64le
+          - CONFIG: linux_ppc64le_xtarget_linux-ppc64le
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -154,7 +154,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: linux_riscv64_cross_target_platform_linux-riscv64
+          - CONFIG: linux_riscv64_xtarget_linux-riscv64
             DOCKER_IMAGE: quay.io/condaforge/linux-anvil-aarch64:alma10
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
@@ -166,7 +166,7 @@ jobs:
             resize_partitions: False
             runs_on: ['ubuntu-24.04-arm']
             tools_install_dir: ~/miniforge3
-          - CONFIG: win_64_cross_target_platform_win-32
+          - CONFIG: win_64_xtarget_win-32
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
             build_platform: win-64
@@ -178,7 +178,7 @@ jobs:
             resize_partitions: False
             runs_on: ['windows-2022']
             tools_install_dir: D:\Miniforge
-          - CONFIG: win_64_cross_target_platform_win-64
+          - CONFIG: win_64_xtarget_win-64
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
             build_platform: win-64
@@ -190,7 +190,7 @@ jobs:
             resize_partitions: False
             runs_on: ['windows-2022']
             tools_install_dir: D:\Miniforge
-          - CONFIG: win_64_cross_target_platform_win-arm64
+          - CONFIG: win_64_xtarget_win-arm64
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
             build_platform: win-64
@@ -202,7 +202,7 @@ jobs:
             resize_partitions: False
             runs_on: ['windows-2022']
             tools_install_dir: D:\Miniforge
-          - CONFIG: win_arm64_cross_target_platform_win-32
+          - CONFIG: win_arm64_xtarget_win-32
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
             build_platform: win-arm64
@@ -214,7 +214,7 @@ jobs:
             resize_partitions: False
             runs_on: ['windows-11-arm']
             tools_install_dir: C:\Miniforge
-          - CONFIG: win_arm64_cross_target_platform_win-64
+          - CONFIG: win_arm64_xtarget_win-64
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
             build_platform: win-arm64
@@ -226,7 +226,7 @@ jobs:
             resize_partitions: False
             runs_on: ['windows-11-arm']
             tools_install_dir: C:\Miniforge
-          - CONFIG: win_arm64_cross_target_platform_win-arm64
+          - CONFIG: win_arm64_xtarget_win-arm64
             STORE_BUILD_ARTIFACTS: False
             UPLOAD_PACKAGES: True
             build_platform: win-arm64

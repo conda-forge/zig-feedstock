@@ -381,6 +381,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
 fi
 
 zig_diag_fingerprint
+zig_diag_qemu
 if zig_diag_exec phase1-zig-build -- build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else

@@ -11,7 +11,7 @@ context:
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
-  zig_glibc: ${{ "2.27" if cross_target_platform_ == "linux-riscv64" else c_stdlib_version | default("2.17") }}
+  zig_glibc: ${{ "2.27" if xtarget_ == "linux-riscv64" else c_stdlib_version | default("2.17") }}
   zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else c_stdlib_version | default("2.17") }}
 
   # LLVM
@@ -30,20 +30,20 @@ context:
   skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="1") == "1" or not is_testable }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
-  xc_l64:        ${{ cross_target_platform_ == "linux-64" }}
-  xc_aarch64:    ${{ cross_target_platform_ == "linux-aarch64" }}
-  xc_ppc64le:    ${{ cross_target_platform_ == "linux-ppc64le" }}
-  xc_riscv64:    ${{ cross_target_platform_ == "linux-riscv64" }}
-  xc_s390x:      ${{ cross_target_platform_ == "linux-s390x" }}
-  xc_o64:        ${{ cross_target_platform_ == "osx-64" }}
-  xc_oarm64:     ${{ cross_target_platform_ == "osx-arm64" }}
-  xc_w64:        ${{ cross_target_platform_ == "win-64" }}
-  xc_warm64:     ${{ cross_target_platform_ == "win-arm64" }}
-  xc_win32:      ${{ cross_target_platform_ == "win-32" }}
+  xc_l64:        ${{ xtarget_ == "linux-64" }}
+  xc_aarch64:    ${{ xtarget_ == "linux-aarch64" }}
+  xc_ppc64le:    ${{ xtarget_ == "linux-ppc64le" }}
+  xc_riscv64:    ${{ xtarget_ == "linux-riscv64" }}
+  xc_s390x:      ${{ xtarget_ == "linux-s390x" }}
+  xc_o64:        ${{ xtarget_ == "osx-64" }}
+  xc_oarm64:     ${{ xtarget_ == "osx-arm64" }}
+  xc_w64:        ${{ xtarget_ == "win-64" }}
+  xc_warm64:     ${{ xtarget_ == "win-arm64" }}
+  xc_win32:      ${{ xtarget_ == "win-32" }}
 
-  xc_lnx:        ${{ "linux" in cross_target_platform_ and "linux" in build_platform }}
-  xc_osx:        ${{ "osx"   in cross_target_platform_ and "osx"   in build_platform }}
-  xc_nlo:        ${{ "win"   in cross_target_platform_ and "win"   in build_platform }}
+  xc_lnx:        ${{ "linux" in xtarget_ and "linux" in build_platform }}
+  xc_osx:        ${{ "osx"   in xtarget_ and "osx"   in build_platform }}
+  xc_nlo:        ${{ "win"   in xtarget_ and "win"   in build_platform }}
 
   xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-32'] }}
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo) and xc_host_valid }}
@@ -149,8 +149,8 @@ context:
   qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=10"]' if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
-  is_hosted_xcompiler:   ${{ build_platform == target_platform and cross_target_platform_ != target_platform and xc_valid }}
-  is_unhosted_xcompiler: ${{ target_platform != build_platform and cross_target_platform_ != target_platform and xc_valid }}
+  is_hosted_xcompiler:   ${{ build_platform == target_platform and xtarget_ != target_platform and xc_valid }}
+  is_unhosted_xcompiler: ${{ target_platform != build_platform and xtarget_ != target_platform and xc_valid }}
   xc_build_platform: >-
     ${{
       build_platform                           if is_hosted_xcompiler                 else
@@ -161,9 +161,9 @@ context:
   xc_build_triplet: ${{ build_triplet if not is_unhosted_xcompiler else target_triplet }}
   xc_build_zig_triplet: ${{ zig_build_triplet if not is_unhosted_xcompiler else zig_target_triplet }}
 
-  is_native: ${{ build_platform == target_platform and cross_target_platform_ == build_platform }}
+  is_native: ${{ build_platform == target_platform and xtarget_ == build_platform }}
   is_cross_compiler: ${{ is_hosted_xcompiler or is_unhosted_xcompiler }}
-  is_cross_target: ${{ build_platform != target_platform and cross_target_platform_ == target_platform }}
+  is_cross_target: ${{ build_platform != target_platform and xtarget_ == target_platform }}
  
   shim_runs_on_target: ${{ target_platform != build_platform }}
 
@@ -287,12 +287,12 @@ build:
 
 outputs:
   # ==========================================================================
-  # IMPLEMENTATION: zig_impl_$cross_target_platform_ (binaries + stdlib ONLY)
+  # IMPLEMENTATION: zig_impl_$xtarget_ (binaries + stdlib ONLY)
   # Contains actual zig compiler binary (triplet-prefixed) and standard library
   # NO activation scripts, NO wrappers - just the implementation
   # ==========================================================================
   - package:
-      name: zig_impl_${{ cross_target_platform_ }}
+      name: zig_impl_${{ xtarget_ }}
     build:
       skip: not (is_native or is_cross_target)
       dynamic_linking:
@@ -598,12 +598,12 @@ outputs:
             - python >=3.10
 
   # ==========================================================================
-  # ACTIVATION: zig_$cross_target_platform_ (scripts)
-  # Contains activation scripts, depends on zig_impl_$cross_target_platform_
+  # ACTIVATION: zig_$xtarget_ (scripts)
+  # Contains activation scripts, depends on zig_impl_$xtarget_
   # NO binaries - just the environment setup
   # ==========================================================================
   - package:
-      name: zig_${{ cross_target_platform_ }}
+      name: zig_${{ xtarget_ }}
     build:
       skip: not (is_native or is_cross_compiler or is_cross_target)
       script:
@@ -631,24 +631,24 @@ outputs:
             - zig_impl_${{ build_platform }}${{ zig_impl_pin }}
             - if: ppc64le
               then:
-                - binutils_impl_${{ cross_target_platform_ }} >=2.45
-                - gcc_impl_${{ cross_target_platform_ }} >=14.3
+                - binutils_impl_${{ xtarget_ }} >=2.45
+                - gcc_impl_${{ xtarget_ }} >=14.3
       host:
         - if: not (is_cross_compiler or is_cross_target)
           then:
-            - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
+            - ${{ pin_subpackage("zig_impl_" ~ xtarget_, exact=True) }}
       run:
-        # For native/cross-target: depend on zig_impl for same cross_target_platform_ (pin_subpackage works)
+        # For native/cross-target: depend on zig_impl for same xtarget_ (pin_subpackage works)
         # For cross-compiler: depend on zig_impl for BUILD platform (external package)
         - if: is_cross_compiler
           then:
             - zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}
           else:
-            - ${{ pin_subpackage("zig_impl_" ~ cross_target_platform_, exact=True) }}
+            - ${{ pin_subpackage("zig_impl_" ~ xtarget_, exact=True) }}
         - if: xc_ppc64le
           then:
-            - binutils_impl_${{ cross_target_platform_ }} >=2.45
-            - gcc_impl_${{ cross_target_platform_ }} >=14.3
+            - binutils_impl_${{ xtarget_ }} >=2.45
+            - gcc_impl_${{ xtarget_ }} >=14.3
     tests:
       # test-env solve (below) happens before script-level is_testable guards
       - if: is_testable
@@ -739,8 +739,8 @@ outputs:
                     - ${{ stdlib("c") }}
                 - if: linux and is_cross_compiler
                   then:
-                    # On cross-compilers, QEMU_LD_PREFIX needs to resolve against the cross_target_platform_ sysroot.
-                    - sysroot_${{ cross_target_platform_ }}
+                    # On cross-compilers, QEMU_LD_PREFIX needs to resolve against the xtarget_ sysroot.
+                    - sysroot_${{ xtarget_ }}
                 - if: ppc64le
                   then:
                     - libclang-cpp ${{ llvm_version }}.*
@@ -820,12 +820,12 @@ outputs:
   # ==========================================================================
   # METAPACKAGE: zig (native symlinks)
   # Creates unprefixed symlinks: zig -> $TRIPLET-zig
-  # Only built when cross_target_platform_ == target_platform
+  # Only built when xtarget_ == target_platform
   # ==========================================================================
   - package:
       name: zig
     build:
-      skip: cross_target_platform_ != target_platform
+      skip: xtarget_ != target_platform
       script:
         file: install_zig_symlinks.py
         env:
@@ -836,9 +836,9 @@ outputs:
         - brush
       host:
         # Host dep ensures targets exist during build for symlink validation
-        - ${{ pin_subpackage("zig_" ~ cross_target_platform_, exact=True) }}
+        - ${{ pin_subpackage("zig_" ~ xtarget_, exact=True) }}
       run:
-        - ${{ pin_subpackage("zig_" ~ cross_target_platform_, exact=True) }}
+        - ${{ pin_subpackage("zig_" ~ xtarget_, exact=True) }}
       run_exports:
         - ${{ pin_subpackage("zig", upper_bound="x.x.x") }}
     tests:
@@ -876,7 +876,7 @@ outputs:
   - package:
       name: zig-compiler
     build:
-      skip: cross_target_platform_ != target_platform
+      skip: xtarget_ != target_platform
       script: echo "zig-compiler metapackage"
     requirements:
       build:

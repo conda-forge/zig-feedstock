@@ -20,7 +20,6 @@ Exit codes:
 
 from __future__ import annotations
 
-import json
 import os
 import platform
 import shutil
@@ -50,6 +49,7 @@ from _test_utils import (
     check_emulation_env,
     resolve_test_prefix,
     setup_zig_global_cache_dir,
+    timed_out,
 )
 
 # --------------------------------------------------------------------------
@@ -76,6 +76,10 @@ is_arm64 = _arch in ("aarch64", "arm64")
 is_ppc64le = _arch == "powerpc64le"
 
 # Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
+
+# Cold libc++ cache-warm compile: measured ~937s under qemu on emulated
+# ppc64le, so emulated lanes get a much larger ceiling than native ones.
+_COMPILE_TIMEOUT_S = 1800 if _is_emulated else 120
 
 
 # --------------------------------------------------------------------------
@@ -136,23 +140,25 @@ def _find_zig_binary() -> str | None:
     return None
 
 
-def _find_zig_cache_dir(zig: str) -> Path | None:
-    """Get zig's global cache directory from 'zig env'."""
-    r = _run([zig, "env"], timeout=10, target=_conda_triplet)
-    if r.returncode != 0:
-        return None
-    try:
-        env = json.loads(r.stdout)
-        return Path(env["global_cache_dir"])
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return None
+def _find_zig_cache_dir() -> Path | None:
+    """Get zig's global cache dir from ZIG_GLOBAL_CACHE_DIR.
+
+    'zig env' emits ZON (not JSON) on this zig version, so it cannot be
+    parsed with json.loads. setup_zig_global_cache_dir() sets this env
+    var before any zig invocation; read it back instead of shelling out.
+    """
+    cache_dir = os.environ.get("ZIG_GLOBAL_CACHE_DIR", "")
+    if cache_dir and Path(cache_dir).is_dir():
+        return Path(cache_dir)
+    return None
 
 
-def _find_libcxx_static(zig: str, td: Path) -> Path | None:
+def _find_libcxx_static(zig: str, td: Path) -> tuple[Path | None, str]:
     """
     Trigger a C++ compilation to populate zig's cache, then find libc++.a.
 
-    Returns the path to the cached libc++.a, or None if not found.
+    Returns (path, reason). path is None on failure, with reason naming
+    which arm failed; reason is "" on success.
     """
     src = td / "find_libcxx.cpp"
     out = td / "libfind.so"
@@ -162,13 +168,15 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
     )
 
     r = _run([zig, "c++", "-shared", "-o", str(out), str(src)],
-             cwd=str(td), timeout=120, target=_conda_triplet)
+             cwd=str(td), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+    if timed_out(r):
+        return None, f"compile timed out ({_COMPILE_TIMEOUT_S}s)"
     if r.returncode != 0:
-        return None
+        return None, f"compile returned non-zero (rc={r.returncode})"
 
-    cache_dir = _find_zig_cache_dir(zig)
-    if not cache_dir or not cache_dir.is_dir():
-        return None
+    cache_dir = _find_zig_cache_dir()
+    if not cache_dir:
+        return None, "zig cache dir unresolved (ZIG_GLOBAL_CACHE_DIR unset or not a directory)"
 
     # Find the most recently modified libc++.a (the one we just triggered)
     candidates = sorted(
@@ -176,7 +184,9 @@ def _find_libcxx_static(zig: str, td: Path) -> Path | None:
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
-    return candidates[0] if candidates else None
+    if not candidates:
+        return None, "no libc++.a archive found (cache dir resolved but rglob found nothing)"
+    return candidates[0], ""
 
 
 # ===================================================================
@@ -191,7 +201,7 @@ def test_libcxx_fallback_static() -> None:
     """
     print("--- [patch-0008] Fallback to static libc++ ---")
 
-    if is_arm64 or is_ppc64le or _is_emulated:
+    if is_arm64 or (_is_emulated and not is_ppc64le):
         SKIP("libcxx-static-fallback", "arm64/ppc64le/emulated, skip linking tests")
         return
 
@@ -290,6 +300,8 @@ def test_libcxx_fallback_static() -> None:
                     else:
                         WARN("some libc++ symbols in dynamic table",
                              f"count={len(exported)}")
+            else:
+                SKIP("nm check", "nm not on PATH, cannot inspect dynamic symbols")
 
         elif is_macos_target and _build_is_mac:
             otool = shutil.which("otool")
@@ -319,7 +331,7 @@ def test_libcxx_probe_paths() -> None:
     """
     print("--- [patch-0008] Shared libc++ probe paths ---")
 
-    if is_arm64 or is_ppc64le or _is_emulated:
+    if is_arm64 or (_is_emulated and not is_ppc64le):
         SKIP("libcxx-probe", "arm64/ppc64le/emulated, skip linking tests")
         return
 
@@ -363,6 +375,8 @@ def test_libcxx_probe_paths() -> None:
                 else:
                     FAIL("patch 0008 strings NOT in binary",
                          "libcxx_shared.zig was not compiled into this zig")
+        else:
+            SKIP("strings probe", "strings not on PATH, cannot inspect binary contents")
 
     # --- Diagnostic: verbose link output ---
     if not is_linux_target or _build_is_win:
@@ -642,7 +656,7 @@ def test_libcxx_shared_simulation() -> None:
         SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
         return
 
-    if is_arm64 or is_ppc64le or _is_emulated:
+    if is_arm64 or (_is_emulated and not is_ppc64le):
         SKIP("libcxx-simulation", "arm64/ppc64le/emulated, skip linking tests")
         return
 
@@ -687,15 +701,14 @@ def test_libcxx_shared_simulation() -> None:
             td_path = Path(td)
 
             # Phase 1: Find zig's cached libc++.a
-            libcxx_a = _find_libcxx_static(zig, td_path)
+            libcxx_a, libcxx_a_reason = _find_libcxx_static(zig, td_path)
             if not libcxx_a:
                 # Fallback: search zig lib dir for any libc++.a
                 zig_lib_candidates = list(zig_lib.rglob("libc++.a"))
                 if zig_lib_candidates:
                     libcxx_a = zig_lib_candidates[0]
                 else:
-                    SKIP("libcxx-simulation",
-                         "could not find libc++.a in zig cache or lib dir")
+                    SKIP("libcxx-simulation", libcxx_a_reason)
                     return
 
             PASS(f"found libc++.a: {libcxx_a}")
