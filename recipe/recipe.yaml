@@ -171,6 +171,7 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
+      - patches/doctest.zig-exec-skip-paren-fix.patch
       # patch order: setjmp-s before arm64-stubs. See recipe/NOTES.md 1.2.
       - patches/non_unix/mingw-include-setjmp-s.patch
       - patches/non_unix/mingw-arm64-stubs.patch
@@ -294,6 +295,9 @@ outputs:
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
           ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
           ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="5h") }}
+          ZIG_LANGREF_PROBE: ${{ env.get("ZIG_LANGREF_PROBE", default="") }}
+          ZIG_LANGREF_PROBE_BUDGET: ${{ env.get("ZIG_LANGREF_PROBE_BUDGET", default="2400") }}
+          ZIG_LANGREF_PROBE_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_PROBE_STEP_TIMEOUT", default="600") }}
 
           # Operator switch: see bootstrap_native_rebuild above. Off by default.
           ZIG_BOOTSTRAP_NATIVE_REBUILD: ${{ "1" if bootstrap_native_rebuild else "0" }}
