@@ -6,13 +6,13 @@ channel_sources:
 - conda-forge/label/zig_dev,conda-forge
 channel_targets:
 - conda-forge zig_dev
-cross_target_platform_:
-- win-32
 cxx_compiler:
 - vs2022
 libxml2_devel:
 - '2.15'
 target_platform:
+- win-64
+xtarget_:
 - win-64
 zlib:
 - '1'

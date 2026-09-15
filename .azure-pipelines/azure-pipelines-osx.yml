@@ -8,8 +8,8 @@ jobs:
     vmImage: $(VMIMAGE)
   strategy:
     matrix:
-      osx_64_cross_target_platform_osx-64:
-        CONFIG: osx_64_cross_target_platform_osx-64
+      osx_64_xtarget_osx-64:
+        CONFIG: osx_64_xtarget_osx-64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15-arm64
         build_workspace_dir: ~/miniforge3/conda-bld
@@ -18,8 +18,8 @@ jobs:
         resize_partitions: false
         store_build_artifacts: false
         tools_install_dir: ~/miniforge3
-      osx_64_cross_target_platform_osx-arm64:
-        CONFIG: osx_64_cross_target_platform_osx-arm64
+      osx_64_xtarget_osx-arm64:
+        CONFIG: osx_64_xtarget_osx-arm64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15-arm64
         build_workspace_dir: ~/miniforge3/conda-bld
@@ -28,8 +28,8 @@ jobs:
         resize_partitions: false
         store_build_artifacts: false
         tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_osx-64:
-        CONFIG: osx_arm64_cross_target_platform_osx-64
+      osx_arm64_xtarget_osx-64:
+        CONFIG: osx_arm64_xtarget_osx-64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15-arm64
         build_workspace_dir: ~/miniforge3/conda-bld
@@ -38,8 +38,8 @@ jobs:
         resize_partitions: false
         store_build_artifacts: false
         tools_install_dir: ~/miniforge3
-      osx_arm64_cross_target_platform_osx-arm64:
-        CONFIG: osx_arm64_cross_target_platform_osx-arm64
+      osx_arm64_xtarget_osx-arm64:
+        CONFIG: osx_arm64_xtarget_osx-arm64
         UPLOAD_PACKAGES: 'True'
         VMIMAGE: macOS-15-arm64
         build_workspace_dir: ~/miniforge3/conda-bld

@@ -14,8 +14,6 @@ channel_sources:
 - conda-forge/label/zig_dev,conda-forge
 channel_targets:
 - conda-forge zig_dev
-cross_target_platform_:
-- osx-arm64
 cxx_compiler:
 - clangxx
 cxx_compiler_version:
@@ -26,6 +24,8 @@ macos_machine:
 - arm64-apple-darwin20.0.0
 target_platform:
 - osx-arm64
+xtarget_:
+- osx-64
 zip_keys:
 - - c_compiler_version
   - cxx_compiler_version

@@ -72,21 +72,34 @@ sanitize_and_export_cross_flags() {
   done
 }
 
-_cfg_subst() {  # _cfg_subst FILE PATTERN REPL [g]
-  python - "$@" <<'PY'
+_cfg_subst() {  # _cfg_subst FILE PATTERN REPL [g] -- warns (does not fail) if zero lines matched
+  local _pat="$2"
+  local _rc=0
+  python - "$@" <<'PY' || _rc=$?
 import re, sys
 path, pat, repl = sys.argv[1], sys.argv[2], sys.argv[3]
 count = 0 if len(sys.argv) > 4 else 1
 with open(path, 'r', newline='') as f:
     data = f.read()
+total = 0
+out = []
+for ln in data.splitlines(keepends=True):
+    new_ln, n = re.subn(pat, repl, ln, count=count)
+    total += n
+    out.append(new_ln)
 with open(path, 'w', newline='') as f:
-    f.write(''.join(re.sub(pat, repl, ln, count=count)
-                    for ln in data.splitlines(keepends=True)))
+    f.write(''.join(out))
+sys.exit(0 if total > 0 else 1)
 PY
+  [[ ${_rc} -ne 0 ]] && echo "WARNING: config.h substitution matched nothing: ${_pat}" >&2
+  return 0
 }
 
 _cfg_subst_lit() {  # _cfg_subst_lit FILE LITERAL REPL -- literal, global, ZIG_LLVM_ lines only
-  python - "$@" <<'PY'
+                     # warns (does not fail) if zero occurrences matched
+  local _lit="$2"
+  local _rc=0
+  python - "$@" <<'PY' || _rc=$?
 import sys
 path, lit, repl = sys.argv[1], sys.argv[2], sys.argv[3]
 
@@ -103,12 +116,17 @@ pairs = list(zip(spellings(lit), spellings(repl)))
 with open(path, 'r', newline='') as f:
     data = f.read()
 out = []
+total = 0
 for ln in data.splitlines(keepends=True):
     if 'ZIG_LLVM_' in ln:
         for a, b in pairs:
+            total += ln.count(a)
             ln = ln.replace(a, b)
     out.append(ln)
 with open(path, 'w', newline='') as f:
     f.write(''.join(out))
+sys.exit(0 if total > 0 else 1)
 PY
+  [[ ${_rc} -ne 0 ]] && echo "WARNING: config.h substitution matched nothing: ${_lit}" >&2
+  return 0
 }

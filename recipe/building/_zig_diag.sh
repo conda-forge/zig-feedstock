@@ -30,6 +30,28 @@ zig_diag_fingerprint() {
   zig_diag_span "host: nproc=${_n} target=${target_platform:-<unset>} build=${build_platform:-<unset>} triplet=${ZIG_TRIPLET:-<unset>}"
 }
 
+# Always-on qemu resolution facts -- ungated (unlike the QEMU_EXECVE lines
+# inside zig_diag_env below). Settles, on any lane including native ones,
+# whether a qemu shim is present when it should not be. Mirrors
+# _test_utils.py's emulation_prefix() PATH fallback (recipe/testing/_test_utils.py:196)
+# so the two channels (env var, PATH) are both accounted for.
+zig_diag_qemu() {
+  local _qarch="${target_platform:-}"
+  [[ "${_qarch}" == "linux-64" ]] && _qarch="x86_64"
+  _qarch="${_qarch#linux-}"
+  local _qpath
+  _qpath=$(command -v "qemu-execve-${_qarch}" 2>/dev/null || true)
+  local _qsrc="none"
+  if [[ -n "${QEMU_EXECVE:-}" && -x "${QEMU_EXECVE:-}" ]]; then
+    _qsrc="env"
+  elif [[ -n "${_qpath}" ]]; then
+    _qsrc="path"
+  fi
+  zig_diag_span "QEMU_EXECVE='${QEMU_EXECVE:-<empty>}' exists=$([[ -e "${QEMU_EXECVE:-}" ]] && echo yes || echo no) executable=$([[ -x "${QEMU_EXECVE:-}" ]] && echo yes || echo no)"
+  zig_diag_span "QEMU_EXECVE_PATH_PROBE qemu-execve-${_qarch:-<unset>}='${_qpath:-<none>}'"
+  zig_diag_span "QEMU_EXECVE_SOURCE=${_qsrc}"
+}
+
 # Gated tier -- silent unless DEBUG_ZIG_BUILD=1.
 zig_diag_note() {
   zig_diag_on || return 0

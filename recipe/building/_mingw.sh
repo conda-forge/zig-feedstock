@@ -15,6 +15,26 @@ function generate_mingw_import_libs() {
     _zig_lib="${PREFIX}/lib/zig"
   fi
   _mingw_common="${_zig_lib}/libc/mingw/lib-common"
+
+  # Assert every upstream mingw path this layer depends on actually exists
+  # under ${_zig_lib} before any generation work below. A single upstream
+  # layout change should fail loudly here, not degrade silently through the
+  # scattered `if [[ -d ... ]]` skips further down.
+  _mingw_missing=""
+  for _req in \
+      "libc/mingw/crt" \
+      "libc/mingw/lib-common" \
+      "libc/mingw/libsrc" \
+      "libc/mingw/def-include"; do
+    [[ -d "${_zig_lib}/${_req}" ]] || _mingw_missing="${_mingw_missing} ${_zig_lib}/${_req}"
+  done
+  [[ -f "${_zig_lib}/libc/include/any-windows-any/setjmp.h" ]] || \
+    _mingw_missing="${_mingw_missing} ${_zig_lib}/libc/include/any-windows-any/setjmp.h"
+  if [[ -n "${_mingw_missing}" ]]; then
+    echo "ERROR: [_mingw] upstream contract broken:${_mingw_missing}" >&2
+    return 1
+  fi
+
   if [[ -d "${_mingw_common}" ]]; then
     cat > "${_mingw_common}/synchronization.def" << 'SYNCHRONIZATION_DEF'
 LIBRARY api-ms-win-core-synch-l1-2-0.dll
@@ -323,7 +343,31 @@ SYNCHRONIZATION_DEF
         return 1
       fi
       # Floor guards against an import-lib generation collapse. See reference doc S5.6/S3.11.
+      # The 2200 baseline is the ONLY thing that fails the build (unchanged
+      # semantics). Separately, derive an expectation from the actual
+      # .def/.def.in source count in ${_mingw_common} x the number of
+      # Windows arches the _ia_entry loop above generates for (3: x86_64,
+      # aarch64, x86) as a soft signal only: the three arches do NOT
+      # generate from identical .def sets (arm64 generates fewer than
+      # x86_64), so this is an OVERESTIMATE and must never be used as a
+      # hard floor -- it only warns when the actual count is suspiciously
+      # low relative to it.
       _gen_count_floor=2200
+      if [[ -d "${_mingw_common}" ]]; then
+        _def_src_count=0
+        for _def in "${_mingw_common}"/*.def "${_mingw_common}"/*.def.in; do
+          [[ -f "${_def}" ]] && _def_src_count=$(( _def_src_count + 1 ))
+        done
+        _gen_arch_count=3
+        _derived_floor=$(( _def_src_count * _gen_arch_count ))
+        if [[ "${_derived_floor}" -eq 0 ]]; then
+          echo "WARNING: [_mingw] derived import-lib expectation came out 0; skipping soft check, hard floor stays ${_gen_count_floor}" >&2
+        elif [[ "${_gen_count}" -ge "${_gen_count_floor}" ]] && [[ "${_gen_count}" -lt "${_derived_floor}" ]]; then
+          echo "WARNING: [_mingw] import-lib count ${_gen_count} below derived expectation ${_derived_floor} (def files: ${_def_src_count}, arches: ${_gen_arch_count}) - possible upstream .def removal" >&2
+        fi
+      else
+        echo "WARNING: [_mingw] ${_mingw_common} missing; cannot derive import-lib expectation, hard floor stays ${_gen_count_floor}" >&2
+      fi
       if [[ "${_gen_count}" -lt "${_gen_count_floor}" ]]; then
         echo "ERROR: [_mingw] import lib count ${_gen_count} is below floor ${_gen_count_floor} (baseline 2355 measured on PR #181 / ac523b5b)" >&2
         return 1
@@ -441,19 +485,31 @@ SYNCHRONIZATION_DEF
 
           # crt2.o -- console application entry (main)
           _crt2_obj="${_crt_outdir}/crt2.o"
-          if [[ ! -f "${_crt2_obj}" ]] && [[ -f "${_mingw_crt}/crtexe.c" ]]; then
+          if [[ ! -f "${_crt2_obj}" ]]; then
+            if [[ ! -f "${_mingw_crt}/crtexe.c" ]]; then
+              echo "ERROR: [_mingw] upstream contract broken: ${_mingw_crt}/crtexe.c missing" >&2
+              return 1
+            fi
             _compile_crt_obj "${_mingw_crt}/crtexe.c" "${_crt2_obj}" || return 1
           fi
 
           # crt2win.o -- GUI application entry (WinMain)
           _crt2win_obj="${_crt_outdir}/crt2win.o"
-          if [[ ! -f "${_crt2win_obj}" ]] && [[ -f "${_mingw_crt}/crtexewin.c" ]]; then
+          if [[ ! -f "${_crt2win_obj}" ]]; then
+            if [[ ! -f "${_mingw_crt}/crtexewin.c" ]]; then
+              echo "ERROR: [_mingw] upstream contract broken: ${_mingw_crt}/crtexewin.c missing" >&2
+              return 1
+            fi
             _compile_crt_obj "${_mingw_crt}/crtexewin.c" "${_crt2win_obj}" "-D_WINDOWS" || return 1
           fi
 
           # dllcrt2.o -- DLL entry (DllMain)
           _dllcrt2_obj="${_crt_outdir}/dllcrt2.o"
-          if [[ ! -f "${_dllcrt2_obj}" ]] && [[ -f "${_mingw_crt}/crtdll.c" ]]; then
+          if [[ ! -f "${_dllcrt2_obj}" ]]; then
+            if [[ ! -f "${_mingw_crt}/crtdll.c" ]]; then
+              echo "ERROR: [_mingw] upstream contract broken: ${_mingw_crt}/crtdll.c missing" >&2
+              return 1
+            fi
             _compile_crt_obj "${_mingw_crt}/crtdll.c" "${_dllcrt2_obj}" || return 1
           fi
         fi
@@ -470,7 +526,7 @@ SYNCHRONIZATION_DEF
       # Cache-warm + stage real libmingw32.lib for all three Windows targets so
       # non-zig linkers (flexlink, mingw-gcc) can resolve -lmingw32 / -lucrt /
       # -lmingwex / -lwinpthread without falling back to empty stubs. Zig compiles
-      # its full mingw source tree into a single ~10MB libmingw32.lib at link time
+      # its full mingw source tree into a single ~11MB libmingw32.lib at link time
       # and caches it; we trigger materialization with a real link of a tiny program
       # that references snprintf + pthread_self, then harvest the cached artifact.
       # Each target gets its own ZIG_GLOBAL_CACHE_DIR to avoid cross-arch contamination.
@@ -625,6 +681,21 @@ WARM_EOF
               echo "ERROR: libmingw32.lib not found in cache for ${_warm_tgt}; CRT archives will be missing" >&2
               _warm_failed_count=$((_warm_failed_count + 1))
               _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(no-libmingw32)"
+              continue
+          fi
+
+          # Byte-size floor: a truncated-but-non-empty libmingw32.lib would
+          # otherwise pass every check above. 1000000 is ~10x under our own
+          # smallest measured value, 10651820 (x86_64, win-64 host, job
+          # 104231430783); osx hosts run ~0.7MB larger. Size is logged
+          # unconditionally so future boards can tighten the floor on evidence.
+          local _warm_lib_size
+          _warm_lib_size="$(wc -c < "${_warm_lib}" 2>/dev/null || echo 0)"
+          echo "INFO: [_mingw] libmingw32.lib size for ${_warm_tgt}: ${_warm_lib_size} bytes" >&2
+          if [[ "${_warm_lib_size}" -lt 1000000 ]]; then
+              echo "ERROR: libmingw32.lib for ${_warm_tgt} is ${_warm_lib_size} bytes, below floor 1000000 (truncated?)" >&2
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(size-${_warm_lib_size})"
               continue
           fi
 
