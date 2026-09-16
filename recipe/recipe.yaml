@@ -331,7 +331,7 @@ outputs:
 
           # Subset runs where full langref does not. linux only: win/osx unproven.
           ZIG_LANGREF_CRITICAL: ${{ "1" if skip_langref and linux else "0" }}
-          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="0") }}
+          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="1") }}
           ZIG_LANGREF_CRITICAL_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_CRITICAL_STEP_TIMEOUT", default="300") }}
 
           # Local debug switch.

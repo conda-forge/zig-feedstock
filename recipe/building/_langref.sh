@@ -28,10 +28,7 @@ _can_run_stage3() {
 # by ZIG_LANGREF_CRITICAL_BUDGET, so a misbehaving doctest cannot reach the CI
 # job ceiling.
 #
-# Everything here is report-only unless ZIG_LANGREF_CRITICAL_FATAL=1. This is
-# additive diagnostic coverage on lanes that currently have none; it must not
-# be able to fail a build that would otherwise pass. Tighten to fatal once a
-# board has shown 0 missing and a stable pass set on this zig snapshot.
+# Fatal by default (ZIG_LANGREF_CRITICAL_FATAL=1); set =0 to report-only.
 run_langref_critical() {
   [[ "${ZIG_LANGREF_CRITICAL:-0}" == "1" ]] || return 0
   if ! _can_run_stage3; then
@@ -39,7 +36,7 @@ run_langref_critical() {
     return 0
   fi
 
-  local _fatal="${ZIG_LANGREF_CRITICAL_FATAL:-0}"
+  local _fatal="${ZIG_LANGREF_CRITICAL_FATAL:-1}"
   local _list="${RECIPE_DIR}/building/langref_critical.txt"
   if [[ ! -f "${_list}" ]]; then
     echo "WARNING: [langref-critical] ZIG_LANGREF_CRITICAL=1 but ${_list} is missing" >&2
