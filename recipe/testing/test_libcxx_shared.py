@@ -201,8 +201,8 @@ def test_libcxx_fallback_static() -> None:
     """
     print("--- [patch-0008] Fallback to static libc++ ---")
 
-    if is_arm64 or (_is_emulated and not is_ppc64le):
-        SKIP("libcxx-static-fallback", "arm64/ppc64le/emulated, skip linking tests")
+    if is_arm64:
+        SKIP("libcxx-static-fallback", "arm64, skip linking tests")
         return
 
     plat = _get_platform_key()
@@ -331,8 +331,8 @@ def test_libcxx_probe_paths() -> None:
     """
     print("--- [patch-0008] Shared libc++ probe paths ---")
 
-    if is_arm64 or (_is_emulated and not is_ppc64le):
-        SKIP("libcxx-probe", "arm64/ppc64le/emulated, skip linking tests")
+    if is_arm64:
+        SKIP("libcxx-probe", "arm64, skip linking tests")
         return
 
     plat = _get_platform_key()
@@ -656,8 +656,8 @@ def test_libcxx_shared_simulation() -> None:
         SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
         return
 
-    if is_arm64 or (_is_emulated and not is_ppc64le):
-        SKIP("libcxx-simulation", "arm64/ppc64le/emulated, skip linking tests")
+    if is_arm64:
+        SKIP("libcxx-simulation", "arm64, skip linking tests")
         return
 
     zig = _find_zig_binary()

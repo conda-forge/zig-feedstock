@@ -255,6 +255,7 @@ Blocked by: nothing
 **Validation.** linux-ppc64le wall-clock delta and pass/timeout outcome on the next board; expected observation is recorded above.
 
 Status: DONE (uncommitted) - needs a board; expected cost is added wall-clock on linux-ppc64le only
+2026-09-16: maintainer decision - emulated carve-out removed, riscv64 runs linking tests too (gate now `is_arm64` only); prior board 35158476859 showed riscv64 0p/3s under the carve-out, and under the old inert gate 3p/1w/3s with 120s timeout.
 Blocked by: nothing
 
 ---
@@ -292,7 +293,7 @@ Blocked by: nothing
 ### 17. Four disagreeing predicates for "is this lane emulated"
 Problem: `_test_utils.py:115-119` defines `_is_emulated` as `sys.platform == "linux" and _native_machine not in ("x86_64","i686") and os.environ.get("CI","") != ""`. That is HOST ARCH, not emulation: it is TRUE on the linux-aarch64 NATIVE lane, where nothing is emulated. The recipe already knows the truth three ways - `NEEDS_EMULATION` (recipe.yaml:622, `linux and build_platform != target_platform`), the `qemu_pkg` gate (recipe.yaml:149, byte-identical condition), and QEMU_EXECVE being non-empty only when the shim is installed, which happens only under that same condition. The harness derived it from `platform.machine()` instead of reading any of them.
 MEASURED - THIS IS NOT A CLEANUP. Enumerated every consumer; flipping the flag to correct on linux-aarch64 native changes NINE of them:
-- `test_zig_toolchain.py` :234, :255, :321, :358, :470, :510 (`if _is_emulated or _is_cross_compiler:`) and :570 (`if _is_emulated:`) - SEVEN tests that currently SKIP on aarch64 native would start RUNNING there. That is a coverage increase and possibly desirable, but it is a behaviour change on a currently-green lane and can turn it red.
+- `test_zig_toolchain.py` :234, :255, :321, :358, :470, :510 (`if _is_emulated or _is_cross_compiler:`) and :570 (`if _is_emulated:`) - SEVEN tests that currently SKIP on aarch64 native would start RUNNING there. That is a coverage increase and possibly desirable, but it is a behaviour change on a currently-green lane and can turn it red. (REFUTED 2026-09-16, see Status)
 - `test_libcxx_shared.py:82` `_COMPILE_TIMEOUT_S` 1800 -> 120 on that lane (harmless there, it is native, but it changes).
 - `test_libcxx_shared.py:775` diagnostic print flips.
 The three libcxx gates at :204/:334/:659 are NOT affected - `is_arm64` already skips that lane.
@@ -324,5 +325,5 @@ LOAD-BEARING SUBSTRING (0.16 track, measured): its build.sh falls back to a VANI
 Change: either export NEEDS_EMULATION into the test env and read it, or adopt the QEMU_EXECVE-presence definition. Rename the flag either way. Do NOT bundle with anything else - it needs its own board precisely because it opens seven tests on aarch64 native.
 Effort M, Risk med.
 Validation: linux-aarch64 native, watching those seven test_zig_toolchain checks go from SKIP to a real result; and the shell (build.sh:184) and Python (_test_utils.py:186) QEMU_EXECVE predicates must be compared and reconciled, not just the aarch64 test count observed.
-Status: TODO
+Status: DONE (2026-09-16). REFUTED 2026-09-16 (board 35142723040@9366b74a vs 35158476859@9816320f): old `_is_emulated` was FALSE on every CI lane (its `CI` env clause is unset inside rattler-build test envs), not TRUE on aarch64 native as predicted above - aarch64 native's SKIP set is unchanged, emulated=False on both boards. The fix's real effect is False->True on the ppc64le and riscv64 native lanes only. ppc64le test_libcxx_shared gains coverage (3p/0f/1w/3s -> 8p/0f/1w/2s, timeout-SKIP gone); riscv64 skip removed, see #13. test_zig_toolchain results unchanged on all three lanes.
 Blocked by: nothing, but must be its own commit and its own board.

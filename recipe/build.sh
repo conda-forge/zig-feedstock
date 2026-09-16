@@ -192,9 +192,13 @@ if is_linux && is_cross; then
   esac
 
   _zig_qemu=""
-  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ] \
+     && [ "$(basename "${QEMU_EXECVE}")" = "qemu-execve-${_qemu_conda_arch}" ]; then
     _zig_qemu="${QEMU_EXECVE}"
   else
+    if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+      echo "WARNING: rejecting preset QEMU_EXECVE ${QEMU_EXECVE} (arch mismatch, expected qemu-execve-${_qemu_conda_arch}); re-resolving"
+    fi
     _zig_qemu="$(command -v "qemu-execve-${_qemu_conda_arch}" 2>/dev/null || true)"
     if [ -z "${_zig_qemu}" ]; then
       _qemu_bare_path="$(command -v "qemu-${ZIG_QEMU_ARCH}" 2>/dev/null || true)"
