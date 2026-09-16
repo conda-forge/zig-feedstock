@@ -112,16 +112,6 @@ if is_linux && is_cross; then
     if [ -z "${QEMU_LD_PREFIX:-}" ] && [ -n "${CONDA_BUILD_SYSROOT:-}" ] && [ -d "${CONDA_BUILD_SYSROOT}" ]; then
       export QEMU_LD_PREFIX="${CONDA_BUILD_SYSROOT}"
     fi
-    zig_diag_note "qemu: QEMU_LD_PREFIX=${QEMU_LD_PREFIX:-(unset)}"
-    case "$(basename "${_zig_qemu}")" in
-      qemu-execve-*)
-        export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
-        zig_diag_note "qemu: native passthrough ARMED via ${_zig_qemu}"
-        ;;
-      *)
-        zig_diag_note "qemu: ${_zig_qemu} is not qemu-execve-*; native passthrough NOT armed"
-        ;;
-    esac
     _qemu_shadow_dir="$(mktemp -d)"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
     ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${target_platform#linux-}"

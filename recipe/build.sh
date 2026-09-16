@@ -7,9 +7,9 @@ set -uo pipefail
 # Default (0) is the CI mode: strict errexit, no xtrace.
 #
 # RECOVERY: conda-forge has NO per-run environment override. To trace a failing
-# CI lane you must change the default in recipe.yaml's zig_impl script env: block
-# from "0" to "1" and push a round. Do that before investigating a build-script
-# failure -- xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
+# CI lane you must add DEBUG_ZIG_BUILD: "1" to recipe.yaml's zig_impl script env:
+# block and push a round. Do that before investigating a build-script failure --
+# xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
 if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
   set +e
   set -x
@@ -26,7 +26,6 @@ export build_platform="${build_platform:-${target_platform}}"
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_common.sh"
-source "${RECIPE_DIR}/building/_zig_diag.sh"
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
 
 # --- Step 1: Early exits ---
@@ -99,12 +98,9 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
   source "${RECIPE_DIR}/building/_sysroot_fix.sh"
-  source "${RECIPE_DIR}/building/_riscv64_diag.sh"
 
   # Fix sysroot libc.so linker scripts 2.17 to use relative paths
-  sysroot_diag before
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
-  sysroot_diag after
 
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
@@ -114,8 +110,6 @@ if is_linux; then
 fi
 
 
-zig_diag_env "pre-phase1"
-zig_diag_note "PHASE 1: building zig"
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else

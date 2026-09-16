@@ -8,9 +8,9 @@ so a binary with no PT_PHDR segment panics with "reached unreachable code"
 patches/ppc64le/posix.zig-dl-iterate-phdr-no-pt-phdr.patch replaces the
 `else unreachable` with `else 0`.
 
-langref used to exercise this incidentally, via doctests that panic and walk
-the stack. ppc64le now skips langref (recipe.yaml skip_langref), so this test
-is the only thing covering the path.
+langref exercises this incidentally, via doctests that panic and walk the
+stack, but this test is the dedicated, always-on oracle for the path
+regardless of skip_langref.
 
 The test is only meaningful if the probe binary genuinely lacks PT_PHDR: a
 binary that HAS one takes the `break` and passes with or without the patch.

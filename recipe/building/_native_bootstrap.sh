@@ -3,7 +3,6 @@
 # default). See recipe.yaml's bootstrap_native_rebuild and build.sh's gate.
 
 source "${RECIPE_DIR}/building/_common.sh"
-source "${RECIPE_DIR}/building/_zig_diag.sh"
 
 # build_native_bootstrap_zig <source_dir> <build_zig>
 # Builds a NATIVE (build-platform) zig using <build_zig>, from <source_dir>.

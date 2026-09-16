@@ -28,8 +28,9 @@ documentation -- the failure text becomes the symptom field.
 
 Scratch branch on the FORK (origin, MementoRC), never the live PR; an
 ablation push replaces a green matrix with deliberate red. One unit per run.
-Some symptoms only appear under langref (ppc64le has skip_langref
-permanently) -- those cost 4h+, not 25min. Know which class before queueing.
+Some symptoms only appear under langref -- ppc64le now runs it (emulated
+ppc64le lane, ~1h19m), riscv64 still skips -- those cost more than 25min.
+Know which class before queueing.
 
 IMPORTANT -- the fork-branch route does not work for every unit. GHA
 (.github/workflows/conda-build.yml) triggers on bare `push:`, so a fork branch

@@ -1,7 +1,6 @@
 # ZIG BUILD FUNCTIONS
 
 source "${RECIPE_DIR}/building/_common.sh"
-source "${RECIPE_DIR}/building/_zig_diag.sh"
 
 function build_zig_with_zig() {
   local build_dir=$1
@@ -17,16 +16,11 @@ function build_zig_with_zig() {
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1
       local rc=0
-      local _diag_flags=()
-      zig_diag_on && _diag_flags=(--verbose --summary all)
-      zig_diag_exec "phase1-zig-build" -- \
-        "${zig}" build \
+      "${zig}" build \
         --prefix "${install_dir}" \
         ${EXTRA_ZIG_ARGS[@]+"${EXTRA_ZIG_ARGS[@]}"} \
-        ${_diag_flags[@]+"${_diag_flags[@]}"} \
         -Dversion-string="${PKG_VERSION}" 2>&1 || rc=$?
     cd "${current_dir}" || return 1
-    zig_diag_note "build_zig_with_zig rc=${rc}"
     if [[ ${rc} -ne 0 ]]; then
       echo "[build_zig_with_zig] FAILED (exit code ${rc})" >&2
       return ${rc}
