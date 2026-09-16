@@ -685,10 +685,14 @@ WARM_EOF
           fi
 
           # Byte-size floor: a truncated-but-non-empty libmingw32.lib would
-          # otherwise pass every check above. 1000000 is ~10x under our own
-          # smallest measured value, 10651820 (x86_64, win-64 host, job
-          # 104231430783); osx hosts run ~0.7MB larger. Size is logged
-          # unconditionally so future boards can tighten the floor on evidence.
+          # otherwise pass every check above. 1000000 is ~10x under the
+          # smallest host class we measure, ~10.65MB (x86_64 on a win-64
+          # host); osx hosts run ~0.7MB larger. No exact byte count is quoted
+          # here on purpose: the same tree on the same host jitters by tens of
+          # bytes between builds, so any exact "smallest measured" figure is
+          # falsified by the next board. Dated per-job figures live in the
+          # reference doc, section 5.6. Size is logged unconditionally so
+          # future boards can tighten the floor on evidence.
           local _warm_lib_size
           _warm_lib_size="$(wc -c < "${_warm_lib}" 2>/dev/null || echo 0)"
           echo "INFO: [_mingw] libmingw32.lib size for ${_warm_tgt}: ${_warm_lib_size} bytes" >&2

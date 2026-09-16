@@ -402,6 +402,11 @@ if is_linux; then
   patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
 fi
 
+# Critical langref subset: doctest coverage on lanes where the full langref
+# build is skipped. Report-only; see building/langref_critical.txt.
+source "${RECIPE_DIR}/building/_langref.sh"
+run_langref_critical
+
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1" >&2

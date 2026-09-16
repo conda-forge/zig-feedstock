@@ -329,6 +329,11 @@ outputs:
           # ppc64le passes langref but exhaust the 6hrs window
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
 
+          # Subset runs where full langref does not. linux only: win/osx unproven.
+          ZIG_LANGREF_CRITICAL: ${{ "1" if skip_langref and linux else "0" }}
+          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="0") }}
+          ZIG_LANGREF_CRITICAL_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_CRITICAL_STEP_TIMEOUT", default="300") }}
+
           # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
       python:
