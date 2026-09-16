@@ -1,0 +1,83 @@
+# Curated langref doctest subset run when the full langref build is skipped
+# (SKIP_LANGREF=1, ZIG_LANGREF_CRITICAL=1). One example name per line, no
+# .zig suffix; blank lines and '#' comments ignored by _langref.sh.
+#
+# Cost (measured 2026-09-06, /tmp/probe-*.out mtimes, qemu-ppc64le):
+# executing examples ~2min each, compile-only examples a few seconds.
+# Budget: 16 executing, 50 compile-only.
+#
+# Selection: breadth across language-feature areas, weighted toward runtime
+# machinery most likely to break on cross/emulated targets (panics, safety
+# checks, stack traces, allocators, C ABI). Nine entries are the original
+# ppc64le probe set that exposed the PT_PHDR / dl_iterate_phdr
+# symbolization bug (recursive panic, no stack trace) fixed by
+# patches/ppc64le/posix.zig-dl-iterate-phdr-no-pt-phdr.patch.
+#
+# WARNING: several names contain SPACES. Consumers must read this file
+# line-by-line and quote the name; do not word-split.
+Assembly Syntax Explained
+TopLevelFields
+addWithOverflow_builtin
+anonymous_struct_name
+build
+build_c
+builtin.CallModifier struct
+cImport_builtin
+catch
+catch_err_return
+checking_null_in_zig
+cli_allocation
+compile-time_duck_typing
+compile_variables
+constant_identifier_cannot_change
+destructuring_vectors
+enum_export
+enum_export_error
+error_return_trace
+export_any_symbol_name
+export_builtin
+fibonacci_comptime_infinite_recursion
+float_mode_obj
+float_special_values
+generic_data_structure
+handle_error_with_catch_block
+libc_export_entry_point
+not_atomic_cmpxchgStrong
+packed_struct_mmio
+result_location_interfering_with_swap
+runtime_division_by_zero
+runtime_overflow
+runtime_reaching_unreachable
+runtime_unwrap_null
+runtime_vs_comptime
+sentinel-terminated_pointer
+single_value_error_set
+single_value_error_set_shortcut
+stack_trace
+struct_default_value
+test_basic_slices
+test_compileLog_builtin
+test_comptime_call_extern_function
+test_comptime_division_by_zero
+test_comptime_index_out_of_bounds
+test_comptime_invalid_cast
+test_comptime_invalid_enum_cast
+test_comptime_invalid_error_code
+test_comptime_overflow
+test_comptime_unwrap_null
+test_comptime_wrong_union_field_access
+test_illegal_behavior
+test_incorrect_pointer_alignment
+test_intCast_builtin
+test_misaligned_pointer
+test_missized_packed_struct
+test_sentinel_mismatch
+test_shadowing
+test_string_literal_to_slice
+test_struct_result
+test_thread_local_variables
+test_unhandled_enumeration_value
+test_without_setEvalBranchQuota_builtin
+testing_detect_leak
+testing_failure
+var_must_be_initialized

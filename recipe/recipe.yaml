@@ -298,6 +298,9 @@ outputs:
           ZIG_LANGREF_PROBE: ${{ env.get("ZIG_LANGREF_PROBE", default="") }}
           ZIG_LANGREF_PROBE_BUDGET: ${{ env.get("ZIG_LANGREF_PROBE_BUDGET", default="2400") }}
           ZIG_LANGREF_PROBE_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_PROBE_STEP_TIMEOUT", default="600") }}
+          ZIG_LANGREF_CRITICAL: ${{ "1" if skip_langref else "0" }}
+          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="0") }}
+          ZIG_LANGREF_CRITICAL_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_CRITICAL_STEP_TIMEOUT", default="300") }}
 
           # Operator switch: see bootstrap_native_rebuild above. Off by default.
           ZIG_BOOTSTRAP_NATIVE_REBUILD: ${{ "1" if bootstrap_native_rebuild else "0" }}

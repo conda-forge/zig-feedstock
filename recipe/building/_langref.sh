@@ -16,6 +16,81 @@ _can_run_stage3() {
   return 1
 }
 
+# --- Critical langref subset (for lanes where the full langref build is skipped) ---
+# Runs building/langref_critical.txt through doctest directly. Report-only unless
+# ZIG_LANGREF_CRITICAL_FATAL=1. Pass criterion is a NON-EMPTY output file: doctest
+# exits without writing when an example aborts.
+if [[ "${ZIG_LANGREF_CRITICAL:-0}" == "1" ]] && _can_run_stage3; then
+  _crit_list="${RECIPE_DIR}/building/langref_critical.txt"
+  if [[ ! -f "${_crit_list}" ]]; then
+    echo "ERROR: ZIG_LANGREF_CRITICAL=1 but ${_crit_list} is missing" >&2
+    exit 1
+  fi
+
+  _crit_runner=()
+  if is_cross && is_linux; then
+    _crit_runner=("qemu-${ZIG_QEMU_ARCH}")
+  fi
+
+  _crit_dir="${SRC_DIR:-/tmp}/langref-critical"
+  rm -rf "${_crit_dir}"
+  mkdir -p "${_crit_dir}"
+
+  if ( cd "${cmake_source_dir}" &&
+       "${_crit_runner[@]+"${_crit_runner[@]}"}" "${PREFIX}/bin/zig" \
+         build-exe tools/doctest.zig -femit-bin="${_crit_dir}/doctest" ); then
+    _crit_pass=0
+    _crit_fail=0
+    _crit_missing=0
+    _crit_failed_names=()
+    while IFS= read -r _crit_name || [[ -n "${_crit_name}" ]]; do
+      case "${_crit_name}" in ''|'#'*) continue ;; esac
+      if [[ ! -f "${cmake_source_dir}/doc/langref/${_crit_name}.zig" ]]; then
+        echo "WARNING: langref-critical: no such example: ${_crit_name}" >&2
+        _crit_missing=$((_crit_missing + 1))
+        continue
+      fi
+      if ( cd "${cmake_source_dir}" &&
+           timeout --kill-after=30s "${ZIG_LANGREF_CRITICAL_STEP_TIMEOUT:-300}" \
+             "${_crit_runner[@]+"${_crit_runner[@]}"}" "${_crit_dir}/doctest" \
+               --zig "${PREFIX}/bin/zig" \
+               --cache-root "${ZIG_LOCAL_CACHE_DIR}" \
+               --zig-lib-dir "${PREFIX}/lib/zig/" \
+               --default-target "${ZIG_TRIPLET}" \
+               -i "doc/langref/${_crit_name}.zig" \
+               -o "${_crit_dir}/out" ) >"${_crit_dir}/last.log" 2>&1 &&
+         [[ -s "${_crit_dir}/out" ]]; then
+        echo "PASS langref-critical ${_crit_name}"
+        _crit_pass=$((_crit_pass + 1))
+      else
+        echo "FAIL langref-critical ${_crit_name}" >&2
+        tail -n 15 "${_crit_dir}/last.log" >&2
+        _crit_fail=$((_crit_fail + 1))
+        _crit_failed_names+=("${_crit_name}")
+      fi
+      rm -f "${_crit_dir}/out"
+    done < "${_crit_list}"
+
+    echo "INFO: langref-critical: ${_crit_pass} pass, ${_crit_fail} fail, ${_crit_missing} missing" >&2
+
+    if [[ ${_crit_missing} -gt 0 ]]; then
+      echo "ERROR: langref-critical list names ${_crit_missing} example(s) absent from the source tree" >&2
+      exit 1
+    fi
+
+    if [[ ${_crit_fail} -gt 0 ]]; then
+      printf 'INFO: langref-critical failures: %s\n' "${_crit_failed_names[*]}" >&2
+      if [[ "${ZIG_LANGREF_CRITICAL_FATAL:-0}" == "1" ]]; then
+        echo "ERROR: langref-critical failures are fatal (ZIG_LANGREF_CRITICAL_FATAL=1)" >&2
+        exit 1
+      fi
+    fi
+  else
+    echo "ERROR: langref-critical: doctest build failed" >&2
+    exit 1
+  fi
+fi
+
 # --- Optional: langref per-example cost probe (measurement only, no artifact) ---
 # ZIG_LANGREF_PROBE=<N|all> times N doctest examples to size a future subset.
 # Runs before phase 2 so the qemu shadow PATH is still in place. Writes only
