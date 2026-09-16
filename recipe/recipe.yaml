@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 17
+  build_number: 18
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -13,7 +13,7 @@ context:
   llvm_src_version: "21.1.8"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" or ppc64le }}  # TEMP revert 'or ppc64le' on build 18
+  bootstrap_native_rebuild: ${{ env.get("ZIG_BOOTSTRAP_NATIVE_REBUILD", default="0") == "1" }}
   bootstrap_via_upstream: false
   ci_focus_skip: false
   is_testable: >-
@@ -171,6 +171,7 @@ source:
       - patches/Config.zig-macho-no-auto-lld.patch
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
+      - patches/doctest.zig-exec-skip-paren-fix.patch
       # patch order: setjmp-s before arm64-stubs. See recipe/NOTES.md 1.2.
       - patches/non_unix/mingw-include-setjmp-s.patch
       - patches/non_unix/mingw-arm64-stubs.patch
@@ -294,6 +295,12 @@ outputs:
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
           ZIG_DIAG: ${{ env.get("ZIG_DIAG", default="1") }}
           ZIG_LANGREF_TIMEOUT: ${{ env.get("ZIG_LANGREF_TIMEOUT", default="5h") }}
+          ZIG_LANGREF_PROBE: ${{ env.get("ZIG_LANGREF_PROBE", default="") }}
+          ZIG_LANGREF_PROBE_BUDGET: ${{ env.get("ZIG_LANGREF_PROBE_BUDGET", default="2400") }}
+          ZIG_LANGREF_PROBE_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_PROBE_STEP_TIMEOUT", default="600") }}
+          ZIG_LANGREF_CRITICAL: ${{ "1" if skip_langref else "0" }}
+          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="0") }}
+          ZIG_LANGREF_CRITICAL_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_CRITICAL_STEP_TIMEOUT", default="300") }}
 
           # Operator switch: see bootstrap_native_rebuild above. Off by default.
           ZIG_BOOTSTRAP_NATIVE_REBUILD: ${{ "1" if bootstrap_native_rebuild else "0" }}
