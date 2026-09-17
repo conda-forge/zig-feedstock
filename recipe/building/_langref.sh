@@ -59,8 +59,7 @@ run_langref_critical() {
   local _budget="${ZIG_LANGREF_CRITICAL_BUDGET:-3600}"
 
   if ! ( cd "${cmake_source_dir}" &&
-         env QEMU_EXECVE_NATIVE_PASSTHROUGH=1 \
-           "${_runner[@]+"${_runner[@]}"}" "${PREFIX}/bin/zig" \
+         "${_runner[@]+"${_runner[@]}"}" "${PREFIX}/bin/zig" \
            build-exe tools/doctest.zig -femit-bin="${_dir}/doctest" ); then
     echo "WARNING: [langref-critical] doctest build failed; no subset coverage this lane" >&2
     zig_diag_span "END langref-critical: doctest build failed"
@@ -89,8 +88,7 @@ run_langref_critical() {
     fi
     if ( cd "${cmake_source_dir}" &&
          timeout --kill-after=30s "${ZIG_LANGREF_CRITICAL_STEP_TIMEOUT:-300}" \
-           env QEMU_EXECVE_NATIVE_PASSTHROUGH=1 \
-             "${_runner[@]+"${_runner[@]}"}" "${_dir}/doctest" \
+           "${_runner[@]+"${_runner[@]}"}" "${_dir}/doctest" \
                --zig "${PREFIX}/bin/zig" \
                --cache-root "${ZIG_LOCAL_CACHE_DIR}" \
                --zig-lib-dir "${PREFIX}/lib/zig/" \

@@ -448,7 +448,7 @@ else
   _langref_rc=0
   (
     cd "${cmake_source_dir}" &&
-    env QEMU_EXECVE_NATIVE_PASSTHROUGH=1 "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
       --prefix "${PREFIX}" \
       -Dversion-string="${PKG_VERSION}" \
       -Ddoctest-target="${ZIG_TRIPLET}"

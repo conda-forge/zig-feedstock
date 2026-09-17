@@ -25,6 +25,8 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 | 15 | No byte-size floor on generated mingw artifacts | S | low | DONE (uncommitted) | - |
 | 16 | Harness cannot express expected-but-absent coverage | M | low | TODO | - |
 | 17 | Four disagreeing predicates for "is this lane emulated" | M | med | TODO | - |
+| 18 | Langref debug scaffolding and 0.17 full-langref remeasure | M | low | DEFERRED | - |
+| 19 | Redundant QEMU env exports | S | low | DONE (2026-09-17, uncommitted) | - |
 
 ## Batches
 
@@ -325,5 +327,20 @@ LOAD-BEARING SUBSTRING (0.16 track, measured): its build.sh falls back to a VANI
 Change: either export NEEDS_EMULATION into the test env and read it, or adopt the QEMU_EXECVE-presence definition. Rename the flag either way. Do NOT bundle with anything else - it needs its own board precisely because it opens seven tests on aarch64 native.
 Effort M, Risk med.
 Validation: linux-aarch64 native, watching those seven test_zig_toolchain checks go from SKIP to a real result; and the shell (build.sh:184) and Python (_test_utils.py:186) QEMU_EXECVE predicates must be compared and reconciled, not just the aarch64 test count observed.
-Status: DONE (2026-09-16). REFUTED 2026-09-16 (board 35142723040@9366b74a vs 35158476859@9816320f): old `_is_emulated` was FALSE on every CI lane (its `CI` env clause is unset inside rattler-build test envs), not TRUE on aarch64 native as predicted above - aarch64 native's SKIP set is unchanged, emulated=False on both boards. The fix's real effect is False->True on the ppc64le and riscv64 native lanes only. ppc64le test_libcxx_shared gains coverage (3p/0f/1w/3s -> 8p/0f/1w/2s, timeout-SKIP gone); riscv64 skip removed, see #13. test_zig_toolchain results unchanged on all three lanes.
+Status: DONE (2026-09-16). REFUTED 2026-09-16 (board 35142723040@9366b74a vs 35158476859@9816320f): old `_is_emulated` was FALSE on every CI lane (its `CI` env clause is unset inside rattler-build test envs), not TRUE on aarch64 native as predicted above - aarch64 native's SKIP set is unchanged, emulated=False on both boards. The fix's real effect is False->True on the ppc64le and riscv64 emulated lanes only. ppc64le test_libcxx_shared gains coverage (3p/0f/1w/3s -> 8p/0f/1w/2s, timeout-SKIP gone); riscv64 skip removed, see #13. test_zig_toolchain results unchanged on all three lanes.
 Blocked by: nothing, but must be its own commit and its own board.
+
+### 18. Langref debug scaffolding and 0.17 full-langref remeasure
+Status: DEFERRED (2026-09-17) - after the current fast-iteration round
+0.16 build 18 measured full ppc64le langref: 4762s, 298/298 steps, run 35172156518, so the historical 6h-window overrun did not reproduce there. 0.17 has no equivalent measurement yet.
+Port source: local branch scaffold/v0.16-langref @ da618e1d (supersedes the two scaffold/v0.16-* tags): critical subset + extended probe + heartbeat + _zig_diag.sh + _riscv64_diag.sh, all gated off; see recipe/building/SCAFFOLD.md on that branch. View with git diff c28e8b0e da618e1d -- recipe. Gate on `xtarget_ == target_platform and (ppc64le or riscv64)`, knobs as recipe.yaml defaults.
+Porting fixes needed: heartbeat stop must be `kill || true; wait || true` (build.sh:3 is unconditional `set -euo pipefail`); re-add `ZIG_LANGREF_PROBE_SKIP_LIST` (space-safe names).
+Blocked by: nothing, deferred by priority after the fast-iteration round.
+
+---
+
+### 19. Redundant QEMU env exports
+Status: DONE (2026-09-17, uncommitted) - verify on next board
+Facts (qemu-execve 11.0.3 build 12): activation always exports `QEMU_EXECVE=${CONDA_PREFIX}/bin/qemu-execve-<arch>`; activation never sets `QEMU_EXECVE_NATIVE_PASSTHROUGH`, and the C code defaults passthrough ON unless the value is exactly `"0"`.
+Change: removed 8 `export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-...)}"` and 11 `QEMU_EXECVE_NATIVE_PASSTHROUGH` sites (8 `export ...=1` in recipe.yaml plus 3 `env ...=1` prefixes in build.sh/_langref.sh). Pin -> `version="==11.0.3", build_number=">=12"` (converges with 0.16 track).
+Validation: emulated lanes still print `QEMU_EXECVE=... exists=yes` in diag, resolve `qemu-execve` 11.0.3 build >=12, and `test/langref-critical` counts unchanged.
