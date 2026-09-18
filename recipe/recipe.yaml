@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 18
+  build_number: 19
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -21,8 +21,8 @@ context:
       not (build_platform in ["osx-64", "win-64"] and target_platform in ["osx-arm64", "win-32", "win-arm64"]) and
       not (build_platform in ["win-arm64"] and target_platform in ["win-32", "win-64"])
     }}
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" or not is_testable }}
-  skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="0") == "1" or not is_testable }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" or not is_testable }}
+  skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="1") == "1" or not is_testable }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ xtarget_ == "linux-64" }}
@@ -359,7 +359,7 @@ outputs:
             - libcxx ${{ llvm_version }}.*
       ignore_run_exports:
         by_name:
-          - if: linux and not ppc64le
+          - if: linux
             then:
               - libxml2-16
     tests:

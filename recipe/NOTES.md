@@ -224,3 +224,13 @@ Four-output split:
   built when `xtarget_ == target_platform`.
 - `zig-compiler` (toolchain metapackage): bundles `zig` with a C toolchain
   for a full development environment.
+
+### 2.13 Requirements.ignore_run_exports (zig_impl output): libxml2-16 <a id="requirements-ignore-run-exports-libxml2-16"></a>
+The `libxml2-16` run export (pulled in via `libxml2-devel` in host) is
+ignored on all `linux` variants, ppc64le included. Measured in PR #188
+build 18 (001e80af): the ppc64le lane flagged "Overdepending against
+libxml2-16", and LLVM is linked statically here, so nothing in the
+package actually links libxml2. The guard was previously `linux and not
+ppc64le` with no recorded reason; widened to plain `linux` on this
+measurement. It stays linux-scoped on purpose: osx and win had their
+libxml2 run requirements restored by earlier fixes and must keep them.
