@@ -9,10 +9,13 @@
 # Upstream: not filed
 # Drop-when: upstream zig fixes dl_iterate_phdr to tolerate a missing PT_PHDR
 #   (bias 0 for ET_EXEC non-PIE)
-# Last-verified: 2026-09-07 / snapshot 2033+af24fd11a
+# Last-verified: 2026-09-18 / snapshot 2131+d08989840
 #
 # Defect is unchanged across 149 snapshots: identical expression at identical line
-# numbers 818-821 in both 1884+841dd0eb8 and 2033+af24fd11a.
+# numbers 818-821 in both 1884+841dd0eb8 and 2033+af24fd11a. At 2131+d08989840 the
+# expression and line numbers are still identical; only the trailing context line
+# drifted (upstream renamed std.elf.AT_EXECFN to std.elf.AT.EXECFN), producing the
+# HIGHFUZZ(offset=0 fuzz=3) verdict fixed by this regen.
 #
 # Consequence in this recipe: the caller is debug/SelfInfo/Elf.zig findModule, so
 # module lookup fails; the panic fires inside the stack-trace printer while it holds
@@ -25,12 +28,12 @@
 
 --- a/lib/std/posix.zig
 +++ b/lib/std/posix.zig
-@@ -818,7 +818,7 @@
+@@ -818,7 +818,7 @@ pub fn dl_iterate_phdr(
              .addr = for (phdrs) |phdr| switch (phdr.type) {
                  .PHDR => break @intFromPtr(phdrs.ptr) - phdr.vaddr,
                  else => {},
 -            } else unreachable,
 +            } else 0,
-             .name = switch (getauxval(std.elf.AT_EXECFN)) {
+             .name = switch (getauxval(std.elf.AT.EXECFN)) {
                  0 => "/proc/self/exe",
                  else => |name| @ptrFromInt(name),

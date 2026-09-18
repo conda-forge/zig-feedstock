@@ -12,6 +12,7 @@ is_osx()      { [[ "${target_platform}" == "osx-"* ]]; }
 is_unix()     { [[ "${target_platform}" == "linux-"* || "${target_platform}" == "osx-"* ]]; }
 is_not_unix() { ! is_unix; }
 is_cross()    { [[ "${build_platform}" != "${target_platform}" ]]; }
+is_rosetta()  { [[ "${build_platform}" == "osx-arm64" && "${target_platform}" == "osx-64" ]]; }
 
 # xtrace-quiet: conda-build/rattler-build runs the build script under `set -x`
 # from outside recipe/, so a DISABLED dbg call still emitted three trace lines

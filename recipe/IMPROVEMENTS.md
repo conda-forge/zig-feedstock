@@ -12,19 +12,23 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 | 2 | Split EXTRA_ZIG_ARGS along maker/configurer boundary | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 3 | Stop mingw layer degrading silently | S-M | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | TODO | - |
-| 5 | Build-time upstream-assumption ledger | M | low | TODO | - |
+| 5 | Build-time upstream-assumption ledger | S-M | low | TODO | - |
 | 6 | Encode patch order in filenames, not comments | M | low-med | DONE (scope narrowed) | PR #186 board, 24/24 green @ 335fdf83 |
-| 7 | Adopt -Doptimize=safe (SPECULATIVE) | S | low-med | TODO | - |
+| 7 | Adopt -Doptimize=safe | S | low | DONE (2026-09-18) | - |
 | 8 | Retire shipped debug instrumentation | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 9 | Replace hand-rolled import libs with upstream's (SPECULATIVE) | L | high | TODO | - |
-| 10 | Machine-check patch apply-order via Applies-after headers | M | low | TODO | - |
-| 11 | Stop parsing `zig env` output as JSON (upstream emits ZON) | S | low | DONE (uncommitted) | - |
-| 12 | Split collapsed libc++.a skip into four arms + named compile timeout | S | low | DONE (uncommitted) | - |
-| 13 | Emulated-lane coverage gap in libcxx simulation test | S | med | DONE (uncommitted) | - |
-| 14 | Tool-probe checks evaporate when the tool is absent | S | low | DONE (uncommitted) | - |
-| 15 | No byte-size floor on generated mingw artifacts | S | low | DONE (uncommitted) | - |
+| 10 | Machine-check patch apply-order via Applies-after headers | M | low | DONE (scope narrowed, 2026-09-18) | - |
+| 11 | Stop parsing `zig env` output as JSON (upstream emits ZON) | S | low | DONE (adc8b717) | - |
+| 12 | Split collapsed libc++.a skip into four arms + named compile timeout | S | low | DONE (adc8b717) | - |
+| 13 | Emulated-lane coverage gap in libcxx simulation test | S | med | DONE (adc8b717) | - |
+| 14 | Tool-probe checks evaporate when the tool is absent | S | low | DONE (adc8b717) | - |
+| 15 | No byte-size floor on generated mingw artifacts | S | low | DONE (adc8b717; floor tightened 2026-09-18) | - |
 | 16 | Harness cannot express expected-but-absent coverage | M | low | TODO | - |
-| 17 | Four disagreeing predicates for "is this lane emulated" | M | med | TODO | - |
+| 17 | Four disagreeing predicates for "is this lane emulated" | M | med | DONE (2026-09-16) | - |
+| 18 | Langref debug scaffolding and 0.17 full-langref remeasure | M | low | DEFERRED | - |
+| 19 | Redundant QEMU env exports | S | low | DONE (2026-09-17, 451c9cb8) | - |
+| 20 | build.zig-03-msvc-crt-dynamic carries 0.16.0 provenance | S | low | DONE (2026-09-18) | - |
+| 21 | posix.zig-dl-iterate-phdr-no-pt-phdr applies at max fuzz | S | low | DONE (2026-09-18) | - |
 
 ## Batches
 
@@ -110,16 +114,32 @@ Blocked by: a ppc64le lane run; do not delete the copy in the same commit that a
 
 ### 5. A build-time upstream-assumption ledger
 
-**Problem.** Our upstream dependencies are asserted nowhere and discovered only by failure: the `config.h` define shape, the CRT flag set, the assumption that `zig env` emits JSON (`recipe/testing/test_libcxx_shared.py:141-146` parsed it for `global_cache_dir`; `ci_support/probe_mingw_setjmp.sh:91` parses it for `lib_dir`) -- CORRECTED: upstream's `print_env.zig` uses `std.zon.Serializer` and emits ZON (`.{ .global_cache_dir = "..." }`), there is no JSON path and no `--json` flag, so the assumption was never "has key X", it was the false belief the output is JSON at all. The `test_libcxx_shared.py` half is now FIXED (see item 11); the `probe_mingw_setjmp.sh` half is still broken but is untracked local-only tooling. Remaining unasserted: the six-key libc-file format (`recipe/building/_cross.sh:33-40`), and the `_CRTIMP` regex (`_mingw.sh:489-490`). The `gen_translators.py --check` guard already wired into the recipe is the right precedent.
+**Problem.** Our upstream dependencies are asserted nowhere and discovered only by failure: the `config.h` define shape, the CRT flag set, the assumption that `zig env` emits JSON (`recipe/testing/test_libcxx_shared.py:141-146` parsed it for `global_cache_dir`; `ci_support/probe_mingw_setjmp.sh:91` parses it for `lib_dir`) -- CORRECTED: upstream's `print_env.zig` uses `std.zon.Serializer` and emits ZON (`.{ .global_cache_dir = "..." }`), there is no JSON path and no `--json` flag, so the assumption was never "has key X", it was the false belief the output is JSON at all. The `test_libcxx_shared.py` half is now FIXED (see item 11); the `probe_mingw_setjmp.sh` half is still broken but is untracked local-only tooling. Remaining unasserted: the six-key libc-file format (`recipe/building/_cross.sh:33-40`), and the `_CRTIMP` regex, now at `_mingw.sh:538-608` (STALE ANCHOR, see MEASURED block below -- was `:489-490` before item 3 grew the file; same line-marker rot item 10's Problem block warns against). The `gen_translators.py --check` guard already wired into the recipe is the right precedent.
 
 **Change.** One `building/_assert_upstream.sh`, sourced once early, that checks each assumption against the extracted source and the bootstrap binary and fails with a named assumption id. Mirror the list into `ZIG_RECIPE_LLM_REFERENCE.md` so the doc and the check share one inventory.
 
-**Effort.** M. **Risk.** low.
+**Effort.** S-M (was M). **Risk.** low.
 
 **Validation.** Runs on all lanes; signature `ASSUMPTION FAILED: A07 zig env lacks key 'lib_dir'` before any compilation.
 
-Status: TODO
-Blocked by: nothing
+**MEASURED 2026-09-18 (scope narrowed).**
+
+1. STALE ANCHOR. The Problem text's `_CRTIMP` citation at `_mingw.sh:489-490` had drifted -- the file grew when item 3 landed. The real logic is `_mingw.sh:538-608`. Re-anchored above; this is the exact line-marker rot item 10's Problem block already argues against.
+
+2. ALREADY ASSERTED -- scope removed. The `_CRTIMP` assumption needs no new work. `_mingw.sh:544` probes for grep/sed; `:551-586` is a byte-for-byte pure-bash re-implementation of the same match for lanes without them; `:592-605` re-checks after the strip and is FATAL (`return 1`) if it did not take. That is already the shape this item asks for. Remaining work there is cosmetic only: give the two INFO/FATAL sites a named assumption id (`A_CRTIMP_SHAPE`) so failures are greppable. Its one real weakness: if upstream reshapes the declaration (multi-line decl, different callconv keyword, param attributes) BOTH the strip and the re-check miss it the same way, so a still-broken header passes silently -- a false negative, not a false alarm.
+   Valid lanes: win-64 / win-arm64 native only (the lanes with mingw CRT and a bootstrap setjmp.h).
+
+3. THE ONE REAL GAP: `A_LIBC_KEYS`. `_cross.sh:33-40` hand-emits a six-key libc file (`include_dir`, `sys_include_dir`, `crt_dir`, `msvc_lib_dir`, `kernel32_lib_dir`, `gcc_dir`; the msvc and kernel32 keys are always blank for linux targets). Nothing in this repo reads zig's `LibCInstallation.zig`, so the key set is asserted only against memory of upstream's parser. `recipe/SNAPSHOT_TRIAGE.md:37` names `LibCInstallation.zig` in a prose contract list, but nothing programmatically diffs against it.
+   Builtins-only: NO -- needs a scan of the extracted source. It can degrade to the same bash while-read pattern used at `_mingw.sh:551-586`, but this path is linux-cross-only (`build.sh:183`, `:295-314`) and never runs on osx/win, so the no-grep constraint is close to moot here.
+
+   MEASURED 2026-09-18 against pristine 2131. The six keys MATCH upstream exactly, names and declaration order: `include_dir`, `sys_include_dir`, `crt_dir`, `msvc_lib_dir`, `kernel32_lib_dir`, `gcc_dir` (`LibCInstallation.zig:20-25` vs `_cross.sh:34-39`). No omissions, no extras -- the assumption is CORRECT as of 2131, there is no live defect here. Order does NOT matter to the parser: it matches per-line by name, and the missing-field check is by field index, not file position (`LibCInstallation.zig:69-80`, `:82-87`). `parse` derives expected keys dynamically from `@typeInfo(LibCInstallation).@"struct".field_names` (`LibCInstallation.zig:46`), not a hardcoded list. FAILURE MODE, and this is the important part: an UNKNOWN key is SILENTLY IGNORED, but a MISSING key is a FATAL `error.ParseError` with a "missing field" log (`LibCInstallation.zig:82-87`). Post-parse null checks are os/abi-gated (`:88-121`): `include_dir`/`sys_include_dir` always required; `crt_dir` required unless darwin; `msvc_lib_dir`/`kernel32_lib_dir` only for windows with msvc/itanium abi; `gcc_dir` only for haiku/serenity. The recipe's linux-only heredoc leaving the msvc/kernel32 pair empty is therefore correct. CONSEQUENCE for this item's premise: an upstream field rename or addition already fails LOUDLY and by name at build time. This does NOT degrade silently, so it does not belong to the silent-degradation family that items 1, 3, 14 and 16 share. An assertion would only move an already-named error earlier, which makes `A_LIBC_KEYS` the WEAKEST remaining candidate in this item, not the strongest. If it is ever implemented, it must NOT hardcode the six names -- that check would rot exactly the way this ledger's own file:line anchors did. It must scan the struct's field-name list and diff against the heredoc.
+
+4. SOURCING HAZARD (most likely thing to break an implementation). Only the `zig_impl_${{xtarget_}}` output extracts upstream source and runs build.sh (`recipe.yaml:294-321` under the top-level `source:` at `:174`). The `zig_${{xtarget_}}` wrapper output (`recipe.yaml:599-604`) has NO `source:` block and never sees SRC_DIR. An assertion that reads upstream source files is meaningless there, and fatal for no reason if written as a hard fail. Recommended sourcing point is `recipe/build.sh` right after `building/_common.sh`, lane-gated the way `_cross.sh` already is -- never unconditionally at the top before `is_linux`/`is_cross` are known.
+
+5. RULED OUT: do not assert the `config.h` `ZIG_LLVM_LIBRARIES` regex SHAPE (`build.sh:257`). Item 1's post-condition token-present checks already cover the same failure signature; a second pre-condition assert is redundant.
+
+Status: TODO (narrowed twice) - A_CRTIMP_SHAPE already implemented and cosmetic; A_LIBC_KEYS measured correct at 2131 with a loud failure mode, so low value
+Blocked by: nothing - both halves are now measured; what remains is a judgement call on whether A_LIBC_KEYS earns its keep.
 
 ---
 
@@ -144,18 +164,22 @@ Blocked by: nothing
 
 ---
 
-### 7. Adopt `-Doptimize=safe` (SPECULATIVE)
+### 7. Adopt `-Doptimize=safe`
 
-**Problem.** `-Doptimize=ReleaseSafe` at `recipe/build.sh:83` and `recipe/building/build_native.sh:173`, `:271` survives only via `std.lang.Optimize.fromString`, marked `Deprecated, to be removed after 0.18.0`.
+**Problem.** `-Doptimize=ReleaseSafe` at `recipe/build.sh:88` and `recipe/building/build_native.sh:173`, `:271` used the PascalCase tag.
 
-**Change.** Switch all three together to `-Doptimize=safe`.
+**Change.** Switch all three to `-Doptimize=safe`.
 
-**Effort.** S. **Risk.** low-med -- SPECULATIVE: that `standardOptimizeOption` accepts the bare tag `safe` is UNVERIFIED here.
+**Effort.** S. **Risk.** low.
 
 **Validation.** One linux-64 native build; failure is immediate (`expected -Doptimize to be of type ...`).
 
-Status: TODO
-Blocked by: confirming the tag spelling against `lib/std/Build.zig` at the pinned snapshot.
+**MEASURED (snapshot 2033+af24fd11a, extracted at `build_artifacts/src_cache/542637f163ff4067_extracted`).** `std.lang.Optimize` enum fields are lowercase `debug`/`safe`/`fast`/`small` (`lang.zig:115-133`); PascalCase `Debug`/`ReleaseSafe`/`ReleaseFast`/`ReleaseSmall` exist only as deprecated `pub const` aliases carrying "Deprecated, to be removed after 0.18.0". `Build.option` special-cases `T == std.lang.Optimize` and routes through `Optimize.fromString` (`Build.zig:1048-1058`). `fromString` accepts all eight spellings via a `StaticStringMap` (`lang.zig:135-146`), so both forms work at this snapshot -- but `fromString` itself carries the same deprecation marker (`lang.zig:134-135`). Switching does not dodge a deprecated function today; the point is that when `fromString` is removed and plain `stringToEnum` takes over, only the lowercase field names survive.
+
+**RESIDUAL.** Verification was done against extracted snapshot 2033+af24fd11a, while the branch pins 2131+d08989840; the 2131 source was not extracted locally. Residual risk is bounded because a rejected tag fails immediately and loudly at configure time, so the next board is the verification.
+
+Status: DONE (2026-09-18) - measured at snapshot 2033; next board validates at 2131
+Blocked by: nothing
 
 ---
 
@@ -193,7 +217,7 @@ Blocked by: that investigation; do not schedule alongside a snapshot bump.
 
 ### 10. Machine-check patch apply-order via Applies-after headers
 
-**Problem.** Four measured apply-time edges are expressible only in prose or ad-hoc patch headers, and three of them cross selector groups where filenames cannot help:
+**Problem.** Four claimed apply-time edges were expressible only in prose or ad-hoc patch headers, and three of them were claimed to cross selector groups where filenames cannot help:
 - `src/link/Lld.zig`: `prefer-shared-libcxx` (1210-1222) vs `linux/Lld.zig-no-unconditional-as-needed` (1224-1241), 2-line gap, crosses groups
 - `build.zig` on windows: `non_unix/build.zig-03-msvc-crt-dynamic` (886-901) vs `non_unix/build.zig-01-maxrss` (900-906), overlap, currently undocumented anywhere
 - `lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in`: `mingw.zig-02-arm64-stubs` vs `ucrtbase-export-atexit-alias`, same file, crosses groups, undocumented
@@ -201,15 +225,23 @@ Blocked by: that investigation; do not schedule alongside a snapshot bump.
 
 The `Applies-after:` header convention already exists in `recipe/patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch`, which carries `Applies-after: Lld.zig-macho-lld-support.patch, Lld.zig-prefer-shared-libcxx.patch`.
 
-The reference doc section 5 dependency map currently documents a deleted patch (`ppc64le/0003-gcc-linker-comprehensive-Lld.zig.patch`) and cites recipe.yaml line markers (:179, :182, :231) that no longer resolve -- line-number markers rot, which is the argument for header-encoded edges.
+**MEASURED 2026-09-17 (verifying the actual `@@` headers of all four).** 3 of the 4 claimed edges did NOT survive verification:
+- Edge Lld.zig (`Lld.zig-prefer-shared-libcxx` vs `linux/Lld.zig-no-unconditional-as-needed-glibc-bundled`): RECLASSIFIED. Adjacency, NOT overlap. A's hunk ends at new-line 1222 (`@@-1206,7+1210,13@@`), B's begins at old-line 1224 (`@@-1224,6+1224,7@@`). Exactly ONE untouched context line (1223) separates them -- the ledger's "2-line gap" was wrong on the gap size but right that a real ordering constraint exists via offset shift. It is ALREADY encoded by B's existing `Applies-after:` header at that file's line 16.
+- Edge build.zig (`non_unix/build.zig-01-maxrss` vs `non_unix/build.zig-03-msvc-crt-dynamic`): REFUTED as specified. The original claim compared build.zig-03's NEW numbering (886-901) against build.zig-01's OLD numbering (900-906), which is not a same-basis comparison. On a common old-file basis build.zig-03 spans 886-891 (`@@-886,6+886,16@@`) and build.zig-01 spans 900-906 (`@@-900,7+900,7@@`): an 8-line gap, disjoint.
+- Edge api-ms-win-crt-runtime def.in (`mingw.zig-02-arm64-stubs` vs `ucrtbase-export-atexit-alias`): same file CONFIRMED, overlap REFUTED. Ranges are old 44-50 (`@@-44,7+44,9@@`) and old 37-42 (`@@-37,6+37,7@@`), disjoint, one untouched line (43) between.
+- Edge link.zig (`linux/link.zig-01` vs `linux/link.zig-03`): REFUTED. link.zig-01 leaves the `new_path = Path.initCwd(...)` block as unmodified CONTEXT inside `@@-1183,7+1238,16@@`; link.zig-03 REMOVES that same pristine text at `@@-1226,11+1226,18@@`. One passes it through, the other edits it -- not a dual-edit collision. The claimed range 1226-1229 matches neither patch's declared ranges.
 
-**Change.** Make the `Applies-after:` header universal for measured edges. Add a checker that parses the headers and validates them against recipe.yaml patch order, same shape as the existing `gen_translators.py --check` gate at `recipe.yaml:783`. Demote the recipe.yaml prose comments to semantic-only notes.
+Also measured while verifying this item: `recipe/patches/non_unix/build.zig-03-msvc-crt-dynamic.patch` carried non-ASCII bytes (a right-arrow and an ellipsis glyph) inside its hunk body -- fixed in this same change.
+
+**CHANGE (narrowed).** The `Applies-after:` header convention is KEPT and remains correct where it is already used. The universal-header sweep and the recipe.yaml-order checker are NOT built: one real ordering constraint exists in the whole tree (the Lld.zig adjacency) and it already documents itself via the existing header, so a parser plus a CI gate would cost more than it returns.
+
+**General lesson.** Hunk ranges from two patches are only comparable on a COMMON basis (old-file line numbers, or new-file line numbers -- pick one and use it for both). Comparing one patch's post-apply numbering against another's pre-apply numbering manufactures edges that are not there. That error produced 2 of the 4 original claims (build.zig and link.zig).
 
 **Effort.** M. **Risk.** low.
 
 **Validation.** not recorded.
 
-Status: TODO
+Status: DONE (scope narrowed on measurement, 2026-09-18) - checker NOT built; 3 of 4 edges refuted
 Blocked by: nothing
 
 ---
@@ -224,7 +256,7 @@ Blocked by: nothing
 
 **Validation.** Any lane reaching test_libcxx_shared_simulation; the skip must no longer report an unresolved cache dir.
 
-Status: DONE (uncommitted) - adopted from 0.16 track
+Status: DONE (adc8b717) - adopted from 0.16 track
 Blocked by: nothing
 
 ---
@@ -239,7 +271,7 @@ Blocked by: nothing
 
 **Validation.** The SKIP line must name one specific arm, never the collapsed string.
 
-Status: DONE (uncommitted) - adopted from 0.16 track
+Status: DONE (adc8b717) - adopted from 0.16 track
 Blocked by: nothing
 
 ---
@@ -254,7 +286,8 @@ Blocked by: nothing
 
 **Validation.** linux-ppc64le wall-clock delta and pass/timeout outcome on the next board; expected observation is recorded above.
 
-Status: DONE (uncommitted) - needs a board; expected cost is added wall-clock on linux-ppc64le only
+Status: DONE (adc8b717) - needs a board; expected cost is added wall-clock on linux-ppc64le only
+2026-09-16: maintainer decision - emulated carve-out removed, riscv64 runs linking tests too (gate now `is_arm64` only); prior board 35158476859 showed riscv64 0p/3s under the carve-out, and under the old inert gate 3p/1w/3s with 120s timeout.
 Blocked by: nothing
 
 ---
@@ -264,17 +297,18 @@ Problem: two `shutil.which(...)` probes in test_libcxx_shared.py had no else-bra
 Change: both probes now record a SKIP naming the missing tool.
 Effort S, Risk low.
 Validation: any lane lacking nm or strings must now show a SKIP line instead of silence.
-Status: DONE (uncommitted) - raised by 0.16 track, extended here
+Status: DONE (adc8b717) - raised by 0.16 track, extended here
 Blocked by: nothing
 
 ---
 
 ### 15. No byte-size floor on generated mingw artifacts
 Problem: `_mingw.sh` (730 lines) asserts a COUNT floor on generated import libs (`_gen_count_floor=2200` at :355, checked :371-372) but has NO byte-size assertion on any generated artifact - only `[[ -s ... ]]` non-empty tests at :190 and :278. A truncated-but-non-empty artifact passes both. The 0.16 track carries a real byte-size floor at its `_mingw.sh:680` that we lack; conversely it lacks our count floor. The two assertions are independent and neither subsumes the other.
-Change: artifact is `libmingw32.lib`, harvested per target triple inside the cache-warm loop. Floor 1000000 bytes, measured with `wc -c`. Adapted NOT copied: our warm loop already had `_warm_failed_count`/`_warm_failed_list` (declared :632-633) with a post-loop FATAL at :722, so the existing counter was reused rather than adding a parallel one. Inserted at :691-699, inside `generate_mingw_import_libs` (function spans :8-743), after the `_warm_lib` existence check at :679-680. Deliberate deviation from the 0.16 shape: the measured size is logged UNCONDITIONALLY, pass or fail. The 1000000 figure is a round number roughly 10x below the 0.16 track's observed 10.8-11.4MB archives, and we have never measured ours. Logging every size puts our real numbers on the next board so the floor can be tightened on evidence. Reference doc section 5 updated in the same change.
+Change: artifact is `libmingw32.lib`, harvested per target triple inside the cache-warm loop. Floor 1000000 bytes as first landed, measured with `wc -c` (raised to 9500000 on 2026-09-17; see Status below). Adapted NOT copied: our warm loop already had `_warm_failed_count`/`_warm_failed_list` (declared :632-633) with a post-loop FATAL at :722, so the existing counter was reused rather than adding a parallel one. Inserted at :691-699, inside `generate_mingw_import_libs` (function spans :8-743), after the `_warm_lib` existence check at :679-680. Deliberate deviation from the 0.16 shape: the measured size is logged UNCONDITIONALLY, pass or fail. The 1000000 figure was a round number roughly 10x below the 0.16 track's observed 10.8-11.4MB archives, chosen before we had measured our own (SUPERSEDED 2026-09-17 - our figures are in the Status block below). Logging every size puts our real numbers on the next board so the floor can be tightened on evidence. Reference doc section 5 updated in the same change.
 Effort S, Risk low.
-Validation: win-64 native (the only lane that sources _mingw.sh for generation).
-Status: DONE (uncommitted) - needs a win-64 native board to record our actual sizes
+Validation: FOUR native hosts generate - win-64, win-arm64, osx-64, osx-arm64. The earlier "only win-64" claim is wrong: board 451c9cb8 shows win-arm64 native generating too (import libs generated=2355 failed=0, with its own per-triple size logs), and reference doc 5.6's own-track table records osx-64 and osx-arm64 figures. osx runs ~0.62-0.70MB larger than win on every arch, so win-64 remains the smallest class.
+Status: DONE (adc8b717; floor tightened 2026-09-18) - measured, floor raised 1000000 -> 9500000
+Measured on board 451c9cb8. win-64 native (job 105298416144): x86_64 10651828, aarch64 11073080, x86 11122370. win-arm64 native (job 105298415972): 10664684 / 11084548 / 11135226 - about 12KB larger on every arch, so win-64 is the smaller class and sets the floor. Earlier win-64 board (job 104231430783): 10651820 / 11073124 / 11122370, i.e. under 50 bytes of cross-board drift. Floor 9500000 is anchored on the win-64 CLASS, not on any exact byte count (see reference doc 5.6: an exact minimum is falsified by the next board). The ~11% margin is orders of magnitude outside the measured build-to-build jitter of tens of bytes. Both lanes: import libs generated=2355 failed=0.
 Blocked by: nothing
 
 ---
@@ -292,7 +326,7 @@ Blocked by: nothing
 ### 17. Four disagreeing predicates for "is this lane emulated"
 Problem: `_test_utils.py:115-119` defines `_is_emulated` as `sys.platform == "linux" and _native_machine not in ("x86_64","i686") and os.environ.get("CI","") != ""`. That is HOST ARCH, not emulation: it is TRUE on the linux-aarch64 NATIVE lane, where nothing is emulated. The recipe already knows the truth three ways - `NEEDS_EMULATION` (recipe.yaml:622, `linux and build_platform != target_platform`), the `qemu_pkg` gate (recipe.yaml:149, byte-identical condition), and QEMU_EXECVE being non-empty only when the shim is installed, which happens only under that same condition. The harness derived it from `platform.machine()` instead of reading any of them.
 MEASURED - THIS IS NOT A CLEANUP. Enumerated every consumer; flipping the flag to correct on linux-aarch64 native changes NINE of them:
-- `test_zig_toolchain.py` :234, :255, :321, :358, :470, :510 (`if _is_emulated or _is_cross_compiler:`) and :570 (`if _is_emulated:`) - SEVEN tests that currently SKIP on aarch64 native would start RUNNING there. That is a coverage increase and possibly desirable, but it is a behaviour change on a currently-green lane and can turn it red.
+- `test_zig_toolchain.py` :234, :255, :321, :358, :470, :510 (`if _is_emulated or _is_cross_compiler:`) and :570 (`if _is_emulated:`) - SEVEN tests that currently SKIP on aarch64 native would start RUNNING there. That is a coverage increase and possibly desirable, but it is a behaviour change on a currently-green lane and can turn it red. (REFUTED 2026-09-16, see Status)
 - `test_libcxx_shared.py:82` `_COMPILE_TIMEOUT_S` 1800 -> 120 on that lane (harmless there, it is native, but it changes).
 - `test_libcxx_shared.py:775` diagnostic print flips.
 The three libcxx gates at :204/:334/:659 are NOT affected - `is_arm64` already skips that lane.
@@ -324,5 +358,52 @@ LOAD-BEARING SUBSTRING (0.16 track, measured): its build.sh falls back to a VANI
 Change: either export NEEDS_EMULATION into the test env and read it, or adopt the QEMU_EXECVE-presence definition. Rename the flag either way. Do NOT bundle with anything else - it needs its own board precisely because it opens seven tests on aarch64 native.
 Effort M, Risk med.
 Validation: linux-aarch64 native, watching those seven test_zig_toolchain checks go from SKIP to a real result; and the shell (build.sh:184) and Python (_test_utils.py:186) QEMU_EXECVE predicates must be compared and reconciled, not just the aarch64 test count observed.
-Status: TODO
+Status: DONE (2026-09-16). REFUTED 2026-09-16 (board 35142723040@9366b74a vs 35158476859@9816320f): old `_is_emulated` was FALSE on every CI lane (its `CI` env clause is unset inside rattler-build test envs), not TRUE on aarch64 native as predicted above - aarch64 native's SKIP set is unchanged, emulated=False on both boards. The fix's real effect is False->True on the ppc64le and riscv64 emulated lanes only. ppc64le test_libcxx_shared gains coverage (3p/0f/1w/3s -> 8p/0f/1w/2s, timeout-SKIP gone); riscv64 skip removed, see #13. test_zig_toolchain results unchanged on all three lanes.
 Blocked by: nothing, but must be its own commit and its own board.
+
+### 18. Langref debug scaffolding and 0.17 full-langref remeasure
+Status: DEFERRED (2026-09-17) - after the current fast-iteration round
+0.16 build 18 measured full ppc64le langref: 4762s, 298/298 steps, run 35172156518, so the historical 6h-window overrun did not reproduce there. 0.17 has no equivalent measurement yet.
+Port source: local branch scaffold/v0.16-langref @ da618e1d (supersedes the two scaffold/v0.16-* tags): critical subset + extended probe + heartbeat + _zig_diag.sh + _riscv64_diag.sh, all gated off; see recipe/building/SCAFFOLD.md on that branch. View with git diff c28e8b0e da618e1d -- recipe. Gate on `xtarget_ == target_platform and (ppc64le or riscv64)`, knobs as recipe.yaml defaults.
+Porting fixes needed: heartbeat stop must be `kill || true; wait || true` (build.sh:3 is unconditional `set -euo pipefail`); re-add `ZIG_LANGREF_PROBE_SKIP_LIST` (space-safe names).
+Blocked by: nothing, deferred by priority after the fast-iteration round.
+
+---
+
+### 19. Redundant QEMU env exports
+Status: DONE (2026-09-17, 451c9cb8) - verify on next board
+Facts (qemu-execve 11.0.3 build 12): activation always exports `QEMU_EXECVE=${CONDA_PREFIX}/bin/qemu-execve-<arch>`; activation never sets `QEMU_EXECVE_NATIVE_PASSTHROUGH`, and the C code defaults passthrough ON unless the value is exactly `"0"`.
+Change: removed 8 `export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-...)}"` and 11 `QEMU_EXECVE_NATIVE_PASSTHROUGH` sites (8 `export ...=1` in recipe.yaml plus 3 `env ...=1` prefixes in build.sh/_langref.sh). Pin -> `version="==11.0.3", build_number=">=12"` (converges with 0.16 track).
+Validation: emulated lanes still print `QEMU_EXECVE=... exists=yes` in diag, resolve `qemu-execve` 11.0.3 build >=12, and `test/langref-critical` counts unchanged.
+
+---
+
+### 20. build.zig-03-msvc-crt-dynamic carries 0.16.0 provenance
+
+**Problem.** Measured while verifying item 10. `non_unix/build.zig-03-msvc-crt-dynamic.patch` declares in its header that it was verified against zig 0.16.0 (2026-05-13), while its sibling `non_unix/build.zig-01-maxrss.patch` declares 0.17.0 snapshot 2015+3fdcbc03d (2026-09-06). Additionally the anchor line `exe.stack_size = stack_size;` appears as trailing context in BOTH patches at incompatible old-file offsets (build.zig-03 near 887, build.zig-01 near 906), which cannot both be right against one base file. This does NOT prove drift -- the patch may simply carry a stale provenance header -- but it is unresolved and the patch is in the `if: not unix` group, so it is load-bearing for every win lane.
+
+**Resolution path.** Run `recipe/ci_support/check_patch_relevancy.sh win-64` and review this patch's FAIL/DRIFT/OFFSET verdict; refresh the provenance header, or regenerate the patch, according to what it reports.
+
+**MEASURED 2026-09-18.** `check_patch_relevancy.sh win-64` against snapshot 2131+d08989840 (23 effective patches, CLEAN 9/23) reports this patch as `OFFSET(19)` -- it applies, no FAIL, no DRIFT, no fuzz. OFFSET(19) is mid-range for this tree (`main.zig-fuse-ld-lld-cc-path` OFFSET(63), `non_unix/Lld.zig-suppress-importeddllmain` OFFSET(43) in the same run). The "incompatible anchor offsets" worry above is the same common-basis error refuted for item 10 (comparing one patch's new-file numbering against another's old-file numbering) -- not evidence of drift. Provenance header refreshed to name the current snapshot.
+
+**Effort.** S. **Risk.** low (was med).
+
+Status: DONE (2026-09-18) - NOT drifted; OFFSET(19), header text was stale only
+Blocked by: nothing
+
+---
+
+### 21. posix.zig-dl-iterate-phdr-no-pt-phdr applies at max fuzz
+
+**Problem.** Measured 2026-09-18 by `check_patch_relevancy.sh win-64` against snapshot 2131+d08989840. `patches/posix.zig-dl-iterate-phdr-no-pt-phdr.patch` reports `HIGHFUZZ(offset=0 fuzz=3 - regen recommended)`. It was the ONLY non-CLEAN, non-OFFSET verdict in the run; every other patch was CLEAN or a plain OFFSET.
+
+**Why it matters.** HIGHFUZZ means BOTH `git apply --check` and plain `patch --dry-run` (GNU default fuzz=2) REJECT the hunk, while `patch --fuzz=10` accepts it; the reported `fuzz=3` is just the level the probe actually needed on a scale that goes up to 10, not a ceiling. Per the script's own header, rattler-build's patch application is measurably more tolerant than GNU patch's default fuzz (verified against real CI logs), and the HIGHFUZZ tier exists precisely to avoid false FAILs on patches that build fine in practice. So this is a real upstream-churn signal in that region and a legitimate regen candidate -- which is what the script recommends -- but it is NOT evidence the build is about to break. The patch is in the UNCONDITIONAL selector group, so the region is load-bearing on every lane; that is a reason to regen it deliberately, not a reason to treat it as urgent.
+
+**Resolution path.** Regenerate the patch against a pristine pinned 2131 source, then re-run the audit and require CLEAN or a plain OFFSET. Do it as its own change so a board attributes any breakage to it.
+
+**ROOT CAUSE (measured 2026-09-18, regenerated against pristine 2131).** A single context-line drift, not a functional problem. Upstream renamed `std.elf.AT_EXECFN` to `std.elf.AT.EXECFN`; that identifier appears ONLY as a trailing CONTEXT line in the patch, never on a changed line. The edit itself still landed at identical line numbers (offset=0) while the context failed to match -- that is the whole HIGHFUZZ(fuzz=3) verdict. This CONFIRMS the corrected reading already recorded for this item: it was matching on degraded context, it was not close to failing. The regenerated patch keeps the same functional hunk (`} else unreachable,` -> `} else 0,`) at `@@ -818,7 +818,7 @@`, now with the upstream-current context line and a function-context `@@` header. The patch's own header note was extended too: the changed expression and its line numbers are unchanged across snapshots, but the surrounding context is not -- that distinction is what the old note elided.
+
+**Effort.** S. **Risk.** low.
+
+Status: DONE (2026-09-18) - regenerated against pristine 2131; audit re-run CONFIRMS CLEAN (was HIGHFUZZ fuzz=3), CLEAN count 9/23 -> 10/23, no other patch verdict changed
+Blocked by: nothing

@@ -111,12 +111,11 @@ def resolve_test_prefix(marker: str = "bin") -> Path:
 # ---------------------------------------------------------------------------
 # Emulation detection
 # ---------------------------------------------------------------------------
+# True when the package under test cannot run natively on this runner.
+# Keyed on recipe.yaml's QEMU_EXECVE export (set only when a real
+# qemu-execve-<arch> binary was resolved), NOT on host arch or CI.
 _native_machine = _platform.machine()
-_is_emulated = (
-    sys.platform == "linux"
-    and _native_machine not in ("x86_64", "i686")
-    and os.environ.get("CI", "") != ""
-)
+_is_emulated = sys.platform == "linux" and bool(os.environ.get("QEMU_EXECVE", ""))
 
 
 def _canonical_arch(arch: str) -> str:

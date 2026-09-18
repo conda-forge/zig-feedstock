@@ -170,7 +170,7 @@ cd "${SRC_DIR}/zig-source"
     "${ZIG_LIB_DIR_ARGS[@]}" \
     "${ZIG_BUILD_ARGS[@]}" \
     -Dno-langref \
-    -Doptimize=ReleaseSafe \
+    -Doptimize=safe \
     2>&1 | tee "${WORK_DIR}/stage1-build.log" || {
         echo "ERROR: Stage 1 zig build failed - see ${WORK_DIR}/stage1-build.log" >&2
         exit 1
@@ -268,7 +268,7 @@ cd "${SRC_DIR}/zig-source"
 "${STAGE1_ZIG}" build \
     --prefix "${STAGE2_DIR}" \
     "${ZIG_BUILD_ARGS[@]}" \
-    -Doptimize=ReleaseSafe \
+    -Doptimize=safe \
     2>&1 | tee "${WORK_DIR}/stage2-build.log" || {
     echo "STAGE 2 FAILED — doctest crash details above (full log: ${WORK_DIR}/stage2-build.log)"
     echo "The Stage 1 zig (with ZSTD patch + debug info) is at:"
