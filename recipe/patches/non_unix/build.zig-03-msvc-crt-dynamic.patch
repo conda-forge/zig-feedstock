@@ -2,7 +2,7 @@
 # Affects: build.zig (addCompilerStep)
 # Upstream: not filed
 # Drop-when: zig defaults to .dynamic CRT linkage on windows-msvc, OR zigcpp.lib switches to /MT static CRT
-# Last-verified: 2026-05-13 (zig 0.16.0)
+# Last-verified: 2026-09-18 (zig 0.17.0, snapshot 2131+d08989840, check_patch_relevancy.sh OFFSET(19))
 # Note: Mixing static libucrt with dynamic ucrt produces ~40 lld-link duplicate-symbol errors
 #       (errno, abort, malloc, ...) because zigcpp.lib uses /MD (dynamic) and config.h's
 #       ZIG_LLVM_LIBRARIES manual -lmsvcrt is also dynamic.
@@ -15,10 +15,10 @@
  
 +    // Windows MSVC: force dynamic CRT linkage. Default is .static, which
 +    // makes zig auto-add libucrt.lib (static) for `link_libc=true`. Our
-+    // zigcpp.lib is built with /MD (DEFAULTLIB:msvcrt → ucrt.lib dynamic)
++    // zigcpp.lib is built with /MD (DEFAULTLIB:msvcrt -> ucrt.lib dynamic)
 +    // and the manual `-lmsvcrt` from config.h's ZIG_LLVM_LIBRARIES is also
 +    // dynamic. Mixing static libucrt with dynamic ucrt produces ~40
-+    // lld-link "duplicate symbol" errors (errno, abort, malloc, …).
++    // lld-link "duplicate symbol" errors (errno, abort, malloc, ...).
 +    if (options.target.result.os.tag == .windows and options.target.result.abi == .msvc) {
 +        exe.linkage = .dynamic;
 +    }

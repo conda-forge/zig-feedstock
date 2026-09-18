@@ -85,7 +85,7 @@ ZIG_PKG_OPTS=(
   -Dconfig_h="${cmake_build_dir}"/config.h
   -Dcpu=baseline
   -Denable-llvm
-  -Doptimize=ReleaseSafe
+  -Doptimize=safe
   -Dstatic-llvm=false
   -Dstrip=true
   -Dtarget=${ZIG_TRIPLET}
