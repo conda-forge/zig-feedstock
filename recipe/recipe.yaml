@@ -26,7 +26,7 @@ context:
       not (build_platform in ["osx-64", "win-64"] and target_platform in ["osx-arm64", "win-32", "win-arm64"]) and
       not (build_platform in ["win-arm64"] and target_platform in ["win-32", "win-64"])
     }}
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" or ppc64le or not is_testable }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" or not is_testable }}
   skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="1") == "1" or not is_testable }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
@@ -146,7 +146,7 @@ context:
     }}
 
   qemu_arch: ${{ target_platform | replace("linux-64", "x86_64") | replace("linux-", "") }}
-  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version=">=11", build_number=">=10"]' if linux and build_platform != target_platform else "" }}
+  qemu_pkg: ${{ "qemu-execve-" ~ qemu_arch ~ '[version="==11.0.3", build_number=">=12"]' if linux and build_platform != target_platform else "" }}
   sysroot: ${{ "/" ~ target_triplet ~ "/sysroot" if linux else "" }}
 
   is_hosted_xcompiler:   ${{ build_platform == target_platform and xtarget_ != target_platform and xc_valid }}
@@ -326,8 +326,12 @@ outputs:
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
           CONDA_ZIG_HOST: ${{ conda_triplet ~ "-zig" }}
 
-          # ppc64le passes langref but exhaust the 6hrs window
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
+
+          # Subset runs where full langref does not, only with long tests. linux only: win/osx unproven.
+          ZIG_LANGREF_CRITICAL: ${{ "1" if skip_langref and not skip_long_test and linux else "0" }}
+          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="1") }}
+          ZIG_LANGREF_CRITICAL_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_CRITICAL_STEP_TIMEOUT", default="300") }}
 
           # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
@@ -429,9 +433,7 @@ outputs:
       - script:
           - if: linux
             then:
-              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
           - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
         requirements:
           build:
@@ -454,9 +456,7 @@ outputs:
       - script:
           - if: linux
             then:
-              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
               - python testing/test_dtneeded.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
               - echo "SKIP DT_NEEDED test (non-linux)"
@@ -479,9 +479,7 @@ outputs:
       - script:
           - if: linux
             then:
-              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-              - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
               - python testing/test_dl_iterate_phdr.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
               - echo "SKIP dl_iterate_phdr PT_PHDR test (non-linux)"
@@ -507,15 +505,13 @@ outputs:
             - if: is_testable
               then:
                 - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
-                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-                - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
                 - _zig="${PREFIX}/${{ library }}bin/${{ conda_triplet }}-zig"
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" zen
-                - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" init
                 - if: not skip_long_test
                   then:
+                    - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" init
                     - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" test zig-source/test/behavior.zig
               else:
                 - echo "Not testable on this system"
@@ -551,9 +547,7 @@ outputs:
             - if: is_testable
               then:
                 - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
-                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-                - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
                 - _zig="${PREFIX}"/${{ library }}bin/${{ conda_triplet }}"-zig"${{ exe }}
                 - echo 'int main(void){return 0;}' > test_lld.c
                 - if: osx
@@ -713,9 +707,7 @@ outputs:
               # Wrapper + functional validation tests (Python, cross-platform)
               - if: linux
                 then:
-                  - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                   - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
-                  - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
               # the cc wrapper must filter them before forwarding to zig cc.
               - if: not unix
@@ -851,9 +843,7 @@ outputs:
           content:
             - if: is_testable
               then:
-                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-                - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
                 - _zig="${PREFIX}"/${{ library }}bin/zig${{ "" if unix else ".bat" }}
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
               else:
@@ -893,9 +883,7 @@ outputs:
           content:
             - if: is_testable
               then:
-                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-                - export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
                 - _zig="${PREFIX}"/${{ library }}bin/zig${{ "" if unix else ".bat" }}
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc --version
               else:

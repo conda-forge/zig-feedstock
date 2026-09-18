@@ -85,7 +85,7 @@ ZIG_PKG_OPTS=(
   -Dconfig_h="${cmake_build_dir}"/config.h
   -Dcpu=baseline
   -Denable-llvm
-  -Doptimize=ReleaseSafe
+  -Doptimize=safe
   -Dstatic-llvm=false
   -Dstrip=true
   -Dtarget=${ZIG_TRIPLET}
@@ -178,24 +178,48 @@ if is_unix; then
   )
 fi
 
-# bare qemu-<arch> already exists on PATH (regular variant); this shadow
-# makes zig's internal -fqemu lookup resolve to the execve variant instead.
-_qemu_shadow_dir=""
-if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
-  _qemu_shadow_dir=$(mktemp -d)
-  ln -sf "${QEMU_EXECVE}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
-  export PATH="${_qemu_shadow_dir}:${PATH}"
-  dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${QEMU_EXECVE}"
-fi
-
+# Only the pinned conda qemu-execve may back -fqemu: an image qemu (pre-11)
+# SIGSEGVs on rseq under glibc >=2.35. Bare qemu-<arch> only from BUILD_PREFIX.
 if is_linux && is_cross; then
   ZIG_MAKER_ARGS+=(
     --libc "${zig_build_dir}"/libc_file
     --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
   )
-  # Enable qemu if qemu-execve-<arch> package is installed (conda-forge).
-  # Provides qemu-<arch> in PATH which is what zig's -fqemu expects.
-  if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then
+
+  case "${target_platform}" in
+    linux-64) _qemu_conda_arch="x86_64" ;;
+    *) _qemu_conda_arch="${target_platform#linux-}" ;;
+  esac
+
+  _zig_qemu=""
+  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ] \
+     && [ "$(basename "${QEMU_EXECVE}")" = "qemu-execve-${_qemu_conda_arch}" ]; then
+    _zig_qemu="${QEMU_EXECVE}"
+  else
+    if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
+      echo "WARNING: rejecting preset QEMU_EXECVE ${QEMU_EXECVE} (arch mismatch, expected qemu-execve-${_qemu_conda_arch}); re-resolving"
+    fi
+    _zig_qemu="$(command -v "qemu-execve-${_qemu_conda_arch}" 2>/dev/null || true)"
+    if [ -z "${_zig_qemu}" ]; then
+      _qemu_bare_path="$(command -v "qemu-${ZIG_QEMU_ARCH}" 2>/dev/null || true)"
+      case "${_qemu_bare_path}" in
+        "${BUILD_PREFIX}"/*) _zig_qemu="${_qemu_bare_path}" ;;
+        "") : ;;
+        *) echo "WARNING: rejecting non-conda qemu ${_qemu_bare_path}; -fqemu disabled" ;;
+      esac
+      unset _qemu_bare_path
+    fi
+  fi
+  unset _qemu_conda_arch
+
+  # zig's -fqemu execs qemu-<llvm-arch> from PATH; shadow it with the pick.
+  _qemu_shadow_dir=""
+  if [ -n "${_zig_qemu}" ]; then
+    export QEMU_EXECVE="${_zig_qemu}"
+    _qemu_shadow_dir=$(mktemp -d)
+    ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
+    export PATH="${_qemu_shadow_dir}:${PATH}"
+    dbg echo "PATH shadow: qemu-${ZIG_QEMU_ARCH} -> ${_zig_qemu}"
     ZIG_MAKER_ARGS+=(-fqemu)
   fi
 fi
@@ -402,6 +426,11 @@ if is_linux; then
   patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
 fi
 
+# Critical langref subset: doctest coverage on lanes where the full langref
+# build is skipped. Report-only; see building/langref_critical.txt.
+source "${RECIPE_DIR}/building/_langref.sh"
+run_langref_critical
+
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1" >&2
@@ -419,7 +448,7 @@ else
   _langref_rc=0
   (
     cd "${cmake_source_dir}" &&
-    env QEMU_EXECVE_NATIVE_PASSTHROUGH=1 "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
       --prefix "${PREFIX}" \
       -Dversion-string="${PKG_VERSION}" \
       -Ddoctest-target="${ZIG_TRIPLET}"
