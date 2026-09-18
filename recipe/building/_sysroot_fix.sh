@@ -33,7 +33,8 @@ function fix_sysroot_libc_scripts() {
       [[ -d "${lib_dir}" ]] || continue
 
       # Find all .so files that are actually linker scripts
-      for script_file in "${lib_dir}"/{libc,libpthread,libm,librt,libdl}.so; do
+      for _sf_base in libc libpthread libm librt libdl; do
+        script_file="${lib_dir}/${_sf_base}.so"
         [[ -f "${script_file}" ]] || continue
 
         # Check if it's a linker script (contains "GROUP" or "INPUT")
@@ -47,7 +48,7 @@ function fix_sysroot_libc_scripts() {
           case "${_mode}" in
             abs)    _use_abs=1 ;;
             legacy) _use_abs=0 ;;
-            *)      [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]] && _use_abs=1 ;;
+            *)      if [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]]; then _use_abs=1; fi ;;
           esac
           if [[ "${_use_abs}" == "1" ]]; then
             sed -i \

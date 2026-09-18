@@ -12,7 +12,7 @@ if is_not_unix; then
   mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
   mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
   mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
-  [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
+  if [[ -d "${PREFIX}/doc" ]]; then mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/; fi
 fi
 
 source "${RECIPE_DIR}/building/_mingw.sh"

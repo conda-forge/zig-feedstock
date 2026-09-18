@@ -278,6 +278,7 @@ outputs:
               - "*/ld-linux-*.so.*"
               - "*/ld64.so.*"
       script:
+        interpreter: brush
         file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -299,7 +300,7 @@ outputs:
         - ${{ compiler('c') }}
         - ${{ compiler('cxx') }}
         - ${{ stdlib("c") }}
-        - ${{ m2 }}bash >=5.2
+        - brush
         - ${{ m2 }}file
         - cmake >=3.5
         - llvm-tools ${{ llvm_version }}.*
@@ -470,7 +471,7 @@ outputs:
 
       # zig simple test.
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -488,9 +489,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -505,11 +504,12 @@ outputs:
 
       # zig UCRT DLL.
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: not unix
               then:
-                - t="$(mktemp -d)"
+                - t="./zig-tmp-run"
+                - mkdir -p "$t"
                 - trap 'rm -rf "$t"' EXIT
                 - printf 'int main(void){return 0;}\n' > "$t/test_run.c"
                 - ${{ conda_triplet }}-zig cc -mconsole -o "$t/test_run.exe" "$t/test_run.c"
@@ -517,16 +517,15 @@ outputs:
                 - echo "PASS zig cc compile+run (UCRT DLL resolution)"
         requirements:
           build:
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
 
       # -fuse-ld=lld pass-through rationale. See recipe/NOTES.md 2.4.
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
-            - t="$(mktemp -d)"
+            - t="./zig-tmp-lld"
+            - mkdir -p "$t"
             - trap 'rm -rf "$t"' EXIT
             - printf 'int main(void){return 0;}\n' > "$t/test_lld.c"
             - if: linux and not ppc64le
@@ -559,7 +558,7 @@ outputs:
                 - echo "PASS zig cc produced a ppc64le binary"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -672,7 +671,7 @@ outputs:
             - etc/conda/test-files/zig*
 
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - test -n "$CONDA_ZIG_BUILD"
             - test -n "$CONDA_ZIG_HOST"
@@ -689,7 +688,8 @@ outputs:
                 - if: is_cross_compiler
                   then:
                     - CONDA_TRIPLET="${{ conda_triplet }}" testing/test-cross-shim.bat
-                - t="$(mktemp -d)"
+                - t="./zig-tmp-manifest"
+                - mkdir -p "$t"
                 - trap 'rm -rf "$t"' EXIT
                 - printf 'void f(void){}\n' > "$t/test_manifest.c"
                 - MSYS2_ARG_CONV_EXCL='/MANIFEST' ${{ conda_triplet }}-zig-cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o "$t/test_manifest.dll" "$t/test_manifest.c"
@@ -701,9 +701,7 @@ outputs:
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
           run:
             - if: (build_platform != target_platform) and linux
               then:
@@ -807,7 +805,7 @@ outputs:
           bin:
             - zig
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -819,7 +817,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: linux and build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -843,7 +841,7 @@ outputs:
             - llvm-tools ${{ llvm_version }}.*
     tests:
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -855,7 +853,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: linux and build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}

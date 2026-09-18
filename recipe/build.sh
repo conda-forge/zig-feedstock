@@ -77,7 +77,10 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_libc_tuning.sh"
   create_gcc14_glibc28_compat_lib
 
-  is_cross && rm "${PREFIX}"/bin/llvm-config && cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+  if is_cross; then
+    rm "${PREFIX}"/bin/llvm-config
+    cp "${BUILD_PREFIX}"/bin/llvm-config "${PREFIX}"/bin/llvm-config
+  fi
 fi
 
 if is_osx && is_cross; then
