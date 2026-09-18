@@ -7,9 +7,9 @@ set -uo pipefail
 # Default (0) is the CI mode: strict errexit, no xtrace.
 #
 # RECOVERY: conda-forge has NO per-run environment override. To trace a failing
-# CI lane you must change the default in recipe.yaml's zig_impl script env: block
-# from "0" to "1" and push a round. Do that before investigating a build-script
-# failure -- xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
+# CI lane you must add DEBUG_ZIG_BUILD: "1" to recipe.yaml's zig_impl script env:
+# block and push a round. Do that before investigating a build-script failure --
+# xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
 if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
   set +e
   set -x
@@ -26,35 +26,10 @@ export build_platform="${build_platform:-${target_platform}}"
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_common.sh"
-source "${RECIPE_DIR}/building/_zig_diag.sh"
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
 
-# --- Early exits ---
-
-[[ -z "${CONDA_TRIPLET:-}" ]] && { echo "CONDA_TRIPLET must be specified in recipe.yaml env"; exit 1; }
-[[ -z "${CONDA_ZIG_BUILD:-}" ]] && { echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"; exit 1; }
-[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
-
-export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
-
-if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
-  echo "ERROR: Unknown package name: >${PKG_NAME:-}< - Verify recipe.yaml script:"
-  exit 1
-fi
-
-# === Build caching for quick recipe iteration ===
-# Set ZIG_USE_CACHE=1 to enable build caching:
-#   - First run: builds normally, caches result
-#   - Subsequent runs: restores from cache, skips build
-if [[ "${ZIG_USE_CACHE:-0}" == "1" ]]; then
-  source "${RECIPE_DIR}/local-scripts/stub_cache.sh"
-  if stub_cache_restore; then
-    echo "=== Build restored from cache (skipping compilation) ==="
-    exit 0
-  fi
-  echo "=== No cache found - will build and cache result ==="
-  # Continue with normal build, cache will be saved at the end
-fi
+# --- Step 1: Early exits ---
+source "${RECIPE_DIR}/building/_guards.sh"
 
 # --- Main ---
 
@@ -93,134 +68,8 @@ zig_build_dir="${SRC_DIR}/conda-zig-source"
 mkdir -p "${zig_build_dir}" && cp -r "${cmake_source_dir}"/* "${zig_build_dir}"
 mkdir -p "${cmake_install_dir}" "${ZIG_LOCAL_CACHE_DIR}" "${ZIG_GLOBAL_CACHE_DIR}"
 
-# --- Common CMake/zig configuration ---
-
-EXTRA_CMAKE_ARGS=(
-  -DCMAKE_BUILD_TYPE=Release
-  -DZIG_TARGET_MCPU=baseline
-  -DZIG_TARGET_TRIPLE=${ZIG_TRIPLET}
-  -DZIG_USE_LLVM_CONFIG=ON
-)
-
-# Remember: CPU MUST be baseline, otherwise it create non-portable zig code (optimized for a given hardware)
-EXTRA_ZIG_ARGS=(
-  --search-prefix "${PREFIX}"
-  -Dconfig_h="${cmake_build_dir}"/config.h
-  -Dcpu=baseline
-  -Denable-llvm
-  -Doptimize=ReleaseSafe
-  -Dstatic-llvm=false
-  -Dstrip=true
-  -Dtarget=${ZIG_TRIPLET}
-  -Duse-zig-libcxx=false
-)
-
-# --- Platform Configuration ---
-
-# Patch build.zig-02-doctest-forward-target adds -Ddoctest-target to build.zig.
-# Gated to linux/osx where the patch applies and where doctest target forwarding matters.
-if is_unix; then
-  EXTRA_ZIG_ARGS+=(-Ddoctest-target=${ZIG_TRIPLET})
-fi
-
-# Two-phase langref strategy: Phase 1 (here) ALWAYS skips langref HTML installation;
-# Phase 2 (zig build langref) handles it separately when stage3 is runnable.
-EXTRA_ZIG_ARGS+=(-Dno-langref)
-
-if is_osx; then
-  EXTRA_CMAKE_ARGS+=(
-    -DZIG_SYSTEM_LIBCXX=c++
-    -DCMAKE_C_FLAGS="-Wno-incompatible-pointer-types"
-  )
-  EXTRA_ZIG_ARGS+=(--maxrss 8589934592)
-else
-  EXTRA_CMAKE_ARGS+=(-DZIG_SYSTEM_LIBCXX=stdc++)
-  EXTRA_ZIG_ARGS+=(--maxrss 7800000000)
-fi
-
-# -fno-plt makes GCC emit inline-PLT relocations that LLD cannot handle
-if [[ "${target_platform}" == "linux-ppc64le" ]]; then
-  export CFLAGS="${CFLAGS:-} -fplt"
-  export CXXFLAGS="${CXXFLAGS:-} -fplt"
-fi
-
-if is_not_unix; then
-  EXTRA_CMAKE_ARGS+=(
-    -DZIG_SHARED_LLVM=OFF
-    # Force dynamic CRT (/MD) for zigcpp objects so their /DEFAULTLIB
-    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
-  )
-else
-  EXTRA_CMAKE_ARGS+=(-DZIG_SHARED_LLVM=ON)
-fi
-
-# Embed PREFIX/lib RPATH at install time so binaries resolve libclang/libLLVM at runtime
-if is_unix; then
-  EXTRA_CMAKE_ARGS+=(
-    -DCMAKE_INSTALL_RPATH="${PREFIX}/lib"
-    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
-  )
-fi
-
-if is_linux && is_cross; then
-  EXTRA_ZIG_ARGS+=(
-    --libc "${zig_build_dir}"/libc_file
-    --libc-runtimes "${CONDA_BUILD_SYSROOT}"/lib64
-  )
-  # Resolve the qemu-user emulator ONCE, before anything consults it.
-  #
-  # Four spellings are in play and none is interchangeable:
-  #   package  qemu-execve-<conda-arch>  e.g. qemu-execve-ppc64le
-  #   binary   qemu-<conda-arch>         e.g. qemu-ppc64le
-  #   zig      qemu-<llvm-arch>          e.g. qemu-powerpc64le  <- what -fqemu execs
-  #   handle   $QEMU_EXECVE              absolute path, exported by the package
-  #
-  # Prefer $QEMU_EXECVE: a bare `command -v` can pick up the CI image's
-  # /usr/bin/qemu-<arch>-static binfmt interpreter, which is unpinned and, before
-  # qemu 11, SIGSEGVs on rseq under glibc >=2.35.  Exporting it also turns on
-  # qemu's execve() redirect so child processes stay emulated.
-  _zig_qemu=""
-  if [ -n "${QEMU_EXECVE:-}" ] && [ -x "${QEMU_EXECVE}" ]; then
-    _zig_qemu="${QEMU_EXECVE}"
-  else
-    _zig_qemu="$(command -v "qemu-${target_platform#linux-}" 2>/dev/null \
-                 || command -v "qemu-${ZIG_QEMU_ARCH}" 2>/dev/null || true)"
-  fi
-
-  # zig hardcodes a qemu-<llvm-arch> PATH lookup for -fqemu, a different spelling
-  # from the one the package installs.  Shadow it BEFORE -fqemu is decided just
-  # below.  This used to happen only inside the Phase 2 langref block far below --
-  # too late for -fqemu -- with an ad-hoc ppc64le-only BUILD_PREFIX symlink
-  # papering over the gap.  Torn down by the existing _qemu_shadow_dir cleanup
-  # after Phase 2.
-  _qemu_shadow_dir=""
-  if [ -n "${_zig_qemu}" ]; then
-    export QEMU_EXECVE="${_zig_qemu}"
-    # Emulated libc-linked binaries need the loader resolved against the TARGET
-    # sysroot; unset, qemu uses the host root and they SIGSEGV.
-    if [ -z "${QEMU_LD_PREFIX:-}" ] && [ -n "${CONDA_BUILD_SYSROOT:-}" ] && [ -d "${CONDA_BUILD_SYSROOT}" ]; then
-      export QEMU_LD_PREFIX="${CONDA_BUILD_SYSROOT}"
-    fi
-    zig_diag_note "qemu: QEMU_LD_PREFIX=${QEMU_LD_PREFIX:-(unset)}"
-    case "$(basename "${_zig_qemu}")" in
-      qemu-execve-*)
-        export QEMU_EXECVE_NATIVE_PASSTHROUGH=1
-        zig_diag_note "qemu: native passthrough ARMED via ${_zig_qemu}"
-        ;;
-      *)
-        zig_diag_note "qemu: ${_zig_qemu} is not qemu-execve-*; native passthrough NOT armed"
-        ;;
-    esac
-    _qemu_shadow_dir="$(mktemp -d)"
-    ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${ZIG_QEMU_ARCH}"
-    ln -sf "${_zig_qemu}" "${_qemu_shadow_dir}/qemu-${target_platform#linux-}"
-    export PATH="${_qemu_shadow_dir}:${PATH}"
-    dbg echo "qemu: ${_zig_qemu} (shadowed as qemu-${ZIG_QEMU_ARCH} and qemu-${target_platform#linux-})"
-    EXTRA_ZIG_ARGS+=(-fqemu)
-  else
-    dbg echo "qemu: none found for ${ZIG_QEMU_ARCH}; -fqemu disabled"
-  fi
-fi
+# --- Step 2: Common CMake/zig configuration ---
+source "${RECIPE_DIR}/building/_configure_args.sh"
 
 # --- libzigcpp Configuration ---
 
@@ -240,39 +89,8 @@ fi
 
 configure_cmake_zigcpp "${cmake_build_dir}" "${cmake_install_dir}"
 
-# --- Post CMake Configuration ---
-
-# Append extra link deps to config.h (cmake doesn't know about conda's split packaging)
-# Append LLVM deps that conda's split packaging doesn't bake into
-# config.h's ZIG_LLVM_LIBRARIES: zlib (adler32 refs in lld-ELF),
-# zstd (compression), libxml2. Needed on every native + cross linux
-# build -- linux-aarch64 failed linking zig2 with undefined adler32
-# when this was gated on `is_cross`.
-is_linux && perl -pi -e "s@(ZIG_LLVM_LIBRARIES \".*)\"@\$1;-lzstd;-lxml2;-lz\"@" "${cmake_build_dir}"/config.h
-is_osx && is_cross &&   perl -pi -e "s@(ZIG_LLVM_\w+ \")${BUILD_PREFIX}@\$1${PREFIX}@" "${cmake_build_dir}"/config.h
-# Note: do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS.
-# build.zig sets mod.link_libcpp = true for darwin targets, which (via patches/
-# Lld.zig-prefer-shared-libcxx.patch) already resolves to ${PREFIX}/lib/libc++.1.dylib.
-# Injecting libc++.dylib here would add a second LC_LOAD_DYLIB to the same dylib;
-# macOS SDK >= 26 dyld aborts on duplicate linked dylibs ("duplicate linked dylib
-# '@rpath/libc++.1.dylib'" -- Abort trap: 6).
-
-# zig2.c (the pre-generated C bootstrap from 0.16) calls getrandom,
-# copy_file_range, and statx -- all absent from conda-forge's glibc 2.17
-# sysroot. Compile weak-symbol syscall() stubs and inject the .o into
-# both the zig-build path (via config.h's ZIG_LLVM_LIBRARIES) and the
-# CMake fallback path (via cmake/0002 target_link_libraries).
-# Guard on CONDA_BUILD_SYSROOT: outside conda-forge CI (e.g. local
-# dev with a modern glibc system), the stubs aren't needed.
-if is_linux && [[ -n "${CONDA_BUILD_SYSROOT:-}" ]]; then
-  source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
-  create_glibc217_syscall_stubs "${CC}" "${ZIG_LOCAL_CACHE_DIR}"
-  perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/glibc217_syscall_stubs.o\"|g" "${cmake_build_dir}/config.h"
-fi
-
-dbg echo "=== config.h (ZIG_/LLVM_ keys) ==="
-dbg grep -E '^#define (ZIG_|LLVM_)' "${cmake_build_dir}"/config.h
-dbg echo "=== end config.h ==="
+# --- Step 3: Post CMake Configuration ---
+source "${RECIPE_DIR}/building/_config_h_fixups.sh"
 
 # --- Cross-build setup (must happen BEFORE Stage 1 since EXTRA_ZIG_ARGS has --libc) ---
 
@@ -280,12 +98,9 @@ if is_linux; then
   source "${RECIPE_DIR}/building/_cross.sh"
   source "${RECIPE_DIR}/building/_atfork.sh"
   source "${RECIPE_DIR}/building/_sysroot_fix.sh"
-  source "${RECIPE_DIR}/building/_riscv64_diag.sh"
 
   # Fix sysroot libc.so linker scripts 2.17 to use relative paths
-  sysroot_diag before
   fix_sysroot_libc_scripts "${BUILD_PREFIX}"
-  sysroot_diag after
 
   create_zig_linux_libc_file "${zig_build_dir}/libc_file"
   perl -pi -e "s|(#define ZIG_LLVM_LIBRARIES \".*)\"|\$1;${ZIG_LOCAL_CACHE_DIR}/pthread_atfork_stub.o\"|g" "${cmake_build_dir}/config.h"
@@ -295,8 +110,6 @@ if is_linux; then
 fi
 
 
-zig_diag_env "pre-phase1"
-zig_diag_note "PHASE 1: building zig"
 if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
@@ -317,121 +130,10 @@ if is_linux; then
   patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
 fi
 
-# --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
-_can_run_stage3() {
-  if ! is_cross; then return 0; fi
-  if ! is_unix; then return 1; fi
-  if is_linux; then
-    command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
-  fi
-  # Rosetta 2 runs an x86_64 stage3 on the arm64 macOS runners; not symmetric.
-  is_rosetta && return 0
-  return 1
-}
+# --- Step 4: Phase 2 - build langref via stage3 (full compiler with translate_c) ---
+source "${RECIPE_DIR}/building/_langref.sh"
 
-if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
-  echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1 (env override, or lane cannot run stage3)" >&2
-elif _can_run_stage3; then
-  zig_diag_note "PHASE 2: building langref via stage3 zig"
-  _stage3_runner=()
-  if is_cross && is_linux; then
-    _stage3_runner=("qemu-${ZIG_QEMU_ARCH}")
-  fi
-
-  # PATH already carries the qemu-<llvm-arch> shadow set up before -fqemu was
-  # decided; _stage3_runner below resolves through it.
-
-  _phase2_diag_flags=()
-  zig_diag_on && _phase2_diag_flags=(--verbose --summary all)
-
-  # Bound langref so a hung lane ends instead of hitting the CI job ceiling.
-  _phase2_timeout=()
-  _phase2_timed_out=0
-  if [[ "${ZIG_LANGREF_TIMEOUT:-5h}" != "0" ]] && command -v timeout &>/dev/null; then
-    _phase2_timeout=(timeout --kill-after=60s "${ZIG_LANGREF_TIMEOUT:-5h}")
-  fi
-
-  # Crash-probe capture: kept out of ${PREFIX} so it never enters the package.
-  _phase2_log="${SRC_DIR:-/tmp}/zig-phase2-langref.log"
-
-  _phase2_pipefail_state="$(shopt -po pipefail)"
-  set -o pipefail
-  if (
-    cd "${cmake_source_dir}" &&
-    zig_diag_exec "phase2-langref" -- \
-      "${_phase2_timeout[@]+"${_phase2_timeout[@]}"}" \
-      "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
-      --prefix "${PREFIX}" \
-      -Dversion-string="${PKG_VERSION}" \
-      -Ddoctest-target="${ZIG_TRIPLET}" \
-      ${_phase2_diag_flags[@]+"${_phase2_diag_flags[@]}"}
-  ) 2>&1 | tee "${_phase2_log}"; then
-    _phase2_rc=0
-  else
-    _phase2_rc=${PIPESTATUS[0]}
-  fi
-  eval "${_phase2_pipefail_state}"
-
-  if [[ ${_phase2_rc} -ne 0 ]]; then
-    if [[ ${_phase2_rc} -eq 124 || ${_phase2_rc} -eq 137 ]]; then
-      # Non-fatal: an emulated lane can legitimately exceed the bound. The
-      # install happens at the END of the phase, so a timeout usually means
-      # NO artifact; the check after this block then fails the build.
-      echo "WARNING: Phase 2 langref TIMED OUT after ${ZIG_LANGREF_TIMEOUT:-5h} (rc=${_phase2_rc}); continuing" >&2
-      zig_diag_note "phase2-langref TIMED OUT rc=${_phase2_rc} -- continuing (non-fatal)"
-      _phase2_timed_out=1
-    else
-      echo "ERROR: Phase 2 langref build failed (rc=${_phase2_rc})" >&2
-      exit 1
-    fi
-  fi
-
-  if [ -n "${_qemu_shadow_dir:-}" ]; then
-    rm -rf "${_qemu_shadow_dir}"
-    unset _qemu_shadow_dir
-  fi
-
-  # panic/error: excluded on purpose -- doctests intentionally panic
-  # (e.g. runtime_division_by_zero.zig, runtime_unwrap_null.zig).
-  _phase2_crash_pattern='uncaught target signal|Illegal instruction|Bus error|core dumped|Segmentation fault|SIGSEGV|SIGILL|SIGBUS|Unable to dump stack trace|qemu: fatal'
-  if [[ -f "${_phase2_log}" ]] && grep -qE "${_phase2_crash_pattern}" "${_phase2_log}"; then
-    echo "ERROR: Phase 2 langref log shows a hard-fault signature" >&2
-    grep -nE "${_phase2_crash_pattern}" "${_phase2_log}" | head -n 20 >&2
-    exit 1
-  fi
-
-  # Phase 2 only runs on lanes that package langref.html, so a missing artifact is fatal.
-  if [[ ${_phase2_timed_out} -eq 1 ]] && [[ ! -f "${PREFIX}/doc/langref.html" ]]; then
-    echo "ERROR: Phase 2 langref timed out BEFORE doc/langref.html was installed" >&2
-    exit 1
-  fi
-else
-  echo "INFO: Phase 2 langref skipped: stage3 not runnable on this host (cross without qemu/wine)" >&2
-fi
-
-dbg echo "Post-install implementation package: ${PKG_NAME}"
-mv "${PREFIX}"/bin/zig "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig
-
-# Non-unix conda convention: artifacts go under Library/
-if is_not_unix; then
-  dbg echo "Relocating to Library/ for non-unix conda convention"
-  mkdir -p "${PREFIX}/Library/bin" "${PREFIX}/Library/lib" "${PREFIX}/Library/doc"
-  mv "${PREFIX}"/bin/"${CONDA_TRIPLET}"-zig "${PREFIX}"/Library/bin/"${CONDA_TRIPLET}"-zig
-  mv "${PREFIX}"/lib/zig "${PREFIX}"/Library/lib/zig
-  [[ -d "${PREFIX}/doc" ]] && mv "${PREFIX}"/doc/* "${PREFIX}"/Library/doc/
-fi
-
-source "${RECIPE_DIR}/building/_mingw.sh"
-generate_mingw_import_libs
-
-# rattler-build lints mixed .txt/.TXT in info/licenses; two-step mv also works
-# on the case-insensitive filesystems of the osx and win lanes.
-for _lic_dir in libcxx libcxxabi libunwind; do
-  _lic="${SRC_DIR}/zig-source/lib/${_lic_dir}/LICENSE.TXT"
-  [[ -f "${_lic}" ]] || continue
-  mv "${_lic}" "${_lic}.tmp" && mv "${_lic}.tmp" "${_lic%.TXT}.txt" \
-    || echo "WARNING: could not lowercase ${_lic}" >&2
-done
-unset _lic_dir _lic
+# --- Step 5: Post-install packaging ---
+source "${RECIPE_DIR}/building/_package_layout.sh"
 
 dbg echo "=== Build installed for package: ${PKG_NAME} ==="
