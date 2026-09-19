@@ -315,10 +315,15 @@ Blocked by: nothing
 
 ### 16. Harness cannot express expected-but-absent coverage
 Problem: raised by the 0.16 track and it generalises item 14. Our harness test files end `return 1 if n_fail > 0 else 0`; SKIP and WARN never affect the exit code. So at the exit-code level a check that EVAPORATED, a check legitimately SKIPPED, and "nothing to test on this lane" are indistinguishable. Item 14 converted two evaporating probes into SKIPs, which is honest but still invisible to anything automated - the board cannot tell you coverage went missing. This is the general form of the whole batch-1 silent-degradation theme.
-Change: assert a minimum expected check count per test file, or an expected-coverage manifest keyed by lane, so a vanished check FAILS the board rather than quietly shrinking it. Not designed yet.
+MEASURED on the PR #189 green board (commit 15f8265f), all 22 build lanes, total registered checks (pass+warn+skip) per tallying file:
+- test_flag_translation_parity.py: 2 distinct totals -- 29 on all 4 osx lanes (generated-C leg runs), 16 on all 18 win and linux lanes (that leg SKIPs). Clean partition on build-host mac vs not.
+- test_zig_toolchain.py: 10 distinct pass/warn/skip profiles collapsing to 9 distinct totals, range 41..68 (totals discriminate even less than the profiles: linux_64 native and linux_aarch64 native at 46/0/6 and osx_arm64 native at 45/0/7 both total 52). Keys on BUILD-HOST arch, not target. win-64 native 67 vs win-arm64 native 68 total; osx-arm64 native 52 vs its own cross lanes 49. No clean OS/emulated partition, and a count floor cannot even tell the linux natives apart from the osx-arm64 native.
+- test_libcxx_shared.py: runs in only 8 of 22 lanes (the cross lanes drop the zig_impl output that carries the test), 5 distinct totals among those 8.
+A per-file integer floor is only sound where the totals partition, and more fundamentally the totals are corrupted by the bug the floor is meant to catch -- coverage varies by lane BECAUSE inapplicable checks vanish without recording a SKIP. Flooring that number floors a corrupted quantity.
+Change: _test_utils.py gained registered_check_count() and enforce_coverage_floor(floor, label, provenance), which reports through FAIL so the existing `n_fail > 0` reduction reddens the board. Floors are EXACT measured counts with no margin, unlike the soft margin at recipe/building/_mingw.sh:355, because losing one check must fail. Adopted in test_flag_translation_parity.py only (29 mac / 16 non-mac), the one file whose totals partition cleanly.
 Effort M, Risk low.
-Validation: deliberately delete a probe locally; the board must go red, not merely quieter.
-Status: TODO - raised by 0.16 track
+Validation: deliberately delete a probe locally; the board must go red, not merely quieter. Satisfied for test_flag_translation_parity.py only.
+Status: PARTIAL - mechanism landed, one of three tallying files adopted. Residual split out as item 22.
 Blocked by: nothing
 
 ---
@@ -406,4 +411,24 @@ Blocked by: nothing
 **Effort.** S. **Risk.** low.
 
 Status: DONE (2026-09-18) - regenerated against pristine 2131; audit re-run CONFIRMS CLEAN (was HIGHFUZZ fuzz=3), CLEAN count 9/23 -> 10/23, no other patch verdict changed
+Blocked by: nothing
+
+---
+
+### 22. Lane-conditional absence is implicit, so coverage counts are not lane-invariant
+Problem: the true generalisation of item 14 and the residual of item 16. Checks that do not apply to a lane simply do not execute; they record nothing. So per-file check totals differ by lane for two indistinguishable reasons -- legitimate inapplicability and real evaporation. Measured spread on PR #189 / 15f8265f: test_zig_toolchain.py 41..68 across 22 lanes, 10 distinct pass/warn/skip profiles collapsing to 9 distinct totals, keyed on build-host arch. This is why item 16 could only floor one of three files.
+Change: make every lane-conditional path record an explicit SKIP, as item 14 did for two tool probes. Coverage totals then become lane-invariant by construction and a single integer floor per file works with no lane keying and no CI-matrix knowledge inside the test file.
+Effort L, Risk low. Touches roughly 230 call sites across test_zig_toolchain.py (~155) and test_libcxx_shared.py (~68).
+Validation: the same total registers on every lane for a given file; then delete a probe and the board goes red without any lane-keyed table.
+Status: TODO - residual of item 16
+Blocked by: nothing
+
+---
+
+### 23. test_libcxx_shared.py does nothing on the true-aarch64 native lanes
+Problem: measured on PR #189 / 15f8265f, the file registers 0 passed / 0 failed / 0 warnings / 3 skipped on linux_aarch64_xtarget_linux-aarch64, win_arm64_xtarget_win-arm64 and osx_arm64_xtarget_osx-arm64 -- three SKIPs and no actual check, on all three OSes, on real aarch64 hardware. It registers 11 on linux-64 native and 8 (with a libcxx-static-fallback WARN) on the emulated ppc64le and riscv64 lanes. The board is green on those three lanes while testing nothing, which is the same silent-degradation class as items 13 and 16 but on a lane group those items did not cover.
+Change: find why the probes all SKIP on aarch64 natives and either make them run there or record why they cannot. Not diagnosed yet.
+Effort M, Risk low.
+Validation: those three lanes register a non-zero pass count, or carry a SKIP detail that names a real reason.
+Status: TODO
 Blocked by: nothing
