@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-# brush 0.4.0 (#1245): xtrace clobbers $?, breaking set -e. Keep it off.
+# brush #1245 (real on 0.4.0, no released fix): with -x on, a bare VAR= after a
+# non-zero $? inherits it and -e aborts. Keep -x OFF while -e is armed.
 set +x
 IFS=$'\n\t'
 
@@ -232,11 +233,6 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
     mkdir -p "${TARGET_DIR}"
     cp "${STAGE1_ZIG}.real" "${TARGET_DIR}/zig_native_patched.real"
     chmod +x "${TARGET_DIR}/zig_native_patched.real"
-    # Copy Stage 1's zig stdlib alongside the .real binary. zig 0.17 locates
-    # its stdlib by walking up from argv[0] looking for a lib/std sibling —
-    # without this, build_zig_with_zig's later invocation of the stashed
-    # binary fails with "unable to find zig installation directory".
-    cp -r "${STAGE1_DIR}/lib" "${TARGET_DIR}/lib"
     cat > "${TARGET_DIR}/zig_native_patched" <<EOF
 #!/bin/bash
 SELF_DIR=\$(dirname "\$(readlink -f "\$0")")

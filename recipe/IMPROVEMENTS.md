@@ -11,7 +11,7 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 | 1 | config.h mutation assert instead of silent no-op | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 2 | Split EXTRA_ZIG_ARGS along maker/configurer boundary | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 3 | Stop mingw layer degrading silently | S-M | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
-| 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | TODO | - |
+| 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | IN PROGRESS | PR #189 board, 24/24 green @ d8b08e8d |
 | 5 | Build-time upstream-assumption ledger | S-M | low | TODO | - |
 | 6 | Encode patch order in filenames, not comments | M | low-med | DONE (scope narrowed) | PR #186 board, 24/24 green @ 335fdf83 |
 | 7 | Adopt -Doptimize=safe | S | low | DONE (2026-09-18) | - |
@@ -107,8 +107,8 @@ Blocked by: nothing
 
 **Validation.** linux-ppc64le cross (two-stage bootstrap, `build.sh:282-292`); failure signature is `unable to find zig installation directory`.
 
-Status: TODO
-Blocked by: a ppc64le lane run; do not delete the copy in the same commit that adds the export.
+Status: IN PROGRESS - export landed and CI-verified (15f8265f; PR #189 board 24/24 green @ d8b08e8d); this change now deletes the copy to test whether the env var alone suffices.
+Blocked by: nothing - the prior blocker (a green ppc64le run after the export, in a separate commit) is satisfied. A green board with the copy still present does NOT prove the env var suffices on its own, which is why the copy is being removed now.
 
 ---
 
@@ -425,10 +425,42 @@ Blocked by: nothing
 
 ---
 
-### 23. test_libcxx_shared.py does nothing on the true-aarch64 native lanes
-Problem: measured on PR #189 / 15f8265f, the file registers 0 passed / 0 failed / 0 warnings / 3 skipped on linux_aarch64_xtarget_linux-aarch64, win_arm64_xtarget_win-arm64 and osx_arm64_xtarget_osx-arm64 -- three SKIPs and no actual check, on all three OSes, on real aarch64 hardware. It registers 11 on linux-64 native and 8 (with a libcxx-static-fallback WARN) on the emulated ppc64le and riscv64 lanes. The board is green on those three lanes while testing nothing, which is the same silent-degradation class as items 13 and 16 but on a lane group those items did not cover.
-Change: find why the probes all SKIP on aarch64 natives and either make them run there or record why they cannot. Not diagnosed yet.
-Effort M, Risk low.
-Validation: those three lanes register a non-zero pass count, or carry a SKIP detail that names a real reason.
+### 23. Unjustified arm64 gate in test_libcxx_shared.py, inherited for parity with no evidence
+Problem: measured on PR #189 / 15f8265f, the file registers 0 passed / 0 failed / 0 warnings / 3 skipped on linux_aarch64_xtarget_linux-aarch64, win_arm64_xtarget_win-arm64 and osx_arm64_xtarget_osx-arm64. The mechanism is `is_arm64` (derived from sys.argv[1] conda_triplet, i.e. the per-output TARGET arch), not native-vs-emulated lanes -- it also fires on any arm64 cross output, not just true-native ones. Each of the three probes DID record an explicit SKIP, it did not vanish silently. So the original framing ("does nothing on the true-aarch64 native lanes", implying silent loss) was wrong on both counts: wrong axis (target arch, not native/emulated) and wrong claim (SKIP recorded, not evaporated). The gate itself was inherited "for parity" with no evidence it is needed.
+Change: dropped all three `if is_arm64: SKIP(...); return` gates in test_libcxx_fallback_static, test_libcxx_probe_paths and test_libcxx_shared_simulation, to get a real measurement on arm64 targets instead of an assumed one.
+Effort S, Risk med (opens linking-test wall-clock on arm64 targets for the first time).
+Validation: those three lanes register a non-zero pass count, or a real FAIL/WARN naming a concrete reason.
+Status: IN PROGRESS - gate dropped 2026-09-19; DONE only once a board shows real arm64 pass/fail counts
+Blocked by: nothing
+
+---
+
+### 24. The mingw named-member check covers only one of three windows target arches
+Problem: recipe/testing/test_mingw_crt.py:206 defines the required member tuple ("ucrt_snprintf", "ucrt_vsnprintf", "thread", "mutex"). Severity is correct and unconditional -- :211-215 does sys.exit(1) on a missing member, with no WARN branch and no per-arch conditional altering severity anywhere in :185-217. Coverage is the defect: :190 inspects exactly ONE on-disk archive, lib_dir / "libmingw32.lib", once. The comment at :2 and the success print at :217 ("x86_64-windows-gnu CRT bootstrap: OK") scope it to x86_64-windows-gnu only. aarch64-windows-gnu and x86-windows-gnu archives are never member-checked in any form, so a missing required member on those two arches produces NO output at all. The three-arch list at :108 ("x86_64-windows-gnu", "aarch64-windows-gnu", "x86-windows-gnu") drives only the link-probe loop at :105-145 (failures aggregated at :221-224); it does not feed the member check. Same silent-degradation class as items 14 and 16: absence of a record is worse than a WARN, because nothing in the log distinguishes "checked and fine" from "never checked". Found by a question from the sibling zig 0.16 feedstock session, which has the inverse trade-off -- it looks at all three arches but FAILs on only x86_64-windows-gnu and merely WARNs on the other two; the correct target for both trees is FAIL on all three.
+Measured by the ocaml-feedstock session against our published zig_win-arm64 2131 package: every archive in a given staged mingw lib dir reports an identical byte size (lib-common 10664696, lib32 11135226, libarm64 11084548 -- four names x two extensions, one size per dir). That four-name copy is deliberate, by design, and correct -- not a defect. The consequence is assertion strength, not artifact health: the byte floor at _mingw.sh:699 (9500000) cannot tell a real libmingw32 from a combined archive misnamed as one, so on the two arches this item's member check skips, staged archives get zero content-level verification, only a size floor the four-name copy trivially satisfies. The aarch64 archive did link a trivial C main to .exe on a native win-arm64 lane, so the artifact itself is functional; the gap is purely in what the automated check can catch.
+Change: lift the member check into the per-target loop so it runs for all three windows arches at the existing FAIL severity, rather than once against the native libmingw32.lib.
+Effort M, Risk med (may immediately redden aarch64-windows-gnu and x86-windows-gnu if their archives really are missing members -- that would be the silent breakage being found, not a regression).
+Validation: the check reports a per-arch result for all three targets; a deliberately stripped member on any one of the three arches trips a FAIL.
+Status: TODO
+Blocked by: nothing
+
+---
+
+### 25. The zig-cc wrapper contract has no coverage of linking a foreign prebuilt static library for a Windows target
+Problem: MEASURED facts with anchors. Every wrapper-facing Windows-target link this recipe exercises uses ONLY zig-cc-produced inputs: the cache-warm link at recipe/building/_mingw.sh:667-670 compiles and links warm.c alone (`zig cc -target <t> -pthread warm.c -o warm.exe`, no -l beyond -pthread), and the test probe at recipe/testing/test_mingw_crt.py:116 is argv [zig_exe, "cc", "-target", target, "-o", out, src] with _LINK_PROBE_C (:41-55) touching only mingw CRT symbols zig supplies. The SELF-BUILD is the opposite and must not be confused with it: recipe.yaml:371-381 puts clangdev, llvm, lld, libclang-cpp, zlib and zstd in zig_impl's host requirements with NO windows gate, so zig_impl for win-64/win-32/win-arm64 links conda-forge stock (foreign-toolchain) archives when it builds itself via build_zig_with_zig (recipe/building/_build.sh:6-35; the cmake path configure_cmake_zigcpp is dead code, never called). That path is green. So the gap is CONSUMER-FACING, not an absolute absence of the operation: the operation a consumer performs through the zig-cc wrapper -- link a foreign prebuilt static library into an executable for a Windows target -- is never exercised, while the compiler's own build does it constantly. Why this matters structurally on win-arm64 specifically: conda-forge ships stock arm64 binaries built by MSVC and zig is the only compiler available for that lane, so there is no matching-toolchain pairing of the kind m2w64 provides on win-64. EVERY consumer on win-arm64 is a cross-toolchain consumer by default. That makes this the first thing a new consumer hits, not an edge case. Provenance and status of the trigger: raised by the ocaml-feedstock session, the first non-zig consumer of the win-arm64 lane, whose executable link panics the driver ("reached unreachable code") at the first executable that pulls in conda-forge libzstd. Their mechanism is a HYPOTHESIS under test, NOT a confirmed finding, and this item does not depend on it -- the coverage gap is measured independently. The question was investigated and remains UNVERIFIED, but the evidence leans IMPORT-LIB/SHARED on windows. recipe/patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch:13 does string(REPLACE ".dll" "" LLVM_LIBRARIES ...) and its header comment at :4 names the motivating artifact as zstd.dll.lib, which is import-library naming; a static archive is not named that. Separately recipe/build.sh:257-259 injects -lzstd;-lxml2;-lz into ZIG_LLVM_LIBRARIES only if is_linux, so windows lanes rely on CMake's own find_library result. Caveat: the .dll strip is generic over the whole LLVM_LIBRARIES list, so attributing it to zstd specifically is the patch author's stated intent, not re-derivable from the diff mechanics. If the lean is right, the self-build does NOT exercise the foreign-static-archive path and this item's gap is total rather than partial.
+Also record what would settle it: upstream's CMakeLists if(ZIG_STATIC_ZSTD)/if(MSVC) branch (no src_cache or *_extracted dir exists in this worktree, confirmed absent), a win-* CI log line showing CMake's actual find_library(ZSTD) result path, or the file listing of conda-forge's win-arm64 zstd package (zstd.lib vs zstd.dll + zstd.dll.lib vs libzstd.a). The self-build's success actively masks this gap, because it produces exactly the evidence that would reassure a reader that the path works - which is why it went unnoticed rather than merely untested.
+Change: add a wrapper-facing link probe per Windows target that links an executable against a conda-forge-provided prebuilt static library (zstd is the natural choice since it is already a host dependency), declaring the symbol locally rather than including its header so an include-path failure cannot be misread as a link failure. Also settle the static-vs-import-lib question for zlib/zstd in the self-build and record the answer.
+Effort M, Risk low (a new probe; if it fails it is reporting a real consumer-facing defect).
+Validation: each Windows target reports a pass/fail for linking a foreign prebuilt static archive; the static-vs-dynamic linkage question is answered in the ledger rather than left open.
+Status: TODO
+Blocked by: nothing
+
+---
+
+### 26. Assert that the highest published build_number belongs to the highest published snapshot
+Problem: all snapshots publish as version 0.17.0, so build_number is conda's sole ordering lever; nothing currently asserts that it orders correctly. Measured consequence: published zig_dev builds were 2033_0, 2056_0, 2056_1, 2085_0, 2125_0, 2127_0, 2131_0, so the single 2056 rebuild outranked every newer snapshot and an unconstrained consumer spec resolved 75 snapshots stale. Found by the ocaml-feedstock session, not by us, after it had already cost them CI rounds. The leading build-string field is a VARIANT hash and cannot discriminate snapshots (aba11b2 spans 2127 and 2131), so the snapshot field is the only usable selector. Note the residual hazard that snapshot-derived numbering does not remove: a rebuild of an OLD snapshot published at a higher number would invert the order again.
+Change: add a post-publish or CI check asserting that max(build_number) across published builds belongs to max(snapshot), for each subdir; fail loudly if not.
+Effort S-M. Risk low.
+Validation: the check reddens when a deliberately mis-numbered build is present, and passes on the current label state.
 Status: TODO
 Blocked by: nothing

@@ -1,7 +1,9 @@
 schema_version: 1
 
 context:
-  build_number: 0
+  # Tracks the snapshot ordinal (all snapshots share version 0.17.0, so this
+  # is the only monotonic ordering lever) - never reset to 0 while version is unchanged.
+  build_number: 2151
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
