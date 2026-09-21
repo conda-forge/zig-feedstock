@@ -90,8 +90,8 @@ if _is_emulated:
     _link_skip_reasons.append(f"emulated ({_arch})")
 _LINK_SKIP_REASON = "/".join(_link_skip_reasons)
 
-# Cold-cache libc++ build under emulation exceeds 120s; give it real headroom.
-_COMPILE_TIMEOUT_S = 900
+# Cold-cache libc++ build under emulation exceeds 120s; native needs far less.
+_COMPILE_TIMEOUT_S = 1800 if _is_emulated else 120
 
 
 # --------------------------------------------------------------------------

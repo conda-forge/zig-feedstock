@@ -10,6 +10,9 @@ set -uo pipefail
 # CI lane you must add DEBUG_ZIG_BUILD: "1" to recipe.yaml's zig_impl script env:
 # block and push a round. Do that before investigating a build-script failure --
 # xtrace is what made the osx-64 Rosetta `ar` failure diagnosable.
+#
+# brush 0.4.0 (#1245): with -x on, a bare VAR=value after a failing command
+# inherits its status and errexit aborts. Never run -e and -x together.
 if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
   set +e
   set -x
@@ -18,6 +21,11 @@ else
   { set +x; } 2>/dev/null
 fi
 IFS=$'\n\t'
+
+# Fault instrumentation for the prologue below. An ERR trap does not alter the
+# traced program, so unlike -x it is safe with errexit armed. brush leaves some
+# BASH_* vars unset, hence the guards.
+trap 'printf "BUILD-ERR: status=%s line=%s cmd=%s\n" "$?" "${LINENO:-?}" "${BASH_COMMAND:-?}" >&2' ERR
 
 source "${RECIPE_DIR}/building/_bash_check.sh"
 
