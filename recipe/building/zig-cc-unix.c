@@ -586,7 +586,12 @@ static int run_lld(const char *zig_bin, const char *prog, int argc, char *argv[]
  * The exact "-o" arm is checked before the "-o*" prefix arm, matching bash's
  * case-order.  A trailing bare "-o" makes bash's `shift 2` fail under
  * `set -e`, exiting non-zero WITHOUT exec'ing; we mirror that with an explicit
- * error rather than silently forwarding a dangling flag. */
+ * error rather than silently forwarding a dangling flag.
+ *
+ * GNU windres's -i is the input FILE; zig rc's -i is an include DIRECTORY.
+ * Both spaced and concatenated -i are captured and re-emitted as a
+ * positional arg after all options (resinator requires positional input),
+ * rather than left as a stray -i that zig rc would misparse. */
 static int run_windres(const char *zig_bin, const char *prog, int argc, char *argv[]) {
     const char **new_argv =
         (const char **)malloc(sizeof(char *) * (size_t)(2 * argc + 2));
@@ -597,6 +602,7 @@ static int run_windres(const char *zig_bin, const char *prog, int argc, char *ar
     int ni = 0, i;
     new_argv[ni++] = zig_bin;
     new_argv[ni++] = "rc";
+    const char *captured_input = NULL;
     for (i = 1; i < argc; i++) {
         if (str_eq(argv[i], "-o")) {
             if (i + 1 >= argc) {
@@ -617,10 +623,23 @@ static int run_windres(const char *zig_bin, const char *prog, int argc, char *ar
             }
             snprintf(buf, len, "-fo%s", tail);
             new_argv[ni++] = buf;
+        } else if (str_eq(argv[i], "-i")) {
+            /* Two-arg form: capture, or forward unchanged if nothing
+             * follows (do not read past argv). */
+            if (i + 1 < argc) {
+                captured_input = argv[++i];
+            } else {
+                new_argv[ni++] = argv[i];
+            }
+        } else if (starts_with(argv[i], "-i")) {
+            /* Concatenated form: -i<file> */
+            captured_input = argv[i] + 2;
         } else {
             new_argv[ni++] = argv[i];
         }
     }
+    if (captured_input)
+        new_argv[ni++] = captured_input;
     new_argv[ni] = NULL;
     return exec_zig(zig_bin, (char *const *)new_argv);
 }

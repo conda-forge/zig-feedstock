@@ -12,10 +12,11 @@
  * The R1-R9 de-dup rules (see recipe/building/flag_rules.py) are delegated
  * to the generated, portable zig_translate_flags() (_translate.inc). Only
  * out-of-scope hand-written translations/drops remain below: -Wl,-e<sym>
- * entry-symbol translation, MSVC /MANIFEST* drops, GCC-only flag drops,
- * the non-Bsymbolic -Xlinker pair drop, and the LLD-trigger scans not
- * owned by R8/R9 (--version-script/--dynamic-list/--gc-sections/
- * --build-id/--allow-shlib-undefined).
+ * entry-symbol translation, -l:<file> exact-filename resolution against
+ * -L dirs, MSVC /MANIFEST* drops, GCC-only flag drops, the non-Bsymbolic
+ * -Xlinker pair drop, and the LLD-trigger scans not owned by R8/R9
+ * (--version-script/--dynamic-list/--gc-sections/--build-id/
+ * --allow-shlib-undefined).
  *
  * Placeholders replaced at install time:
  *   ZIG_CC_MODE      - "cc" or "c++"
@@ -78,6 +79,67 @@ static char *translate_wl_entry(const char *arg)
     if (!out) return NULL;
     snprintf(out, len, "-Wl,--entry,%s", sym);
     return out;
+}
+
+/*
+ * Collect -L search directories from argv, in order, handling both the
+ * spaced (-L <dir>) and concatenated (-L<dir>) forms. Used to resolve
+ * -l:<file> tokens (see resolve_l_colon). Caller owns *out_dirs (free()).
+ */
+static void collect_l_dirs(char *const *argv, int argc, const char ***out_dirs, int *out_n) {
+    const char **dirs = (const char **)malloc(sizeof(char *) * (size_t)(argc + 1));
+    int n = 0;
+    if (dirs) {
+        for (int i = 0; i < argc; i++) {
+            const char *a = argv[i];
+            if (str_eq(a, "-L")) {
+                if (i + 1 < argc) dirs[n++] = argv[++i];
+            } else if (starts_with(a, "-L") && a[2] != '\0') {
+                dirs[n++] = a + 2;
+            }
+        }
+    }
+    *out_dirs = dirs;
+    *out_n = n;
+}
+
+/*
+ * GNU ld/gcc -l:<file> means: search the -L dirs in order for a file with
+ * that EXACT name and link it as an input file. Resolving it here (instead
+ * of forwarding -l:<file> to zig) preserves that semantics exactly and
+ * avoids the driver panic ("reached unreachable code") observed on
+ * win-arm64 when the -l: token is forwarded as-is.
+ * Returns a malloc'd resolved path (first match wins), or NULL if
+ * not found in any -L dir. On malloc failure sets *oom = 1 and returns
+ * NULL, distinct from the not-found case (*oom = 0).
+ */
+static char *resolve_l_colon(const char *filename, const char **dirs, int n_dirs, int *oom) {
+    *oom = 0;
+    size_t max_dir_len = 0;
+    for (int i = 0; i < n_dirs; i++) {
+        size_t len = strlen(dirs[i]);
+        if (len > max_dir_len) max_dir_len = len;
+    }
+    size_t buf_size = max_dir_len + 1 + strlen(filename) + 1;
+    char *scratch = (char *)malloc(buf_size);
+    if (!scratch) {
+        *oom = 1;
+        return NULL;
+    }
+    char *result = NULL;
+    for (int i = 0; i < n_dirs; i++) {
+        snprintf(scratch, buf_size, "%s/%s", dirs[i], filename);
+        FILE *f = fopen(scratch, "rb");
+        if (f) {
+            fclose(f);
+            result = (char *)malloc(strlen(scratch) + 1);
+            if (result) strcpy(result, scratch);
+            else *oom = 1;
+            break;
+        }
+    }
+    free(scratch);
+    return result;
 }
 
 /* -Xlinker passthrough flags to drop.
@@ -290,14 +352,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* -L search dirs for -l:<file> resolution below, collected from the
+     * same argv the second pass iterates (order preserved through
+     * zig_translate_flags, which does not touch -L). */
+    const char **l_dirs = NULL;
+    int n_l_dirs = 0;
+    collect_l_dirs(out_argv, out_argc, &l_dirs, &n_l_dirs);
+
     /* Second pass over the generated output: hand-written translations and
-     * drops that stay out of R1-R9 scope (-Wl,-e<sym> entry rewrite, the
-     * 11 out-of-scope -Wl,* drops, GCC-only drops, MSVC manifest drops,
-     * and the self-injected -fuse-ld=lld). */
+     * drops that stay out of R1-R9 scope (-Wl,-e<sym> entry rewrite, -l:<file>
+     * exact-filename resolution, the 11 out-of-scope -Wl,* drops, GCC-only
+     * drops, MSVC manifest drops, and the self-injected -fuse-ld=lld). */
     const char **filtered = malloc(sizeof(char *) * (size_t)(out_argc + 1));
     if (!filtered) {
         fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
         free(out_argv);
+        free(l_dirs);
         return 1;
     }
     int fi = 0;
@@ -311,6 +381,40 @@ int main(int argc, char *argv[]) {
                 filtered[fi++] = translated;
                 continue;
             }
+        }
+
+        /* -l:<file> resolution: zig's driver panics ("reached unreachable
+         * code") on this GNU exact-filename token, observed on win-arm64.
+         * Resolve it against the -L dirs ourselves and pass the resolved
+         * path instead; a token that resolves nowhere is a hard error,
+         * not a silent passthrough. */
+        if (starts_with(arg, "-l:") && arg[3] != '\0') {
+            const char *filename = arg + 3;
+            int oom = 0;
+            char *resolved = resolve_l_colon(filename, l_dirs, n_l_dirs, &oom);
+            if (!resolved) {
+                if (oom) {
+                    fprintf(stderr, "ERROR: zig-%s: malloc failed\n", ZIG_CC_MODE);
+                } else if (n_l_dirs == 0) {
+                    fprintf(stderr,
+                            "ERROR: zig-%s: -l:%s not found: no -L directories were given "
+                            "on the command line, so the exact-filename token could not be "
+                            "resolved.\n",
+                            ZIG_CC_MODE, filename);
+                } else {
+                    fprintf(stderr,
+                            "ERROR: zig-%s: -l:%s not found. Searched %d -L directories:\n",
+                            ZIG_CC_MODE, filename, n_l_dirs);
+                    for (int di = 0; di < n_l_dirs; di++)
+                        fprintf(stderr, "  %s\n", l_dirs[di]);
+                }
+                free(filtered);
+                free(out_argv);
+                free(l_dirs);
+                return 1;
+            }
+            filtered[fi++] = resolved;
+            continue;
         }
 
         /* -Wl,* drops -- skip if LLD promoted (LLD handles these) */
@@ -333,6 +437,7 @@ int main(int argc, char *argv[]) {
         filtered[fi++] = arg;
     }
     free(out_argv);
+    free(l_dirs);
 
     /* Determine final mode (R4 -nostdlib++ downgrade already applied
      * inside zig_translate_flags()) */
