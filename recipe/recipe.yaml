@@ -772,6 +772,24 @@ outputs:
               build:
                 - python >=3.10
 
+          # Verify <triplet>-zig-cc wrapper links a foreign (MSVC-built) prebuilt import library (zstd).
+          # Native-keyed: win-64 test env can only install win-64 zstd.
+          - script:
+              - if: is_native and (xc_w64 or xc_warm64)
+                then:
+                  - python testing/test_foreign_import_lib.py
+                else:
+                  - echo "SKIP foreign import library link probe (non-native Windows target)"
+            files:
+              recipe:
+                - testing/_test_utils.py
+                - testing/test_foreign_import_lib.py
+            requirements:
+              build:
+                - python >=3.10
+              run:
+                - zstd
+
           # Shim target selection is pure logic; the guarded .c sources must be
           # copied or _compile_c_shim is skipped and the count assertion misfires.
           - script:
