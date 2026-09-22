@@ -1,7 +1,9 @@
 schema_version: 1
 
 context:
-  build_number: 0
+  # Tracks the snapshot ordinal (all snapshots share version 0.17.0, so this
+  # is the only monotonic ordering lever) - never reset to 0 while version is unchanged.
+  build_number: 2228
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -18,7 +20,7 @@ context:
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: false
+  bootstrap_via_upstream: true
 
   # Manual global override for local dev only; SKIP_LANGREF export derives from it.
   is_testable: >-
@@ -215,6 +217,8 @@ source:
           # back-shift comparison trivially true and silently dropping the panic.
           # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, …).
           - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
+          # 16GB ceiling: ppc64le Stage 1 peaks at 11.41GB.
+          - patches/linux/build.zig-01-maxrss-raise.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
       # can also `zig cc -target powerpc64le-linux-gnu`.
@@ -766,6 +770,39 @@ outputs:
             files:
               recipe:
                 - testing/test_wl_entry_translation.py
+            requirements:
+              build:
+                - python >=3.10
+
+          # Verify <triplet>-zig-cc wrapper links a foreign (MSVC-built) prebuilt import library (zstd).
+          # Native-keyed: win-64 test env can only install win-64 zstd.
+          - script:
+              - if: is_native and (xc_w64 or xc_warm64)
+                then:
+                  - python testing/test_foreign_import_lib.py
+                else:
+                  - echo "SKIP foreign import library link probe (non-native Windows target)"
+            files:
+              recipe:
+                - testing/_test_utils.py
+                - testing/test_foreign_import_lib.py
+            requirements:
+              build:
+                - python >=3.10
+              run:
+                - zstd
+
+          # Verify <triplet>-zig-cc wrapper resolves GNU -l:<filename> against -L dirs.
+          - script:
+              - if: xc_w64 or xc_warm64
+                then:
+                  - python testing/test_l_colon_link.py
+                else:
+                  - 'echo "SKIP -l: exact-filename link probe (non-Windows target)"'
+            files:
+              recipe:
+                - testing/_test_utils.py
+                - testing/test_l_colon_link.py
             requirements:
               build:
                 - python >=3.10
