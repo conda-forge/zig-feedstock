@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-# brush 0.4.0 (#1245): xtrace clobbers $?, breaking set -e. Keep it off.
+# brush #1245 (real on 0.4.0, no released fix): with -x on, a bare VAR= after a
+# non-zero $? inherits it and -e aborts. Keep -x OFF while -e is armed.
 set +x
 IFS=$'\n\t'
 
@@ -91,9 +92,8 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
         echo "ERROR: No upstream bootstrap zig found in ${SRC_DIR}/zig-bootstrap/" >&2
         exit 1
     fi
-    ZIG_LIB_DIR_ARGS=()  # snapshot 1245: `zig build` no longer accepts --zig-lib-dir; lib dir auto-discovered from argv[0]
     echo "[build_native] Bootstrap zig (upstream tarball): ${ZIG_BIN}"
-    echo "[build_native] Using zig-lib-dir: ${SRC_DIR}/zig-bootstrap/lib"
+    echo "[build_native] Bootstrap lib dir auto-discovered from argv[0]: ${SRC_DIR}/zig-bootstrap/lib"
 else
     : # brush 0.4.0 $? guard
     # Conda-installed zig_impl provides the bootstrap binary
@@ -102,7 +102,6 @@ else
         echo "ERROR: No zig binary found in ${ENV_DIR}/bin/"
         exit 1
     fi
-    ZIG_LIB_DIR_ARGS=()
     echo "[build_native] Bootstrap zig (conda): ${ZIG_BIN}"
 fi
 
@@ -167,7 +166,6 @@ mkdir -p "${STAGE1_DIR}"
 cd "${SRC_DIR}/zig-source"
 "${ZIG_BIN}" build \
     --prefix "${STAGE1_DIR}" \
-    "${ZIG_LIB_DIR_ARGS[@]}" \
     "${ZIG_BUILD_ARGS[@]}" \
     -Dno-langref \
     -Doptimize=safe \
@@ -235,15 +233,11 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
     mkdir -p "${TARGET_DIR}"
     cp "${STAGE1_ZIG}.real" "${TARGET_DIR}/zig_native_patched.real"
     chmod +x "${TARGET_DIR}/zig_native_patched.real"
-    # Copy Stage 1's zig stdlib alongside the .real binary. zig 0.17 locates
-    # its stdlib by walking up from argv[0] looking for a lib/std sibling —
-    # without this, build_zig_with_zig's later invocation of the stashed
-    # binary fails with "unable to find zig installation directory".
-    cp -r "${STAGE1_DIR}/lib" "${TARGET_DIR}/lib"
     cat > "${TARGET_DIR}/zig_native_patched" <<EOF
 #!/bin/bash
 SELF_DIR=\$(dirname "\$(readlink -f "\$0")")
 export LD_LIBRARY_PATH="${ENV_DIR}/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export ZIG_LIB_DIR="\${SELF_DIR}/lib"
 exec "\${SELF_DIR}/\$(basename "\$0").real" "\$@"
 EOF
     chmod +x "${TARGET_DIR}/zig_native_patched"
@@ -262,8 +256,7 @@ echo "[Stage 2] Rebuilding WITH docgen (langref doctests enabled); bootstrap: ${
 STAGE2_DIR="${WORK_DIR}/stage2-install"
 mkdir -p "${STAGE2_DIR}"
 
-# Stage 1 zig needs lib/zig from the source tree to function as bootstrap
-# Set --zig-lib-dir so it finds std lib in the source, not relative to binary
+# Stage 1 zig finds the source stdlib by running from the zig-source directory
 cd "${SRC_DIR}/zig-source"
 "${STAGE1_ZIG}" build \
     --prefix "${STAGE2_DIR}" \

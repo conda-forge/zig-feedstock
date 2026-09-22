@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-# brush 0.4.0 (#1245): xtrace clobbers $?, breaking set -e. Keep it off.
+# brush #1245 (real on 0.4.0, no released fix): with -x on, a bare VAR= after a
+# non-zero $? inherits it and -e aborts. Keep -x OFF while -e is armed.
 set +x
 IFS=$'\n\t'
 
