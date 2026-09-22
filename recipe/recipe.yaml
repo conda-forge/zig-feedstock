@@ -790,6 +790,21 @@ outputs:
               run:
                 - zstd
 
+          # Verify <triplet>-zig-cc wrapper resolves GNU -l:<filename> against -L dirs.
+          - script:
+              - if: xc_w64 or xc_warm64
+                then:
+                  - python testing/test_l_colon_link.py
+                else:
+                  - 'echo "SKIP -l: exact-filename link probe (non-Windows target)"'
+            files:
+              recipe:
+                - testing/_test_utils.py
+                - testing/test_l_colon_link.py
+            requirements:
+              build:
+                - python >=3.10
+
           # Shim target selection is pure logic; the guarded .c sources must be
           # copied or _compile_c_shim is skipped and the count assertion misfires.
           - script:

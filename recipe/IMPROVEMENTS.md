@@ -492,3 +492,18 @@ Effort S. Risk low.
 Validation: `recipe/testing/test_windres.py` on any lane where the wrapper is exercised, plus the two new `-i` cases; failure signature was `missing input filename` before this change.
 Status: DONE, pending CI
 Blocked by: nothing
+
+---
+
+### 29. The general `-l:` resolver shipped with no test exercising it
+
+Problem: item 27 added general GNU `-l:<filename>` resolution to `zig-cc-nonunix.c`, but nothing in this recipe emits a `-l:` token, so no lane runs that code. Its only coverage was the zig-cc syntax check plus review. A defect there would surface in a consumer build, never on our board. This is the same shape that produced items 25, 27 and 28: a wrapper capability consumers depend on that the recipe's own build never exercises.
+
+Change: new `recipe/testing/test_l_colon_link.py`, gated `xc_w64 or xc_warm64` so it runs on all four windows-target lanes. It builds a real `libfoo.a` via `<triplet>-zig-cc -c` plus `<triplet>-zig-ar rcs`, then makes four assertions: `-l:libfoo.a` resolves and links against a joined `-L<dir>`; the same against a spaced `-L <dir>`; an unresolvable token WITH a `-L` dir fails non-zero carrying the searched-dirs diagnostic and naming the dir; an unresolvable token with no user `-L` dir fails non-zero carrying the wrapper's own diagnostic rather than a zig driver panic. The fixture symbol `foo_value` exists only inside the archive, so a dropped or mangled token fails the link with an undefined symbol - the link succeeding is what proves the resolved absolute path actually reached the linker.
+
+Note on the fourth assertion: `collect_l_dirs` reads the already-translated argv, so the wrapper may contribute `-L` dirs of its own even when the caller passes none. That check therefore asserts only `-l:libmissing.a not found`, the substring common to both diagnostic spellings, rather than assuming the zero-dirs wording.
+
+Effort S. Risk low (test-only; adds no wrapper code).
+Validation: the four checks above on `win_64_xtarget_win-64`, `win_64_xtarget_win-arm64`, `win_arm64_xtarget_win-64` and `win_arm64_xtarget_win-arm64`.
+Status: DONE, pending CI
+Blocked by: nothing
