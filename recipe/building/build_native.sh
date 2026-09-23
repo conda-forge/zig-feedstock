@@ -150,7 +150,8 @@ ZIG_BUILD_ARGS=(
     -Dtarget=${_host_arch}-linux-gnu.2.17
     -Duse-zig-libcxx=false
     -Dversion-string="${PKG_VERSION}"
-    --maxrss 8000000000
+    # 16GB: ppc64le Stage 1 peaked at 11.41GB under upstream bootstrap.
+    --maxrss 16000000000
 )
 
 # ==========================================================================
@@ -237,11 +238,11 @@ if [[ "${BUILD_NATIVE_STAGE1_ONLY:-0}" == "1" ]]; then
 #!/bin/bash
 SELF_DIR=\$(dirname "\$(readlink -f "\$0")")
 export LD_LIBRARY_PATH="${ENV_DIR}/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
-export ZIG_LIB_DIR="\${SELF_DIR}/lib"
+export ZIG_LIB_DIR="${STAGE1_DIR}/lib/zig"
 exec "\${SELF_DIR}/\$(basename "\$0").real" "\$@"
 EOF
     chmod +x "${TARGET_DIR}/zig_native_patched"
-    echo "[build_native] Stashed Stage 1 zig (wrapper + .real + lib) to ${TARGET_DIR}/"
+    echo "[build_native] Stashed Stage 1 zig (wrapper + .real) to ${TARGET_DIR}/; ZIG_LIB_DIR=${STAGE1_DIR}/lib/zig"
     exit 0
 fi
 

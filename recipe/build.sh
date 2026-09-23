@@ -157,7 +157,13 @@ else
   # Reverted to the no-cap default for osx; the heavy link step
   # uses < 7 GB in practice on osx-arm64 native builds (proven by
   # repeated successes), and lets zig parallelize across cores.
-  ZIG_MAKER_ARGS+=(--maxrss 8000000000)
+  if is_not_unix; then
+    ZIG_MAKER_ARGS+=(--maxrss 8000000000)
+  else
+    # Linux: must be >= the 16GB build.zig max_rss patch, or zig refuses the
+    # step with "declares an upper bound ... exceeding the available".
+    ZIG_MAKER_ARGS+=(--maxrss 16000000000)
+  fi
 fi
 
 if is_not_unix; then
