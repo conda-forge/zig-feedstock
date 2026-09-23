@@ -1,14 +1,14 @@
 schema_version: 1
 
 context:
-  # Tracks the snapshot ordinal (all snapshots share version 0.17.0, so this
-  # is the only monotonic ordering lever) - never reset to 0 while version is unchanged.
-  build_number: 2228
+  # <snapshot ordinal><rev>: a new snapshot starts at <snapshot>0, rebuilds go 1, 2, 3 ...
+  # All snapshots share version 0.17.0, so this is the only monotonic ordering lever.
+  build_number: 22281
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "2228+955228b68"
-  snapshot_ref: "2127"
+  snapshot_ref: "2228"
   build_ref: "0"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
@@ -20,7 +20,7 @@ context:
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # Manual global override for local dev only; SKIP_LANGREF export derives from it.
   is_testable: >-
