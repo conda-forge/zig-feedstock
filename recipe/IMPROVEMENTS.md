@@ -11,7 +11,7 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 | 1 | config.h mutation assert instead of silent no-op | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 2 | Split EXTRA_ZIG_ARGS along maker/configurer boundary | S | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
 | 3 | Stop mingw layer degrading silently | S-M | low | DONE | PR #186 board, 24/24 green @ 6baeee89 |
-| 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | TODO | - |
+| 4 | Use ZIG_LIB_DIR instead of argv[0]/lib-copy workaround (SPECULATIVE) | S-M | med | IN PROGRESS | PR #189 board, 24/24 green @ d8b08e8d |
 | 5 | Build-time upstream-assumption ledger | S-M | low | TODO | - |
 | 6 | Encode patch order in filenames, not comments | M | low-med | DONE (scope narrowed) | PR #186 board, 24/24 green @ 335fdf83 |
 | 7 | Adopt -Doptimize=safe | S | low | DONE (2026-09-18) | - |
@@ -107,8 +107,8 @@ Blocked by: nothing
 
 **Validation.** linux-ppc64le cross (two-stage bootstrap, `build.sh:282-292`); failure signature is `unable to find zig installation directory`.
 
-Status: TODO
-Blocked by: a ppc64le lane run; do not delete the copy in the same commit that adds the export.
+Status: IN PROGRESS - export landed and CI-verified (15f8265f; PR #189 board 24/24 green @ d8b08e8d); this change now deletes the copy to test whether the env var alone suffices.
+Blocked by: nothing - the prior blocker (a green ppc64le run after the export, in a separate commit) is satisfied. A green board with the copy still present does NOT prove the env var suffices on its own, which is why the copy is being removed now.
 
 ---
 
@@ -315,10 +315,15 @@ Blocked by: nothing
 
 ### 16. Harness cannot express expected-but-absent coverage
 Problem: raised by the 0.16 track and it generalises item 14. Our harness test files end `return 1 if n_fail > 0 else 0`; SKIP and WARN never affect the exit code. So at the exit-code level a check that EVAPORATED, a check legitimately SKIPPED, and "nothing to test on this lane" are indistinguishable. Item 14 converted two evaporating probes into SKIPs, which is honest but still invisible to anything automated - the board cannot tell you coverage went missing. This is the general form of the whole batch-1 silent-degradation theme.
-Change: assert a minimum expected check count per test file, or an expected-coverage manifest keyed by lane, so a vanished check FAILS the board rather than quietly shrinking it. Not designed yet.
+MEASURED on the PR #189 green board (commit 15f8265f), all 22 build lanes, total registered checks (pass+warn+skip) per tallying file:
+- test_flag_translation_parity.py: 2 distinct totals -- 29 on all 4 osx lanes (generated-C leg runs), 16 on all 18 win and linux lanes (that leg SKIPs). Clean partition on build-host mac vs not.
+- test_zig_toolchain.py: 10 distinct pass/warn/skip profiles collapsing to 9 distinct totals, range 41..68 (totals discriminate even less than the profiles: linux_64 native and linux_aarch64 native at 46/0/6 and osx_arm64 native at 45/0/7 both total 52). Keys on BUILD-HOST arch, not target. win-64 native 67 vs win-arm64 native 68 total; osx-arm64 native 52 vs its own cross lanes 49. No clean OS/emulated partition, and a count floor cannot even tell the linux natives apart from the osx-arm64 native.
+- test_libcxx_shared.py: runs in only 8 of 22 lanes (the cross lanes drop the zig_impl output that carries the test), 5 distinct totals among those 8.
+A per-file integer floor is only sound where the totals partition, and more fundamentally the totals are corrupted by the bug the floor is meant to catch -- coverage varies by lane BECAUSE inapplicable checks vanish without recording a SKIP. Flooring that number floors a corrupted quantity.
+Change: _test_utils.py gained registered_check_count() and enforce_coverage_floor(floor, label, provenance), which reports through FAIL so the existing `n_fail > 0` reduction reddens the board. Floors are EXACT measured counts with no margin, unlike the soft margin at recipe/building/_mingw.sh:355, because losing one check must fail. Adopted in test_flag_translation_parity.py only (29 mac / 16 non-mac), the one file whose totals partition cleanly.
 Effort M, Risk low.
-Validation: deliberately delete a probe locally; the board must go red, not merely quieter.
-Status: TODO - raised by 0.16 track
+Validation: deliberately delete a probe locally; the board must go red, not merely quieter. Satisfied for test_flag_translation_parity.py only.
+Status: PARTIAL - mechanism landed, one of three tallying files adopted. Residual split out as item 22.
 Blocked by: nothing
 
 ---
@@ -406,4 +411,99 @@ Blocked by: nothing
 **Effort.** S. **Risk.** low.
 
 Status: DONE (2026-09-18) - regenerated against pristine 2131; audit re-run CONFIRMS CLEAN (was HIGHFUZZ fuzz=3), CLEAN count 9/23 -> 10/23, no other patch verdict changed
+Blocked by: nothing
+
+---
+
+### 22. Lane-conditional absence is implicit, so coverage counts are not lane-invariant
+Problem: the true generalisation of item 14 and the residual of item 16. Checks that do not apply to a lane simply do not execute; they record nothing. So per-file check totals differ by lane for two indistinguishable reasons -- legitimate inapplicability and real evaporation. Measured spread on PR #189 / 15f8265f: test_zig_toolchain.py 41..68 across 22 lanes, 10 distinct pass/warn/skip profiles collapsing to 9 distinct totals, keyed on build-host arch. This is why item 16 could only floor one of three files.
+Change: make every lane-conditional path record an explicit SKIP, as item 14 did for two tool probes. Coverage totals then become lane-invariant by construction and a single integer floor per file works with no lane keying and no CI-matrix knowledge inside the test file.
+Effort L, Risk low. Touches roughly 230 call sites across test_zig_toolchain.py (~155) and test_libcxx_shared.py (~68).
+Validation: the same total registers on every lane for a given file; then delete a probe and the board goes red without any lane-keyed table.
+Status: TODO - residual of item 16
+Blocked by: nothing
+
+---
+
+### 23. Unjustified arm64 gate in test_libcxx_shared.py, inherited for parity with no evidence
+Problem: measured on PR #189 / 15f8265f, the file registers 0 passed / 0 failed / 0 warnings / 3 skipped on linux_aarch64_xtarget_linux-aarch64, win_arm64_xtarget_win-arm64 and osx_arm64_xtarget_osx-arm64. The mechanism is `is_arm64` (derived from sys.argv[1] conda_triplet, i.e. the per-output TARGET arch), not native-vs-emulated lanes -- it also fires on any arm64 cross output, not just true-native ones. Each of the three probes DID record an explicit SKIP, it did not vanish silently. So the original framing ("does nothing on the true-aarch64 native lanes", implying silent loss) was wrong on both counts: wrong axis (target arch, not native/emulated) and wrong claim (SKIP recorded, not evaporated). The gate itself was inherited "for parity" with no evidence it is needed.
+Change: dropped all three `if is_arm64: SKIP(...); return` gates in test_libcxx_fallback_static, test_libcxx_probe_paths and test_libcxx_shared_simulation, to get a real measurement on arm64 targets instead of an assumed one.
+Effort S, Risk med (opens linking-test wall-clock on arm64 targets for the first time).
+Validation: those three lanes register a non-zero pass count, or a real FAIL/WARN naming a concrete reason.
+Status: IN PROGRESS - gate dropped 2026-09-19; DONE only once a board shows real arm64 pass/fail counts
+Blocked by: nothing
+
+---
+
+### 24. The mingw named-member check covers only one of three windows target arches
+Problem: recipe/testing/test_mingw_crt.py:206 defines the required member tuple ("ucrt_snprintf", "ucrt_vsnprintf", "thread", "mutex"). Severity is correct and unconditional -- :211-215 does sys.exit(1) on a missing member, with no WARN branch and no per-arch conditional altering severity anywhere in :185-217. Coverage is the defect: :190 inspects exactly ONE on-disk archive, lib_dir / "libmingw32.lib", once. The comment at :2 and the success print at :217 ("x86_64-windows-gnu CRT bootstrap: OK") scope it to x86_64-windows-gnu only. aarch64-windows-gnu and x86-windows-gnu archives are never member-checked in any form, so a missing required member on those two arches produces NO output at all. The three-arch list at :108 ("x86_64-windows-gnu", "aarch64-windows-gnu", "x86-windows-gnu") drives only the link-probe loop at :105-145 (failures aggregated at :221-224); it does not feed the member check. Same silent-degradation class as items 14 and 16: absence of a record is worse than a WARN, because nothing in the log distinguishes "checked and fine" from "never checked". Found by a question from the sibling zig 0.16 feedstock session, which has the inverse trade-off -- it looks at all three arches but FAILs on only x86_64-windows-gnu and merely WARNs on the other two; the correct target for both trees is FAIL on all three.
+Measured by the ocaml-feedstock session against our published zig_win-arm64 2131 package: every archive in a given staged mingw lib dir reports an identical byte size (lib-common 10664696, lib32 11135226, libarm64 11084548 -- four names x two extensions, one size per dir). That four-name copy is deliberate, by design, and correct -- not a defect. The consequence is assertion strength, not artifact health: the byte floor at _mingw.sh:699 (9500000) cannot tell a real libmingw32 from a combined archive misnamed as one, so on the two arches this item's member check skips, staged archives get zero content-level verification, only a size floor the four-name copy trivially satisfies. The aarch64 archive did link a trivial C main to .exe on a native win-arm64 lane, so the artifact itself is functional; the gap is purely in what the automated check can catch.
+Change: lift the member check into the per-target loop so it runs for all three windows arches at the existing FAIL severity, rather than once against the native libmingw32.lib.
+Effort M, Risk med (may immediately redden aarch64-windows-gnu and x86-windows-gnu if their archives really are missing members -- that would be the silent breakage being found, not a regression).
+Validation: the check reports a per-arch result for all three targets; a deliberately stripped member on any one of the three arches trips a FAIL.
+Status: TODO
+Blocked by: nothing
+
+---
+
+### 25. The zig-cc wrapper contract has no coverage of linking a foreign prebuilt import library for a Windows target
+Problem: MEASURED facts with anchors. Every wrapper-facing Windows-target link this recipe exercises uses ONLY zig-cc-produced inputs: the cache-warm link at recipe/building/_mingw.sh:667-670 compiles and links warm.c alone (`zig cc -target <t> -pthread warm.c -o warm.exe`, no -l beyond -pthread), and the test probe at recipe/testing/test_mingw_crt.py:116 is argv [zig_exe, "cc", "-target", target, "-o", out, src] with _LINK_PROBE_C (:41-55) touching only mingw CRT symbols zig supplies. The SELF-BUILD is the opposite: recipe.yaml:371-381 puts clangdev, llvm, lld, libclang-cpp, zlib and zstd in zig_impl's host requirements with NO windows gate, so zig_impl for win-64/win-32/win-arm64 links conda-forge stock (foreign-toolchain) archives when it builds itself via build_zig_with_zig (recipe/building/_build.sh:6-35; the cmake path configure_cmake_zigcpp is dead code, never called). That path is green.
+Static-vs-import-lib question: RESOLVED by measurement, not unverified. The ocaml-feedstock session listed conda-forge's win-arm64 zstd package: libzstd.lib and zstd.lib are both 45308 bytes beside 600064-byte libzstd.dll/zstd.dll -- import-library sizing -- and no static libzstd.a exists in the package at all. This confirms the naming inference from CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch:4,13 (zstd.dll.lib). So the self-build's foreign-archive link is import-lib/shared and does NOT exercise a foreign-static-archive path; for that sub-question the gap is total, not partial.
+This also weakens the item's original premise: conda-forge ships no static libzstd for win-arm64, and zig is the only compiler on that lane, so no static archive can be obtained or produced there with available packages. If no such artifact exists, no consumer can link one either -- the static-archive gap is THEORETICAL, not consumer-facing.
+The real consumer-facing operation is linking a foreign IMPORT LIBRARY, which now has positive external evidence: the ocaml session's probe linked conda-forge's libzstd import lib through the zig-cc wrapper successfully (exit 0) on the native win-arm64 lane. This recipe still does not test it -- every wrapper-facing link above uses zig-cc-produced inputs only. The self-build's success at pulling in conda-forge's own zstd masks this gap by producing evidence that looks reassuring without exercising the wrapper path a consumer actually uses.
+Structural reason this matters most on win-arm64: conda-forge ships stock arm64 binaries built by MSVC and zig is the only compiler available for that lane (no m2w64-style matching toolchain), so every consumer there is a cross-toolchain consumer by default.
+Provenance: raised by the ocaml-feedstock session's executable link, which originally panicked the driver ("reached unreachable code") on the first executable pulling in conda-forge libzstd. That original zstd-mechanism hypothesis is now DEAD: their import-lib link succeeded and no static archive exists to explain a mechanism around one. Their leading explanation moved to a command-line-length / response-file threshold, which is not a zig-feedstock defect and is out of scope here.
+Change: added recipe/testing/test_foreign_import_lib.py, a wrapper-facing probe (invoking the <triplet>-zig-cc entry point, not bare zig cc) that links an executable against conda-forge's prebuilt zstd IMPORT LIBRARY, declaring the symbol locally rather than including its header so an include-path failure cannot be misread as a link failure. Keyed on `is_native and (xc_w64 or xc_warm64)` -- native, not per-target -- because a win-64 test environment can only install win-64-subdir zstd: conda cannot install a foreign subdir's import library, so a cross-target import-lib probe is unreachable by construction. win-32 is excluded because no native win-32 lane exists in the matrix (`is_native and xc_win32` can never fire). Covering the static-archive case would first require identifying a package that actually ships a static archive for the target; none is currently known.
+Effort S-M, Risk low (a new probe; if it fails it is reporting a real consumer-facing defect).
+Validation: each NATIVE windows lane (win-64, win-arm64) reports pass/fail for linking a foreign prebuilt import library through the wrapper. recipe/testing/test_foreign_import_lib.py passed first run on both native windows lanes at commit a6dbbc44, 24/24 green.
+Status: DONE, CI-VERIFIED
+Blocked by: nothing
+
+---
+
+### 26. Assert that the highest published build_number belongs to the highest published snapshot
+Problem: all snapshots publish as version 0.17.0, so build_number is conda's sole ordering lever; nothing currently asserts that it orders correctly. Measured consequence: published zig_dev builds were 2033_0, 2056_0, 2056_1, 2085_0, 2125_0, 2127_0, 2131_0, so the single 2056 rebuild outranked every newer snapshot and an unconstrained consumer spec resolved 75 snapshots stale. Found by the ocaml-feedstock session, not by us, after it had already cost them CI rounds. The leading build-string field is a VARIANT hash and cannot discriminate snapshots (aba11b2 spans 2127 and 2131), so the snapshot field is the only usable selector. Note the residual hazard that snapshot-derived numbering does not remove: a rebuild of an OLD snapshot published at a higher number would invert the order again.
+Change: add a post-publish or CI check asserting that max(build_number) across published builds belongs to max(snapshot), for each subdir; fail loudly if not.
+Effort S-M. Risk low.
+Validation: the check reddens when a deliberately mis-numbered build is present, and passes on the current label state.
+Status: TODO
+Blocked by: nothing
+
+---
+
+### 27. The nonunix wrapper never implemented GNU `-l:<filename>` exact-filename linking, so it panics the zig 0.17 driver
+Problem: MEASURED facts with anchors, verified in this tree. `zig-cc-unix.c:174`'s `is_post_translate_drop()` DROPS `-l:libpthread.a` and `-l:libpthread.so*` (`:152-154`), plus `-lgcc_eh`/`-lgcc_s` on the same line -- but a drop only works on unix because pthread there is supplied transparently via libc, so losing the token costs nothing. `zig-cc-nonunix.c:116-124`'s `is_drop_flag()` implements none of these filters -- the nonunix side has never had ANY handling for GNU `-l:` syntax, not a narrower version of the unix behaviour, an absent one. The split is structural, not an oversight in one function: `install_zig_activation.py:49` sets `is_nonunix` from `"mingw32" in conda_triplet`, then `:440-473` builds the unix `.c` and `:391-409` the nonunix `.c` from the same `flag_rules.py`-generated `_translate.inc` (R1-R13); that shared manifest contains NEITHER filter, so hand-written drop/translate logic on either side has always had to be added per-file, and nonunix simply never got any. Consequence on mingw: `-l:libpthread.a` reaches zig's own `-l:` parsing path unmodified, where zig 0.17's driver panics ("reached unreachable code", exit 3) for `aarch64-w64-mingw32`.
+MEASURED by the ocaml-feedstock session, conda-forge ocaml-feedstock PR 146, job 106541858575: baseline + `-l:libpthread.a` = exit 3 PANIC; baseline + `-lpthread` = exit 0; baseline + `-lwinpthread` = exit 0. They also refuted command-line length (to 22183 chars), object count (1..256), and `.a`-vs-`.lib` archive naming as causes.
+Change: `zig-cc-nonunix.c` now implements the general, semantically-correct GNU `-l:` resolution instead of a narrow token-specific rewrite. GNU ld/gcc's `-l:<filename>` means "search the `-L` directories in order for a file of that EXACT name and link it as an input file" -- a different contract from `-lfoo` (library search by stem). The wrapper collects every `-L` dir from argv in a first pass (both `-L <dir>` and `-L<dir>` spellings), then for each `-l:<filename>` token resolves it against those dirs in order and substitutes the token with the RESOLVED ABSOLUTE PATH passed as a plain positional input file. This preserves GNU semantics exactly, works for ANY `-l:libfoo.a` (not just libpthread), and sidesteps zig's `-l:` parsing path entirely -- which is what panics the driver, so this is a structural fix, not a token-specific workaround. If the file is not found in any `-L` dir, the wrapper prints a one-line diagnostic naming the token and the searched directories and exits non-zero, rather than forwarding the token and letting zig panic uninformatively.
+Consequence for scope: the earlier open question "does this token panic for other `-l:libfoo.a` values, not just libpthread" is now MOOT for anything going through this wrapper -- no `-l:` token reaches zig's driver anymore, resolved or not.
+OPEN sub-item: `zig-cc-unix.c` still DROPS `-l:libpthread.a`/`-l:libpthread.so*` (`:174`) rather than resolving them the same way, so the two wrappers are now inconsistent in mechanism (unix drops silently and relies on libc providing pthread; nonunix resolves and links explicitly). The unix drop is live, green, and deliberately left alone this round since it is not broken. Converging unix onto the same `-L`-resolution logic as nonunix is a separate, undecided change.
+Effort S-M. Risk low (nonunix wrapper only; unix side untouched).
+Validation: mingw lane linking a token that reaches this path must exit 0 where it previously exited 3; a deliberately-unresolvable `-l:` token must fail loudly with the new diagnostic, not silently pass through.
+Status: DONE, pending CI
+Blocked by: nothing (the unix-side convergence noted above is a separate, unscheduled item)
+
+---
+
+### 28. GNU windres `-i <input-file>` form was never translated, on any platform
+Problem: the complete windres flag-translation set was exactly one rule, `-o` -> `-fo`; `-i` was forwarded verbatim in both wrappers (`zig-windres-nonunix.c` ~:78 and the `run_windres` path in `zig-cc-unix.c` ~:615). zig's `resinator` follows `rc.exe` semantics, where `-i` names an include DIRECTORY, not an input file -- so a verbatim `-i <file>` made resinator treat the input .rc file as a directory and report "missing input filename". This was NOT a unix/nonunix asymmetry the way item 27 is -- it was a gap present identically in both wrappers. `recipe/testing/test_windres.py` could not have caught it: both its pre-existing tests pass the input file POSITIONALLY, the one input spelling that already worked, so `-i` coverage was structurally absent, not merely unexercised.
+Consumer impact, MEASURED by the ocaml-feedstock session: conda-forge/ocaml-feedstock PR 146 win-arm64 was TOTALLY blocked at flexdll `Makefile:220` with `<cli>: error: missing input filename` (job 106541858575). flexdll carries THREE windres invocations selected by `command -v` at build time, so a consumer-side workaround is runner-dependent and cannot be made reliable -- which is why the fix belongs in the wrapper, not in the consumer.
+Change: both `zig-windres-nonunix.c` and the `run_windres` path in `zig-cc-unix.c` now translate GNU `-i <file>` into a POSITIONAL input argument, handling both the spaced (`-i <file>`) and concatenated (`-i<file>`) spellings. `recipe/testing/test_windres.py` gained two new cases exercising exactly these two spellings against `-o`/`-fo`, verified to exit 0 with a non-empty output file, reusing the file's existing `.rc` fixture content.
+Effort S. Risk low.
+Validation: `recipe/testing/test_windres.py` on any lane where the wrapper is exercised, plus the two new `-i` cases; failure signature was `missing input filename` before this change.
+Status: DONE, pending CI
+Blocked by: nothing
+
+---
+
+### 29. The general `-l:` resolver shipped with no test exercising it
+
+Problem: item 27 added general GNU `-l:<filename>` resolution to `zig-cc-nonunix.c`, but nothing in this recipe emits a `-l:` token, so no lane runs that code. Its only coverage was the zig-cc syntax check plus review. A defect there would surface in a consumer build, never on our board. This is the same shape that produced items 25, 27 and 28: a wrapper capability consumers depend on that the recipe's own build never exercises.
+
+Change: new `recipe/testing/test_l_colon_link.py`, gated `xc_w64 or xc_warm64` so it runs on all four windows-target lanes. It builds a real `libfoo.a` via `<triplet>-zig-cc -c` plus `<triplet>-zig-ar rcs`, then makes four assertions: `-l:libfoo.a` resolves and links against a joined `-L<dir>`; the same against a spaced `-L <dir>`; an unresolvable token WITH a `-L` dir fails non-zero carrying the searched-dirs diagnostic and naming the dir; an unresolvable token with no user `-L` dir fails non-zero carrying the wrapper's own diagnostic rather than a zig driver panic. The fixture symbol `foo_value` exists only inside the archive, so a dropped or mangled token fails the link with an undefined symbol - the link succeeding is what proves the resolved absolute path actually reached the linker.
+
+Note on the fourth assertion: `collect_l_dirs` reads the already-translated argv, so the wrapper may contribute `-L` dirs of its own even when the caller passes none. That check therefore asserts only `-l:libmissing.a not found`, the substring common to both diagnostic spellings, rather than assuming the zero-dirs wording.
+
+Effort S. Risk low (test-only; adds no wrapper code).
+Validation: the four checks above on `win_64_xtarget_win-64`, `win_64_xtarget_win-arm64`, `win_arm64_xtarget_win-64` and `win_arm64_xtarget_win-arm64`.
+Status: DONE, pending CI
 Blocked by: nothing

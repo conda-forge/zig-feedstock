@@ -114,12 +114,13 @@ FAIL: unsatisfiable -> leave `snapshot_ref` alone this bump; do not derive it fr
 All must hold:
 
 1. Step 0 sha256 recorded at `recipe.yaml:176`, `snapshot` updated at `:8`.
-2. Step 2 exit 0 on all five platforms; no `FAIL`, no `HIGHFUZZ`; `OBSOLETE` patches removed from `recipe.yaml` and from disk.
-3. Steps 3+4 clean, or a recipe change landed that makes them clean.
-4. Step 5: zero `AFFECTED` without a mitigation; every `AT-RISK` has a named failure line and a lane.
-5. Step 6 pin resolves.
-6. `ZIG_RECIPE_LLM_REFERENCE.md` updated in the same change (section 4 for patch churn, section 7 for refuted hypotheses, header anchor for version/build/LLVM), per its section 9 trigger map.
-7. Zero orphan patches: every file under `recipe/patches/` appears in `recipe.yaml:177-248` and vice versa.
+2. `build_number` (`recipe.yaml:4`) set to the new snapshot's leading integer (e.g. `2151+2ec5523d5` -> `2151`); never reset to 0 while version is unchanged. A rebuild of the SAME snapshot increments by 1 (`2151` -> `2152`).
+3. Step 2 exit 0 on all five platforms; no `FAIL`, no `HIGHFUZZ`; `OBSOLETE` patches removed from `recipe.yaml` and from disk.
+4. Steps 3+4 clean, or a recipe change landed that makes them clean.
+5. Step 5: zero `AFFECTED` without a mitigation; every `AT-RISK` has a named failure line and a lane.
+6. Step 6 pin resolves.
+7. `ZIG_RECIPE_LLM_REFERENCE.md` updated in the same change (section 4 for patch churn, section 7 for refuted hypotheses, header anchor for version/build/LLVM), per its section 9 trigger map.
+8. Zero orphan patches: every file under `recipe/patches/` appears in `recipe.yaml:177-248` and vice versa.
 
 Any miss -> fix locally and rerun the affected step. Pushing on a red Step 2 wastes a full matrix.
 
