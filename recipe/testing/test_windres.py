@@ -18,22 +18,50 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
+from _test_utils import _build_is_win, resolve_test_prefix
+
+
+def _find_wrapper(triplet: str, wrapper_dir: Path) -> str | None:
+    """Locate the <triplet>-zig-windres wrapper in the resolved wrapper dir --
+    same resolution test_foreign_import_lib.py uses."""
+    suffix = ".exe" if _build_is_win else ""
+    candidate = wrapper_dir / f"{triplet}-zig-windres{suffix}"
+    return str(candidate) if candidate.is_file() else None
+
+
 def main() -> None:
-    # Discover the mingw windres wrapper from PATH by trying known candidates
-    candidates = [
-        "x86_64-w64-mingw32-zig-windres",
-        "i686-w64-mingw32-zig-windres",
-        "aarch64-w64-mingw32-zig-windres",
-    ]
+    # CONDA_ZIG_HOST is preferred: both build and target wrappers are on PATH,
+    # and first-found in the candidate list below silently picks the build one.
+    host = os.environ.get("CONDA_ZIG_HOST", "")
+    triplet = host.removesuffix("-zig") if host.endswith("-zig") else host
+
     windres_exe = None
-    for candidate in candidates:
-        found = shutil.which(candidate)
-        if found:
-            windres_exe = found
-            break
+    selection = None
+    if triplet:
+        prefix = resolve_test_prefix("Library/bin" if _build_is_win else "bin")
+        wrapper_dir = prefix / "Library" / "bin" if _build_is_win else prefix / "bin"
+        windres_exe = _find_wrapper(triplet, wrapper_dir)
+        if windres_exe:
+            selection = "from CONDA_ZIG_HOST"
+
+    if windres_exe is None:
+        # Discover the mingw windres wrapper from PATH by trying known candidates
+        candidates = [
+            "x86_64-w64-mingw32-zig-windres",
+            "i686-w64-mingw32-zig-windres",
+            "aarch64-w64-mingw32-zig-windres",
+        ]
+        for candidate in candidates:
+            found = shutil.which(candidate)
+            if found:
+                windres_exe = found
+                selection = "from candidate list"
+                break
 
     if windres_exe is None:
         sys.exit("FAIL: no <arch>-w64-mingw32-zig-windres wrapper found on PATH")
+
+    print(f"INFO: using {windres_exe} ({selection})")
 
     # RC source with minimal but valid VERSIONINFO structure
     rc_source = """1 VERSIONINFO

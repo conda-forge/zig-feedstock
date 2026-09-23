@@ -203,7 +203,6 @@ source:
           - patches/non_unix/build.zig-02-llvm-lib-multipath.patch
           - patches/non_unix/build.zig-03-msvc-crt-dynamic.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
-          - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/Lld.zig-suppress-importeddllmain.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
@@ -720,20 +719,21 @@ outputs:
             - testing/test_zig_toolchain.py
 
       - script:
-          - if: xc_w64
+          - if: xc_w64 or xc_warm64 or xc_win32
             then:
               - python testing/test_windres.py
             else:
               - echo "SKIP windres wrapper test (non-Windows target)"
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_windres.py
         requirements:
           build:
             - python >=3.10
 
       - script:
-          - if: xc_w64
+          - if: xc_w64 or xc_win32
             then:
               - python testing/test_wl_entry_translation.py
             else:
@@ -741,6 +741,19 @@ outputs:
         files:
           recipe:
             - testing/test_wl_entry_translation.py
+        requirements:
+          build:
+            - python >=3.10
+
+      - script:
+          - if: is_native and xc_w64
+            then:
+              - python testing/test_aarch64_msvc_ucrt.py
+            else:
+              - echo "SKIP aarch64 MSVC UCRT link probe (native win-64 only)"
+        files:
+          recipe:
+            - testing/test_aarch64_msvc_ucrt.py
         requirements:
           build:
             - python >=3.10
@@ -765,7 +778,7 @@ outputs:
 
       # Verify <triplet>-zig-cc wrapper resolves GNU -l:<filename> against -L dirs.
       - script:
-          - if: xc_w64 or xc_warm64
+          - if: xc_w64 or xc_warm64 or xc_win32
             then:
               - python testing/test_l_colon_link.py
             else:

@@ -80,16 +80,6 @@ _arch = _conda_triplet.split("-")[0] if _conda_triplet else platform.machine()
 is_arm64 = _arch in ("aarch64", "arm64")
 is_ppc64le = _arch == "powerpc64le"
 
-# Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
-
-# Reason string for the `_is_emulated and not is_ppc64le` link-test skip below.
-# ppc64le is exempt on purpose: the is_ppc64le disjunct (cb67851d) guarded a
-# refuted "LLD lacks PPC64 relocations" premise; CI-VERIFIED green at f5ba9430.
-_link_skip_reasons = []
-if _is_emulated:
-    _link_skip_reasons.append(f"emulated ({_arch})")
-_LINK_SKIP_REASON = "/".join(_link_skip_reasons)
-
 # Cold-cache libc++ build under emulation exceeds 120s; native needs far less.
 _COMPILE_TIMEOUT_S = 1800 if _is_emulated else 120
 
@@ -195,6 +185,8 @@ def _find_libcxx_static(zig: str, td: Path) -> tuple[Path | None, str]:
 # ===================================================================
 # Test 1: Fallback to static libc++ (no shared lib at probe paths)
 # ===================================================================
+# Emulated lanes run the linking tests: ppc64le has done so green under QEMU,
+# and _COMPILE_TIMEOUT_S already allows 1800s there.
 def test_libcxx_fallback_static() -> None:
     """
     Without shared libc++ at probe paths, zig c++ must link libc++ statically.
@@ -203,10 +195,6 @@ def test_libcxx_fallback_static() -> None:
     macOS:  otool -L shows NO libc++ dylib dependency
     """
     print("--- [patch-0008] Fallback to static libc++ ---")
-
-    if _is_emulated and not is_ppc64le:
-        SKIP("libcxx-static-fallback", f"{_LINK_SKIP_REASON}, skip linking tests")
-        return
 
     plat = _get_platform_key()
     if not plat:
@@ -350,10 +338,6 @@ def test_libcxx_probe_paths() -> None:
     All:   structural check that probe target dirs resolve correctly.
     """
     print("--- [patch-0008] Shared libc++ probe paths ---")
-
-    if _is_emulated and not is_ppc64le:
-        SKIP("libcxx-probe", f"{_LINK_SKIP_REASON}, skip linking tests")
-        return
 
     plat = _get_platform_key()
     if not plat:
@@ -682,10 +666,6 @@ def test_libcxx_shared_simulation() -> None:
     plat = _get_platform_key()
     if not plat:
         SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
-        return
-
-    if _is_emulated and not is_ppc64le:
-        SKIP("libcxx-simulation", f"{_LINK_SKIP_REASON}, skip linking tests")
         return
 
     zig = _find_zig_binary()
