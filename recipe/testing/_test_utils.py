@@ -45,6 +45,28 @@ def SKIP(name: str, detail: str = "") -> None:
     _record("SKIP", name, detail)
 
 
+def registered_check_count() -> int:
+    """Total recorded outcomes across PASS/FAIL/WARN/SKIP."""
+    return sum(len(v) for v in _results.values())
+
+
+def enforce_coverage_floor(floor: int, label: str, provenance: str = "") -> None:
+    """Redden the board if fewer checks ran than a known-good baseline.
+
+    Callers MUST call this BEFORE computing their n_pass/n_fail tally, or
+    the FAIL it records here is not counted.  The floor is an EXACT measured
+    count with no margin -- unlike the soft margin in recipe/building/_mingw.sh --
+    because the point is that losing ONE check must redden the board.
+    Raise the floor when checks are added.
+    """
+    count = registered_check_count()
+    if count < floor:
+        FAIL(
+            f"coverage-floor-{label}",
+            f"registered {count} checks, floor is {floor} ({provenance})",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Build-machine OS (needed by _run for Windows process-kill path)
 # ---------------------------------------------------------------------------

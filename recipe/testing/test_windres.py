@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify <triplet>-zig-windres wrapper: -o flag translation works correctly."""
+"""Verify <triplet>-zig-windres wrapper: -o to -fo and -i to positional input translations."""
 
 from __future__ import annotations
 
@@ -105,7 +105,58 @@ BLOCK "VarFileInfo"
         if size_2 == 0:
             sys.exit(f"FAIL: windres output {res_file_2} is empty (0 bytes)")
 
-    print(f"PASS: windres -o translated to -fo, output sizes: {size_1} {size_2}")
+        # Test 3: -i <input> -o <output>, fully GNU-shaped, both flags spaced
+        rc_file_3 = tmpdir_path / "test3.rc"
+        res_file_3 = tmpdir_path / "test3.res"
+        rc_file_3.write_text(rc_source)
+
+        result = subprocess.run(
+            [windres_exe, "-i", str(rc_file_3), "-o", str(res_file_3)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            sys.exit(
+                f"FAIL: windres -i test3.rc -o test3.res failed "
+                f"(rc={result.returncode}): {result.stderr}"
+            )
+
+        if not res_file_3.is_file():
+            sys.exit(f"FAIL: windres did not create {res_file_3}")
+
+        size_3 = res_file_3.stat().st_size
+        if size_3 == 0:
+            sys.exit(f"FAIL: windres output {res_file_3} is empty (0 bytes)")
+
+        # Test 4: -i<input> -o<output>, both flags concatenated
+        rc_file_4 = tmpdir_path / "test4.rc"
+        res_file_4 = tmpdir_path / "test4.res"
+        rc_file_4.write_text(rc_source)
+
+        result = subprocess.run(
+            [windres_exe, f"-i{rc_file_4}", f"-o{res_file_4}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            sys.exit(
+                f"FAIL: windres -i<path> -o<path> test4.rc failed "
+                f"(rc={result.returncode}): {result.stderr}"
+            )
+
+        if not res_file_4.is_file():
+            sys.exit(f"FAIL: windres did not create {res_file_4}")
+
+        size_4 = res_file_4.stat().st_size
+        if size_4 == 0:
+            sys.exit(f"FAIL: windres output {res_file_4} is empty (0 bytes)")
+
+    print(
+        f"PASS: windres -o translated to -fo, -i translated to positional, "
+        f"output sizes: {size_1} {size_2} {size_3} {size_4}"
+    )
 
 
 if __name__ == "__main__":
