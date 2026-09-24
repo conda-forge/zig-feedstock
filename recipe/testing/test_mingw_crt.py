@@ -14,6 +14,7 @@ one broken arch records a FAIL and the rest of the checks still run.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -259,24 +260,44 @@ def test_prebuilt_implibs(staged: list[tuple[str, Path]]) -> None:
                 PASS(name, f"{p.stat().st_size} bytes")
 
 
-def test_libpthread_import_lib(lib_common: Path) -> None:
-    """2. libpthread.a preserved as small import lib (NOT overwritten by alias).
+def test_libpthread_import_lib(staged: list[tuple[str, Path]]) -> None:
+    """2. libpthread.a preserved as a small import lib (NOT overwritten by alias).
 
-    Generated from mingw-defs into lib-common only -- the cache-warm loop
-    does not stage it into libarm64/ or lib32/, so scoped to lib-common.
+    _mingw.sh's four-name copy loop deliberately EXCLUDES libpthread (see the
+    comment above that loop): libpthread.a is the small dlltool-generated
+    import lib for libwinpthread-1.dll, and overwriting it with the big static
+    archive would silently switch consumers from dynamic to static threading.
+
+    Checked on ALL THREE staging dirs, not just lib-common. Step 4 of _mingw.sh
+    loops over the arch specs and points _spec_outdir at libarm64/ or lib32/
+    before calling _gen_implib, so this file is generated per-arch and the
+    invariant has to hold per-arch. An earlier version of this test asserted it
+    for lib-common only, on the mistaken belief that generation was scoped
+    there, which left two of three arches unchecked.
+
+    Absence is reported as a WARN rather than a FAIL: the per-arch dirs have
+    never been asserted before, so a missing file here is an unmeasured state,
+    not a known regression. Size violations DO fail - that is the invariant.
     """
-    print("--- libpthread.a import lib (lib-common only) ---")
-    pthread_a = lib_common / "libpthread.a"
-    if not pthread_a.is_file():
-        FAIL("libpthread.a exists", f"missing: {pthread_a}")
-        return
-    size = pthread_a.stat().st_size
-    if size == 0:
-        FAIL("libpthread.a nonempty", "0 bytes (dlltool failed -- see _mingw.sh WARNING output)")
-    elif size > 5000:
-        FAIL("libpthread.a size", f"{size} bytes (import lib should be <5KB, was it overwritten?)")
-    else:
-        PASS("libpthread.a size", f"{size} bytes")
+    print("--- libpthread.a import lib (all staged arches) ---")
+    for target, lib_dir in staged:
+        pthread_a = lib_dir / "libpthread.a"
+        if not pthread_a.is_file():
+            WARN(f"libpthread.a exists ({target})",
+                 f"missing: {pthread_a} -- never asserted for this arch before, "
+                 f"confirm from this log whether _gen_implib writes it here")
+            continue
+        size = pthread_a.stat().st_size
+        if size == 0:
+            FAIL(f"libpthread.a nonempty ({target})",
+                 "0 bytes (dlltool failed -- see _mingw.sh WARNING output)")
+        elif size > 5000:
+            FAIL(f"libpthread.a size ({target})",
+                 f"{size} bytes (import lib should be <5KB; was it overwritten "
+                 f"by the big static archive? that silently switches consumers "
+                 f"from dynamic to static threading)")
+        else:
+            PASS(f"libpthread.a size ({target})", f"{size} bytes")
 
 
 def test_libmingw32_members(staged: list[tuple[str, Path]]) -> None:
@@ -401,6 +422,42 @@ def test_gui_subsystem_link_probes() -> None:
                      f"rc={result.returncode} stderr={result.stderr[:400]!r}")
 
 
+def test_alias_archive_identity(staged: list[tuple[str, Path]]) -> None:
+    """The four staged CRT names are ONE archive under four spellings.
+
+    _mingw.sh's cache-warm loop copies a single zig-built archive to
+    libmingw32 / libucrt / libmingwex / libwinpthread, each as .lib and .a,
+    so consumers spelling -lucrt / -lmingwex / -lwinpthread all resolve.
+    Identical byte sizes across the four names are therefore EXPECTED, not a
+    bug. This asserts that invariant, so a change that makes them diverge is
+    caught here instead of resurfacing as a confusing downstream size report.
+    """
+    print("--- Staged CRT alias identity (four names, one archive) ---")
+    alias_names = ["libmingw32", "libucrt", "libmingwex", "libwinpthread"]
+    for target, lib_dir in staged:
+        if not lib_dir.is_dir():
+            continue
+        digests: dict[str, str] = {}
+        for base in alias_names:
+            for ext in (".lib", ".a"):
+                p = lib_dir / f"{base}{ext}"
+                if p.is_file():
+                    digests[p.name] = hashlib.sha256(p.read_bytes()).hexdigest()
+        if not digests:
+            FAIL(f"alias identity ({target})", "no staged alias archives found")
+            continue
+        unique = sorted(set(digests.values()))
+        if len(unique) == 1:
+            PASS(f"alias identity ({target})",
+                 f"{len(digests)} files, one digest {unique[0][:12]}")
+        else:
+            detail = ", ".join(f"{n}={d[:12]}" for n, d in sorted(digests.items()))
+            FAIL(f"alias identity ({target})",
+                 f"{len(unique)} distinct digests across {len(digests)} staged "
+                 f"names, expected 1 (see the _mingw.sh four-name copy loop): "
+                 f"{detail}")
+
+
 def main() -> int:
     prefix = resolve_test_prefix("Library/lib/zig" if _build_is_win else "lib/zig")
     if not prefix.exists():
@@ -418,11 +475,10 @@ def main() -> int:
         ("aarch64-windows-gnu", mingw_dir / "libarm64"),
         ("x86-windows-gnu", mingw_dir / "lib32"),
     ]
-    lib_common = staged[0][1]
-
     test_staged_archives(staged)
+    test_alias_archive_identity(staged)
     test_prebuilt_implibs(staged)
-    test_libpthread_import_lib(lib_common)
+    test_libpthread_import_lib(staged)
     test_libmingw32_members(staged)
     test_cross_target_link_probes()
     test_gui_subsystem_link_probes()

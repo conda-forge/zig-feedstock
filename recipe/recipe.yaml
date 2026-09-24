@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 19
+  build_number: 20
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -733,7 +733,7 @@ outputs:
             - python >=3.10
 
       - script:
-          - if: xc_w64 or xc_win32
+          - if: xc_w64 or xc_warm64 or xc_win32
             then:
               - python testing/test_wl_entry_translation.py
             else:
