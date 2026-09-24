@@ -1,15 +1,15 @@
 schema_version: 1
 
 context:
-  # Tracks the snapshot ordinal (all snapshots share version 0.17.0, so this
-  # is the only monotonic ordering lever) - never reset to 0 while version is unchanged.
-  build_number: 2151
+  # <snapshot ordinal><rev>: a new snapshot starts at <snapshot>0, rebuilds go 1, 2, 3 ...
+  # All snapshots share version 0.17.0, so this is the only monotonic ordering lever.
+  build_number: 22340
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   snapshot: "2264+230c63650"
-  snapshot_ref: "2085"
-  build_ref: "0"
+  snapshot_ref: "2228"
+  build_ref: "22281"
   zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
@@ -217,6 +217,8 @@ source:
           # back-shift comparison trivially true and silently dropping the panic.
           # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, …).
           - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
+          # 16GB ceiling: ppc64le Stage 1 peaks at 11.41GB.
+          - patches/linux/build.zig-01-maxrss-raise.patch
       # ppc64le patches are gated on `linux` (any linux variant) so the
       # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
       # can also `zig cc -target powerpc64le-linux-gnu`.
