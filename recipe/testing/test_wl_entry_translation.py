@@ -19,21 +19,36 @@ if hasattr(sys.stderr, "reconfigure"):
 
 
 def main() -> None:
-    # Discover the mingw zig-cc wrapper from PATH by trying known candidates
+    # Both build and target wrappers can be on PATH; first-found picks the
+    # build one. Prefer the lane's actual target wrapper via CONDA_ZIG_HOST.
     candidates = [
         "x86_64-w64-mingw32-zig-cc",
         "i686-w64-mingw32-zig-cc",
         "aarch64-w64-mingw32-zig-cc",
     ]
     zig_cc_exe = None
-    for candidate in candidates:
-        found = shutil.which(candidate)
+    conda_zig_host = os.environ.get("CONDA_ZIG_HOST", "")
+    if conda_zig_host:
+        found = shutil.which(f"{conda_zig_host}-cc")
         if found:
             zig_cc_exe = found
-            break
+            print(f"INFO: using {zig_cc_exe} (from CONDA_ZIG_HOST)")
+
+    if zig_cc_exe is None:
+        for candidate in candidates:
+            found = shutil.which(candidate)
+            if found:
+                zig_cc_exe = found
+                print(f"INFO: using {zig_cc_exe} (from candidate list)")
+                break
 
     if zig_cc_exe is None:
         sys.exit("FAIL: no <arch>-w64-mingw32-zig-cc wrapper found on PATH")
+
+    print(f"ENV CONDA_ZIG_HOST={os.environ.get('CONDA_ZIG_HOST', '(unset)')}")
+    print(f"ENV CONDA_ZIG_BUILD={os.environ.get('CONDA_ZIG_BUILD', '(unset)')}")
+    print(f"ENV ZIG_TARGET_TRIPLET={os.environ.get('ZIG_TARGET_TRIPLET', '(unset)')}")
+    print(f"ENV ZIG_CC={os.environ.get('ZIG_CC', '(unset)')}")
 
     # Minimal Windows C source with custom entry point
     c_source = """#include <windows.h>
@@ -48,17 +63,19 @@ void MyEntry(void) { ExitProcess(0); }
         exe_file_1 = tmpdir_path / "test1_concat.exe"
         c_file_1.write_text(c_source)
 
+        # -v output is huge on aarch64; capture the stderr TAIL, not the head.
         result = subprocess.run(
-            [zig_cc_exe, "-Wl,-eMyEntry", "-Wl,--subsystem,console", str(c_file_1), "-o", str(exe_file_1)],
+            [zig_cc_exe, "-v", "-Wl,-eMyEntry", "-Wl,--subsystem,console", str(c_file_1), "-o", str(exe_file_1)],
             capture_output=True,
             text=True,
             check=False,
         )
         if result.returncode != 0:
-            stderr_short = result.stderr[:500]
+            stderr_short = result.stderr[-4000:]
             sys.exit(
-                f"FAIL: zig-cc -Wl,-eMyEntry test1.c failed "
-                f"(rc={result.returncode}): {stderr_short}"
+                f"FAIL: zig-cc -Wl,-eMyEntry test1.c failed (rc={result.returncode})\n"
+                f"--- stderr ---\n{stderr_short}\n"
+                f"--- stdout ---\n{result.stdout[:2000]}"
             )
 
         if not exe_file_1.is_file():
@@ -74,16 +91,17 @@ void MyEntry(void) { ExitProcess(0); }
         c_file_2.write_text(c_source)
 
         result = subprocess.run(
-            [zig_cc_exe, "-Wl,-e,MyEntry", "-Wl,--subsystem,console", str(c_file_2), "-o", str(exe_file_2)],
+            [zig_cc_exe, "-v", "-Wl,-e,MyEntry", "-Wl,--subsystem,console", str(c_file_2), "-o", str(exe_file_2)],
             capture_output=True,
             text=True,
             check=False,
         )
         if result.returncode != 0:
-            stderr_short = result.stderr[:500]
+            stderr_short = result.stderr[-4000:]
             sys.exit(
-                f"FAIL: zig-cc -Wl,-e,MyEntry test2.c failed "
-                f"(rc={result.returncode}): {stderr_short}"
+                f"FAIL: zig-cc -Wl,-e,MyEntry test2.c failed (rc={result.returncode})\n"
+                f"--- stderr ---\n{stderr_short}\n"
+                f"--- stdout ---\n{result.stdout[:2000]}"
             )
 
         if not exe_file_2.is_file():

@@ -9,10 +9,10 @@ _can_run_stage3() {
   if ! is_cross; then return 0; fi
   if ! is_unix; then return 1; fi
   if is_linux; then
-    command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null && return 0
+    if command -v "qemu-${ZIG_QEMU_ARCH}" &>/dev/null; then return 0; fi
   fi
   # Rosetta 2 runs an x86_64 stage3 on the arm64 macOS runners; not symmetric.
-  is_rosetta && return 0
+  if is_rosetta; then return 0; fi
   return 1
 }
 

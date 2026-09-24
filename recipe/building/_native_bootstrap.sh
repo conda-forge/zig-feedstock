@@ -86,7 +86,7 @@ function build_native_bootstrap_zig() {
   export CXX="${native_cxx}"
 
   local native_cmake_args=(-D ZIG_USE_LLVM_CONFIG=ON)
-  is_unix && native_cmake_args+=(-D ZIG_SHARED_LLVM=ON)
+  if is_unix; then native_cmake_args+=(-D ZIG_SHARED_LLVM=ON); fi
 
   local cmake_rc=0
   (

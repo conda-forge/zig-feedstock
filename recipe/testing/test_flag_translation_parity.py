@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from _test_utils import PASS, FAIL, WARN, SKIP, _results
+from _test_utils import PASS, FAIL, WARN, SKIP, _results, _build_is_mac, enforce_coverage_floor
 
 # Anchor: __file__ is <base>/testing/<thisfile>. At local-dev time <base> is
 # recipe/; at rattler-build test time the `files: recipe:` entries (recipe.yaml)
@@ -51,6 +51,11 @@ from _test_utils import PASS, FAIL, WARN, SKIP, _results
 _RECIPE_DIR = Path(__file__).resolve().parents[1]
 
 _BASH = shutil.which("bash")
+
+# Measured on the PR #190 green board (commit fa0d7b15) across all 21 build
+# lanes; mac runs the generated-C leg (29 checks), win/linux SKIP it (16).
+# Exact, no margin.
+_COVERAGE_FLOOR = 29 if _build_is_mac else 16
 
 # ---------------------------------------------------------------------------
 # GENERATED-leg constants (recipe/building/_translate.inc, _translate.gen.sh)
@@ -483,6 +488,7 @@ def main() -> int:
     run_unix_shim_compile_leg()
 
     print()
+    enforce_coverage_floor(_COVERAGE_FLOOR, "flag-parity", "PR #190 / fa0d7b15")
     n_pass = len(_results["PASS"])
     n_fail = len(_results["FAIL"])
     n_warn = len(_results["WARN"])

@@ -2,7 +2,9 @@
 # Idempotency-guarded; safe to source multiple times.
 # Requires: ${target_platform} and ${build_platform} to be set by the caller before any function call.
 
-[[ -n "${_ZIG_COMMON_SH_SOURCED:-}" ]] && return 0
+if [[ -n "${_ZIG_COMMON_SH_SOURCED:-}" ]]; then
+  return 0
+fi
 _ZIG_COMMON_SH_SOURCED=1
 
 is_linux()    { [[ "${target_platform}" == "linux-"* ]]; }

@@ -218,7 +218,7 @@ SYNCHRONIZATION_DEF
         fi
         local dll
         dll="$(awk '/^LIBRARY/{gsub(/"/, "", $2); print $2; exit}' "${def}")"
-        [[ -z "${dll}" ]] && dll="${stem}.dll"
+        if [[ -z "${dll}" ]]; then dll="${stem}.dll"; fi
         if "${_dlltool}" -m "${machine}" -D "${dll}" -d "${def}" -l "${lib}" 2>/dev/null; then
           _gen_ok=$(( _gen_ok + 1 ))
         else
@@ -278,7 +278,7 @@ SYNCHRONIZATION_DEF
             ucrtbase-common|vcruntime140-common) continue ;;
           esac
           _lib="${_spec_outdir}/lib${_stem}.a"
-          [[ -f "${_lib}" ]] && continue
+          if [[ -f "${_lib}" ]]; then continue; fi
           _def="${_spec_outdir}/${_stem}.def"
           if [[ ! -f "${_def}" ]]; then
             "${_zig_bin}" cc -E -P \
@@ -306,7 +306,7 @@ SYNCHRONIZATION_DEF
             *)       _spec_outdir="${_mingw_common}" ;;
           esac
           _uuid_lib="${_spec_outdir}/libuuid.a"
-          [[ -f "${_uuid_lib}" ]] && continue
+          if [[ -f "${_uuid_lib}" ]]; then continue; fi
           _uuid_obj="${_spec_outdir}/_uuid.o"
           if "${_zig_bin}" cc -target "${_spec_triple}" -c "${_uuid_src}" \
               -o "${_uuid_obj}" 2>/dev/null && \
@@ -356,7 +356,7 @@ SYNCHRONIZATION_DEF
               func|ucrtbase-common|crt-aliases) continue ;;
             esac
             _supp_lib="${_spec_outdir}/lib${_supp_stem}.a"
-            [[ -f "${_supp_lib}" ]] && continue
+            if [[ -f "${_supp_lib}" ]]; then continue; fi
             _supp_def="${_spec_outdir}/${_supp_stem}.def"
             if [[ ! -f "${_supp_def}" ]]; then
               "${_zig_bin}" cc -E -P \
@@ -374,7 +374,7 @@ SYNCHRONIZATION_DEF
             [[ -f "${_supp_def}" ]] || continue
             _supp_stem="$(basename "${_supp_def%.def}")"
             _supp_lib="${_spec_outdir}/lib${_supp_stem}.a"
-            [[ -f "${_supp_lib}" ]] && continue
+            if [[ -f "${_supp_lib}" ]]; then continue; fi
             _gen_implib "${_supp_stem}" "${_supp_def}" "${_spec_outdir}" "${_spec_machine}"
           done
         done
@@ -548,7 +548,7 @@ SYNCHRONIZATION_DEF
         # prints log to stderr and returns 1 to abort import-lib generation.
         _compile_crt_obj() {
           local src="$1" obj="$2" extra="${3:-}"
-          local log; log=$(mktemp)
+          local log; log="${SRC_DIR:-.}/_mingw_crt_compile.log"
           # shellcheck disable=SC2086
           if "${_zig_bin}" cc "${_crt_flags[@]}" ${extra} "${src}" -o "${obj}" >"${log}" 2>&1; then
             dbg cat "${log}"
@@ -617,14 +617,14 @@ SYNCHRONIZATION_DEF
         local target_triple="$2"
         local lib_name="$3"
         local lib_path="${out_dir}/lib${lib_name}.a"
-        [[ -f "${lib_path}" ]] && return 0
+        if [[ -f "${lib_path}" ]]; then return 0; fi
         # Sanitize lib_name to a valid C identifier (replace +, -, . with _)
         local sym_name
         sym_name="$(printf '%s' "${lib_name}" | tr -c 'a-zA-Z0-9_' '_')"
         local stub_c="${out_dir}/.zig_${sym_name}_stub.c"
         local stub_o="${out_dir}/.zig_${sym_name}_stub.o"
         printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
-        local log; log=$(mktemp)
+        local log; log="${SRC_DIR:-.}/_mingw_implib_compile.log"
         if ! "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" >"${log}" 2>&1; then
           echo "ERROR: failed to compile stub object for lib${lib_name}.a (${target_triple}):" >&2
           cat "${log}" >&2
@@ -658,7 +658,7 @@ SYNCHRONIZATION_DEF
       # Each target gets its own ZIG_GLOBAL_CACHE_DIR to avoid cross-arch contamination.
       # Soft-fail on missing libmingw32.lib: WARN + continue (not a hard error).
       local _warm_dir
-      _warm_dir="$(mktemp -d 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/zig-warm-$$")"
+      _warm_dir="${SRC_DIR:-.}/_zig_warm"
       mkdir -p "${_warm_dir}"
       cat > "${_warm_dir}/warm.c" <<'WARM_EOF'
 #include <stdio.h>

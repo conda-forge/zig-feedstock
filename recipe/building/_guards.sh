@@ -5,9 +5,18 @@
 
 # --- Early exits ---
 
-[[ -z "${CONDA_TRIPLET:-}" ]] && { echo "CONDA_TRIPLET must be specified in recipe.yaml env"; exit 1; }
-[[ -z "${CONDA_ZIG_BUILD:-}" ]] && { echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"; exit 1; }
-[[ -z "${ZIG_TRIPLET:-}" ]] && { echo "ZIG_TRIPLET must be specified in recipe.yaml env"; exit 1; }
+if [[ -z "${CONDA_TRIPLET:-}" ]]; then
+  echo "CONDA_TRIPLET must be specified in recipe.yaml env"
+  exit 1
+fi
+if [[ -z "${CONDA_ZIG_BUILD:-}" ]]; then
+  echo "CONDA_ZIG_BUILD undefined, use zig_<arch> instead of _impl"
+  exit 1
+fi
+if [[ -z "${ZIG_TRIPLET:-}" ]]; then
+  echo "ZIG_TRIPLET must be specified in recipe.yaml env"
+  exit 1
+fi
 
 export ZIG_QEMU_ARCH="${ZIG_TRIPLET%%-*}"
 

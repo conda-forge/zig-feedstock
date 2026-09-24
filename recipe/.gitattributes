@@ -1,0 +1,3 @@
+# brush cannot parse CRLF; root .gitattributes pins only build.sh
+*.sh text eol=lf
+*.inc text eol=lf

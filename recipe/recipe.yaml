@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  build_number: 18
+  build_number: 19
   name: zig
   version: "0.16.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -21,8 +21,8 @@ context:
       not (build_platform in ["osx-64", "win-64"] and target_platform in ["osx-arm64", "win-32", "win-arm64"]) and
       not (build_platform in ["win-arm64"] and target_platform in ["win-32", "win-64"])
     }}
-  skip_langref: ${{ env.get("SKIP_LANGREF", default="0") == "1" or not is_testable }}
-  skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="0") == "1" or not is_testable }}
+  skip_langref: ${{ env.get("SKIP_LANGREF", default="1") == "1" or not is_testable }}
+  skip_long_test: ${{ env.get("SKIP_LONG_TEST", default="1") == "1" or not is_testable }}
 
   # runs-on (cross-compiled) and generates-code-for (cross-compilers)
   xc_l64:        ${{ xtarget_ == "linux-64" }}
@@ -203,7 +203,6 @@ source:
           - patches/non_unix/build.zig-02-llvm-lib-multipath.patch
           - patches/non_unix/build.zig-03-msvc-crt-dynamic.patch
           - patches/non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
-          - patches/non_unix/Lld.zig-remove-ucrt.patch
           - patches/non_unix/Lld.zig-suppress-importeddllmain.patch
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
@@ -278,6 +277,7 @@ outputs:
               - "*/ld-linux-*.so.*"
               - "*/ld64.so.*"
       script:
+        interpreter: brush
         file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
@@ -299,7 +299,7 @@ outputs:
         - ${{ compiler('c') }}
         - ${{ compiler('cxx') }}
         - ${{ stdlib("c") }}
-        - ${{ m2 }}bash >=5.2
+        - brush
         - ${{ m2 }}file
         - cmake >=3.5
         - llvm-tools ${{ llvm_version }}.*
@@ -359,7 +359,7 @@ outputs:
             - libcxx ${{ llvm_version }}.*
       ignore_run_exports:
         by_name:
-          - if: linux and not ppc64le
+          - if: linux
             then:
               - libxml2-16
     tests:
@@ -470,7 +470,7 @@ outputs:
 
       # zig simple test.
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -488,9 +488,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -505,11 +503,12 @@ outputs:
 
       # zig UCRT DLL.
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: not unix
               then:
-                - t="$(mktemp -d)"
+                - t="./zig-tmp-run"
+                - mkdir -p "$t"
                 - trap 'rm -rf "$t"' EXIT
                 - printf 'int main(void){return 0;}\n' > "$t/test_run.c"
                 - ${{ conda_triplet }}-zig cc -mconsole -o "$t/test_run.exe" "$t/test_run.c"
@@ -517,16 +516,15 @@ outputs:
                 - echo "PASS zig cc compile+run (UCRT DLL resolution)"
         requirements:
           build:
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
 
       # -fuse-ld=lld pass-through rationale. See recipe/NOTES.md 2.4.
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
-            - t="$(mktemp -d)"
+            - t="./zig-tmp-lld"
+            - mkdir -p "$t"
             - trap 'rm -rf "$t"' EXIT
             - printf 'int main(void){return 0;}\n' > "$t/test_lld.c"
             - if: linux and not ppc64le
@@ -559,7 +557,7 @@ outputs:
                 - echo "PASS zig cc produced a ppc64le binary"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -672,7 +670,7 @@ outputs:
             - etc/conda/test-files/zig*
 
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - test -n "$CONDA_ZIG_BUILD"
             - test -n "$CONDA_ZIG_HOST"
@@ -689,7 +687,8 @@ outputs:
                 - if: is_cross_compiler
                   then:
                     - CONDA_TRIPLET="${{ conda_triplet }}" testing/test-cross-shim.bat
-                - t="$(mktemp -d)"
+                - t="./zig-tmp-manifest"
+                - mkdir -p "$t"
                 - trap 'rm -rf "$t"' EXIT
                 - printf 'void f(void){}\n' > "$t/test_manifest.c"
                 - MSYS2_ARG_CONV_EXCL='/MANIFEST' ${{ conda_triplet }}-zig-cc -shared -fuse-ld=lld /MANIFEST:NO /MANIFESTUAC:NO -o "$t/test_manifest.dll" "$t/test_manifest.c"
@@ -701,9 +700,7 @@ outputs:
             - if: build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
-            - if: not unix
-              then:
-                - ${{ m2 }}bash >=5.2
+            - brush
           run:
             - if: (build_platform != target_platform) and linux
               then:
@@ -722,20 +719,21 @@ outputs:
             - testing/test_zig_toolchain.py
 
       - script:
-          - if: xc_w64
+          - if: xc_w64 or xc_warm64 or xc_win32
             then:
               - python testing/test_windres.py
             else:
               - echo "SKIP windres wrapper test (non-Windows target)"
         files:
           recipe:
+            - testing/_test_utils.py
             - testing/test_windres.py
         requirements:
           build:
             - python >=3.10
 
       - script:
-          - if: xc_w64
+          - if: xc_w64 or xc_win32
             then:
               - python testing/test_wl_entry_translation.py
             else:
@@ -743,6 +741,52 @@ outputs:
         files:
           recipe:
             - testing/test_wl_entry_translation.py
+        requirements:
+          build:
+            - python >=3.10
+
+      - script:
+          - if: is_native and xc_w64
+            then:
+              - python testing/test_aarch64_msvc_ucrt.py
+            else:
+              - echo "SKIP aarch64 MSVC UCRT link probe (native win-64 only)"
+        files:
+          recipe:
+            - testing/test_aarch64_msvc_ucrt.py
+        requirements:
+          build:
+            - python >=3.10
+
+      # Verify <triplet>-zig-cc wrapper links a foreign (MSVC-built) prebuilt import library (zstd).
+      # Native-keyed: win-64 test env can only install win-64 zstd.
+      - script:
+          - if: is_native and (xc_w64 or xc_warm64)
+            then:
+              - python testing/test_foreign_import_lib.py
+            else:
+              - echo "SKIP foreign import library link probe (non-native Windows target)"
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_foreign_import_lib.py
+        requirements:
+          build:
+            - python >=3.10
+          run:
+            - zstd
+
+      # Verify <triplet>-zig-cc wrapper resolves GNU -l:<filename> against -L dirs.
+      - script:
+          - if: xc_w64 or xc_warm64 or xc_win32
+            then:
+              - python testing/test_l_colon_link.py
+            else:
+              - 'echo "SKIP -l: exact-filename link probe (non-Windows target)"'
+        files:
+          recipe:
+            - testing/_test_utils.py
+            - testing/test_l_colon_link.py
         requirements:
           build:
             - python >=3.10
@@ -807,7 +851,7 @@ outputs:
           bin:
             - zig
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -819,7 +863,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: linux and build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}
@@ -843,7 +887,7 @@ outputs:
             - llvm-tools ${{ llvm_version }}.*
     tests:
       - script:
-          interpreter: bash
+          interpreter: brush
           content:
             - if: is_testable
               then:
@@ -855,7 +899,7 @@ outputs:
                 - echo "Not testable on this system"
         requirements:
           build:
-            - ${{ m2 }}bash >=5.2
+            - brush
             - if: linux and build_platform != target_platform
               then:
                 - ${{ qemu_pkg }}

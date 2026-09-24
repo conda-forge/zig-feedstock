@@ -314,27 +314,16 @@ def test_libmingw32_members(staged: list[tuple[str, Path]]) -> None:
             continue
         PASS(f"zig ar t ({target}) member count", f"{len(member_lines)} members")
 
-        if target == "x86_64-windows-gnu":
-            # Both .o (Unix archive convention) and .obj (Windows COFF) possible.
-            for member in expected_members:
-                found = any(
-                    f"{member}.o" in line or f"{member}.obj" in line
-                    for line in member_lines
-                )
-                if found:
-                    PASS(f"libmingw32.lib member {member} ({target})")
-                else:
-                    FAIL(f"libmingw32.lib member {member} ({target})", "not found in ar t output")
-        else:
-            matches = [
-                line for line in member_lines
-                if any(m in line for m in expected_members)
-            ]
-            WARN(
-                f"libmingw32.lib ucrt_*/thread/mutex members ({target}) unconfirmed",
-                f"matching lines: {matches!r}" if matches
-                else f"no match; sample members: {member_lines[:20]!r}",
+        # Both .o (Unix archive convention) and .obj (Windows COFF) possible.
+        for member in expected_members:
+            found = any(
+                f"{member}.o" in line or f"{member}.obj" in line
+                for line in member_lines
             )
+            if found:
+                PASS(f"libmingw32.lib member {member} ({target})")
+            else:
+                FAIL(f"libmingw32.lib member {member} ({target})", "not found in ar t output")
 
 
 def test_cross_target_link_probes() -> None:
