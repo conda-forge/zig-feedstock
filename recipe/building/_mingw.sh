@@ -444,7 +444,7 @@ SYNCHRONIZATION_DEF
         # lib actually carries the COFF machine type expected for this arch
         # spec (e.g. libarm64/ must contain arm64 code, not a stray x86_64
         # import lib). Soft path: any tooling/parsing problem (helper
-        # missing, python3 missing, UNKNOWN result) only WARNs and never
+        # missing, python missing, UNKNOWN result) only WARNs and never
         # fails the build -- CI is the only feedback loop this round and a
         # flaky assertion here would redden every lane. Only a definite,
         # known-vs-known mismatch feeds the existing FATAL counter. Skipped
@@ -467,9 +467,17 @@ SYNCHRONIZATION_DEF
             done
           fi
           _coff_helper="${RECIPE_DIR}/building/coff_machine.py"
+          # Windows conda ships python.exe with no python3.exe.
+          _coff_py=""
+          for _cand_py in "${PYTHON:-}" python3 python; do
+            [[ -n "${_cand_py}" ]] || continue
+            command -v "${_cand_py}" >/dev/null 2>&1 || continue
+            _coff_py="${_cand_py}"
+            break
+          done
           if [[ -n "${_gen_rep_lib}" ]] && [[ -n "${_gen_expect_machine}" ]]; then
-            if command -v python3 >/dev/null 2>&1 && [[ -f "${_coff_helper}" ]]; then
-              _gen_actual_machine="$(python3 "${_coff_helper}" "${_gen_rep_lib}" 2>/dev/null | awk '{print $2}')"
+            if [[ -n "${_coff_py}" ]] && [[ -f "${_coff_helper}" ]]; then
+              _gen_actual_machine="$("${_coff_py}" "${_coff_helper}" "${_gen_rep_lib}" 2>/dev/null | awk '{print $2}')"
               if [[ -z "${_gen_actual_machine}" || "${_gen_actual_machine}" == "UNKNOWN" ]]; then
                 echo "WARNING: could not determine machine type of ${_gen_rep_lib} (helper returned '${_gen_actual_machine:-empty}'); skipping machine-type check for ${_gen_pair_arch}" >&2
               elif [[ "${_gen_actual_machine}" != "${_gen_expect_machine}" ]]; then
@@ -478,7 +486,7 @@ SYNCHRONIZATION_DEF
 "
               fi
             else
-              echo "WARNING: coff_machine.py helper or python3 unavailable; skipping machine-type check for ${_gen_pair_arch} (${_gen_pair_dir})" >&2
+              echo "WARNING: coff_machine.py helper or python interpreter unavailable; skipping machine-type check for ${_gen_pair_arch} (${_gen_pair_dir})" >&2
             fi
           fi
         fi
