@@ -3,7 +3,7 @@ schema_version: 1
 context:
   # <snapshot ordinal><rev>: a new snapshot starts at <snapshot>0, rebuilds go 1, 2, 3 ...
   # All snapshots share version 0.17.0, so this is the only monotonic ordering lever.
-  build_number: 22670
+  build_number: 22810
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}

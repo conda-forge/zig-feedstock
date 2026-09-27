@@ -43,7 +43,7 @@
  },
 
  const Coff = struct {
-@@ -195,6 +196,31 @@
+@@ -202,6 +203,31 @@
      }
  };
 
@@ -75,7 +75,7 @@
  pub fn createEmpty(
      arena: Allocator,
      comp: *Compilation,
-@@ -208,6 +234,7 @@
+@@ -215,6 +241,7 @@
      const gc_sections: bool = options.gc_sections orelse switch (target.ofmt) {
          .coff => optimize_mode != .debug,
          .elf => optimize_mode != .debug and output_mode != .Obj,
@@ -83,7 +83,7 @@
          .wasm => output_mode != .Obj,
          else => unreachable,
      };
-@@ -234,6 +261,7 @@
+@@ -241,6 +268,7 @@
              .coff => .{ .coff = try .init(comp, options) },
              .elf => .{ .elf = try .init(comp, options) },
              .wasm => .{ .wasm = try .init(comp, options) },
@@ -91,7 +91,7 @@
              else => unreachable,
          },
      };
-@@ -267,6 +295,7 @@
+@@ -274,6 +302,7 @@
          .coff => coffLink(lld, arena),
          .elf => elfLink(lld, arena),
          .wasm => wasmLink(lld, arena),
@@ -99,7 +99,7 @@
      };
      result catch |err| switch (err) {
          error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
-@@ -1613,6 +1642,178 @@
+@@ -1635,6 +1664,177 @@
      }
  }
 
@@ -228,7 +228,6 @@
 +                try argv.append(try obj.path.toString(arena));
 +            },
 +            .dso => continue,
-+            .dso_exact => |dso_exact| try argv.appendSlice(&.{ "-l", dso_exact.name }),
 +            .res => unreachable,
 +        };
 +
@@ -240,7 +239,7 @@
 +        }
 +
 +        for (comp.link_inputs) |link_input| switch (link_input) {
-+            .object, .archive, .dso_exact => continue,
++            .object, .archive => continue,
 +            .res => unreachable,
 +            .dso => |dso| {
 +                if (dso.needed) {
@@ -280,7 +279,7 @@
      const gpa = comp.gpa;
 --- a/src/target.zig
 +++ b/src/target.zig
-@@ -278,7 +278,7 @@
+@@ -280,7 +280,7 @@
  /// The set of targets that Zig supports using LLD to link for.
  pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
      return switch (ofmt) {
