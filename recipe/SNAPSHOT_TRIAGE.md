@@ -4,7 +4,7 @@ Generated 2026-09-14 from workflow wf_ea95c57a-438, anchored at snapshot 2127+e9
 
 # Snapshot Triage Methodology (zig-feedstock 0.17)
 
-Purpose: decide, before pushing, whether snapshot `NEW` (e.g. `2127+e90365cd5`) is safe. Baseline `OLD` = the snapshot at `recipe/recipe.yaml:8` before the bump (`2125+0d600e488`); `BASE_SHA`/`NEW_SHA` are the trailing commit hashes.
+Purpose: decide, before pushing, whether snapshot `NEW` (e.g. `2127+e90365cd5`) is safe. Baseline `OLD` = the snapshot at `recipe/recipe.yaml:10` before the bump (`2125+0d600e488`); `BASE_SHA`/`NEW_SHA` are the trailing commit hashes.
 
 Conventions used below:
 - Upstream file fetch: `curl -fsS https://codeberg.org/ziglang/zig/raw/commit/<SHA>/<path>` (HTTP 200 required; Codeberg is now upstream, GitHub is dead).
@@ -23,8 +23,8 @@ curl -fsSL -o /tmp/zig-<NEW>.tar.xz https://ziglang.org/builds/zig-0.17.0-dev.<N
 sha256sum /tmp/zig-<NEW>.tar.xz
 ```
 
-PASS: 200 + a sha256 you record for `recipe/recipe.yaml:176`.
-FAIL: 404 -> `ziglang.org/builds` prunes nightlies; pick a newer snapshot rather than sourcing a tarball from elsewhere (the URL template at `recipe.yaml:175` is `ziglang.org/builds`-only).
+PASS: 200 + a sha256 you record for `recipe/recipe.yaml:178`.
+FAIL: 404 -> `ziglang.org/builds` prunes nightlies; pick a newer snapshot rather than sourcing a tarball from elsewhere (the URL template at `recipe.yaml:177` is `ziglang.org/builds`-only).
 
 ## Step 1 - Window inventory: what actually changed (5-10 min, local)
 
@@ -33,7 +33,7 @@ Checks: the full changed-path set between `BASE_SHA` and `NEW_SHA`. This is the 
 1. Pull both recursive trees (above), build `{path: blob_sha}` for each.
 2. Emit three sets: ADDED, DELETED, MODIFIED.
 3. Intersect MODIFIED+DELETED with:
-   - the 33 patch target paths (parse them: `grep -h '^--- a/' recipe/patches -r`);
+   - the 34 patch target paths (parse them: `grep -h '^--- a/' recipe/patches -r`);
    - the contract files `lib/compiler/Maker.zig`, `lib/compiler/configurer.zig`, `build.zig`, `lib/std/Build.zig`, `lib/std/lang.zig`, `src/Compilation.zig`, `src/link.zig`, `lib/std/zig/LibCInstallation.zig`, `lib/libc/mingw/**`, `lib/libc/mingw/lib-common/*.def*`.
 
 PASS: intersection empty -> skip Steps 3-4, go to Step 2.
@@ -42,7 +42,7 @@ Note the asymmetry rule: **anything byte-identical between `BASE_SHA` and `NEW_S
 
 ## Step 2 - Patch relevancy / drift (5-15 min per platform, local)
 
-Checks: that all 33 patches still apply, in rattler-build's cumulative order, per platform.
+Checks: that all 34 patches still apply, in rattler-build's cumulative order, per platform.
 
 ```
 recipe/ci_support/check_patch_relevancy.sh linux-64      --snapshot <NEW>
@@ -62,10 +62,10 @@ FAIL: any `FAIL` before the first cascade warning is real; results *after* the f
 
 Checks: every non-`-D` token we hand to `zig build` is still parsed, and every `-D` option is still declared.
 
-1. Extract our tokens (single source of truth): `recipe/build.sh:78-88` plus the conditional appends at `:95,:118,:135,:142,:154,:188-189,:194`, and `recipe/building/build_native.sh:139-155,:168-174,:268-272`.
+1. Extract our tokens (single source of truth): `recipe/build.sh:82-94` plus the conditional appends at `:100-102,:124,:141,:148,:161,:165,:191-194,:230`, and `recipe/building/build_native.sh:138-155,:168-173,:262-265`.
 2. Fetch `lib/compiler/Maker.zig` at `NEW_SHA`; for each maker flag (`--search-prefix`, `--prefix`/`-p`, `--maxrss`, `--libc`, `--libc-runtimes`, `--verbose-link`, `-fqemu`) confirm a `mem.eql(u8, arg, "<flag>")` branch exists.
 3. Fetch `build.zig` at `NEW_SHA`; for each `-D` name (`config_h`, `enable-llvm`, `static-llvm`, `strip`, `no-langref`, `use-zig-libcxx`, `version-string`, plus `standardTargetOptions`/`standardOptimizeOption` for `-Dtarget`/`-Dcpu`/`-Doptimize`) confirm a `b.option(...)` declaration. `-Ddoctest-target` comes from our own patch - confirm that patch still applies (Step 2).
-4. Confirm no lib-dir flag crept back: `-Dzig-lib-dir`/`--zig-lib-dir` must stay absent from `recipe/` (`ZIG_LIB_DIR_ARGS=()` at `build_native.sh:94,:105` is the deliberate empty shim).
+4. Confirm no lib-dir flag crept back: `-Dzig-lib-dir`/`--zig-lib-dir` must stay absent from `recipe/` (STALE: `ZIG_LIB_DIR_ARGS=()` no longer exists in `build_native.sh` - it was deleted; the script now exports `ZIG_LIB_DIR` directly at `build_native.sh:241`, per IMPROVEMENTS.md item 4).
 
 PASS: every token found.
 FAIL signature if missed: `error: unrecognized argument: <flag>` (Maker.zig `fatalWithHint`) or `error: invalid option: "<name>"` (configurer.zig), right after `[build_zig_with_zig] ZIG_MAKER_ARGS:`/`ZIG_PKG_OPTS:` and followed by `[build_zig_with_zig] FAILED (exit code 1)` (`recipe/building/_build.sh:28`).
@@ -100,11 +100,13 @@ Special attention: new opt-in defaults. Two lines are worth re-reading every bum
 
 ## Step 6 - Bootstrap pin satisfiability (5 min, network)
 
-Checks: the self-hosting dep resolves. `recipe.yaml:366` requests `zig_impl_${{ build_platform }}` under the pin at `:11`, built from `snapshot_ref` (`:9`) and `build_ref` (`:10`) - **not** from `snapshot`. The pin must lag: `zig_impl_<build_platform>` is never built in its own lane.
+Checks: the self-hosting dep resolves. `recipe.yaml:374` requests `zig_impl_${{ build_platform }}` under the pin at `:13`, built from `snapshot_ref` (`:11`) and `build_ref` (`:12`) - **not** from `snapshot`. The pin must lag: `zig_impl_<build_platform>` is never built in its own lane.
 
 ```
-conda search -c conda-forge/label/zig_dev --subdir <build_platform> "zig_impl_<build_platform>"
+conda search -c conda-forge/label/zig_dev --override-channels --subdir <build_platform> "zig_impl_<build_platform>"
 ```
+
+Without `--override-channels`, conda also consults the win-only default channel repo.anaconda.com/pkgs/msys2 and aborts with CondaToSNonInteractiveError on win-64/win-arm64, which looks exactly like the package being absent.
 
 PASS: a build string matching `*_<snapshot_ref>_*` with build number >= `build_ref` exists on every `build_platform` in `conda-forge.yml` (build strings are `varianthash_snapnum_snaphash_buildnum`; the variant hash is unpredictable, hence the wildcard).
 FAIL: unsatisfiable -> leave `snapshot_ref` alone this bump; do not derive it from `snapshot`.
@@ -113,14 +115,14 @@ FAIL: unsatisfiable -> leave `snapshot_ref` alone this bump; do not derive it fr
 
 All must hold:
 
-1. Step 0 sha256 recorded at `recipe.yaml:176`, `snapshot` updated at `:8`.
-2. `build_number` (`recipe.yaml:4`) set to the new snapshot's leading integer (e.g. `2151+2ec5523d5` -> `2151`); never reset to 0 while version is unchanged. A rebuild of the SAME snapshot increments by 1 (`2151` -> `2152`).
+1. Step 0 sha256 recorded at `recipe.yaml:178`, `snapshot` updated at `:10`.
+2. `build_number` (`recipe.yaml:6`) set to `<snapshot ordinal><rev>`: a NEW snapshot starts at `<ordinal>0` (e.g. `2307+392b17125` -> `23070`); a REBUILD of the SAME snapshot increments the last digit (`23071`, `23072`, ...), max 10 revs per snapshot; never reset to 0 while version is unchanged. (The older `build_number == snapshot ordinal` rule is RETIRED - it allowed only one build per snapshot.)
 3. Step 2 exit 0 on all five platforms; no `FAIL`, no `HIGHFUZZ`; `OBSOLETE` patches removed from `recipe.yaml` and from disk.
 4. Steps 3+4 clean, or a recipe change landed that makes them clean.
 5. Step 5: zero `AFFECTED` without a mitigation; every `AT-RISK` has a named failure line and a lane.
 6. Step 6 pin resolves.
 7. `ZIG_RECIPE_LLM_REFERENCE.md` updated in the same change (section 4 for patch churn, section 7 for refuted hypotheses, header anchor for version/build/LLVM), per its section 9 trigger map.
-8. Zero orphan patches: every file under `recipe/patches/` appears in `recipe.yaml:177-248` and vice versa.
+8. Zero orphan patches: every file under `recipe/patches/` appears in `recipe.yaml:183-251` and vice versa.
 
 Any miss -> fix locally and rerun the affected step. Pushing on a red Step 2 wastes a full matrix.
 
