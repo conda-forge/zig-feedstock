@@ -411,6 +411,7 @@ Blocked by: nothing
 **Effort.** S. **Risk.** low.
 
 Status: DONE (2026-09-18) - regenerated against pristine 2131; audit re-run CONFIRMS CLEAN (was HIGHFUZZ fuzz=3), CLEAN count 9/23 -> 10/23, no other patch verdict changed
+2026-09-27: re-audited at snapshot 2307+392b17125 via recipe/ci_support/check_patch_relevancy.sh - still CLEAN, no regeneration needed. CLOSED/RESOLVED.
 Blocked by: nothing
 
 ---

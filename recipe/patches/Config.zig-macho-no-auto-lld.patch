@@ -1,7 +1,7 @@
 --- a/src/Compilation/Config.zig
 +++ b/src/Compilation/Config.zig
-@@ -414,11 +414,12 @@
-         if (options.use_new_linker == true) break :b false;
+@@ -420,11 +420,12 @@
+         }
 
          // If we have no zig code to compile, no need for the self-hosted linker.
 -        if (!options.have_zcu) break :b true;
