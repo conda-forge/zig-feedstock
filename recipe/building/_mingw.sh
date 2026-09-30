@@ -157,6 +157,17 @@ SYNCHRONIZATION_DEF
       _gen_count=0
       _gen_fail=0
       _gen_failed=""
+      _gen_skip=0
+      _gen_skipped=""
+
+      # Count a failed cc -E preprocess ($2 = output .def; stderr is in $2.pp.err).
+      function _note_pp_skip() {
+        _gen_skip=$(( _gen_skip + 1 ))
+        _gen_skipped="${_gen_skipped} $1"
+        echo "WARNING: [_mingw] preprocess failed for $1" >&2
+        head -n 20 "$2.pp.err" >&2
+        rm -f "$2.pp.err" "$2"
+      }
 
       # Macro-fragment include-helper stems (not standalone DLL defs). See reference doc S5.6/S3.11.
       function _is_helper_stem() {
@@ -262,7 +273,8 @@ SYNCHRONIZATION_DEF
               -target "${_ia_target}" \
               -x assembler-with-cpp \
               -I"${_def_include}" \
-              "${_def_in}" 2>/dev/null > "${_def}" || { rm -f "${_def}"; continue; }
+              "${_def_in}" > "${_def}" 2> "${_def}.pp.err" || { _note_pp_skip "${_ia_arch}:${_stem}" "${_def}"; continue; }
+            rm -f "${_def}.pp.err"
           fi
           _gen_implib "${_stem}" "${_def}" "${_ia_outdir}"
         done
@@ -315,7 +327,8 @@ SYNCHRONIZATION_DEF
                 -I"${_supp_defs}" \
                 -I"${_def_include}" \
                 -I"${_mingw_common}" \
-                "${_supp_in}" 2>/dev/null > "${_supp_def}" || { rm -f "${_supp_def}"; continue; }
+                "${_supp_in}" > "${_supp_def}" 2> "${_supp_def}.pp.err" || { _note_pp_skip "${_ia_arch}:${_supp_stem}" "${_supp_def}"; continue; }
+              rm -f "${_supp_def}.pp.err"
             fi
             _gen_implib "${_supp_stem}" "${_supp_def}" "${_ia_outdir}"
           done
@@ -337,7 +350,10 @@ SYNCHRONIZATION_DEF
       dbg echo "=== Generated ${_gen_count} import libs total across x86_64+aarch64+x86 ==="
       if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi
 
-      echo "INFO: [_mingw] import libs generated=${_gen_count} failed=${_gen_fail}" >&2
+      echo "INFO: [_mingw] import libs generated=${_gen_count} failed=${_gen_fail} skipped=${_gen_skip}" >&2
+      if [[ "${_gen_skip}" -gt 0 ]]; then
+        echo "INFO: [_mingw] skipped (preprocess failed):${_gen_skipped}" >&2
+      fi
       if [[ "${_gen_fail}" -gt 0 ]]; then
         echo "ERROR: [_mingw] failed import libs:${_gen_failed}" >&2
         return 1
@@ -363,7 +379,7 @@ SYNCHRONIZATION_DEF
         if [[ "${_derived_floor}" -eq 0 ]]; then
           echo "WARNING: [_mingw] derived import-lib expectation came out 0; skipping soft check, hard floor stays ${_gen_count_floor}" >&2
         elif [[ "${_gen_count}" -ge "${_gen_count_floor}" ]] && [[ "${_gen_count}" -lt "${_derived_floor}" ]]; then
-          echo "WARNING: [_mingw] import-lib count ${_gen_count} below derived expectation ${_derived_floor} (def files: ${_def_src_count}, arches: ${_gen_arch_count}) - possible upstream .def removal" >&2
+          echo "WARNING: [_mingw] import-lib count ${_gen_count} below upper-bound estimate ${_derived_floor} (def files: ${_def_src_count} x arches: ${_gen_arch_count}; arch-specific def sets make this an overestimate)" >&2
         fi
       else
         echo "WARNING: [_mingw] ${_mingw_common} missing; cannot derive import-lib expectation, hard floor stays ${_gen_count_floor}" >&2
