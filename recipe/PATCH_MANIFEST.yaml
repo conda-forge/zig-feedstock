@@ -1,0 +1,474 @@
+# ANCHOR -- what this manifest was scored against.
+# Last-verified: 2026-09-29
+# zig 0.17.0 | build 23201 | snapshot 2320+1e770dbef | llvm_version 22
+#
+# Every row was scored against that recipe state. If recipe.yaml moves and this
+# anchor does not, the rows are stale and nothing else will say so. Bump the
+# anchor in the SAME change that re-scores. A stale anchor makes staleness
+# visible; that is the whole point of it.
+# (Convention shared with the 0.16 track's own PATCH_MANIFEST.yaml.)
+
+# PATCH_MANIFEST.yaml -- tracked under recipe/, ships with the feedstock.
+# 35 rows total: 34 patch rows, one per patch in recipe/recipe.yaml's
+# source.patches list (verified both directions against
+# ZIG_RECIPE_LLM_REFERENCE.md section 4: 11 unconditional, 9 if:linux
+# common, 2 if:linux ppc64le-group, 12 if:not unix), plus 1 non-patch row
+# (its `file:` value ends "(NOT A PATCH)") covering a build.sh lever that
+# carries the same retire-or-keep question (convention shared with the
+# 0.16 track's own PATCH_MANIFEST.yaml).
+#
+# selector: one of unconditional | linux | linux-ppc64le | not-unix, matching
+#           which of the four `patches:` groups in recipe.yaml the row's file
+#           sits in. The linux-ppc64le group is itself gated `if: linux` (any
+#           linux variant, not `linux and ppc64le`) in recipe.yaml -- see
+#           recipe/NOTES.md 1.10 for why -- "linux-ppc64le" here names the
+#           group by its content, not its literal recipe.yaml selector.
+#
+# symptom:       VERBATIM text copied from a source read for this manifest
+#                (recipe.yaml comment, recipe/NOTES.md, ZIG_RECIPE_LLM_REFERENCE.md,
+#                or a test file's own docstring/assertion). An empty symptom
+#                means nobody can retire this row yet -- that is a correct,
+#                useful answer, not a gap to be filled by inference.
+# tested_by:     a test in the recipe that exercises this patch. A tested patch
+#                is DEFENDED: the test is the symptom encoded executably and
+#                re-checks every lane it runs on.
+# justification: EXTERNAL-CONDITION = a checkable state of the world (retirable
+#                by reading, e.g. a conda-forge glibc floor).
+#                OBSERVED-FAILURE   = a crash/miscompile/link failure actually
+#                                     recorded somewhere (retirable only by
+#                                     ablation).
+#                UNRECORDED         = neither found. Unfalsifiable until ablated.
+# verify:        the check that would show this patch is no longer needed.
+# depends_on:    another ablation unit (patch or patch group) whose retirement
+#                would retire this row automatically, or an apply-order /
+#                compile-time coupling that must be preserved.
+# status:        DEFENSIBLE       = tested, OR verbatim symptom + justification
+#                                   recorded; keep.
+#                UNDEFENDED       = no test AND justification UNRECORDED.
+#                RETIRE-CANDIDATE = evidence suggests it may already be dead.
+#                RETIRE-CONFIRMED = ablation measured green, safe to delete.
+#
+# ref: cites a recipe/NOTES.md subsection (e.g. "recipe/NOTES.md 1.3") when the
+#      prose rationale has been extracted there. Empty means not yet extracted
+#      there (it may still exist in ZIG_RECIPE_LLM_REFERENCE.md, which this
+#      manifest cites inline in verify/depends_on instead of via `ref`).
+
+- file: Lld.zig-macho-lld-support.patch
+  selector: unconditional
+  purpose: "exposes ZigLLDLinkMachO, adds machoLink(): wires LLD MachO into the zig cc pipeline"
+  symptom: ""
+  tested_by: "recipe.yaml:548-576 -fuse-ld=lld test, osx branch (:557-561)"
+  justification: UNRECORDED
+  verify: "ablate whole macho/LLD group; run osx-64 + osx-arm64"
+  depends_on: "APPLY-TIME: Lld.zig-prefer-shared-libcxx depends on THIS (its hunk lands inside machoLink, added here) -- NOTES.md 1.1. COMPILE-TIME: llvm.zig-lld-ofmt-macho and main.zig-fuse-ld-lld-cc-path need this patch's .macho ofmt tag / llvm.LinkMachO binding to COMPILE (they apply cleanly standalone -- dry-run cannot see this) -- NOTES.md 1.2."
+  cost: ""
+  ref: "recipe/NOTES.md 1.1"
+  status: DEFENSIBLE
+
+- file: Lld.zig-prefer-shared-libcxx.patch
+  selector: unconditional
+  purpose: "link shared libc++ when available instead of bundling zig's own static libc++, via new src/link/libcxx_shared.zig"
+  symptom: ""
+  tested_by: "recipe/testing/test_libcxx_shared.py (recipe.yaml:437-458)"
+  justification: EXTERNAL-CONDITION
+  verify: "conda's LLVM/clang are built against a shared libc++; without this patch zig would statically bundle its own while linking that shared-libc++ LLVM. Ablate with macho group; osx-64 + osx-arm64 exercise the probe."
+  depends_on: "APPLY-TIME: depends on Lld.zig-macho-lld-support (NOTES.md 1.1)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.1"
+  status: DEFENSIBLE
+
+- file: llvm.zig-lld-ofmt-macho.patch
+  selector: unconditional
+  purpose: "skip COFF export-flags handling for Mach-O; treats macho like elf/wasm in the ofmt switch"
+  symptom: ""
+  tested_by: "recipe.yaml:548-576 -fuse-ld=lld test, osx branch"
+  justification: UNRECORDED
+  verify: "ablate with macho group"
+  depends_on: "COMPILE-TIME: needs Lld.zig-macho-lld-support's .macho ofmt tag (NOTES.md 1.2). Applies cleanly standalone; dry-run cannot see this."
+  cost: ""
+  ref: "recipe/NOTES.md 1.2"
+  status: DEFENSIBLE
+
+- file: Config.zig-macho-no-auto-lld.patch
+  selector: unconditional
+  purpose: "prevents LLD being AUTO-selected for macho (adds target.ofmt != .macho guard); does not force LLD nor suppress the self-hosted MachO linker"
+  symptom: ""
+  tested_by: "recipe.yaml:548-576 -fuse-ld=lld test, osx branch"
+  justification: UNRECORDED
+  verify: "group's purpose is to make -fuse-ld=lld WORK on macOS when explicitly requested, not to force it; ablate with macho group"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: main.zig-fuse-ld-lld-cc-path.patch
+  selector: unconditional
+  purpose: "registers ld64.lld linker dispatch to llvm.LinkMachO, honors -fuse-ld=lld, forwards unrecognized linker args as -Wl,{s}. NAMING CAVEAT: contains no gcc/cc-path resolution logic despite the name (NOTES.md 1.2)."
+  symptom: ""
+  tested_by: "recipe.yaml:548-576 -fuse-ld=lld test (4-way platform branching)"
+  justification: UNRECORDED
+  verify: "ablate with macho group"
+  depends_on: "COMPILE-TIME: calls llvm.LinkMachO from Lld.zig-macho-lld-support's bindings (NOTES.md 1.2). Applies cleanly standalone; dry-run cannot see this."
+  cost: ""
+  ref: "recipe/NOTES.md 1.2"
+  status: DEFENSIBLE
+
+- file: build.zig-02-doctest-forward-target.patch
+  selector: unconditional
+  purpose: "adds --doctest-target option so cross-target langref doctest compilations know their target (ZIG_RECIPE_LLM_REFERENCE.md Theme I)"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate; langref/doctest lanes only"
+  depends_on: "APPLY-ORDER: build.zig-03-compiler-step-zig-lib-dir.patch applies directly after this one and its hunk assumes the line shift this patch introduces in build.zig."
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: build.zig-03-compiler-step-zig-lib-dir.patch
+  selector: unconditional
+  purpose: "adds .zig_lib_dir = b.path(\"lib\") to addCompilerStep's b.addExecutable, mirroring the existing autodoc_test/unit_tests siblings in build.zig"
+  symptom: "src/main.zig:428 calls std.zig.Directories.init with 3 args, matching the SOURCE tree's std/zig.zig, but without this patch addCompilerStep falls back to graph.zig_lib_directory (lib/compiler/Maker/Step/Compile.zig:815-820) -- the BOOTSTRAP zig's bundled std/zig.zig, which declares 9 params -- so every lane that builds zig from source failed"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "only is_native/is_cross_target lanes are affected; is_cross_compiler lanes never build zig from source and are inert to this patch (ZIG_RECIPE_LLM_REFERENCE.md Theme I, 2026-08-28 note)"
+  depends_on: "APPLY-ORDER: must apply directly after build.zig-02-doctest-forward-target.patch (that patch shifts build.zig line numbers this one's hunk targets)."
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: non_unix/mingw.zig-01-include-setjmp-s.patch
+  selector: unconditional
+  purpose: "vendors setjmp.S into the shared mingw32_x86_src array (both x86_64 and i386 symbols); fixes undefined __setjmp3/setjmp"
+  symptom: "undefined symbol: __setjmp3 (x86-windows-gnu)"
+  tested_by: "recipe/testing/test_mingw_crt.py test_cross_target_link_probes (recipe.yaml:584-593, gated xc_w64): setjmp/_fpreset link probe across x86_64/i686/aarch64-w64-mingw32 targets"
+  justification: OBSERVED-FAILURE
+  verify: "check if the zig snapshot's bundled setjmp.S / mingw.zig source-array membership still requires vendoring"
+  depends_on: "APPLY-ORDER: must precede mingw-setjmp-no-crtimp.patch and mingw.zig-02-arm64-stubs.patch -- both touch the identical src/libs/mingw.zig hunk range (NOTES.md 1.3)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.3"
+  status: DEFENSIBLE
+
+- file: non_unix/mingw-setjmp-no-crtimp.patch
+  selector: unconditional
+  purpose: "strips _CRTIMP from the _setjmp/_setjmp3 declarations in lib/libc/include/any-windows-any/setjmp.h so generate_mingw_import_libs() does not emit dllimport thunks for symbols setjmp.S already defines locally"
+  symptom: "undefined symbol: _setjmp (x86_64-windows-gnu) / undefined symbol: __setjmp3 (x86-windows-gnu), even though setjmp.S defines them locally"
+  tested_by: "indirectly: recipe/testing/test_mingw_crt.py test_cross_target_link_probes (recipe.yaml:584-593) compiles+links a setjmp/_fpreset probe, which would need the dllimport thunk if _CRTIMP were left in place; no test asserts the header text itself"
+  justification: OBSERVED-FAILURE
+  verify: "check if the bundled setjmp.h still declares _setjmp/_setjmp3 as _CRTIMP"
+  depends_on: "APPLY-ORDER: sits between mingw.zig-01-include-setjmp-s.patch and mingw.zig-02-arm64-stubs.patch; NOTES.md 1.3 states its own position is not order-sensitive against either neighbor, but must follow -01 (which adds the setjmp.S this header edit is meaningless without)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.3"
+  status: DEFENSIBLE
+
+- file: non_unix/mingw.zig-02-arm64-stubs.patch
+  selector: unconditional
+  purpose: "adds new fpreset_arm.c no-op _fpreset stub (x87 is x86-only), avoiding an lld-link BRANCH26 thunk failure on aarch64"
+  symptom: "unable to automatically import from _fpreset ... IMAGE_REL_ARM64_BRANCH26 (aarch64-windows-gnu)"
+  tested_by: "recipe/testing/test_mingw_crt.py test_cross_target_link_probes (recipe.yaml:584-593, gated xc_w64)"
+  justification: OBSERVED-FAILURE
+  verify: "ablate on win_64 cross to win-arm64"
+  depends_on: "APPLY-ORDER: must follow mingw.zig-01-include-setjmp-s.patch -- both touch the identical src/libs/mingw.zig hunk range 122,17 (NOTES.md 1.3; 2026-09-14 rename note)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.3"
+  status: DEFENSIBLE
+
+- file: posix.zig-dl-iterate-phdr-no-pt-phdr.patch
+  selector: unconditional
+  purpose: "in lib/std/posix.zig's dl_iterate_phdr, changes the single-image fallback's } else unreachable, arm to } else 0, -- 0 is a provable no-op wherever PT_PHDR is present"
+  symptom: "Without the patch, the panic deadlocks in futex forever inside the stack-trace printer (test_dl_iterate_phdr.py docstring); a TIMEOUT on the experiment run is the expected failure signature"
+  tested_by: "recipe/testing/test_dl_iterate_phdr.py (recipe.yaml:483-504). Self-checks its premise: treats TIMEOUT on the PT_PHDR-flipped experiment run as FAIL, matching the documented deadlock mechanism."
+  justification: OBSERVED-FAILURE
+  verify: "confirmed unchanged across 149 snapshots -- identical expression at lines 818-821 in both 1884+841dd0eb8 and 2033+af24fd11a (NOTES.md 1.4)"
+  depends_on: "Unlike the 0.16 track (gated to ppc64le only, the one lane there whose final link went through GNU ld/ld.bfd), this patch is deliberately UNCONDITIONAL on 0.17 -- NOTES.md 1.4. Not coupled to the ppc64le GCC-driver unit, which was removed from this tree entirely (Theme E)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.4"
+  status: DEFENSIBLE
+
+- file: linux/llvm.zig-triple-no-glibc-version.patch
+  selector: linux
+  purpose: "in lib/std/zig/llvm/Builder.zig's tripleForTarget, drops the major.minor.patch glibc-version suffix upstream stitches onto the LLVM target triple for .hurd/.linux glibc-ABI targets"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on linux-64; inspect tripleForTarget output for glibc-ABI targets"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: linux/link.zig-01-ldscript-relpath-and-l-flags.patch
+  selector: linux
+  purpose: "implements -lNAME resolution inside GNU ld scripts to so/a, replacing the pre-patch code's @panic(\"TODO\")"
+  symptom: "@panic(\"TODO\")"
+  tested_by: ""
+  justification: EXTERNAL-CONDITION
+  verify: "ZIG_RECIPE_LLM_REFERENCE.md :869: 'Sysroot ld-script rewriting + glibc 2.17 syscall stubs + libunwind forcing make conda's old-glibc sysroots link cleanly.' Retirable only if conda's old-glibc sysroots stop shipping libc.so as a GNU ld script, or upstream zig implements -lNAME resolution natively."
+  depends_on: "BEHAVIOURAL COUPLING (ZIG_RECIPE_LLM_REFERENCE.md :509): link.zig-02-default-allow-so-scripts.patch gates whether this patch's ld-script parsing is ever ENTERED at runtime. Removing -02 would not break the build; it would SILENTLY DISABLE this patch."
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: linux/link.zig-02-default-allow-so-scripts.patch
+  selector: linux
+  purpose: "flips allow_so_scripts default false->true; upstream already has the flag, this patch only changes the default"
+  symptom: ""
+  tested_by: ""
+  justification: EXTERNAL-CONDITION
+  verify: "same environmental driver as link.zig-01 (ZIG_RECIPE_LLM_REFERENCE.md :869); check whether a supported build flag can set allow_so_scripts instead of patching the default"
+  depends_on: "BEHAVIOURAL COUPLING (ZIG_RECIPE_LLM_REFERENCE.md :509): gates whether link.zig-01-ldscript-relpath-and-l-flags.patch's ld-script parsing is ever ENTERED at runtime -- a nastier failure mode than a build break if silently dropped."
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: linux/link.zig-03-ldscript-sysroot-remap.patch
+  selector: linux
+  purpose: "remaps absolute ld-script paths through the --sysroot prefix"
+  symptom: ""
+  tested_by: ""
+  justification: EXTERNAL-CONDITION
+  verify: "same environmental driver as link.zig-01/-02 (ZIG_RECIPE_LLM_REFERENCE.md :869)"
+  depends_on: "COUPLING (ZIG_RECIPE_LLM_REFERENCE.md :1250): joins comp.sysroot onto the ld script's absolute arg.path with no already-absolute check; fs.path.join concatenates naively. On linux this cannot fire with a non-null sysroot, which is why the riscv64 absolute-path rewrite in recipe/building/_sysroot_fix.sh is structurally safe rather than green by luck."
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: linux/target.zig-glibc-needs-libunwind.patch
+  selector: linux
+  purpose: "forces libunwind dependency for all glibc link modes"
+  symptom: ""
+  tested_by: ""
+  justification: EXTERNAL-CONDITION
+  verify: "DROP-WHEN recorded in recipe.yaml:206 verbatim: 'Drop when conda-forge linux glibc floor reaches a version that no longer forces libunwind.' Reading check, no CI."
+  depends_on: ""
+  cost: ""
+  ref: "recipe/NOTES.md 1.5"
+  status: DEFENSIBLE
+
+- file: linux/target.zig-ppc64le-glibc-2.17-min.patch
+  selector: linux
+  purpose: "lowers ppc64le glibc_min validator floor from 2.19 to 2.17: the abilists have full 2.17 data"
+  symptom: ""
+  tested_by: ""
+  justification: EXTERNAL-CONDITION
+  verify: "DROP-WHEN recorded in recipe.yaml:208-209 verbatim: drop when conda-forge ppc64le glibc floor reaches 2.18 or higher. conda-forge's baseline minimum glibc IS 2.17 and is deliberately maintained; not a retire candidate today."
+  depends_on: ""
+  cost: ""
+  ref: "recipe/NOTES.md 1.6"
+  status: DEFENSIBLE
+
+- file: linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
+  selector: linux
+  purpose: "brackets bundled glibc libs (e.g. -lm) with --no-as-needed/--as-needed so they honor the caller's own --no-as-needed request"
+  symptom: "zig drops -lm from DT_NEEDED even when the caller explicitly requested --no-as-needed, breaking dlsym(sin) at runtime"
+  tested_by: "recipe/testing/test_dtneeded.py (recipe.yaml:460-481, gated linux): readelf -d must show NEEDED libm (asserted via re.search(r\"NEEDED\\b.*libm\", readelf.stdout))"
+  justification: OBSERVED-FAILURE
+  verify: "WHY recorded at NOTES.md 1.7"
+  depends_on: ""
+  cost: ""
+  ref: "recipe/NOTES.md 1.7"
+  status: DEFENSIBLE
+
+- file: linux/Sema.zig-shr-exact-safety-downgrade.patch
+  selector: linux
+  purpose: "downgrades .shr_exact to .shr when safety checks are on, in src/Sema.zig"
+  symptom: "LLVM's InstCombine folds shl(lshr_exact(x,N),N) to x, making the runtime back-shift comparison trivially true and silently dropping the panic"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "Affects ALL LLVM-backend targets (ppc64le, aarch64, riscv64, ...), not just linux. A silent-miscompile guard: its failure mode is a MISSING panic, which no green lane would reveal without a targeted test. Do not ablate without one."
+  depends_on: ""
+  cost: ""
+  ref: "recipe/NOTES.md 1.8"
+  status: DEFENSIBLE
+
+- file: linux/build.zig-01-maxrss-raise.patch
+  selector: linux
+  purpose: "raises the linux common-group max_rss ceiling toward a 16GB budget"
+  symptom: "ppc64le Stage 1 peaks at 11.41GB, close enough to a tighter ceiling to risk a false OOM abort under CI's resource accounting"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "ablate on linux_ppc64le; watch for OOM under CI's resource accounting near the 16GB ceiling"
+  depends_on: ""
+  cost: ""
+  ref: "recipe/NOTES.md 1.9"
+  status: DEFENSIBLE
+
+- file: ppc64le/0001-arch-support-LdScript.zig.patch
+  selector: linux-ppc64le
+  purpose: "keeps only the LdScript.zig hunk (elf64-powerpcle OUTPUT_FORMAT recognition); its outputFormat() runs on every backend. The 8 self-hosted ELF-linker arch arms formerly shipped alongside it were removed in build 9 as dead code."
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "This row has already been minimised once (8 arch arms removed in build 9, validated by a build plus ppc64le tests at the time). CONTINGENCY BROKEN 2026-09-13: that removal's stated justification depended on the now-deleted ppc64le/0003-linker-redirect patch; LdScript.zig itself is still required, but re-examine its remaining scope if the GCC-driver unit's absence changes further (NOTES.md 1.10, 1.11)."
+  depends_on: "ppc64le's final ELF link goes through LLD (wrapper -fuse-ld=lld auto-injection plus -fplt CFLAGS/CXXFLAGS lever), not zig's self-hosted linker -- NOTES.md 1.11."
+  cost: "linux_ppc64le lane (aarch64 host, emulated): CI-MEASURED full-lane floor 43m58s, PR #183 job 103655084968, SUCCESS (ZIG_RECIPE_LLM_REFERENCE.md Theme E) -- whole-build measurement for the 0003 removal, not isolated to this patch's own ablation"
+  ref: "recipe/NOTES.md 1.11"
+  status: UNDEFENDED
+
+- file: ppc64le/0002-build-config-build.zig.patch
+  selector: linux-ppc64le
+  purpose: "forces exe.use_llvm=true and exe.root_module.link_libc=true for ppc64le; does NOT touch use_lld and does NOT redirect the link to a system GCC/ld.bfd (an earlier recipe.yaml comment claimed otherwise and was corrected 2026-09-12)"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate with the ppc64le/LLD-linking group; ppc64le carries no GCC/ld.bfd linker-redirect patch at all on this track (NOTES.md 1.11) -- the former such pair was removed once LLD-linking ppc64le directly was confirmed working."
+  depends_on: ""
+  cost: "linux_ppc64le lane (aarch64 host, emulated): CI-MEASURED full-lane floor 43m58s, PR #183 job 103655084968, SUCCESS (ZIG_RECIPE_LLM_REFERENCE.md Theme E) -- whole-build measurement, not isolated to this patch's own ablation"
+  ref: "recipe/NOTES.md 1.11"
+  status: UNDEFENDED
+
+- file: non_unix/build.zig-01-maxrss.patch
+  selector: not-unix
+  purpose: "max_rss 8GB->7.5GB for Windows CI (ZIG_RECIPE_LLM_REFERENCE.md Theme F)"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on win-64; watch for OOM"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: non_unix/build.zig-02-llvm-lib-multipath.patch
+  selector: not-unix
+  purpose: "splits a semicolon-joined llvm_lib_dir into separate search paths (Theme F)"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on win-64"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: non_unix/build.zig-03-msvc-crt-dynamic.patch
+  selector: not-unix
+  purpose: "forces dynamic (.dynamic) CRT linkage on windows-msvc (Theme F)"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on win-64"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: non_unix/CMakeLists.txt-01-correct-LLVM_LIBRARIES.patch
+  selector: not-unix
+  purpose: "strips the .dll suffix and appends msvcrt.lib to LLVM_LIBRARIES (Theme F)"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on win-64"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: non_unix/Lld.zig-remove-ucrt.patch
+  selector: not-unix
+  purpose: "suppresses LLD's automatic ucrt.lib injection to avoid duplicate symbols; as of PR #182 (2026-09-09) restores {s}ucrt.lib specifically when target.cpu.arch == .aarch64, since ARM64 MSVC custom-entry links need UCRT for libvcruntime's abort/calloc/free"
+  symptom: ""
+  tested_by: "recipe/testing/test_aarch64_msvc_ucrt.py (recipe.yaml:811-819, gated is_native and xc_w64): hard-asserts ucrt.lib in the wrapper output for the aarch64 branch; link success and -ENTRY:MyEntry presence are report-only"
+  justification: UNRECORDED
+  verify: "ablate the non-aarch64 suppression on win-64; ablate the aarch64 restoration via test_aarch64_msvc_ucrt.py"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: non_unix/Lld.zig-suppress-importeddllmain.patch
+  selector: not-unix
+  purpose: "adds -IGNORE:importeddllmain to LLD COFF args (Theme G)"
+  symptom: "import libs like xml2.lib export DllMain, tripping LLD's fatal-warning heuristic"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "ablate on win-64 against an import lib that exports DllMain (e.g. xml2.lib)"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
+  selector: not-unix
+  purpose: "switches zigcpp's MSVC runtime to /MD dynamic (Theme F). NOTE: zig itself is built windows-msvc (zigcpp /MD, ucrt), while the shipped zig targets windows-gnu -- keep the distinction."
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on win-64"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: non_unix/floatop.zig-log2-vectors-approx.patch
+  selector: not-unix
+  purpose: "relaxes the vector @log2 test to approximate equality"
+  symptom: "1-ULP MSVC mismatch"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "ablate on win-64; this relaxes zig's OWN upstream test tolerance, not a recipe-side test"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: DEFENSIBLE
+
+- file: non_unix/mingw-crtexe-no-atexit.patch
+  selector: not-unix
+  purpose: "#if-0's the only atexit() definition in crtexe.c -- first link of a removal-then-restoration-then-consumption chain (NOTES.md 1.12)"
+  symptom: "Dropping the restoration while keeping this removal breaks the windows-gnu link with an undefined atexit, and the error surfaces inside gccmain.c, two patches away from the actual cause"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "ablate the three-patch chain together (mingw-crtexe-no-atexit + ucrtbase-export-atexit-alias + gccmain-do-global-ctors-guard); never one alone"
+  depends_on: "CHAIN: restored by non_unix/ucrtbase-export-atexit-alias.patch, then consumed (as atexit(__do_global_dtors)) by non_unix/gccmain-do-global-ctors-guard.patch (NOTES.md 1.12)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.12"
+  status: DEFENSIBLE
+
+- file: non_unix/ucrtbase-export-atexit-alias.patch
+  selector: not-unix
+  purpose: "adds an atexit == _crt_atexit alias to api-ms-win-crt-runtime-l1-1-0.def.in, since ucrtbase.dll only exports _crt_atexit under that name"
+  symptom: "Dropping this restoration while keeping mingw-crtexe-no-atexit's removal breaks the windows-gnu link with an undefined atexit, surfacing inside gccmain.c"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "ablate the three-patch chain together; never drop this one alone"
+  depends_on: "CHAIN: restores what non_unix/mingw-crtexe-no-atexit.patch removes; consumed by non_unix/gccmain-do-global-ctors-guard.patch (NOTES.md 1.12)."
+  cost: ""
+  ref: "recipe/NOTES.md 1.12"
+  status: DEFENSIBLE
+
+- file: non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
+  selector: not-unix
+  purpose: "in lib/std/debug/SelfInfo/Windows.zig's getNtdllProc(), adds the missing @alignCast alongside the existing @ptrCast on the pointer returned by si.loadNtdllProc()"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate on win_64 cross to win-arm64"
+  depends_on: ""
+  cost: ""
+  ref: ""
+  status: UNDEFENDED
+
+- file: non_unix/gccmain-do-global-ctors-guard.patch
+  selector: not-unix
+  purpose: "in lib/libc/mingw/crt/gccmain.c's __do_global_ctors, reads the __CTOR_LIST__ head at pointer width and bounds the ctor-count scan instead of walking off the end -- third and final link of the atexit chain (NOTES.md 1.12)"
+  symptom: "0xC00000FD STATUS_STACK_OVERFLOW pre-main from a malformed flexlink-merged __CTOR_LIST__ (no -1 head / no NULL terminator)"
+  tested_by: ""
+  justification: OBSERVED-FAILURE
+  verify: "zig ships no PE crtbegin/crtend bookends, so this can occur whenever a binary composing __CTOR_LIST__ from multiple objects omits one of those markers; well-formed lists (e.g. LLD-synthesized ones from the plain zig cc path) take the normal path silently"
+  depends_on: "CHAIN: consumes the atexit alias restored by non_unix/ucrtbase-export-atexit-alias.patch, itself restoring what non_unix/mingw-crtexe-no-atexit.patch removes (NOTES.md 1.12). Never ablate independently of the other two."
+  cost: ""
+  ref: "recipe/NOTES.md 1.12"
+  status: DEFENSIBLE
+
+- file: "recipe/build.sh ppc64le -fplt flag block (NOT A PATCH)"
+  selector: linux-ppc64le
+  purpose: "exports -fplt into CFLAGS/CXXFLAGS for linux-ppc64le, under the pre-existing target_platform guard, so GCC emits standard PLT call sequences instead of the inline-PLT relocations it emits under conda-forge's -fno-plt default"
+  symptom: ""
+  tested_by: ""
+  justification: UNRECORDED
+  verify: "ablate by dropping this export on linux-ppc64le; watch for LLD failures linking libzigcpp.a (NOTES.md 1.11)"
+  depends_on: "COMPANION (not apply-order, not a patch coupling): ppc64le/0001-arch-support-LdScript.zig.patch and ppc64le/0002-build-config-build.zig.patch's LLD-linking path assumes this lever stays active -- NOTES.md 1.11."
+  cost: ""
+  ref: "recipe/NOTES.md 1.11"
+  status: UNDEFENDED
