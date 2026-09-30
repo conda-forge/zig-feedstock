@@ -6,6 +6,9 @@ set -euo pipefail
 set +x
 IFS=$'\n\t'
 
+# ERR trap: safe with -e armed (unlike -x); no xtrace is added here.
+trap 'printf "BUILD-ERR: status=%s line=%s cmd=%s\n" "$?" "${LINENO:-?}" "${BASH_COMMAND:-?}" >&2' ERR
+
 export build_platform="${build_platform:-${target_platform}}"
 
 source "${RECIPE_DIR}/building/_bash_check.sh"
@@ -453,16 +456,39 @@ else
   zig_diag_span "BEGIN phase2-langref"
   _langref_start=${SECONDS}
   _langref_rc=0
-  (
+  # Bound the run: ppc64le langref takes close to an hour under emulation.
+  _langref_timeout=()
+  if [[ "${ZIG_LANGREF_TIMEOUT:-5h}" != "0" ]] && command -v timeout &>/dev/null; then
+    _langref_timeout=(timeout --kill-after=60s "${ZIG_LANGREF_TIMEOUT:-5h}")
+  fi
+  # Crash-probe capture: kept out of ${PREFIX} so it never enters the package.
+  _langref_log="${SRC_DIR:-/tmp}/zig-phase2-langref.log"
+  _langref_pipefail_state="$(shopt -po pipefail)"
+  set -o pipefail
+  if (
     cd "${cmake_source_dir}" &&
-    "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
+    "${_langref_timeout[@]+"${_langref_timeout[@]}"}" \
+      "${_stage3_runner[@]+"${_stage3_runner[@]}"}" "${PREFIX}/bin/zig" build langref \
       --prefix "${PREFIX}" \
       -Dversion-string="${PKG_VERSION}" \
       -Ddoctest-target="${ZIG_TRIPLET}"
-  ) || _langref_rc=$?
+  ) 2>&1 | tee "${_langref_log}"; then
+    _langref_rc=0
+  else
+    _langref_rc=${PIPESTATUS[0]}
+  fi
+  eval "${_langref_pipefail_state}"
   zig_diag_span "END phase2-langref: rc=${_langref_rc} elapsed=$((SECONDS - _langref_start))s"
   if [[ ${_langref_rc} -ne 0 ]]; then
     echo "ERROR: Phase 2 langref build failed (rc=${_langref_rc})" >&2
+    exit 1
+  fi
+
+  # panic/error excluded on purpose: doctests intentionally panic (e.g. runtime_division_by_zero.zig).
+  _langref_crash_pattern='uncaught target signal|Illegal instruction|Bus error|core dumped|Segmentation fault|SIGSEGV|SIGILL|SIGBUS|Unable to dump stack trace|qemu: fatal'
+  if [[ -f "${_langref_log}" ]] && grep -qE "${_langref_crash_pattern}" "${_langref_log}"; then
+    echo "ERROR: Phase 2 langref log shows a hard-fault signature" >&2
+    grep -nE "${_langref_crash_pattern}" "${_langref_log}" | head -n 20 >&2
     exit 1
   fi
 fi
