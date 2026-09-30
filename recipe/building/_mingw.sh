@@ -425,17 +425,22 @@ SYNCHRONIZATION_DEF
         # zig's depfile parser rejects unescaped backslashes in Windows build
         # roots; fail over abs -> rel -> member-less archive.
         local stub_mode
+        local _stub_abs_err
         if "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>"${stub_log}"; then
           stub_mode="abs"
-        elif ( cd "${out_dir}" && "${_zig_bin}" cc -c "${stub_base}.c" -o "${stub_base}.o" -target "${target_triple}" ) 2>>"${stub_log}"; then
-          stub_mode="rel"
-          if [[ "${_stub_rel_warned}" == "0" ]]; then
-            echo "WARN: [_mingw] stub compile via absolute path is failing; using relative-path fallback (mode=rel)" >&2
-            _stub_rel_warned=1
-          fi
         else
-          : # brush 0.4.0 $? guard
-          stub_mode="empty"
+          _stub_abs_err="$(cat "${stub_log}")"
+          if ( cd "${out_dir}" && "${_zig_bin}" cc -c "${stub_base}.c" -o "${stub_base}.o" -target "${target_triple}" ) 2>>"${stub_log}"; then
+            stub_mode="rel"
+            if [[ "${_stub_rel_warned}" == "0" ]]; then
+              echo "WARN: [_mingw] stub compile via absolute path is failing; using relative-path fallback (mode=rel)" >&2
+              sed -n '1,10s/^/  abs-probe: /p' <<<"${_stub_abs_err}" >&2
+              _stub_rel_warned=1
+            fi
+          else
+            : # brush 0.4.0 $? guard
+            stub_mode="empty"
+          fi
         fi
         if [[ "${stub_mode}" == "empty" ]]; then
           echo "WARNING: [_mingw] stub compile failed for lib${lib_name}.a (${target_triple}); using member-less archive" >&2
