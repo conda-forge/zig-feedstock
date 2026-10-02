@@ -77,9 +77,36 @@ is_ppc64le = _arch == "powerpc64le"
 
 # Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
 
+def _sysctl_int(name: bytes) -> int | None:
+    """Integer sysctl value by name; None if unavailable or not macOS."""
+    if sys.platform != "darwin":
+        return None
+    import ctypes
+    import ctypes.util
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "/usr/lib/libSystem.B.dylib",
+                           use_errno=True)
+        val = ctypes.c_int(0)
+        size = ctypes.c_size_t(ctypes.sizeof(val))
+        rc = libc.sysctlbyname(name, ctypes.byref(val),
+                               ctypes.byref(size), None, ctypes.c_size_t(0))
+    except (OSError, AttributeError):
+        return None
+    return None if rc != 0 else val.value
+
+
+def _under_rosetta() -> bool:
+    """True when the x86_64 zig under test runs via Rosetta 2 on Apple Silicon."""
+    return (sys.platform == "darwin" and _arch == "x86_64"
+            and _sysctl_int(b"hw.optional.arm64") == 1)
+
+
+_is_rosetta = _under_rosetta()
+
 # Cold libc++ cache-warm compile: measured ~937s under qemu on emulated
 # ppc64le, so emulated lanes get a much larger ceiling than native ones.
-_COMPILE_TIMEOUT_S = 1800 if _is_emulated else 120
+# Rosetta lanes are slow too (120s timed out on osx-64 xtarget).
+_COMPILE_TIMEOUT_S = 1800 if (_is_emulated or _is_rosetta) else 120
 
 
 # --------------------------------------------------------------------------
@@ -248,7 +275,7 @@ def test_libcxx_fallback_static() -> None:
 
         # Cold Windows libc++ compilation can exceed two minutes; keep a
         # bounded allowance for building it before assessing static fallback.
-        compile_timeout = 600 if _build_is_win else 120
+        compile_timeout = 600 if _build_is_win else _COMPILE_TIMEOUT_S
         r = _run([zig, "c++", "-shared", "-o", str(out), str(src)],
                  cwd=td, timeout=compile_timeout, target=_conda_triplet)
         if r.stderr == "TIMEOUT":
@@ -394,7 +421,7 @@ def test_libcxx_probe_paths() -> None:
         # Run with --verbose-link to see actual linker args
         out = Path(td) / "libprobe.so"
         r_vl = _run([zig, "c++", "-shared", "--verbose-link",
-                      "-o", str(out), str(src)], cwd=td, timeout=120, target=_conda_triplet)
+                      "-o", str(out), str(src)], cwd=td, timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
         if r_vl.returncode == 0 or r_vl.stderr:
             # Look for libc++ in verbose output (both stdout and stderr)
             verbose = r_vl.stdout + "\n" + r_vl.stderr
@@ -490,7 +517,11 @@ def _check_needed_libcxx(zig: str, label: str) -> None:
         )
 
         r = _run([zig, "c++", "-shared", "-o", str(cxx_out), str(cxx_src)],
-                 cwd=td, timeout=120, target=_conda_triplet)
+                 cwd=td, timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+
+        if timed_out(r):
+            FAIL(f"{label}: C++ compilation timed out after {_COMPILE_TIMEOUT_S}s")
+            return
 
         if r.returncode != 0:
             FAIL(f"{label}: C++ compilation failed",
@@ -621,7 +652,7 @@ def _build_shared_libcxx(
     else:
         return None
 
-    r = _run(cmd, cwd=str(td_path), timeout=120, target=_conda_triplet)
+    r = _run(cmd, cwd=str(td_path), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
     if r.returncode != 0 or not shared_build.exists():
         FAIL("libcxx-simulation: build shared libc++ from static .a",
              f"rc={r.returncode}\n{r.stderr[:2000]}")
@@ -753,6 +784,7 @@ def test_libcxx_shared_simulation() -> None:
 # ===================================================================
 def main() -> int:
     print("=== Shared libc++ Discovery Tests (patch 0008) ===")
+    print(f"compile timeout: {_COMPILE_TIMEOUT_S}s (emulated={_is_emulated}, rosetta={_is_rosetta}, hw.optional.arm64={_sysctl_int(b'hw.optional.arm64')}, python={platform.machine()})")
     print(f"  test prefix   = {_prefix}")
     print(f"  CONDA_TRIPLET = {_conda_triplet}")
     print(f"  zig binary    = {_zig_bin_name}")
