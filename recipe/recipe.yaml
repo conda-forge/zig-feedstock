@@ -224,6 +224,7 @@ source:
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
+          - patches/non_unix/DepTokenizer.zig-rhs-leading-backslash-prereq.patch
           # See recipe/NOTES.md 1.12.
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch

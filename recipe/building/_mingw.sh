@@ -414,22 +414,11 @@ SYNCHRONIZATION_DEF
         local stub_o="${out_dir}/${stub_base}.o"
         local stub_log="${out_dir}/${stub_base}.log"
         printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
-        # Drive-less roots (\bld\...) break zig's depfile parser; qualify the abs
-        # attempt with the drive holding the file. rel and member-less archive remain as fallbacks.
+        # The DepTokenizer patch lets zig parse drive-less roots (\bld\...); the rel
+        # and member-less archive fallbacks stay as regression signals.
         local stub_mode
         local _stub_abs_err
-        local stub_c_abs="${stub_c}" stub_o_abs="${stub_o}" _drv
-        if [[ "${stub_c:1:1}" != ":" ]]; then
-          for _drv in "${RECIPE_DIR:0:2}" "${PWD:0:2}" "${SRC_DIR:0:2}"; do
-            case "${_drv}" in [A-Za-z]:) ;; *) continue ;; esac
-            if [[ -f "${_drv}${stub_c}" ]]; then
-              stub_c_abs="${_drv}${stub_c}"
-              stub_o_abs="${_drv}${stub_o}"
-              break
-            fi
-          done
-        fi
-        if "${_zig_bin}" cc -c "${stub_c_abs}" -o "${stub_o_abs}" -target "${target_triple}" 2>"${stub_log}"; then
+        if "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>"${stub_log}"; then
           stub_mode="abs"
         else
           _stub_abs_err="$(cat "${stub_log}")"
@@ -437,7 +426,7 @@ SYNCHRONIZATION_DEF
             stub_mode="rel"
             if [[ "${_stub_rel_warned}" == "0" ]]; then
               echo "WARN: [_mingw] stub compile via absolute path is failing; using relative-path fallback (mode=rel)" >&2
-              echo "  abs-path: ${stub_c_abs}" >&2
+              echo "  abs-path: ${stub_c}" >&2
               sed -n '1,10s/^/  abs-probe: /p' <<<"${_stub_abs_err}" >&2
               _stub_rel_warned=1
             fi
