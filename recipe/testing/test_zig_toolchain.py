@@ -361,27 +361,6 @@ def test_driveless_abs_path() -> None:
         SKIP("drive-less absolute path", "ZIG_CC not set")
         return
 
-    # Cross-target lanes install the pinned published zig_impl, which may
-    # predate the DepTokenizer patch.
-    roots = [_prefix] + [Path(v) for v in (os.environ.get("BUILD_PREFIX"), os.environ.get("PREFIX")) if v]
-    tok = next((p for p in (r / "Library" / "lib" / "zig" / "std" / "Build" / "Cache" / "DepTokenizer.zig"
-                            for r in roots) if p.is_file()), None)
-    if tok is None:
-        SKIP("drive-less absolute path", "DepTokenizer.zig not found under Library/lib/zig")
-        return
-    try:
-        tok_src = tok.read_text(encoding="utf-8", errors="replace")
-    except OSError as e:
-        SKIP("drive-less absolute path", f"cannot read {tok}: {e}")
-        return
-    if "the backslash begins a prerequisite" not in tok_src:
-        WARN("drive-less absolute path",
-             f"zig_impl std at {tok.parents[3]} predates "
-             f"DepTokenizer.zig-rhs-leading-backslash-prereq.patch (pinned bootstrap impl); "
-             f"consumers of this wrapper still hit InvalidDepFile until zig_impl_pin "
-             f"moves to a build carrying the patch")
-        return
-
     with tempfile.TemporaryDirectory() as td:
         drive, rest = os.path.splitdrive(td)
         if not drive or not rest.startswith(("\\", "/")):
