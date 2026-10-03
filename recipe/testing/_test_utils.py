@@ -188,6 +188,86 @@ def _qemu_binary_arch(arch: str) -> str:
     return "ppc64le" if canonical == "powerpc64le" else canonical
 
 
+# ELF e_machine -> triplet arch spelling. EM_PPC64 (21) covers both
+# endiannesses; this feedstock only ships little-endian ppc64.
+_ELF_MACHINES = {
+    62: "x86_64",
+    183: "aarch64",
+    21: "powerpc64le",
+    243: "riscv64",
+    22: "s390x",
+}
+
+
+def elf_arch(path: Path) -> str | None:
+    """Arch of an ELF file, read from its header; None if not ELF."""
+    try:
+        with open(path, "rb") as fh:
+            hdr = fh.read(20)
+    except OSError:
+        return None
+    if len(hdr) < 20 or hdr[:4] != b"\x7fELF":
+        return None
+    order = "little" if hdr[5] == 1 else "big"
+    machine = int.from_bytes(hdr[18:20], order)
+    return _ELF_MACHINES.get(machine, f"e_machine={machine}")
+
+
+def check_qemu_execve_consistency(triplet: str) -> bool:
+    """Cross-check QEMU_EXECVE against the arch of the zig binary under test.
+
+    recipe.yaml adds qemu_pkg exactly when build_platform != target_platform,
+    i.e. when the package's own binaries are foreign to the runner. The
+    triplet cannot stand in for that: it names the code-generation target
+    (xtarget_), which differs from the package's host arch on every hosted
+    cross lane. The binary's ELF header is the non-circular signal, and
+    python runs from the test BUILD env, so platform.machine() is the
+    runner's arch.
+
+    Linux only. Returns False after recording a FAIL on disagreement.
+    """
+    if sys.platform != "linux":
+        return True
+    name = "QEMU_EXECVE consistency"
+    prefix = resolve_test_prefix("bin")
+    arch = None
+    # <triplet>-zig is a shell script on wrapper-only outputs; the -zig-cc
+    # C shim is the ELF there.
+    for tool in (f"{triplet}-zig", f"{triplet}-zig-cc", "zig"):
+        candidate = prefix / "bin" / tool
+        if candidate.exists():
+            arch = elf_arch(candidate.resolve())
+            if arch:
+                break
+    if arch is None:
+        WARN(name, f"no ELF zig binary under {prefix}/bin "
+                   f"({triplet}-zig, {triplet}-zig-cc, zig) -- check not run")
+        return True
+
+    native = _canonical_arch(_native_machine)
+    foreign = _canonical_arch(arch) != native
+    qemu_execve = os.environ.get("QEMU_EXECVE", "")
+    if not qemu_execve:
+        if foreign:
+            FAIL(name, f"zig binary is {arch} on a {native} runner but QEMU_EXECVE is unset "
+                       "-- is qemu_pkg missing from this test's build requirements?")
+            return False
+        PASS(name, f"native {arch}, QEMU_EXECVE unset")
+        return True
+    if not foreign:
+        FAIL(name, f"QEMU_EXECVE={qemu_execve} but the zig binary is native {arch}")
+        return False
+    expected = f"qemu-execve-{_qemu_binary_arch(arch)}"
+    if os.path.basename(qemu_execve) != expected:
+        FAIL(name, f"QEMU_EXECVE={qemu_execve}, expected {expected} for a {arch} binary")
+        return False
+    if not os.access(qemu_execve, os.X_OK):
+        FAIL(name, f"QEMU_EXECVE={qemu_execve} is not executable")
+        return False
+    PASS(name, f"{arch} binary on {native} runner via {expected}")
+    return True
+
+
 def emulation_prefix(triplet: str) -> list[str]:
     """Return the argv prefix needed to run a target-arch binary, or [] if native.
 
@@ -223,9 +303,12 @@ def check_emulation_env(triplet: str) -> bool:
 
     Call once per script after the triplet is known, before the first
     target-arch invocation. Returns True if safe to proceed (including the
-    native no-op case, where nothing is reported). Returns False after
-    reporting FAIL if a hard blocker was found.
+    native case). Returns False after
+    reporting FAIL if a hard blocker was found. Always runs the QEMU_EXECVE
+    consistency check first, which records one PASS/FAIL/WARN line.
     """
+    if not check_qemu_execve_consistency(triplet):
+        return False
     if not is_foreign_target(triplet):
         return True
 

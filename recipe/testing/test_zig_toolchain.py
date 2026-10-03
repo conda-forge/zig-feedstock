@@ -349,6 +349,58 @@ def test_target_override() -> None:
                  f"rc={r2.returncode} stdout={r2.stdout[:2000]} stderr={r2.stderr[:2000]}")
 
 
+def test_driveless_abs_path() -> None:
+    print("--- Drive-less absolute source path ---")
+
+    if not _build_is_win:
+        SKIP("drive-less absolute path", "Windows host only")
+        return
+
+    zig_cc = _env_var("ZIG_CC")
+    if not zig_cc:
+        SKIP("drive-less absolute path", "ZIG_CC not set")
+        return
+
+    # Cross-target lanes install the pinned published zig_impl, which may
+    # predate the DepTokenizer patch.
+    roots = [_prefix] + [Path(v) for v in (os.environ.get("BUILD_PREFIX"), os.environ.get("PREFIX")) if v]
+    tok = next((p for p in (r / "Library" / "lib" / "zig" / "std" / "Build" / "Cache" / "DepTokenizer.zig"
+                            for r in roots) if p.is_file()), None)
+    if tok is None:
+        SKIP("drive-less absolute path", "DepTokenizer.zig not found under Library/lib/zig")
+        return
+    try:
+        tok_src = tok.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        SKIP("drive-less absolute path", f"cannot read {tok}: {e}")
+        return
+    if "the backslash begins a prerequisite" not in tok_src:
+        WARN("drive-less absolute path",
+             f"zig_impl std at {tok.parents[3]} predates "
+             f"DepTokenizer.zig-rhs-leading-backslash-prereq.patch (pinned bootstrap impl); "
+             f"consumers of this wrapper still hit InvalidDepFile until zig_impl_pin "
+             f"moves to a build carrying the patch")
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        drive, rest = os.path.splitdrive(td)
+        if not drive or not rest.startswith(("\\", "/")):
+            SKIP("drive-less absolute path", f"temp dir {td!r} not drive-qualified")
+            return
+        (Path(td) / "t.c").write_text("int zig_driveless_probe(void) { return 0; }\n")
+        src = os.path.join(rest, "t.c")
+        obj = os.path.join(rest, "t.o")
+        r = _run([zig_cc, "-c", src, "-o", obj], cwd=td, timeout=60)
+        if r.returncode == 0 and Path(td, "t.o").is_file() and Path(td, "t.o").stat().st_size > 0:
+            PASS("drive-less absolute path compile")
+        else:
+            FAIL("drive-less absolute path compile",
+                 f"rc={r.returncode} stderr={chr(10).join(r.stderr.splitlines()[:10])} "
+                 f"-- drive-less absolute path rejected; check "
+                 f"DepTokenizer.zig-rhs-leading-backslash-prereq.patch "
+                 f"(InvalidDepFile/continuation_eol)")
+
+
 # ===================================================================
 # Section 4 — Shared library creation
 # ===================================================================
@@ -1362,6 +1414,7 @@ def main() -> int:
     test_force_load_wrappers()
     test_flag_filtering()
     test_target_override()
+    test_driveless_abs_path()
     test_shared_lib()
     test_exe_linking()
     test_libc_linking()

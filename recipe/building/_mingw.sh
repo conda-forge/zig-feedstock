@@ -157,6 +157,17 @@ SYNCHRONIZATION_DEF
       _gen_count=0
       _gen_fail=0
       _gen_failed=""
+      _gen_skip=0
+      _gen_skipped=""
+
+      # Count a failed cc -E preprocess ($2 = output .def; stderr is in $2.pp.err).
+      function _note_pp_skip() {
+        _gen_skip=$(( _gen_skip + 1 ))
+        _gen_skipped="${_gen_skipped} $1"
+        echo "WARNING: [_mingw] preprocess failed for $1" >&2
+        head -n 20 "$2.pp.err" >&2
+        rm -f "$2.pp.err" "$2"
+      }
 
       # Macro-fragment include-helper stems (not standalone DLL defs). See reference doc S5.6/S3.11.
       function _is_helper_stem() {
@@ -262,7 +273,8 @@ SYNCHRONIZATION_DEF
               -target "${_ia_target}" \
               -x assembler-with-cpp \
               -I"${_def_include}" \
-              "${_def_in}" 2>/dev/null > "${_def}" || { rm -f "${_def}"; continue; }
+              "${_def_in}" > "${_def}" 2> "${_def}.pp.err" || { _note_pp_skip "${_ia_arch}:${_stem}" "${_def}"; continue; }
+            rm -f "${_def}.pp.err"
           fi
           _gen_implib "${_stem}" "${_def}" "${_ia_outdir}"
         done
@@ -315,7 +327,8 @@ SYNCHRONIZATION_DEF
                 -I"${_supp_defs}" \
                 -I"${_def_include}" \
                 -I"${_mingw_common}" \
-                "${_supp_in}" 2>/dev/null > "${_supp_def}" || { rm -f "${_supp_def}"; continue; }
+                "${_supp_in}" > "${_supp_def}" 2> "${_supp_def}.pp.err" || { _note_pp_skip "${_ia_arch}:${_supp_stem}" "${_supp_def}"; continue; }
+              rm -f "${_supp_def}.pp.err"
             fi
             _gen_implib "${_supp_stem}" "${_supp_def}" "${_ia_outdir}"
           done
@@ -337,37 +350,16 @@ SYNCHRONIZATION_DEF
       dbg echo "=== Generated ${_gen_count} import libs total across x86_64+aarch64+x86 ==="
       if [[ "${_mingw_xt}" == "1" ]]; then { set -x; } 2>/dev/null; fi
 
-      echo "INFO: [_mingw] import libs generated=${_gen_count} failed=${_gen_fail}" >&2
+      echo "INFO: [_mingw] import libs generated=${_gen_count} failed=${_gen_fail} skipped=${_gen_skip}" >&2
+      if [[ "${_gen_skip}" -gt 0 ]]; then
+        echo "WARNING: [_mingw] skipped (preprocess failed):${_gen_skipped}" >&2
+      fi
       if [[ "${_gen_fail}" -gt 0 ]]; then
         echo "ERROR: [_mingw] failed import libs:${_gen_failed}" >&2
         return 1
       fi
-      # Floor guards against an import-lib generation collapse. See reference doc S5.6/S3.11.
-      # The 2200 baseline is the ONLY thing that fails the build (unchanged
-      # semantics). Separately, derive an expectation from the actual
-      # .def/.def.in source count in ${_mingw_common} x the number of
-      # Windows arches the _ia_entry loop above generates for (3: x86_64,
-      # aarch64, x86) as a soft signal only: the three arches do NOT
-      # generate from identical .def sets (arm64 generates fewer than
-      # x86_64), so this is an OVERESTIMATE and must never be used as a
-      # hard floor -- it only warns when the actual count is suspiciously
-      # low relative to it.
+      # Hard floor against an import-lib generation collapse (reference doc S5.6/S3.11). failed>0 already aborts above; skipped>0 warns.
       _gen_count_floor=2200
-      if [[ -d "${_mingw_common}" ]]; then
-        _def_src_count=0
-        for _def in "${_mingw_common}"/*.def "${_mingw_common}"/*.def.in; do
-          [[ -f "${_def}" ]] && _def_src_count=$(( _def_src_count + 1 ))
-        done
-        _gen_arch_count=3
-        _derived_floor=$(( _def_src_count * _gen_arch_count ))
-        if [[ "${_derived_floor}" -eq 0 ]]; then
-          echo "WARNING: [_mingw] derived import-lib expectation came out 0; skipping soft check, hard floor stays ${_gen_count_floor}" >&2
-        elif [[ "${_gen_count}" -ge "${_gen_count_floor}" ]] && [[ "${_gen_count}" -lt "${_derived_floor}" ]]; then
-          echo "WARNING: [_mingw] import-lib count ${_gen_count} below derived expectation ${_derived_floor} (def files: ${_def_src_count}, arches: ${_gen_arch_count}) - possible upstream .def removal" >&2
-        fi
-      else
-        echo "WARNING: [_mingw] ${_mingw_common} missing; cannot derive import-lib expectation, hard floor stays ${_gen_count_floor}" >&2
-      fi
       if [[ "${_gen_count}" -lt "${_gen_count_floor}" ]]; then
         echo "ERROR: [_mingw] import lib count ${_gen_count} is below floor ${_gen_count_floor} (baseline 2355 measured on PR #181 / ac523b5b)" >&2
         return 1
@@ -422,20 +414,26 @@ SYNCHRONIZATION_DEF
         local stub_o="${out_dir}/${stub_base}.o"
         local stub_log="${out_dir}/${stub_base}.log"
         printf 'int __zig_%s_stub __attribute__((weak)) = 0;\n' "${sym_name}" > "${stub_c}"
-        # zig's depfile parser rejects unescaped backslashes in Windows build
-        # roots; fail over abs -> rel -> member-less archive.
+        # The DepTokenizer patch lets zig parse drive-less roots (\bld\...); the rel
+        # and member-less archive fallbacks stay as regression signals.
         local stub_mode
+        local _stub_abs_err
         if "${_zig_bin}" cc -c "${stub_c}" -o "${stub_o}" -target "${target_triple}" 2>"${stub_log}"; then
           stub_mode="abs"
-        elif ( cd "${out_dir}" && "${_zig_bin}" cc -c "${stub_base}.c" -o "${stub_base}.o" -target "${target_triple}" ) 2>>"${stub_log}"; then
-          stub_mode="rel"
-          if [[ "${_stub_rel_warned}" == "0" ]]; then
-            echo "WARN: [_mingw] stub compile via absolute path is failing; using relative-path fallback (mode=rel)" >&2
-            _stub_rel_warned=1
-          fi
         else
-          : # brush 0.4.0 $? guard
-          stub_mode="empty"
+          _stub_abs_err="$(cat "${stub_log}")"
+          if ( cd "${out_dir}" && "${_zig_bin}" cc -c "${stub_base}.c" -o "${stub_base}.o" -target "${target_triple}" ) 2>>"${stub_log}"; then
+            stub_mode="rel"
+            if [[ "${_stub_rel_warned}" == "0" ]]; then
+              echo "WARN: [_mingw] stub compile via absolute path is failing; using relative-path fallback (mode=rel)" >&2
+              echo "  abs-path: ${stub_c}" >&2
+              sed -n '1,10s/^/  abs-probe: /p' <<<"${_stub_abs_err}" >&2
+              _stub_rel_warned=1
+            fi
+          else
+            : # brush 0.4.0 $? guard
+            stub_mode="empty"
+          fi
         fi
         if [[ "${stub_mode}" == "empty" ]]; then
           echo "WARNING: [_mingw] stub compile failed for lib${lib_name}.a (${target_triple}); using member-less archive" >&2

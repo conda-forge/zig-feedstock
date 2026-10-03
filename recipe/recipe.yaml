@@ -1,9 +1,8 @@
 schema_version: 1
 
 context:
-  # <snapshot ordinal><rev>: a new snapshot starts at <snapshot>0, rebuilds go 1, 2, 3 ...
-  # All snapshots share version 0.17.0, so this is the only monotonic ordering lever.
-  build_number: 23200
+  # See recipe/NOTES.md 2.1.
+  build_number: 23201
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -113,8 +112,7 @@ context:
       "unknown_build_triplet"
     }}
 
-  # Same mapping as build_triplet but keyed on target_platform.
-  # Used by xc_build_triplet for unhosted cross-compilers (runs on target_platform).
+  # See recipe/NOTES.md 2.2.
   target_triplet: >-
     ${{
       "x86_64-conda-linux-gnu"                 if target_platform == "linux-64"       else
@@ -130,8 +128,7 @@ context:
       "unknown_target_triplet"
     }}
 
-  # Same mapping as zig_build_triplet but keyed on target_platform (zig -target format).
-  # Used by xc_build_zig_triplet for unhosted cross-compilers (runs on target_platform).
+  # See recipe/NOTES.md 2.2.
   zig_target_triplet: >-
     ${{
       "x86_64-linux-gnu." ~ zig_glibc_tgt      if target_platform == "linux-64"       else
@@ -177,25 +174,21 @@ source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
     sha256: eb13ec4f7536a3d12f604a37d8118f8e4f4162170f9170986f90de71adf90cdc
     patches:
-      # All platforms: wire LLD MachO into zig cc pipeline + allow -fuse-ld=lld.
-      # macho-lld-support must apply before prefer-shared-libcxx because the
-      # latter patches code inside the machoLink function added by the former.
+      # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
       - patches/Lld.zig-prefer-shared-libcxx.patch
-      # needs macho-lld-support: uses the .macho ofmt tag it adds
+      # See recipe/NOTES.md 1.2.
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
-      # needs macho-lld-support: calls llvm.LinkMachO from its bindings
+      # See recipe/NOTES.md 1.2.
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
       - patches/build.zig-03-compiler-step-zig-lib-dir.patch
-      # -01/-02 ids encode load-bearing order on src/libs/mingw.zig
+      # See recipe/NOTES.md 1.3.
       - patches/non_unix/mingw.zig-01-include-setjmp-s.patch
       - patches/non_unix/mingw-setjmp-no-crtimp.patch
       - patches/non_unix/mingw.zig-02-arm64-stubs.patch
-      # General correctness fix: PT_PHDR is absent from static non-PIE ELF images
-      # (GNU ld emits none); dl_iterate_phdr's single-image fallback otherwise hits
-      # `unreachable`. No-op on any image that has a PT_PHDR (all PIE/dynamic images).
+      # See recipe/NOTES.md 1.4.
       - patches/posix.zig-dl-iterate-phdr-no-pt-phdr.patch
       - if: linux
         then:
@@ -203,32 +196,22 @@ source:
           - patches/linux/link.zig-01-ldscript-relpath-and-l-flags.patch
           - patches/linux/link.zig-02-default-allow-so-scripts.patch
           - patches/linux/link.zig-03-ldscript-sysroot-remap.patch
-          # Drop when conda-forge linux glibc floor reaches a version that no longer forces libunwind.
+          # See recipe/NOTES.md 1.5.
           - patches/linux/target.zig-glibc-needs-libunwind.patch
-          # Lower ppc64le glibc_min from 2.19 to 2.17: abilists have full 2.17 data;
-          # drop when conda-forge ppc64le glibc floor reaches 2.18 or higher.
+          # See recipe/NOTES.md 1.6.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
-          # Honour -Wl,--no-as-needed for bundled glibc libs (e.g. -lm).
-          # Without this patch, zig drops -lm from DT_NEEDED even when the caller
-          # explicitly requested --no-as-needed, breaking dlsym(sin) at runtime.
+          # See recipe/NOTES.md 1.7.
           - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
-          # LLVM backend: downgrade .shr_exact → .shr when safety checks are on.
-          # LLVM InstCombine folds shl(lshr_exact(x,N),N) → x, making the runtime
-          # back-shift comparison trivially true and silently dropping the panic.
-          # Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, …).
+          # See recipe/NOTES.md 1.8.
           - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
-          # 16GB ceiling: ppc64le Stage 1 peaks at 11.41GB.
+          # See recipe/NOTES.md 1.9.
           - patches/linux/build.zig-01-maxrss-raise.patch
-      # ppc64le patches are gated on `linux` (any linux variant) so the
-      # produced linux-64 / linux-aarch64 / linux-riscv64 zig binaries
-      # can also `zig cc -target powerpc64le-linux-gnu`.
+      # See recipe/NOTES.md 1.10.
       - if: linux
         then:
-          # Phase 0001: Architecture Support. Only LdScript is required here: its
-          # outputFormat() runs on every backend; the 8 self-hosted ELF-linker arch
-          # arms were removed in build 9.
+          # See recipe/NOTES.md 1.11.
           - patches/ppc64le/0001-arch-support-LdScript.zig.patch
-          # Phase 0002: Build Configuration (LLVM backend, library paths)
+          # See recipe/NOTES.md 1.11.
           - patches/ppc64le/0002-build-config-build.zig.patch
       - if: not unix
         then:
@@ -241,13 +224,11 @@ source:
           - patches/non_unix/CMakeLists.txt-02-MD-libzigcpp.patch
           - patches/non_unix/floatop.zig-log2-vectors-approx.patch
           - patches/non_unix/mingw-crtexe-no-atexit.patch
-          # restores atexit removed by mingw-crtexe-no-atexit; do not drop one without the other
+          - patches/non_unix/DepTokenizer.zig-rhs-leading-backslash-prereq.patch
+          # See recipe/NOTES.md 1.12.
           - patches/non_unix/ucrtbase-export-atexit-alias.patch
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
-          # win-64/arm64: bound zig's mingw __do_global_ctors walk so a malformed
-          # flexlink-merged __CTOR_LIST__ (no -1 head / no NULL terminator) cannot
-          # run off the end (0xC00000FD STATUS_STACK_OVERFLOW pre-main).
-          # consumes the atexit alias from ucrtbase-export-atexit-alias
+          # See recipe/NOTES.md 1.12.
           - patches/non_unix/gccmain-do-global-ctors-guard.patch
     target_directory: zig-source
 
@@ -286,15 +267,11 @@ source:
 
 build:
   number: ${{ build_number }}
-  # Fold the dev snapshot into the build string.
+  # See recipe/NOTES.md 2.1.
   string: ${{ hash }}_${{ snapshot | replace("+", "_") }}_${{ build_number }}
 
 outputs:
-  # ==========================================================================
-  # IMPLEMENTATION: zig_impl_$xtarget_ (binaries + stdlib ONLY)
-  # Contains actual zig compiler binary (triplet-prefixed) and standard library
-  # NO activation scripts, NO wrappers - just the implementation
-  # ==========================================================================
+  # See recipe/NOTES.md 2.3.
   - package:
       name: zig_impl_${{ xtarget_ }}
     build:
@@ -543,8 +520,7 @@ outputs:
               - '%TEMP%\test_run.exe'
               - echo PASS zig cc compile+run (UCRT DLL resolution)
 
-      # Verify -fuse-ld=lld patch: zig cc must honor -fuse-ld=lld and pass
-      # unrecognized linker args to LLD instead of rejecting them (Linux/ELF + NonUnix/COFF, not macOS/Mach-O).
+      # See recipe/NOTES.md 2.4.
       - script:
           interpreter: brush
           content:
@@ -579,8 +555,7 @@ outputs:
               then:
                 - sysroot_${{ target_platform }}
 
-      # Verify x86_64-windows-gnu CRT bootstrap: real mingw32 archives in lib-common
-      # presence/size for all three targets is asserted inside _mingw.sh itself.
+      # See recipe/NOTES.md 2.5.
       - script:
           - if: xc_w64
             then:
@@ -595,11 +570,7 @@ outputs:
           build:
             - python >=3.10
 
-  # ==========================================================================
-  # ACTIVATION: zig_$xtarget_ (scripts)
-  # Contains activation scripts, depends on zig_impl_$xtarget_
-  # NO binaries - just the environment setup
-  # ==========================================================================
+  # See recipe/NOTES.md 2.3.
   - package:
       name: zig_${{ xtarget_ }}
     build:
@@ -636,8 +607,7 @@ outputs:
           then:
             - ${{ pin_subpackage("zig_impl_" ~ xtarget_, exact=True) }}
       run:
-        # For native/cross-target: depend on zig_impl for same xtarget_ (pin_subpackage works)
-        # For cross-compiler: depend on zig_impl for BUILD platform (external package)
+        # See recipe/NOTES.md 2.6.
         - if: is_cross_compiler
           then:
             - zig_impl_${{ xc_build_platform }}${{ zig_impl_pin }}
@@ -674,9 +644,7 @@ outputs:
                     # Compiled multiplexer copies, unix-only (no Windows arm).
                     - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cc
                     - ${{ library }}bin/${{ conda_triplet }}-zig-force-load-cxx
-                # Native-triplet compiler suite (cross-compiler builds only) —
-                # the build machine's own zig-cc/cxx/etc, mirroring the target
-                # suite above but keyed on xc_build_triplet instead of conda_triplet.
+                # See recipe/NOTES.md 2.7.
                 - if: is_cross_compiler
                   then:
                     - ${{ library }}bin/${{ xc_build_triplet }}-zig-cc${{ exe }}
@@ -774,8 +742,7 @@ outputs:
               build:
                 - python >=3.10
 
-          # Verify <triplet>-zig-cc wrapper links a foreign (MSVC-built) prebuilt import library (zstd).
-          # Native-keyed: win-64 test env can only install win-64 zstd.
+          # See recipe/NOTES.md 2.8.
           - script:
               - if: is_native and (xc_w64 or xc_warm64)
                 then:
@@ -821,8 +788,7 @@ outputs:
               build:
                 - python >=3.10
 
-          # Shim target selection is pure logic; the guarded .c sources must be
-          # copied or _compile_c_shim is skipped and the count assertion misfires.
+          # See recipe/NOTES.md 2.9.
           - script:
               - python testing/test_nonunix_shim_target.py
             files:
@@ -851,9 +817,7 @@ outputs:
                 - building/gen_translators.py
                 - building/_translate.gen.sh
                 - building/_translate.inc
-                # Leg (C) syntax-checks the unix shim. Both are needed: the .c
-                # #includes unix_common.h. Without these two the leg SKIPs and the
-                # shim can silently rot uncompiled again.
+                # See recipe/NOTES.md 2.10.
                 - building/zig-cc-unix.c
                 - building/unix_common.h
             requirements:
@@ -910,10 +874,7 @@ outputs:
               then:
                 - sysroot_${{ target_platform }}
 
-  # ==========================================================================
-  # TOOLCHAIN META-PACKAGE: zig-compiler (toolchain metapackage)
-  # Bundles zig with C toolchain for full development environment
-  # ==========================================================================
+  # See recipe/NOTES.md 2.3.
   - package:
       name: zig-compiler
     build:
