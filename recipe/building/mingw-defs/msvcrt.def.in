@@ -603,7 +603,9 @@ _flushall
 _fmode DATA
 _fpclass
 F_NON_X64(_fpieee_flt)
+#ifndef __aarch64__
 _fpreset F_LD80(DATA)
+#endif
 _fputchar
 _fputwchar
 _fsopen
