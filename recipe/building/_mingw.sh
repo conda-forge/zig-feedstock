@@ -86,7 +86,7 @@ SYNCHRONIZATION_DEF
     aarch64)        _dlltool_machine="arm64" ;;
     x86|i386|i686)  _dlltool_machine="i386" ;;
     *)              _dlltool_machine="i386:x86-64"
-                    echo "WARN: unknown Windows arch '${_win_arch}', defaulting to x86_64" ;;
+                    echo "INFO: non-Windows lane arch '${_win_arch}': dlltool machine defaults to i386:x86-64" ;;
   esac
   if [[ -d "${_mingw_common}" ]]; then
     # Prefer the freshly built zig: it carries this recipe's mingw patches.
@@ -101,8 +101,8 @@ SYNCHRONIZATION_DEF
       _zig_bin="${_fresh_zig_bin}"
       echo "INFO: using freshly built zig for mingw CRT: ${_zig_bin}"
       if is_cross; then
-        echo "WARN: build_platform (${build_platform}) != target_platform (${target_platform}): the fresh zig is a foreign-arch binary running under emulation (Rosetta 2 on osx-arm64, QEMU user-mode via binfmt_misc on linux)."
-        echo "WARN: the exec probe above cannot detect this, because emulation makes it succeed transparently."
+        echo "INFO: build_platform (${build_platform}) != target_platform (${target_platform}): only Rosetta 2 (osx-arm64 -> osx-64) runs the fresh zig transparently."
+        echo "INFO: emulated linux lanes reach QEMU only via QEMU_EXECVE, so their fresh zig fails the probe and takes the bootstrap path."
         echo "WARN: mingw CRT cache-warm links will be SLOW under emulation; this is expected, NOT a hang."
       fi
     else
@@ -117,7 +117,30 @@ SYNCHRONIZATION_DEF
         fi
       fi
       echo "INFO: using bootstrap zig for mingw CRT: ${_zig_bin}"
-      echo "WARN: staged mingw CRT derives from the BOOTSTRAP zig's unpatched mingw sources"
+      if is_not_unix; then
+        _boot_mingw="${BUILD_PREFIX}/Library/lib/zig/libc/mingw"
+      else
+        : # brush 0.4.0 $? guard
+        _boot_mingw="${BUILD_PREFIX}/lib/zig/libc/mingw"
+      fi
+      _fresh_mingw="${_zig_lib}/libc/mingw"
+      if ! command -v diff >/dev/null 2>&1 || [[ ! -d "${_boot_mingw}" || ! -d "${_fresh_mingw}" ]]; then
+        echo "INFO: [_mingw] cannot compare bootstrap mingw sources with this build's (diff or tree missing)"
+      else
+        : # brush 0.4.0 $? guard
+        # Bootstrap-only files are its own generated import libs/objects/.def; ignore them.
+        _mingw_drift="$(diff -rq -x '*.a' -x '*.o' -x '*.obj' -x '*.lib' "${_boot_mingw}" "${_fresh_mingw}" 2>&1 | grep -v "^Only in ${_boot_mingw}" || true)"
+        _mingw_drift_n=0
+        if [[ -n "${_mingw_drift}" ]]; then
+          _mingw_drift_n="$(printf '%s\n' "${_mingw_drift}" | wc -l)"
+        fi
+        if [[ "${_mingw_drift_n}" -eq 0 ]]; then
+          echo "INFO: [_mingw] bootstrap mingw sources match this build's tree"
+        else
+          echo "WARN: [_mingw] bootstrap mingw sources differ from this build's in ${_mingw_drift_n} file(s); the staged CRT reflects the bootstrap's tree"
+          printf '%s\n' "${_mingw_drift}" | sed -n '1,10s/^/  /p'
+        fi
+      fi
     fi
     _def_include="${_mingw_common}/../def-include"
     _mingw_libsrc="${_mingw_common}/../libsrc"
@@ -531,8 +554,7 @@ SYNCHRONIZATION_DEF
       # Failures are recorded per target and aggregated; if ANY target fails,
       # the function fails after the loop (see the FATAL check below).
 
-      # Bootstrap zig's bundled setjmp.h still marks _setjmp/_setjmp3 dllimport; the
-      # recipe patch only fixes the zig we ship, not the one we link warm.c with.
+      # setjmp.h strip: fallback for bootstraps that predate mingw-setjmp-no-crtimp.patch.
       _bp_setjmp="${BUILD_PREFIX}/lib/zig/libc/include/any-windows-any/setjmp.h"
       [[ -f "${_bp_setjmp}" ]] || _bp_setjmp="${BUILD_PREFIX}/Library/lib/zig/libc/include/any-windows-any/setjmp.h"
       if [[ -f "${_bp_setjmp}" ]]; then
