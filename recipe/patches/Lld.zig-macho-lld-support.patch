@@ -5,7 +5,7 @@
  ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
  ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
 +ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
-
+ 
  // On error, populates `*err_file_index_out` and `*err_msg_out` and returns `true`. The caller is
  // responsible for freeing `*err_msg_out` using `free`.
 --- a/src/zig_llvm.cpp
@@ -19,12 +19,12 @@
 +                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
 +    }
  }
-
+ 
  bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
 @@ -535,6 +539,11 @@
      return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
  }
-
+ 
 +bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output) {
 +    std::vector<const char *> args(argv, argv + argc);
 +    return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
@@ -41,12 +41,12 @@
      wasm: Wasm,
 +    macho: MachO,
  },
-
+ 
  const Coff = struct {
 @@ -202,6 +203,31 @@
      }
  };
-
+ 
 +const MachO = struct {
 +    pagezero_size: ?u64,
 +    headerpad_size: ?u32,
@@ -99,10 +99,10 @@
      };
      result catch |err| switch (err) {
          error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
-@@ -1635,6 +1664,177 @@
+@@ -1639,6 +1668,177 @@
      }
  }
-
+ 
 +fn machoLink(lld: *Lld, arena: Allocator) !void {
 +    const comp = lld.base.comp;
 +    const gpa = comp.gpa;
@@ -276,7 +276,7 @@
 +
  fn spawnLld(comp: *Compilation, arena: Allocator, argv: []const []const u8) !void {
      const io = comp.io;
-     const gpa = comp.gpa;
+ 
 --- a/src/target.zig
 +++ b/src/target.zig
 @@ -280,7 +280,7 @@
@@ -295,11 +295,11 @@
  extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
  extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
 +extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
-
+ 
  pub const LinkCOFF = ZigLLDLinkCOFF;
  pub const LinkELF = ZigLLDLinkELF;
  pub const LinkWasm = ZigLLDLinkWasm;
 +pub const LinkMachO = ZigLLDLinkMachO;
-
+ 
  pub const ArchiveKind = enum(c_int) {
      GNU,

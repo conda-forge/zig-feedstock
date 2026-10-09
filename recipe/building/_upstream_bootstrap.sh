@@ -1,7 +1,7 @@
 # Upstream zig bootstrap setup
 #
 # When recipe.yaml's `source:` includes one of the upstream
-# ziglang.org tarballs (gated on build_number == 0), the payload may land
+# ziglang.org tarballs (gated on bootstrap_via_upstream), the payload may land
 # nested in a zig-*/ subdir or flat in zig-bootstrap/ (both handled). This
 # helper locates the extracted binary, makes it accessible under the
 # CONDA_ZIG_BUILD name, and prepends its dir to PATH so the rest of
@@ -13,8 +13,8 @@
 # MSYS `ln -s` writes a cygwin-marker file that native programs don't
 # follow, so we use a hardlink (or copy as fallback).
 #
-# Called only on first builds (build_number == 0) of a new zig
-# release.  Subsequent builds use conda-forge's published
+# Called only when bootstrap_via_upstream is true.  Otherwise builds
+# use conda-forge's published
 # `zig_impl_${build_platform}` package, which can parse the
 # matching build.zig directly.
 function setup_upstream_zig_bootstrap() {

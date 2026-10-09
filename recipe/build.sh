@@ -49,7 +49,7 @@ fi
 
 # --- Main ---
 
-# Bootstrap selection (build_number == 0 only: no-op otherwise)
+# Upstream bootstrap: active only when bootstrap_via_upstream is true (no-op otherwise)
 source "${RECIPE_DIR}/building/_upstream_bootstrap.sh"
 setup_upstream_zig_bootstrap
 
