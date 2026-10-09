@@ -67,7 +67,7 @@
 
 - file: Lld.zig-prefer-shared-libcxx.patch
   selector: unconditional
-  purpose: "link shared libc++ when available instead of bundling zig's own static libc++, via new src/link/libcxx_shared.zig"
+  purpose: "link shared libc++ when available instead of bundling zig's own static libc++, via new src/link/libcxx_shared.zig; hooks buildLibCxx in src/libs/libcxx.zig"
   symptom: ""
   tested_by: "recipe/testing/test_libcxx_shared.py (recipe.yaml:437-458)"
   justification: EXTERNAL-CONDITION
@@ -267,18 +267,6 @@
   depends_on: ""
   cost: ""
   ref: "recipe/NOTES.md 1.7"
-  status: DEFENSIBLE
-
-- file: linux/Sema.zig-shr-exact-safety-downgrade.patch
-  selector: linux
-  purpose: "downgrades .shr_exact to .shr when safety checks are on, in src/Sema.zig"
-  symptom: "LLVM's InstCombine folds shl(lshr_exact(x,N),N) to x, making the runtime back-shift comparison trivially true and silently dropping the panic"
-  tested_by: ""
-  justification: OBSERVED-FAILURE
-  verify: "Affects ALL LLVM-backend targets (ppc64le, aarch64, riscv64, ...), not just linux. A silent-miscompile guard: its failure mode is a MISSING panic, which no green lane would reveal without a targeted test. Do not ablate without one."
-  depends_on: ""
-  cost: ""
-  ref: "recipe/NOTES.md 1.8"
   status: DEFENSIBLE
 
 - file: linux/build.zig-01-maxrss-raise.patch

@@ -183,7 +183,7 @@ fi
 
 # Diagnostic: test the freshly-built binary BEFORE any mutation (strip/patchelf).
 # Use LD_LIBRARY_PATH to substitute for the missing RPATH so the dynamic linker
-# can find libLLVM-22.so etc. in ${ENV_DIR}/lib. This isolates whether failures
+# can find libLLVM-23.so etc. in ${ENV_DIR}/lib. This isolates whether failures
 # downstream are from the binary itself (miscompile) or from our mutations
 # (strip/patchelf side effects). NON-FATAL: just logs the result.
 echo "[Stage 1] Diagnostic: testing pre-mutation binary via LD_LIBRARY_PATH..."

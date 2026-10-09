@@ -2,24 +2,26 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 23202
+  build_number: 1310
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
+  # Impl series we bootstrap from; lags abi_version across a minor bump.
+  bootstrap_version: "0.17"
   snapshot: "131+41f885830"
   snapshot_ref: "2320"
   build_ref: "23201"
-  zig_impl_pin: '[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
+  zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
   zig_glibc: ${{ "2.27" if xtarget_ == "linux-riscv64" else c_stdlib_version | default("2.17") }}
   zig_glibc_tgt: ${{ "2.27" if target_platform == "linux-riscv64" else c_stdlib_version | default("2.17") }}
 
   # LLVM
-  llvm_src_version: "22.1.6"
+  llvm_src_version: "23.1.3"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: false
+  bootstrap_via_upstream: true
 
   # Manual global override for local dev only; SKIP_LANGREF export derives from it.
   is_testable: >-
@@ -202,8 +204,6 @@ source:
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
           # See recipe/NOTES.md 1.7.
           - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
-          # See recipe/NOTES.md 1.8.
-          - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
           # See recipe/NOTES.md 1.9.
           - patches/linux/build.zig-01-maxrss-raise.patch
       # See recipe/NOTES.md 1.10.
@@ -920,17 +920,11 @@ about:
     - zig-source/lib/libcxx/LICENSE.TXT
     - zig-source/lib/libcxxabi/LICENSE.TXT
     - zig-source/lib/libunwind/LICENSE.TXT
+    - zig-source/lib/libtsan/LICENSE.TXT
     - zig-source/lib/libc/glibc/LICENSES
     - zig-source/lib/libc/mingw/COPYING
     - zig-source/lib/libc/musl/COPYRIGHT
     - zig-source/lib/libc/freebsd/COPYRIGHT
-    - zig-source/lib/libc/wasi/LICENSE
-    - zig-source/lib/libc/wasi/LICENSE-APACHE
-    - zig-source/lib/libc/wasi/LICENSE-APACHE-LLVM
-    - zig-source/lib/libc/wasi/LICENSE-MIT
-    - zig-source/lib/libc/wasi/libc-bottom-half/cloudlibc/LICENSE
-    - zig-source/lib/libc/wasi/libc-top-half/musl/COPYRIGHT
-    - zig-source/lib/libc/wasi/fts/musl-fts/COPYING
   summary: Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
   description: |
     Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
