@@ -25,7 +25,10 @@ function patch_crt_object() {
   [[ -f "${crt_path}" ]] || return 1
 
   # Backup original
-  cp "${crt_path}" "${crt_path}.backup" || return 1
+  cp "${crt_path}" "${crt_path}.backup" || {
+    echo "WARNING: _libc_tuning: backup copy failed for ${crt_path}" >&2
+    return 1
+  }
 
   local obj_arch linker_cmd stub_obj
   linker_cmd="${BUILD_PREFIX}/bin/${triplet}-ld"
@@ -43,8 +46,13 @@ function patch_crt_object() {
       stub_obj="${stub_dir}/libc_csu_stubs_aarch64.o"
       ;;
     *)
-      # Unknown architecture - restore original and skip
+      # Unknown triplet: only warn if the object actually needs the stubs
       cp "${crt_path}.backup" "${crt_path}"
+      if ! grep -qa '__libc_csu_init' "${crt_path}.backup"; then
+        dbg echo "_libc_tuning: ${crt_path} does not reference __libc_csu_init, no patch needed"
+        return 0
+      fi
+      echo "WARNING: _libc_tuning: unrecognized triplet: ${triplet} for ${crt_path}" >&2
       return 1
       ;;
   esac
@@ -56,8 +64,10 @@ function patch_crt_object() {
   fi
 
   # Use 'ld -r' to combine the original and stub objects
-  if ! "${linker_cmd}" -r -o "${crt_path}.tmp" "${crt_path}.backup" "${stub_obj}" 2>/dev/null; then
+  local ld_err
+  if ! ld_err=$("${linker_cmd}" -r -o "${crt_path}.tmp" "${crt_path}.backup" "${stub_obj}" 2>&1); then
     # Linking failed - restore original and skip
+    echo "WARNING: _libc_tuning: 'ld -r' link failed for ${crt_path}: ${ld_err}" >&2
     cp "${crt_path}.backup" "${crt_path}"
     return 1
   fi
@@ -124,6 +134,7 @@ EOF
   dbg echo "Patching glibc crt1.o files..."
   local crt_files=(crt1.o Scrt1.o gcrt1.o grcrt1.o)
 
+  local _crt_failed=0
   for sysroot_dir in "${prefix}"/*-conda-linux-gnu/sysroot/usr/lib; do
     [[ -d "${sysroot_dir}" ]] || continue
 
@@ -131,9 +142,14 @@ EOF
     triplet="${triplet%%/*}"
 
     for crt_file in "${crt_files[@]}"; do
-      patch_crt_object "${sysroot_dir}/${crt_file}" "${stub_dir}" "${triplet}" || true
+      [[ -f "${sysroot_dir}/${crt_file}" ]] || continue
+      patch_crt_object "${sysroot_dir}/${crt_file}" "${stub_dir}" "${triplet}" || _crt_failed=$(( _crt_failed + 1 ))
     done
   done
+
+  if [[ "${_crt_failed}" -gt 0 ]]; then
+    echo "WARNING: _libc_tuning: ${_crt_failed} CRT object(s) failed to patch (see warnings above)" >&2
+  fi
 
   dbg echo "Created GCC 14 + glibc 2.28 compatibility:"
   dbg echo "  - Patched all glibc crt1*.o files with stub symbols"

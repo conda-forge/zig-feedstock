@@ -30,7 +30,7 @@ function setup_upstream_zig_bootstrap() {
     fi
   done
   # rattler-build may strip the archive's single top-level dir, leaving the
-  # payload flat in zig-bootstrap/. Accept both layouts (cf. build_native.sh:87).
+  # payload flat in zig-bootstrap/. Accept both layouts.
   if [[ -z "${_bootstrap_root}" ]]; then
     _bootstrap_root="${SRC_DIR}/zig-bootstrap"
   fi

@@ -26,7 +26,7 @@
  * flag_rules.py) are delegated to the generated, portable
  * zig_translate_flags() (_translate.inc); only the out-of-scope hand-written
  * logic (sysroot, the extra LLD-trigger scan, the -Xlinker general pre-filter,
- * the ppc64le hard error, the GCC-only post-translation drops, and the macOS
+ * the ppc64le + LLD warning, the GCC-only post-translation drops, and the macOS
  * deployment-target rewrite) remains there.
  *
  * Placeholders replaced at install time:
@@ -310,6 +310,20 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
      * own R8/R9 trigger scan with the hand-written out-of-scope scan
      * above. ---- */
     int use_lld = use_lld_raw || use_lld_gen;
+
+    /* ---- STEP 6: ppc64le + LLD warning (non-fatal).
+     * Measured working (ablation round 4: PASS lld_link_linux). LLD does
+     * handle PPC64 TOC relocations; it does not implement the inline-PLT
+     * family (R_PPC64_PLT16_HA/PLT16_LO_DS/PLTSEQ/PLTCALL), which is what
+     * conda-forge's ppc64le GCC emits by default (-fno-plt), not zig-
+     * compiled code. LLD's unhandled-relocation path is llvm_unreachable,
+     * a silent crash in a Release build, so this warning is kept as the
+     * only breadcrumb even though the flag now passes through. */
+    if (use_lld && str_eq(ZIG_TARGET_ARCH, "powerpc64le")) {
+        fprintf(stderr, "WARNING: zig cc: -fuse-ld=lld on ppc64le works for zig-compiled code, but\n");
+        fprintf(stderr, "  can fail on objects built by conda-forge's ppc64le GCC (default -fno-plt\n");
+        fprintf(stderr, "  emits inline-PLT relocations LLD lacks); recompile with -fplt if hit.\n");
+    }
 
     /* ---- STEP 7 (_zig-cc-common.sh:140-161): post-translation drop
      * filter over the translated args. ---- */

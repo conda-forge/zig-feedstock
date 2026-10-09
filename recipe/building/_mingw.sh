@@ -388,6 +388,52 @@ SYNCHRONIZATION_DEF
         return 1
       fi
 
+      # Machine-type sanity check: a representative import lib per arch dir must
+      # carry that arch's COFF machine. Tooling problems or UNKNOWN only WARN;
+      # a known-vs-known mismatch fails the build.
+      # Windows conda ships python.exe with no python3.exe.
+      _coff_helper="${RECIPE_DIR}/building/coff_machine.py"
+      _coff_py=""
+      for _cand_py in "${PYTHON:-}" python3 python; do
+        [[ -n "${_cand_py}" ]] || continue
+        command -v "${_cand_py}" >/dev/null 2>&1 || continue
+        _coff_py="${_cand_py}"
+        break
+      done
+      _coff_bad=""
+      for _gen_pair in \
+          "x86_64|x86_64|${_mingw_common}" \
+          "arm64|aarch64|${_mingw_libarm64}" \
+          "i386|x86|${_mingw_lib32}"; do
+        IFS='|' read -r _gen_expect_machine _gen_pair_arch _gen_pair_dir <<< "${_gen_pair}"
+        _gen_rep_lib="${_gen_pair_dir}/libkernel32.a"
+        if [[ ! -f "${_gen_rep_lib}" ]]; then
+          _gen_rep_lib=""
+          for _cand_lib in "${_gen_pair_dir}"/*.a; do
+            [[ -f "${_cand_lib}" ]] || continue
+            _gen_rep_lib="${_cand_lib}"
+            break
+          done
+        fi
+        [[ -n "${_gen_rep_lib}" ]] || continue
+        if [[ -n "${_coff_py}" ]] && [[ -f "${_coff_helper}" ]]; then
+          _gen_actual_machine="$("${_coff_py}" "${_coff_helper}" "${_gen_rep_lib}" 2>/dev/null | awk '{print $2}')"
+          if [[ -z "${_gen_actual_machine}" || "${_gen_actual_machine}" == "UNKNOWN" ]]; then
+            echo "WARNING: could not determine machine type of ${_gen_rep_lib} (helper returned '${_gen_actual_machine:-empty}'); skipping machine-type check for ${_gen_pair_arch}" >&2
+          elif [[ "${_gen_actual_machine}" != "${_gen_expect_machine}" ]]; then
+            _coff_bad="${_coff_bad}  - ${_gen_pair_arch} (${_gen_pair_dir}): machine-type mismatch in $(basename "${_gen_rep_lib}"): expected ${_gen_expect_machine}, got ${_gen_actual_machine}
+"
+          fi
+        else
+          echo "WARNING: coff_machine.py helper or python interpreter unavailable; skipping machine-type check for ${_gen_pair_arch} (${_gen_pair_dir})" >&2
+        fi
+      done
+      if [[ -n "${_coff_bad}" ]]; then
+        echo "ERROR: [_mingw] import-lib machine-type check failed:" >&2
+        printf '%s' "${_coff_bad}" >&2
+        return 1
+      fi
+
       # Steps 5+6: CRT startup objects and stub archives, emitted for all
       # three Windows arches (same map as the cache-warm loop below).
       _mingw_crt="${_mingw_common}/../crt"

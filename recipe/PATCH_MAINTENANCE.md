@@ -51,7 +51,7 @@ failure there may originate in the emulation layer rather than the thing
 being ablated -- check the recorded symptom matches before concluding the
 workaround is still needed.
 
-0.17 skips langref on every lane by default (`skip_langref` derives from
+0.17.0 skips langref on every lane by default (`skip_langref` derives from
 `SKIP_LANGREF`, default `"1"`, recipe.yaml:31). An ablation whose symptom
 only shows up under langref must explicitly opt in, and on ppc64le a
 langref run is known to cost close to an hour under emulation -- budget
@@ -107,7 +107,8 @@ TRACKED under `recipe/`, shipping with the feedstock: `PATCH_MAINTENANCE.md`
 `PATCH_MANIFEST.yaml` (per-patch facts).
 
 UNTRACKED and deliberately local, never committed: `ZIG_RECIPE_LLM_REFERENCE.md`
-(repo root), `recipe/SNAPSHOT_TRIAGE.md`, `recipe/IMPROVEMENTS.md`. Same
+(repo root), `recipe/SNAPSHOT_TRIAGE.md` (dev-snapshot triage only; not
+a release procedure), `recipe/IMPROVEMENTS.md`. Same
 reasoning as `check_patch_relevancy.sh` staying local-only (section 13):
 these are working documents, not shippable method or fact records.
 

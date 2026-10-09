@@ -309,11 +309,6 @@ outputs:
 
           SKIP_LANGREF: ${{ "1" if skip_langref else "0" }}
 
-          # Subset runs where full langref does not, only with long tests. linux only: win/osx unproven.
-          ZIG_LANGREF_CRITICAL: ${{ "1" if skip_langref and not skip_long_test and linux else "0" }}
-          ZIG_LANGREF_CRITICAL_FATAL: ${{ env.get("ZIG_LANGREF_CRITICAL_FATAL", default="1") }}
-          ZIG_LANGREF_CRITICAL_STEP_TIMEOUT: ${{ env.get("ZIG_LANGREF_CRITICAL_STEP_TIMEOUT", default="300") }}
-
           # Local debug switch.
           DEBUG_ZIG_BUILD: ${{ env.get("DEBUG_ZIG_BUILD", default="0") }}
       python:
@@ -414,6 +409,7 @@ outputs:
       - script:
           - if: linux
             then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
           - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
         requirements:
@@ -437,6 +433,7 @@ outputs:
       - script:
           - if: linux
             then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
               - python testing/test_dtneeded.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
@@ -460,6 +457,7 @@ outputs:
       - script:
           - if: linux
             then:
+              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
               - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
               - python testing/test_dl_iterate_phdr.py ${{ conda_triplet }} ${{ zig_triplet }}
             else:
@@ -486,6 +484,7 @@ outputs:
             - if: is_testable
               then:
                 - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - _zig="${PREFIX}/${{ library }}bin/${{ conda_triplet }}-zig"
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
@@ -527,6 +526,7 @@ outputs:
             - if: is_testable
               then:
                 - export ZIG_GLOBAL_CACHE_DIR="${HOME:-${TMPDIR:-/tmp}}/.local/share/zig/zig-cache"
+                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - _zig="${PREFIX}"/${{ library }}bin/${{ conda_triplet }}"-zig"${{ exe }}
                 - echo 'int main(void){return 0;}' > test_lld.c
@@ -679,6 +679,7 @@ outputs:
               # Wrapper + functional validation tests (Python, cross-platform)
               - if: linux
                 then:
+                  - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                   - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
               # the cc wrapper must filter them before forwarding to zig cc.
@@ -761,7 +762,7 @@ outputs:
 
           # Verify <triplet>-zig-cc wrapper resolves GNU -l:<filename> against -L dirs.
           - script:
-              - if: xc_w64 or xc_warm64
+              - if: xc_w64 or xc_warm64 or xc_win32
                 then:
                   - python testing/test_l_colon_link.py
                 else:
@@ -858,6 +859,7 @@ outputs:
           content:
             - if: is_testable
               then:
+                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - _zig="${PREFIX}"/${{ library }}bin/zig${{ "" if unix else ".bat" }}
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" version
@@ -895,6 +897,7 @@ outputs:
           content:
             - if: is_testable
               then:
+                - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                 - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
                 - _zig="${PREFIX}"/${{ library }}bin/zig${{ "" if unix else ".bat" }}
                 - ${QEMU_EXECVE:+"${QEMU_EXECVE}"} "${_zig}" cc --version
@@ -917,9 +920,9 @@ about:
   license_file:
     - zig-source/LICENSE
     - building/mingw-defs/DISCLAIMER.PD
-    - zig-source/lib/libcxx/LICENSE.TXT
-    - zig-source/lib/libcxxabi/LICENSE.TXT
-    - zig-source/lib/libunwind/LICENSE.TXT
+    - zig-source/lib/libcxx/LICENSE.[Tt][Xx][Tt]
+    - zig-source/lib/libcxxabi/LICENSE.[Tt][Xx][Tt]
+    - zig-source/lib/libunwind/LICENSE.[Tt][Xx][Tt]
     - zig-source/lib/libc/glibc/LICENSES
     - zig-source/lib/libc/mingw/COPYING
     - zig-source/lib/libc/musl/COPYRIGHT

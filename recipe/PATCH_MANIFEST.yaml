@@ -1,6 +1,6 @@
 # ANCHOR -- what this manifest was scored against.
 # Last-verified: 2026-09-29
-# zig 0.17.0 | build 23201 | snapshot 2320+1e770dbef | llvm_version 22
+# zig 0.17.0 release | build 0 | llvm_version 22
 #
 # Every row was scored against that recipe state. If recipe.yaml moves and this
 # anchor does not, the rows are stale and nothing else will say so. Bump the
@@ -55,7 +55,7 @@
 
 - file: Lld.zig-macho-lld-support.patch
   selector: unconditional
-  purpose: "exposes ZigLLDLinkMachO, adds machoLink(): wires LLD MachO into the zig cc pipeline"
+  purpose: "exposes ZigLLDLinkMachO, adds machoLink(): wires LLD MachO into the zig cc pipeline. Regenerated for the 0.17.0 release: hunk move only, no content change."
   symptom: ""
   tested_by: "recipe.yaml:548-576 -fuse-ld=lld test, osx branch (:557-561)"
   justification: UNRECORDED
@@ -67,7 +67,7 @@
 
 - file: Lld.zig-prefer-shared-libcxx.patch
   selector: unconditional
-  purpose: "link shared libc++ when available instead of bundling zig's own static libc++, via new src/link/libcxx_shared.zig"
+  purpose: "link shared libc++ when available instead of bundling zig's own static libc++, via new src/link/libcxx_shared.zig. Regenerated for the 0.17.0 release: MachO.zig flush hunk replaced by a src/libs/libcxx.zig buildLibCxx hook (.load_dso of findSharedLibCxxPath on macho); zig-llvm/lib probe removed."
   symptom: ""
   tested_by: "recipe/testing/test_libcxx_shared.py (recipe.yaml:437-458)"
   justification: EXTERNAL-CONDITION

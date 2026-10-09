@@ -116,12 +116,8 @@ _COMPILE_TIMEOUT_S = 1800 if (_is_emulated or _is_rosetta) else 120
 # Probe directories relative to zig_lib (which is <prefix>/lib/zig/).
 # Two levels up reaches <prefix>/, then:
 PROBE_SUBDIRS = [
-    "../../lib/zig-llvm/lib",  # preferred: dedicated zig-llvm package
-    "../../lib",               # fallback: standard lib dir
+    "../../lib",
 ]
-
-# Optional until the zig-llvm package ships; matched by name, not position.
-OPTIONAL_PROBE_SUBDIR = "../../lib/zig-llvm/lib"
 
 # Platform-specific shared library names (mirrors sharedLibCxxNames)
 LIBCXX_NAMES: dict[str, list[str]] = {
@@ -375,10 +371,8 @@ def test_libcxx_probe_paths() -> None:
         label = str(resolved.relative_to(_prefix)) if resolved.is_relative_to(_prefix) else str(resolved)
         if resolved.is_dir():
             PASS(f"probe dir exists: {label}")
-        elif subdir == OPTIONAL_PROBE_SUBDIR:
-            SKIP("optional zig-llvm probe directory", f"{label} is absent")
         else:
-            WARN(f"probe dir missing: {label}", "standard library directory absent")
+            FAIL(f"probe dir missing: {label}")
 
     # --- Diagnostic: check if patch 0008 is compiled into the binary ---
     if zig:
@@ -386,11 +380,10 @@ def test_libcxx_probe_paths() -> None:
         if strings_bin:
             r_str = _run([strings_bin, zig], timeout=10)
             if r_str.returncode == 0:
-                has_probe_str = any("zig-llvm/lib" in l for l in r_str.stdout.splitlines())
                 has_libcxx_so = any("libc++.so.1" in l for l in r_str.stdout.splitlines())
-                if has_probe_str or has_libcxx_so:
+                if has_libcxx_so:
                     PASS("patch 0008 strings found in binary",
-                         f"zig-llvm/lib={has_probe_str}, libc++.so.1={has_libcxx_so}")
+                         f"libc++.so.1={has_libcxx_so}")
                 else:
                     FAIL("patch 0008 strings NOT in binary",
                          "libcxx_shared.zig was not compiled into this zig")
@@ -474,18 +467,6 @@ def test_libcxx_probe_paths() -> None:
             else:
                 WARN(f"no probe for {name}",
                      "may be optimized by kernel or strace filter")
-
-        zigllvm_idx = next((i for i, p in enumerate(probed) if "zig-llvm" in p), -1)
-        lib_idx = next((i for i, p in enumerate(probed)
-                        if "zig-llvm" not in p and "libc++" in p), -1)
-        if zigllvm_idx >= 0 and lib_idx >= 0:
-            if zigllvm_idx < lib_idx:
-                PASS("probe order correct: zig-llvm/lib before lib/")
-            else:
-                WARN("probe order unexpected",
-                     f"zig-llvm at idx {zigllvm_idx}, lib/ at idx {lib_idx}")
-        elif zigllvm_idx >= 0:
-            PASS("zig-llvm/lib probed")
 
 
 # ===================================================================
@@ -709,7 +690,7 @@ def test_libcxx_shared_simulation() -> None:
         return
 
     # Preferred probe path for placement
-    probe_dir = (zig_lib / PROBE_SUBDIRS[0]).resolve()  # .../lib/zig-llvm/lib/
+    probe_dir = (zig_lib / PROBE_SUBDIRS[0]).resolve()
     shared_lib = probe_dir / primary
     shared_symlink = (probe_dir / symlink_name) if symlink_name else None
 

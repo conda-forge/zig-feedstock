@@ -1,7 +1,6 @@
 # ZIG BUILD FUNCTIONS
 
 source "${RECIPE_DIR}/building/_common.sh"
-source "${RECIPE_DIR}/building/_zig_diag.sh"
 
 function build_zig_with_zig() {
   local build_dir=$1
@@ -67,33 +66,4 @@ function configure_cmake_zigcpp() {
   pushd "${build_dir}"
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}" ${NINJA_FLAGS:-}
   popd
-}
-
-# Build a native zig from source when the conda bootstrap can't compile a new version.
-# Useful when upstream zig changes break self-compilation with the previous release.
-# Usage: build_native_zig <install_dir>
-# Sets BUILD_ZIG to the native-built binary path on success.
-function build_native_zig() {
-  local install_dir=$1
-  echo "=== BUILD_NATIVE_ZIG: building native zig via build_native.sh ==="
-  "${RECIPE_DIR}/building/build_native.sh" "${install_dir}"
-  BUILD_ZIG="${install_dir}/zig_native_patched"
-  echo "=== Using native-built zig as bootstrap: ${BUILD_ZIG} ==="
-}
-
-# ppc64le two-stage bootstrap. Rationale and removal condition: reference doc S7.
-#
-# OUTPUTS:
-#   Sets the variable ZIG_TWO_STAGE_BOOTSTRAP_ZIG to the path of the patched
-#   native zig binary (caller must assign to BUILD_ZIG).
-#
-# Usage: build_native_zig_bootstrap
-function build_native_zig_bootstrap() {
-  local _install_dir="${SRC_DIR}/native-zig-bootstrap-install"
-  # build_native.sh uses an isolated conda env (separate LLVM, toolchain, and
-  # sysroot) — this avoids contamination from the cross-compile env's ppc64le
-  # LLVM/sysroot settings that would break a native x86_64-linux-gnu build.
-  BUILD_NATIVE_STAGE1_ONLY=1 build_native_zig "${_install_dir}"
-  ZIG_TWO_STAGE_BOOTSTRAP_ZIG="${BUILD_ZIG}"
-  echo "[build_native_zig_bootstrap] patched native zig ready: ${ZIG_TWO_STAGE_BOOTSTRAP_ZIG}"
 }

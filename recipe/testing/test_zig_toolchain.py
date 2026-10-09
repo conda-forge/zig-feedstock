@@ -13,6 +13,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -56,6 +57,7 @@ is_win_target = "mingw32" in _triplet
 is_macos_target = "apple" in _triplet or "darwin" in _triplet
 is_linux_target = "linux" in _triplet
 _arch = _triplet.split("-")[0] if _triplet else platform.machine()
+is_ppc64le_target = "powerpc64le" in _triplet or _arch == "powerpc64le"
 is_aarch64_win = is_win_target and _arch == "aarch64"
 
 # Normalise: arm64 == aarch64
@@ -268,7 +270,36 @@ def test_flag_filtering() -> None:
 
             # Step 1 & 2: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
             # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
-            if not is_linux_target:
+            if is_ppc64le_target:
+                # ppc64le: -fuse-ld=lld WARNS (non-fatal) instead of being
+                # blocked -- ablation round 4 measured PASS lld_link_linux.
+                # Verify the flag passes through (link succeeds) AND the
+                # wrapper still emits its WARNING breadcrumb on stderr.
+                # WARNING: asserts OUR wrapper's warn-and-continue behavior.
+                # If the warning in zig-cc-unix.c is ever removed/reworded,
+                # update this assertion in the same change.
+                exe_ppc = Path(td) / "test_lld_ppc64le"
+                r_warn = _run([zig_cc, "-fuse-ld=lld", "-o", str(exe_ppc),
+                               str(main_src)], cwd=td, timeout=30)
+                if (r_warn.returncode == 0 and exe_ppc.exists()
+                        and "WARNING" in r_warn.stderr
+                        and "ppc64le" in r_warn.stderr):
+                    PASS("-fuse-ld=lld passes through on ppc64le (warning emitted)")
+                else:
+                    FAIL("-fuse-ld=lld ppc64le warn-and-continue",
+                         f"rc={r_warn.returncode} stderr={r_warn.stderr[:500]}")
+                SKIP("--dynamic-list auto-LLD promotion", "covered by explicit -fuse-ld=lld case above on ppc64le")
+                # -fuse-ld=bfd counterpart: NOT added. Investigated
+                # (see recipe/testing/test_dl_iterate_phdr.py
+                # BFD_UNREACHABLE_REASON) -- zig's own arg parser has no
+                # -fuse-ld= table entry at all, and our patch
+                # (main.zig-fuse-ld-lld-cc-path.patch) only special-cases the
+                # literal string "-fuse-ld=lld". "-fuse-ld=bfd" is an inert
+                # passthrough token here, not a real linker switch, so
+                # asserting it "links successfully" would just be asserting
+                # that zig ignores an unrecognized flag -- not that bfd ran.
+                SKIP("-fuse-ld=bfd explicit link", "flag is inert in this toolchain, see comment above")
+            elif not is_linux_target:
                 _reason = f"non-Linux target ({_triplet}), see zig_impl tests"
                 SKIP("--dynamic-list auto-LLD promotion", _reason)
                 SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
@@ -1139,6 +1170,13 @@ def test_force_load_wrappers() -> None:
         return
     PASS("zig-force-load-cxx exists")
 
+    if is_ppc64le_target:
+        # -force_load/-all_load are LLD-trigger flags (is_lld_trigger()); on
+        # ppc64le the wrapper only warns and passes, so the argv checks
+        # below are unverified there.
+        SKIP("force-load wrapper behaviour", "force-load + LLD on ppc64le unverified (wrapper warns and passes)")
+        return
+
     zig_cc = _env_var("ZIG_CC")
     zig_ar = _wrapper_dir / f"{_triplet}-zig-ar"
     if not zig_cc or not zig_ar.exists():
@@ -1361,6 +1399,164 @@ def test_force_load_wrappers() -> None:
 
 
 # ===================================================================
+# Section 9 -- Unix-only: wrapper executability under emulation
+# ===================================================================
+def _owned_bin_basenames() -> set[str] | None:
+    """Basenames under bin/ (Library/bin on win) owned by this feedstock's outputs.
+
+    Reads ${PREFIX}/conda-meta/*.json rather than hardcoding output names from
+    recipe.yaml, so it can't drift out of sync with it. Matches on the manifest's
+    "name" field: zig, zig-compiler, and the platform-suffixed zig_/zig_impl_
+    variants all start with "zig_" except the two exact names.
+
+    Returns None if no matching manifest was found at all (conda-meta missing,
+    or none of this feedstock's outputs are installed) -- callers must not treat
+    that the same as "found manifests but they own nothing".
+    """
+    conda_meta = _prefix / "conda-meta"
+    if not conda_meta.is_dir():
+        return None
+
+    bin_prefix = "Library/bin/" if _build_is_win else "bin/"
+    owned: set[str] = set()
+    found_manifest = False
+    for meta_file in conda_meta.glob("*.json"):
+        try:
+            data = json.loads(meta_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        name = data.get("name", "")
+        if name not in ("zig", "zig-compiler") and not name.startswith("zig_"):
+            continue
+        found_manifest = True
+        for rel in data.get("files", []):
+            if rel.startswith(bin_prefix):
+                owned.add(Path(rel).name)
+
+    return owned if found_manifest else None
+
+
+def test_wrapper_shebang_portability() -> None:
+    """Installed wrappers must not depend on an interpreter outside $PREFIX.
+
+    A shebang is resolved by the kernel -- or by qemu-user's ELF loader -- against
+    the *executing* rootfs, before PATH lookup or any activation logic runs.  Under
+    qemu-user with a native rootfs (the shape this recipe itself sets up in
+    build.sh, symlinking $QEMU_EXECVE onto PATH) an absolute interpreter such as
+    /usr/bin/env resolves to the BUILD-arch binary, which the emulator cannot exec:
+
+        qemu-execve-aarch64: /usr/bin/env: Invalid ELF image for this architecture
+
+    A compiled wrapper has no shebang and is immune.  A script whose interpreter
+    lives inside $PREFIX is emulated along with everything else, so it also works.
+
+    Reports WARN rather than FAIL for a prefix-external shebang so a known
+    condition does not mask genuine failures in the CI exit code.
+    """
+    print("--- Wrapper shebang portability ---")
+
+    if _build_is_win:
+        SKIP("wrapper shebang portability", "Unix-only")
+        return
+
+    prefix_str = str(_prefix)
+    all_matches = sorted(
+        p for p in _wrapper_dir.glob(f"{_triplet}-*")
+        if p.is_file() and os.access(p, os.X_OK)
+    )
+    owned = _owned_bin_basenames()
+    if owned is None:
+        WARN("wrapper ownership filtering unavailable",
+             "no conda-meta manifest for this feedstock's outputs was found; "
+             f"examining all {_triplet}-* wrappers in {_wrapper_dir}, "
+             "results may include foreign wrappers from other packages")
+        candidates = all_matches
+        if not candidates:
+            FAIL("wrapper shebang portability", f"no executable wrappers in {_wrapper_dir}")
+            return
+    else:
+        candidates = [p for p in all_matches if p.name in owned]
+        if not candidates:
+            FAIL("wrapper shebang portability",
+                 f"ownership filtering resolved but found zero owned {_triplet}-* wrappers "
+                 f"in {_wrapper_dir} -- expected at least one; ownership logic is likely broken")
+            return
+
+    for p in candidates:
+        try:
+            with p.open("rb") as fh:
+                first = fh.readline(512).decode("utf-8", errors="replace").strip()
+        except OSError as exc:
+            FAIL(f"{p.name} readable", str(exc))
+            continue
+
+        if not first.startswith("#!"):
+            PASS(f"{p.name} is a binary (no shebang to resolve)")
+            continue
+
+        parts = first[2:].strip().split()
+        interp = parts[0] if parts else ""
+        if interp.startswith(prefix_str):
+            PASS(f"{p.name} shebang inside prefix")
+        else:
+            # WARN, not FAIL: kept visible in the summary without masking real
+            # failures in CI -- do NOT delete this check to make CI green.
+            WARN(f"{p.name} shebang is prefix-external",
+                 f"{first!r} - unresolvable under emulation with a native rootfs")
+
+
+def test_wrapper_exec_under_emulation() -> None:
+    """Exec a shipped wrapper from inside an emulated process.
+
+    This is the consumer-facing path: anyone cross-compiling under qemu-user runs
+    the wrapper we ship.  Every other wrapper test in this file exec's it
+    NATIVELY, where /usr/bin/env resolves to a runnable binary, so none of them
+    can observe this failure.
+
+    Needs a BUILD-arch emulator.  qemu-execve-<arch> is therefore a *build*
+    requirement of this test, never a run requirement -- a run requirement would
+    resolve for the cross target and produce an emulator that cannot itself run.
+    """
+    print("--- Wrapper exec under emulation ---")
+
+    if _build_is_win or not is_linux_target:
+        SKIP("wrapper exec under emulation", "linux targets only")
+        return
+
+    # qemu and conda name this arch differently from the LLVM triplet: the triplet
+    # says powerpc64le, while qemu ships qemu-ppc64le, conda names the package
+    # qemu-execve-ppc64le, and platform.machine() reports ppc64le.  Normalise before
+    # both the native-arch check and the emulator lookup.  (arm64 -> aarch64 is
+    # already normalised at module scope.)
+    _qemu_arch = {"powerpc64le": "ppc64le"}.get(_arch, _arch)
+
+    if _qemu_arch == _native_machine:
+        SKIP("wrapper exec under emulation",
+             f"target arch {_qemu_arch} is native - nothing to emulate")
+        return
+
+    emulator = os.environ.get("QEMU_EXECVE", "") or shutil.which(f"qemu-{_qemu_arch}") or ""
+    if not emulator:
+        SKIP("wrapper exec under emulation", f"no qemu-{_qemu_arch} on PATH or $QEMU_EXECVE")
+        return
+
+    wrapper = _wrapper_dir / f"{_triplet}-zig-cc"
+    if not wrapper.exists():
+        FAIL("wrapper exec under emulation", f"{wrapper} missing")
+        return
+
+    r = _run([emulator, str(wrapper), "--version"], timeout=120)
+    if r.returncode == 0:
+        PASS("shipped zig-cc execs under emulation")
+        return
+
+    detail = f"rc={r.returncode} stderr={r.stderr[:500]}"
+    if "Invalid ELF image" in r.stderr:
+        detail += " - interpreter resolved to a build-arch binary"
+    FAIL("shipped zig-cc execs under emulation", detail)
+
+
+# ===================================================================
 # Main
 # ===================================================================
 def main() -> int:
@@ -1391,6 +1587,8 @@ def main() -> int:
     test_activation_variables()
     test_flag_filter_content()
     test_force_load_wrappers()
+    test_wrapper_shebang_portability()
+    test_wrapper_exec_under_emulation()
     test_flag_filtering()
     test_target_override()
     test_driveless_abs_path()

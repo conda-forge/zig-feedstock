@@ -8,7 +8,7 @@ their `<group>.<number>` label, not by line number.
 This file is tracked under `recipe/` and ships with the feedstock; it
 carries the settled, per-patch and per-structure rationale a maintainer
 needs to understand `recipe.yaml`. It is specific to the **0.17.0** track
-(branch `dev/v0.17.0`) -- do not assume parity with the 0.16 feedstock's
+(zig 0.17.0 release) -- do not assume parity with the 0.16 feedstock's
 own `NOTES.md`, even where a patch name matches.
 
 A pointer documents only the entry immediately following it, not every
@@ -26,6 +26,11 @@ All platforms: wires LLD MachO into the zig cc pipeline and allows
 `-fuse-ld=lld`. `Lld.zig-macho-lld-support.patch` must apply before
 `Lld.zig-prefer-shared-libcxx.patch` because the latter patches code inside
 the `machoLink` function the former adds.
+
+0.17.0 release: `prefer-shared-libcxx` no longer edits `MachO.zig`; a hook
+in `src/libs/libcxx.zig` `buildLibCxx` does `.load_dso` of
+`findSharedLibCxxPath` on macho, and the zig-llvm/lib probe is gone.
+`macho-lld-support` was regenerated (hunk move only).
 
 ### 1.2 Compile-time deps on macho-lld-support <a id="compile-time-deps-on-macho-lld-support"></a>
 `llvm.zig-lld-ofmt-macho.patch` uses the `.macho` arm of `switch (lld.ofmt)`,
@@ -141,30 +146,22 @@ crtbegin/crtend bookends, so this can occur whenever a binary composing
 
 Output layout, context-var semantics, and test-leg purposes.
 
-### 2.1 Context: snapshot / build-number / zig_impl_pin machinery <a id="context-snapshot-build-number-zig-impl-pin"></a>
-`recipe.yaml` pins `version` to the constant `"0.17.0"` across every dev
-snapshot, so `build_number` is the only monotonic ordering lever a solver
-has between two same-version dev packages. The build number is
-`<snapshot ordinal><rev>`: a new snapshot starts at `<ordinal>0` (e.g.
-snapshot 2320 -> build 23200); rebuilds of the SAME snapshot increment only
-the trailing rev digit (23201, 23202, ...), capped at 10 revs per
-snapshot. `snapshot` (e.g. `"2320+1e770dbef"`) is folded into the package
-build STRING (`${{ hash }}_${{ snapshot | replace("+","_") }}_${{ build_number }}`;
-`+` is illegal in a build string, sanitized to `_`) -- it is cosmetic
-identity, not a solver-ordering key. Bootstrapping self-hosts against a
-PREVIOUSLY PUBLISHED snapshot's `zig_impl`, never the snapshot currently
-being built (that package cannot exist yet): `snapshot_ref`/`build_ref`
-name that prior snapshot and its build floor, and both must deliberately
-LAG `snapshot`. `zig_impl_pin` is the matchspec built from them:
-`[version="${{ abi_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]`.
-Its `build=` glob keys on the SNAPSHOT field embedded in the build string
-(`*_<snapshot_ref>_*`), never on `build_number` -- the rev enters the pin
-through `build_ref` instead, which floors `build_number` (a `>=` floor, not
-an exact match: it rejects builds below the floor, accepts any published
-build at or above it, and fails the solve loudly rather than silently
-downgrading when nothing qualifying is published yet). `build_ref` must
-therefore name an already-PUBLISHED rev of `snapshot_ref`, or the pin will
-not resolve.
+### 2.1 Context: build number / build string / zig_impl_pin <a id="context-snapshot-build-number-zig-impl-pin"></a>
+Release scheme: the source is the zig 0.17.0 release tarball,
+`build_number` is 0 (increment per rebuild), and the build string is
+`${{ hash }}_${{ build_number }}` -- no snapshot segment. The former
+`snapshot`/`snapshot_ref`/`build_ref` context keys are gone, and
+`channel_targets` is removed (uploads go to conda-forge main, not zig_dev).
+Bootstrap self-hosts against the last published dev `zig_impl`:
+`bootstrap_snapshot_ref` ("2320") and `bootstrap_build_ref` ("23202") build
+`zig_impl_pin`:
+`[version="${{ abi_version }}.*", build="*_${{ bootstrap_snapshot_ref }}_*", build_number=">=${{ bootstrap_build_ref }}"]`.
+The `build=` glob keys on the snapshot field of the dev build string; the
+`>=` floor on `build_number` rejects lower revs and fails the solve loudly
+when nothing qualifies. It resolves only because `variants.yaml`
+`channel_sources` lists `conda-forge/label/zig_dev` first; that source is
+for the first release build only. Once 0.17.0 is on main, drop it and make
+the pin `abi_version.*` from main.
 
 ### 2.2 Context: target_triplet / zig_target_triplet mapping <a id="context-target-triplet-zig-target-triplet-mapping"></a>
 `target_triplet` uses the same mapping as `build_triplet` but is keyed on
@@ -204,6 +201,7 @@ For native/cross-target: depends on `zig_impl` for the same `xtarget_`
 cross-compiler: depends on `zig_impl` for the BUILD platform instead -- an
 external package, since `pin_subpackage` only reaches same-recipe outputs
 and the cross-compiler's own `zig_impl` is a different `xtarget_`'s build.
+The `zig_` cross package runs on `zig_impl_<xc_build_platform> ${{ abi_version }}.*`.
 
 ### 2.7 Tests (zig_ output): native-triplet compiler suite listing <a id="tests-native-triplet-compiler-suite-listing"></a>
 Cross-compiler builds only: alongside the target-triplet wrapper suite,

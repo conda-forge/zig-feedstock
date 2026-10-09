@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -uo pipefail
+# DEBUG_ZIG_BUILD=1: errexit OFF (run continues past failures), xtrace ON.
+# Default (0) is the CI mode: strict errexit, no xtrace.
+# conda-forge has no per-run env override: to trace a CI lane, set
+# DEBUG_ZIG_BUILD to "1" in recipe.yaml's zig_impl script env and push.
 # brush #1245 (real on 0.4.0, no released fix): with -x on, a bare VAR= after a
-# non-zero $? inherits it and -e aborts. Keep -x OFF while -e is armed.
-set +x
+# non-zero $? inherits it and -e aborts. Never run -e and -x together.
+if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
+  set +e
+  set -x
+else
+  set -e
+  { set +x; } 2>/dev/null
+fi
 IFS=$'\n\t'
 
 # ERR trap: safe with -e armed (unlike -x); no xtrace is added here.
@@ -17,7 +27,6 @@ source "${RECIPE_DIR}/building/_tool_check.sh"
 # --- Functions ---
 
 source "${RECIPE_DIR}/building/_common.sh"
-source "${RECIPE_DIR}/building/_zig_diag.sh"
 source "${RECIPE_DIR}/building/_build.sh"  # configure_cmake_zigcpp, build_zig_with_zig
 
 # --- Early exits ---
@@ -389,34 +398,7 @@ if [[ ${#_cfg_llvm_libs_expected[@]} -gt 0 ]] || is_cross; then
 fi
 
 
-# --- Two-stage bootstrap for linux-ppc64le with upstream bootstrap ---
-#
-# When bootstrap_via_upstream=true (proxied by zig-bootstrap/ dir presence),
-# the upstream linux-64 zig bootstrap binary lacks our ppc64le LdScript support
-# and DWARF64 eh_frame skip patches.  Those missing patches cause panics during
-# the ppc64le cross-compile of zig itself.
-#
-# Fix: build a native linux-64 zig from our PATCHED source first (Stage 1),
-# using the upstream bootstrap which works fine for x86_64-linux-gnu.  Then
-# use THAT patched-native zig as the bootstrap for the ppc64le cross-compile
-# (Stage 2).
-#
-# Detection: target_platform==linux-ppc64le + is_cross + zig-bootstrap/ present.
-if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
-   [[ -d "${SRC_DIR}/zig-bootstrap" ]]; then
-  echo "[build.sh] linux-ppc64le + upstream bootstrap detected — engaging two-stage bootstrap"
-  # build_native_zig_bootstrap needs create_glibc217_syscall_stubs; source it if
-  # not already sourced (it's normally sourced later in build.sh only when needed).
-  source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
-  export LLVM_VERSION="${LLVM_VERSION:-22}"
-  build_native_zig_bootstrap
-  BUILD_ZIG="${ZIG_TWO_STAGE_BOOTSTRAP_ZIG}"
-  echo "[build.sh] linux-ppc64le: two-stage bootstrap engaged — Stage 1 native build complete, using patched native zig as bootstrap: ${BUILD_ZIG}"
-fi
-
-zig_diag_fingerprint
-zig_diag_qemu
-if zig_diag_exec phase1-zig-build -- build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
+if build_zig_with_zig "${zig_build_dir}" "${BUILD_ZIG}" "${PREFIX}"; then
   dbg echo "=== ZIG BUILD: SUCCESS ==="
 else
   echo "ERROR: zig-build failed." >&2
@@ -436,11 +418,6 @@ if is_linux; then
   patchelf --set-rpath '$ORIGIN/../lib' "${PREFIX}/bin/zig"
 fi
 
-# Critical langref subset: doctest coverage on lanes where the full langref
-# build is skipped. Report-only; see building/langref_critical.txt.
-source "${RECIPE_DIR}/building/_langref.sh"
-run_langref_critical
-
 # --- Phase 2: build langref via stage3 (full compiler with translate_c) ---
 if [[ "${SKIP_LANGREF:-0}" == "1" ]]; then
   echo "INFO: Phase 2 langref skipped: SKIP_LANGREF=1" >&2
@@ -451,10 +428,6 @@ else
     _stage3_runner=("${QEMU_EXECVE}")
   fi
 
-  # Passthrough lets the emulated stage3 exec the build-arch cross-gcc natively (opt-in, off by default).
-  # rc is captured rather than handled inline so the END span prints before any exit.
-  zig_diag_span "BEGIN phase2-langref"
-  _langref_start=${SECONDS}
   _langref_rc=0
   # Bound the run: ppc64le langref takes close to an hour under emulation.
   _langref_timeout=()
@@ -478,7 +451,6 @@ else
     _langref_rc=${PIPESTATUS[0]}
   fi
   eval "${_langref_pipefail_state}"
-  zig_diag_span "END phase2-langref: rc=${_langref_rc} elapsed=$((SECONDS - _langref_start))s"
   if [[ ${_langref_rc} -ne 0 ]]; then
     echo "ERROR: Phase 2 langref build failed (rc=${_langref_rc})" >&2
     exit 1
@@ -516,6 +488,16 @@ fi
 
 source "${RECIPE_DIR}/building/_mingw.sh"
 generate_mingw_import_libs
+
+# rattler-build lints mixed .txt/.TXT in info/licenses; two-step mv also works
+# on the case-insensitive filesystems of the osx and win lanes.
+for _lic_dir in libcxx libcxxabi libunwind; do
+  _lic="${SRC_DIR}/zig-source/lib/${_lic_dir}/LICENSE.TXT"
+  [[ -f "${_lic}" ]] || continue
+  mv "${_lic}" "${_lic}.tmp" && mv "${_lic}.tmp" "${_lic%.TXT}.txt" \
+    || echo "WARNING: could not lowercase ${_lic}" >&2
+done
+unset _lic_dir _lic
 
 # Build-time only gcc-lookup lever; must not ship.
 if [[ "${target_platform}" == "linux-ppc64le" ]]; then

@@ -189,7 +189,15 @@ static void zig_tr_print_search_dirs(const zig_translate_profile *profile) {
     char programs[512];
     char mingw_common[512];
     char mingw_arch[512];
-    const char *arch_leaf = zig_tr_streq(profile->zig_target_arch, "aarch64") ? "libarm64" : "lib-x86_64";
+    const char *arch_leaf;
+    if (zig_tr_streq(profile->zig_target_arch, "aarch64"))
+        arch_leaf = "libarm64";
+    else if (zig_tr_streq(profile->zig_target_arch, "x86") ||
+             zig_tr_streq(profile->zig_target_arch, "i386") ||
+             zig_tr_streq(profile->zig_target_arch, "i686"))
+        arch_leaf = "lib32";
+    else
+        arch_leaf = "lib-x86_64";
     if (profile->is_win) {
         snprintf(zig_lib, sizeof(zig_lib), "%s\\\\Library\\\\lib\\\\zig", profile->conda_prefix);
         snprintf(programs, sizeof(programs), "%s\\\\Library\\\\bin\\\\", profile->conda_prefix);
@@ -222,11 +230,11 @@ def _c_print_file_name_fn() -> str:
  * Uses fopen() existence probing (portable) instead of the real Windows
  * shim's GetFileAttributesA -- flagged simplification, see report. */
 static void zig_tr_print_file_name(const char *name, const zig_translate_profile *profile) {
-    static const char *dirs_unix[2] = {"lib/zig-llvm/lib", "lib"};
-    static const char *dirs_win[2] = {"Library\\\\lib\\\\zig-llvm\\\\lib", "Library\\\\lib"};
+    static const char *dirs_unix[1] = {"lib"};
+    static const char *dirs_win[1] = {"Library\\\\lib"};
     char probe[1024];
     int d;
-    for (d = 0; d < 2; d++) {
+    for (d = 0; d < 1; d++) {
         if (profile->is_win)
             snprintf(probe, sizeof(probe), "%s\\\\%s\\\\%s", profile->conda_prefix, dirs_win[d], name);
         else
@@ -661,13 +669,14 @@ def _sh_intercept_body(rule: dict, unix: dict) -> str:
         return f"""            local _zig_lib="{zig_lib}"
             local _arch_leaf="lib-x86_64"
             [[ "${{_tr_target_arch}}" == "aarch64" ]] && _arch_leaf="libarm64"
+            case "${{_tr_target_arch}}" in x86|i386|i686) _arch_leaf="lib32" ;; esac
             echo "install: ${{_zig_lib}}/"
             echo "programs: ={programs}"
             echo "libraries: =${{_zig_lib}}/libc/mingw/lib-common:${{_zig_lib}}/libc/mingw/${{_arch_leaf}}:${{_zig_lib}}"
             exit 0"""
     if op == "intercept_print_file_name":
         return """            _name="${_a#-print-file-name=}"
-            for _dir in "${_tr_conda_prefix}/lib/zig-llvm/lib" "${_tr_conda_prefix}/lib"; do
+            for _dir in "${_tr_conda_prefix}/lib"; do
                 if [[ -e "${_dir}/${_name}" ]]; then
                     echo "${_dir}/${_name}"
                     exit 0
