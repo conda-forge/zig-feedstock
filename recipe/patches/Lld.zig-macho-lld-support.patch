@@ -227,7 +227,7 @@
 +                if (obj.must_link) try argv.append("-force_load");
 +                try argv.append(try obj.path.toString(arena));
 +            },
-+            .dso => continue,
++            .dso, .tbd => continue,
 +            .res => unreachable,
 +        };
 +
@@ -241,7 +241,7 @@
 +        for (comp.link_inputs) |link_input| switch (link_input) {
 +            .object, .archive => continue,
 +            .res => unreachable,
-+            .dso => |dso| {
++            inline .dso, .tbd => |dso| {
 +                if (dso.needed) {
 +                    try argv.appendSlice(&.{ "-needed-l", try dso.path.toString(arena) });
 +                } else if (dso.weak) {
@@ -303,3 +303,15 @@
  
  pub const ArchiveKind = enum(c_int) {
      GNU,
+diff --git a/src/link.zig b/src/link.zig
+index be4505c..70dfd23 100644
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1294,6 +1294,7 @@ pub const File = struct {
+                 dev.check(tag.devFeature());
+                 return @as(*tag.Type(), @fieldParentPtr("base", base)).setDarwinSdkVersion(version);
+             },
++            .lld => {},
+             else => unreachable,
+         }
+     }

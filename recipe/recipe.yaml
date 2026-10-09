@@ -19,7 +19,7 @@ context:
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: false
+  bootstrap_via_upstream: true
 
   # Manual global override for local dev only; SKIP_LANGREF export derives from it.
   is_testable: >-

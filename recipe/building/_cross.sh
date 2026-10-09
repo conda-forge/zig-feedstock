@@ -36,7 +36,8 @@ sys_include_dir=${CONDA_BUILD_SYSROOT}/usr/include
 crt_dir=${CONDA_BUILD_SYSROOT}/usr/lib
 msvc_lib_dir=
 kernel32_lib_dir=
-gcc_dir=${gcc_lib_dir}
+cc_dir=${gcc_lib_dir}
+darwin_sdk_dir=
 EOF
 
   dbg echo "Zig libc file created: ${output_file}"

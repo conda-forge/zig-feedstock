@@ -417,7 +417,8 @@ SYNCHRONIZATION_DEF
         fi
         [[ -n "${_gen_rep_lib}" ]] || continue
         if [[ -n "${_coff_py}" ]] && [[ -f "${_coff_helper}" ]]; then
-          _gen_actual_machine="$("${_coff_py}" "${_coff_helper}" "${_gen_rep_lib}" 2>/dev/null | awk '{print $2}')"
+          _gen_actual_machine="$("${_coff_py}" "${_coff_helper}" "${_gen_rep_lib}" 2>/dev/null)"
+          read -r _ _gen_actual_machine _ <<< "${_gen_actual_machine}" || true
           if [[ -z "${_gen_actual_machine}" || "${_gen_actual_machine}" == "UNKNOWN" ]]; then
             echo "WARNING: could not determine machine type of ${_gen_rep_lib} (helper returned '${_gen_actual_machine:-empty}'); skipping machine-type check for ${_gen_pair_arch}" >&2
           elif [[ "${_gen_actual_machine}" != "${_gen_expect_machine}" ]]; then
