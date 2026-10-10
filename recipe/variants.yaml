@@ -1,7 +1,3 @@
-# zig_dev source is for the bootstrap only; drop once 0.17.0 is on main.
-channel_sources:
-  - conda-forge/label/zig_dev,conda-forge
-
 c_compiler_version:
   - if: osx
     then:
