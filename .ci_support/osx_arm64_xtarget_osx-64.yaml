@@ -5,7 +5,7 @@ MACOSX_SDK_VERSION:
 c_compiler:
 - clang
 c_compiler_version:
-- 22
+- 23
 c_stdlib:
 - macosx_deployment_target
 c_stdlib_version:
@@ -17,7 +17,7 @@ channel_targets:
 cxx_compiler:
 - clangxx
 cxx_compiler_version:
-- 22
+- 23
 libxml2_devel:
 - '2.15'
 macos_machine:

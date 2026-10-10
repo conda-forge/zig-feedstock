@@ -1,7 +1,7 @@
 About zig-feedstock
 ===================
 
-Feedstock license: [BSD-3-Clause](https://github.com/conda-forge/zig-feedstock-0.17-feedstock/blob/main/LICENSE.txt)
+Feedstock license: [BSD-3-Clause](https://github.com/conda-forge/zig-feedstock/blob/main/LICENSE.txt)
 
 Home: https://ziglang.org/
 
@@ -11,7 +11,7 @@ Summary: Zig is a general-purpose programming language and toolchain for maintai
 
 Development: https://github.com/ziglang/zig
 
-Documentation: https://ziglang.org/documentation/0.17.0/
+Documentation: https://ziglang.org/documentation/0.18.0/
 
 Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.
 Robust: Behavior is correct even for edge cases such as out of memory.
@@ -27,8 +27,8 @@ Current build status
 <table><tr>
     <td>GitHub Actions</td>
     <td>
-      <a href="https://github.com/conda-forge/zig-feedstock-0.17-feedstock/actions/workflows/conda-build.yml">
-        <img src="https://github.com/conda-forge/zig-feedstock-0.17-feedstock/actions/workflows/conda-build.yml/badge.svg?event=push&branch=main">
+      <a href="https://github.com/conda-forge/zig-feedstock/actions/workflows/conda-build.yml">
+        <img src="https://github.com/conda-forge/zig-feedstock/actions/workflows/conda-build.yml/badge.svg?event=push&branch=main">
       </a>
     </td>
   </tr>
@@ -38,8 +38,8 @@ Current build status
     <td>
       <details>
         <summary>
-          <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-            <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main">
+          <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
+            <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main">
           </a>
         </summary>
         <table>
@@ -47,29 +47,29 @@ Current build status
           <tbody><tr>
               <td>osx_64_xtarget_osx-64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_xtarget_osx-64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_xtarget_osx-64" alt="variant">
                 </a>
               </td>
             </tr><tr>
               <td>osx_64_xtarget_osx-arm64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_xtarget_osx-arm64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_64_xtarget_osx-arm64" alt="variant">
                 </a>
               </td>
             </tr><tr>
               <td>osx_arm64_xtarget_osx-64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_xtarget_osx-64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_xtarget_osx-64" alt="variant">
                 </a>
               </td>
             </tr><tr>
               <td>osx_arm64_xtarget_osx-arm64</td>
               <td>
-                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=None&branchName=main">
-                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock-0.17-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_xtarget_osx-arm64" alt="variant">
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_xtarget_osx-arm64" alt="variant">
                 </a>
               </td>
             </tr>

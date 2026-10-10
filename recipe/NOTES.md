@@ -85,11 +85,7 @@ this patch, zig drops `-lm` from `DT_NEEDED` even when the caller
 explicitly requested `--no-as-needed`, breaking `dlsym(sin)` at runtime.
 
 ### 1.8 Patch: Sema.zig-shr-exact-safety-downgrade <a id="patch-sema-shr-exact-safety-downgrade"></a>
-LLVM backend: downgrades `.shr_exact` to `.shr` when safety checks are on.
-LLVM's InstCombine folds `shl(lshr_exact(x,N),N)` to `x`, making the
-runtime back-shift comparison trivially true and silently dropping the
-panic. Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, ...),
-not only ppc64le.
+Removed at 0.18.0-dev.131: absorbed upstream (src/Sema.zig emits .shr when safety is on).
 
 ### 1.9 Patch: linux/build.zig-01-maxrss-raise <a id="patch-build-zig-maxrss-raise"></a>
 Raises the linux common-group `max_rss` ceiling toward a 16GB budget:

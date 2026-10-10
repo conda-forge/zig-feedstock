@@ -1,38 +1,18 @@
---- a/src/zig_llvm.h
-+++ b/src/zig_llvm.h
-@@ -120,6 +120,7 @@
- ZIG_EXTERN_C bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output);
- ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
- ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
-+ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
-
- // On error, populates `*err_file_index_out` and `*err_msg_out` and returns `true`. The caller is
- // responsible for freeing `*err_msg_out` using `free`.
---- a/src/zig_llvm.cpp
-+++ b/src/zig_llvm.cpp
-@@ -518,6 +518,10 @@
-         bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
-                 llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
-     }
-+    namespace macho {
-+        bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
-+                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
-+    }
- }
-
- bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
-@@ -535,6 +539,11 @@
-     return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
- }
-
-+bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output) {
-+    std::vector<const char *> args(argv, argv + argc);
-+    return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
-+}
-+
- static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Default == FloatABI::ABIType::Default, "");
- static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Soft == FloatABI::ABIType::Soft, "");
- static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Hard == FloatABI::ABIType::Hard, "");
+--- a/src/codegen/llvm/bindings.zig
++++ b/src/codegen/llvm/bindings.zig
+@@ -310,10 +310,12 @@
+ extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
++extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
+ 
+ pub const LinkCOFF = ZigLLDLinkCOFF;
+ pub const LinkELF = ZigLLDLinkELF;
+ pub const LinkWasm = ZigLLDLinkWasm;
++pub const LinkMachO = ZigLLDLinkMachO;
+ 
+ pub const ArchiveKind = enum(c_int) {
+     GNU,
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
 @@ -3,6 +3,7 @@
@@ -41,12 +21,12 @@
      wasm: Wasm,
 +    macho: MachO,
  },
-
+ 
  const Coff = struct {
 @@ -202,6 +203,31 @@
      }
  };
-
+ 
 +const MachO = struct {
 +    pagezero_size: ?u64,
 +    headerpad_size: ?u32,
@@ -99,10 +79,10 @@
      };
      result catch |err| switch (err) {
          error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
-@@ -1635,6 +1664,177 @@
+@@ -1627,6 +1656,177 @@
      }
  }
-
+ 
 +fn machoLink(lld: *Lld, arena: Allocator) !void {
 +    const comp = lld.base.comp;
 +    const gpa = comp.gpa;
@@ -227,7 +207,7 @@
 +                if (obj.must_link) try argv.append("-force_load");
 +                try argv.append(try obj.path.toString(arena));
 +            },
-+            .dso => continue,
++            .dso, .tbd => continue,
 +            .res => unreachable,
 +        };
 +
@@ -241,7 +221,7 @@
 +        for (comp.link_inputs) |link_input| switch (link_input) {
 +            .object, .archive => continue,
 +            .res => unreachable,
-+            .dso => |dso| {
++            inline .dso, .tbd => |dso| {
 +                if (dso.needed) {
 +                    try argv.appendSlice(&.{ "-needed-l", try dso.path.toString(arena) });
 +                } else if (dso.weak) {
@@ -276,10 +256,20 @@
 +
  fn spawnLld(comp: *Compilation, arena: Allocator, argv: []const []const u8) !void {
      const io = comp.io;
-     const gpa = comp.gpa;
+ 
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1293,6 +1293,7 @@
+                 dev.check(tag.devFeature());
+                 return @as(*tag.Type(), @fieldParentPtr("base", base)).setDarwinSdkVersion(version);
+             },
++            .lld => {},
+             else => unreachable,
+         }
+     }
 --- a/src/target.zig
 +++ b/src/target.zig
-@@ -280,7 +280,7 @@
+@@ -278,7 +278,7 @@
  /// The set of targets that Zig supports using LLD to link for.
  pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
      return switch (ofmt) {
@@ -288,18 +278,38 @@
          else => false,
      };
  }
---- a/src/codegen/llvm/bindings.zig
-+++ b/src/codegen/llvm/bindings.zig
-@@ -310,10 +310,12 @@
- extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
- extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
- extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
-+extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
-
- pub const LinkCOFF = ZigLLDLinkCOFF;
- pub const LinkELF = ZigLLDLinkELF;
- pub const LinkWasm = ZigLLDLinkWasm;
-+pub const LinkMachO = ZigLLDLinkMachO;
-
- pub const ArchiveKind = enum(c_int) {
-     GNU,
+--- a/src/zig_llvm.cpp
++++ b/src/zig_llvm.cpp
+@@ -518,6 +518,10 @@
+         bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
+                 llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
+     }
++    namespace macho {
++        bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
++                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
++    }
+ }
+ 
+ bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
+@@ -535,6 +539,11 @@
+     return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
+ }
+ 
++bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output) {
++    std::vector<const char *> args(argv, argv + argc);
++    return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
++}
++
+ static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Default == FloatABI::ABIType::Default, "");
+ static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Soft == FloatABI::ABIType::Soft, "");
+ static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Hard == FloatABI::ABIType::Hard, "");
+--- a/src/zig_llvm.h
++++ b/src/zig_llvm.h
+@@ -120,6 +120,7 @@
+ ZIG_EXTERN_C bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output);
+ ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
+ ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
++ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
+ 
+ // On error, populates `*err_file_index_out` and `*err_msg_out` and returns `true`. The caller is
+ // responsible for freeing `*err_msg_out` using `free`.

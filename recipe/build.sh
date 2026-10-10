@@ -408,7 +408,7 @@ if [[ "${target_platform}" == "linux-ppc64le" ]] && is_cross && \
   # build_native_zig_bootstrap needs create_glibc217_syscall_stubs; source it if
   # not already sourced (it's normally sourced later in build.sh only when needed).
   source "${RECIPE_DIR}/building/_glibc217_syscall_stubs.sh"
-  export LLVM_VERSION="${LLVM_VERSION:-22}"
+  export LLVM_VERSION="${LLVM_VERSION:-23}"
   build_native_zig_bootstrap
   BUILD_ZIG="${ZIG_TWO_STAGE_BOOTSTRAP_ZIG}"
   echo "[build.sh] linux-ppc64le: two-stage bootstrap engaged — Stage 1 native build complete, using patched native zig as bootstrap: ${BUILD_ZIG}"
