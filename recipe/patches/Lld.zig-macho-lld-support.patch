@@ -257,6 +257,16 @@
  fn spawnLld(comp: *Compilation, arena: Allocator, argv: []const []const u8) !void {
      const io = comp.io;
  
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1293,6 +1293,7 @@
+                 dev.check(tag.devFeature());
+                 return @as(*tag.Type(), @fieldParentPtr("base", base)).setDarwinSdkVersion(version);
+             },
++            .lld => {},
+             else => unreachable,
+         }
+     }
 --- a/src/target.zig
 +++ b/src/target.zig
 @@ -278,7 +278,7 @@
