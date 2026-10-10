@@ -11,8 +11,6 @@ import sys
 from pathlib import Path
 
 def main():
-    print("=== Installing Zig Metapackage Symlinks ===")
-
     prefix = Path(os.environ.get("PREFIX", sys.prefix))
     target_triplet = os.environ.get("CONDA_TRIPLET")
     is_nonunix = "mingw32" in target_triplet
@@ -33,8 +31,6 @@ def main():
             create_nonunix_wrapper(bin_dir, link_name, target_name)
         else:
             create_unix_symlink(bin_dir, link_name, target_name)
-
-    print("=== Zig Metapackage Installation Complete ===")
 
 
 def create_unix_symlink(bin_dir: Path, link_name: str, target_name: str):
@@ -60,24 +56,35 @@ def create_nonunix_wrapper(bin_dir: Path, link_name: str, target_name: str):
     """Create a NonUnix batch wrapper."""
     prefix = bin_dir.parent.parent  # Library/bin -> Library -> PREFIX
 
-    # Main zig binary is .exe from zig_impl
-    target_in_lib = bin_dir / f"{target_name}.exe"
-    target_in_bin = prefix / "bin" / f"{target_name}.exe"
-    target_ext = ".exe"
-
-    if target_in_lib.exists():
-        # Target in Library/bin - use relative path
-        bat_content = f'@echo off\n"%~dp0{target_name}{target_ext}" %*\n'
-        target_location = "Library/bin"
-    elif target_in_bin.exists():
-        # Target in bin - use absolute CONDA_PREFIX path
-        bat_content = f'@echo off\n"%CONDA_PREFIX%\\bin\\{target_name}{target_ext}" %*\n'
-        target_location = "bin"
+    # zig_impl ships the main binary as .exe for the win-64 NATIVE target but
+    # unsuffixed for the win-arm64 CROSS target. NOT a shell difference: both
+    # lanes run build=win-64 with identical m2-msys2-runtime, and build.sh's
+    # mv is byte-identical. Mechanism unconfirmed — the pre-mv filename has
+    # never been captured. Probe both spellings, .exe first.
+    candidates = [
+        (bin_dir / f"{target_name}.exe", ".exe", "Library/bin"),
+        (bin_dir / target_name, "", "Library/bin"),
+        (prefix / "bin" / f"{target_name}.exe", ".exe", "bin"),
+        (prefix / "bin" / target_name, "", "bin"),
+    ]
+    for cand, ext, location in candidates:
+        if cand.exists():
+            target_ext = ext
+            target_location = location
+            break
     else:
         print(f"  ERROR: {link_name} -> {target_name} (target not found)")
-        print(f"  Checked: {target_in_lib}")
-        print(f"  Checked: {target_in_bin}")
+        for cand, _ext, _loc in candidates:
+            print(f"  Checked: {cand}")
         raise FileNotFoundError(f"Wrapper target not found: {target_name}")
+
+    if target_ext == "":
+        print(f"  WARNING: {target_name} has no .exe suffix; cmd.exe cannot execute it directly")
+
+    if target_location == "Library/bin":
+        bat_content = f'@echo off\n"%~dp0{target_name}{target_ext}" %*\n'
+    else:
+        bat_content = f'@echo off\n"%CONDA_PREFIX%\\bin\\{target_name}{target_ext}" %*\n'
 
     # Create .bat wrapper
     bat_path = bin_dir / f"{link_name}.bat"

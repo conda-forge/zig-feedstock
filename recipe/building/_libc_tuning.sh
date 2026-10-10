@@ -6,12 +6,13 @@
 # Args:
 #   $1 - Path to CRT object file (e.g., crt1.o)
 #   $2 - Stub directory containing architecture-specific stub objects
+#   $3 - Target triplet (e.g., x86_64-conda-linux-gnu)
 #
 # Returns: 0 on success, 1 if patching not possible/needed
 #
 # Process:
 #   1. Backup original CRT file
-#   2. Detect architecture from ELF header
+#   2. Derive architecture from the triplet
 #   3. Select appropriate stub object file for architecture
 #   4. Use ld -r to combine original and stub objects
 #   5. Replace original with combined version
@@ -19,6 +20,7 @@
 function patch_crt_object() {
   local crt_path="$1"
   local stub_dir="$2"
+  local triplet="$3"
 
   [[ -f "${crt_path}" ]] || return 1
 
@@ -28,36 +30,29 @@ function patch_crt_object() {
     return 1
   }
 
-  # Detect architecture of object file
-  local file_output
-  file_output=$(file -b "${crt_path}.backup")
-
   local obj_arch linker_cmd stub_obj
-  case "${file_output}" in
-    *x86-64*)
+  linker_cmd="${BUILD_PREFIX}/bin/${triplet}-ld"
+  case "${triplet}" in
+    x86_64-conda-linux-gnu)
       obj_arch="x86-64"
-      linker_cmd="${BUILD_PREFIX}/bin/x86_64-conda-linux-gnu-ld"
       stub_obj="${stub_dir}/libc_csu_stubs_x86_64.o"
       ;;
-    *PowerPC*|*ppc64*)
+    powerpc64le-conda-linux-gnu)
       obj_arch="PowerPC64"
-      linker_cmd="${BUILD_PREFIX}/bin/powerpc64le-conda-linux-gnu-ld"
       stub_obj="${stub_dir}/libc_csu_stubs_ppc64le.o"
       ;;
-    *aarch64*|*ARM*64*)
+    aarch64-conda-linux-gnu)
       obj_arch="aarch64"
-      linker_cmd="${BUILD_PREFIX}/bin/aarch64-conda-linux-gnu-ld"
       stub_obj="${stub_dir}/libc_csu_stubs_aarch64.o"
       ;;
     *)
-      # Unrecognized arch: only warn if the object actually needs the stubs
+      # Unknown triplet: only warn if the object actually needs the stubs
+      cp "${crt_path}.backup" "${crt_path}"
       if ! grep -qa '__libc_csu_init' "${crt_path}.backup"; then
         dbg echo "_libc_tuning: ${crt_path} does not reference __libc_csu_init, no patch needed"
-        cp "${crt_path}.backup" "${crt_path}"
         return 0
       fi
-      echo "WARNING: _libc_tuning: unrecognized architecture: ${file_output} for ${crt_path}" >&2
-      cp "${crt_path}.backup" "${crt_path}"
+      echo "WARNING: _libc_tuning: unrecognized triplet: ${triplet} for ${crt_path}" >&2
       return 1
       ;;
   esac
@@ -143,9 +138,12 @@ EOF
   for sysroot_dir in "${prefix}"/*-conda-linux-gnu/sysroot/usr/lib; do
     [[ -d "${sysroot_dir}" ]] || continue
 
+    local triplet="${sysroot_dir#"${prefix}"/}"
+    triplet="${triplet%%/*}"
+
     for crt_file in "${crt_files[@]}"; do
       [[ -f "${sysroot_dir}/${crt_file}" ]] || continue
-      patch_crt_object "${sysroot_dir}/${crt_file}" "${stub_dir}" || _crt_failed=$(( _crt_failed + 1 ))
+      patch_crt_object "${sysroot_dir}/${crt_file}" "${stub_dir}" "${triplet}" || _crt_failed=$(( _crt_failed + 1 ))
     done
   done
 

@@ -1,0 +1,21 @@
+# non-unix: Preserve legacy UCRT suppression except for ARM64 MSVC targets
+#
+# The Universal C Runtime (ucrt) is provided by conda's MSVC toolchain
+# and should not be automatically added by Zig's LLD linker.
+# Automatic inclusion caused duplicate symbol errors on existing targets.
+# ARM64 MSVC custom-entry links require UCRT for libvcruntime's abort,
+# calloc and free references. Keep Zig's matching static/dynamic UCRT there.
+
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -675,7 +675,9 @@
+                             .dynamic => "",
+                         };
+                         try argv.append(try arena.print("{s}vcruntime.lib", .{lib_str}));
+-                        try argv.append(try arena.print("{s}ucrt.lib", .{lib_str}));
++                        if (target.cpu.arch == .aarch64) {
++                            try argv.append(try arena.print("{s}ucrt.lib", .{lib_str}));
++                        }
+
+                         //Visual C++ 2015 Conformance Changes
+                         //https://msdn.microsoft.com/en-us/library/bb531344.aspx

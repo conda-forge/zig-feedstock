@@ -1,0 +1,20 @@
+# Purpose: Tokenize a depfile prerequisite that starts with a backslash followed by a non-newline char (drive-less Windows root-relative path like \bld\...) as a prereq instead of failing with continuation_eol
+# Affects: lib/std/Build/Cache/DepTokenizer.zig
+# Upstream: not filed
+# Drop-when: upstream DepTokenizer accepts a leading backslash in a prerequisite
+# Last-verified: 2026-10-02 (snapshot 2320+1e770dbef)
+
+--- a/lib/std/Build/Cache/DepTokenizer.zig
++++ b/lib/std/Build/Cache/DepTokenizer.zig
+@@ -163,7 +163,10 @@
+                     self.index += 1;
+                 },
+                 else => {
+-                    return errorIllegalChar(.continuation_eol, self.index, char);
++                    // Not a continuation: the backslash begins a prerequisite
++                    // (e.g. a drive-less Windows root-relative path like \bld\x).
++                    start = self.index - 1;
++                    self.state = .prereq_continuation;
+                 },
+             },
+             .rhs_continuation_linefeed => switch (char) {

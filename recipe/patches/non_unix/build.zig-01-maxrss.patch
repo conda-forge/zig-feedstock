@@ -1,12 +1,12 @@
-# Purpose: Lower exe.max_rss from 8 GB to 7.8 GB to fit conda-forge Windows runners
+# Purpose: Lower exe.max_rss from 8 GB to 7.5 GB to fit conda-forge Windows runners
 # Affects: build.zig
 # Upstream: not filed
-# Drop-when: Upstream lowers base value to <=7.8 GB (build.sh --maxrss global budget)
-# Last-verified: 2026-05-13 (zig 0.16.0)
+# Drop-when: Upstream lowers base value to <=7.5 GB
+# Last-verified: 2026-09-06 (zig 0.17.0, snapshot 2015+3fdcbc03d)
 
 --- a/build.zig
 +++ b/build.zig
-@@ -775,7 +775,7 @@ fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Ste
+@@ -900,7 +900,7 @@ fn addCompilerStep(b: *std.Build, option
          // This number should never be raised. If the value is exceeded, then
          // it is considered a bug in the Zig project that building the
          // compiler takes more than 8G of memory.

@@ -19,6 +19,7 @@
  */
 
 #include "nonunix_common.h"
+#include "nonunix_spawn.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,16 +33,7 @@ static const char *PREFIX_ARGS[] = { @ZIG_PREFIX_ARGS@ };
 static const size_t PREFIX_ARGS_COUNT = sizeof(PREFIX_ARGS) / sizeof(PREFIX_ARGS[0]);
 
 static int find_zig(char *out, size_t out_size) {
-    const char *prefixes[] = { getenv("PREFIX"), getenv("CONDA_PREFIX") };
-    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
-        const char *p = prefixes[i];
-        if (p && p[0]) {
-            snprintf(out, out_size, "%s\\Library\\bin\\%s", p, ZIG_BIN_NAME);
-            if (GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES)
-                return 1;
-        }
-    }
-    return 0;
+    return zig_find_in_prefixes(out, out_size, ZIG_BIN_NAME) != NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -51,8 +43,9 @@ int main(int argc, char *argv[]) {
     char zig_path[MAX_PATH];
     if (!find_zig(zig_path, MAX_PATH)) {
         fprintf(stderr, "ERROR: zig-tool: zig binary not found (%s)\n", ZIG_BIN_NAME);
-        fprintf(stderr, "  PREFIX=%s CONDA_PREFIX=%s\n",
-                getenv("PREFIX") ? getenv("PREFIX") : "(unset)",
+        fprintf(stderr, "  PREFIX=%s\n",
+                getenv("PREFIX") ? getenv("PREFIX") : "(unset)");
+        fprintf(stderr, "  CONDA_PREFIX=%s\n",
                 getenv("CONDA_PREFIX") ? getenv("CONDA_PREFIX") : "(unset)");
         return 1;
     }
@@ -76,7 +69,7 @@ int main(int argc, char *argv[]) {
     restore_msys2_system32_path();
 
     /* Execute zig. */
-    int ret = (int)_spawnv(_P_WAIT, zig_path, new_argv);
+    int ret = zig_spawn_wait(zig_path, (const char *const *)new_argv);
     free(new_argv);
 
     if (ret == -1) {

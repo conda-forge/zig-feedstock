@@ -5,12 +5,12 @@
  ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
  ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
 +ZIG_EXTERN_C bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output);
-
- ZIG_EXTERN_C bool ZigLLVMWriteArchive(const char *archive_name, const char **file_names, size_t file_name_count,
-     ZigLLVMArchiveKind archive_kind);
+ 
+ // On error, populates `*err_file_index_out` and `*err_msg_out` and returns `true`. The caller is
+ // responsible for freeing `*err_msg_out` using `free`.
 --- a/src/zig_llvm.cpp
 +++ b/src/zig_llvm.cpp
-@@ -505,6 +505,10 @@
+@@ -518,6 +518,10 @@
          bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
                  llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
      }
@@ -19,12 +19,12 @@
 +                llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
 +    }
  }
-
+ 
  bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
-@@ -522,6 +526,11 @@
+@@ -535,6 +539,11 @@
      return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
  }
-
+ 
 +bool ZigLLDLinkMachO(int argc, const char **argv, bool can_exit_early, bool disable_output) {
 +    std::vector<const char *> args(argv, argv + argc);
 +    return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
@@ -41,12 +41,12 @@
      wasm: Wasm,
 +    macho: MachO,
  },
-
+ 
  const Coff = struct {
-@@ -197,6 +198,31 @@
+@@ -202,6 +203,31 @@
      }
  };
-
+ 
 +const MachO = struct {
 +    pagezero_size: ?u64,
 +    headerpad_size: ?u32,
@@ -75,22 +75,15 @@
  pub fn createEmpty(
      arena: Allocator,
      comp: *Compilation,
-@@ -209,12 +235,13 @@
-
-     const obj_file_ext: []const u8 = switch (target.ofmt) {
-         .coff => "obj",
--        .elf, .wasm => "o",
-+        .elf, .macho, .wasm => "o",
-         else => unreachable,
-     };
+@@ -215,6 +241,7 @@
      const gc_sections: bool = options.gc_sections orelse switch (target.ofmt) {
-         .coff => optimize_mode != .Debug,
-         .elf => optimize_mode != .Debug and output_mode != .Obj,
-+        .macho => optimize_mode != .Debug and output_mode != .Obj,
+         .coff => optimize_mode != .debug,
+         .elf => optimize_mode != .debug and output_mode != .Obj,
++        .macho => optimize_mode != .debug and output_mode != .Obj,
          .wasm => output_mode != .Obj,
          else => unreachable,
      };
-@@ -242,6 +269,7 @@
+@@ -241,6 +268,7 @@
              .coff => .{ .coff = try .init(comp, options) },
              .elf => .{ .elf = try .init(comp, options) },
              .wasm => .{ .wasm = try .init(comp, options) },
@@ -98,18 +91,18 @@
              else => unreachable,
          },
      };
-@@ -275,6 +303,7 @@
+@@ -274,6 +302,7 @@
          .coff => coffLink(lld, arena),
          .elf => elfLink(lld, arena),
          .wasm => wasmLink(lld, arena),
 +        .macho => machoLink(lld, arena),
      };
      result catch |err| switch (err) {
-         error.OutOfMemory, error.LinkFailure => |e| return e,
-@@ -1609,6 +1638,178 @@
+         error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
+@@ -1639,6 +1668,177 @@
      }
  }
-
+ 
 +fn machoLink(lld: *Lld, arena: Allocator) !void {
 +    const comp = lld.base.comp;
 +    const gpa = comp.gpa;
@@ -120,8 +113,8 @@
 +    const directory = base.emit.root_dir;
 +    const full_out_path = try directory.join(arena, &[_][]const u8{base.emit.sub_path});
 +
-+    const zcu_obj_path: ?Cache.Path = if (comp.zcu != null) p: {
-+        break :p try comp.resolveEmitPathFlush(arena, .temp, base.zcu_object_basename.?);
++    const zcu_obj_path: ?Cache.Path = if (comp.zcu) |zcu| p: {
++        break :p try comp.resolveEmitPathFlush(arena, .temp, zcu.llvm_object.?.out_bin_basename);
 +    } else null;
 +
 +    const output_mode = comp.config.output_mode;
@@ -144,8 +137,8 @@
 +        // ld64.lld does not support -r, so do a simple file copy.
 +        const the_object_path = blk: {
 +            if (link.firstObjectInput(comp.link_inputs)) |obj| break :blk obj.path;
-+            if (comp.c_object_table.count() != 0)
-+                break :blk comp.c_object_table.keys()[0].status.success.object_path;
++            if (comp.c_objects.items.len != 0)
++                break :blk comp.c_objects.items[0].status.success.object_path;
 +            if (zcu_obj_path) |p| break :blk p;
 +            return error.NoObjectsToLink;
 +        };
@@ -172,7 +165,7 @@
 +        try argv.appendSlice(&.{ "-arch", arch_str });
 +
 +        const os_ver = target.os.version_range.semver.min;
-+        const ver_str = try allocPrint(arena, "{d}.{d}.{d}", .{ os_ver.major, os_ver.minor, os_ver.patch });
++        const ver_str = try std.fmt.allocPrint(arena, "{d}.{d}.{d}", .{ os_ver.major, os_ver.minor, os_ver.patch });
 +        try argv.appendSlice(&.{ "-platform_version", "macos", ver_str, ver_str });
 +
 +        if (comp.sysroot) |sysroot| {
@@ -203,11 +196,11 @@
 +        }
 +
 +        if (macho.pagezero_size) |size| {
-+            try argv.appendSlice(&.{ "-pagezero_size", try allocPrint(arena, "0x{x}", .{size}) });
++            try argv.appendSlice(&.{ "-pagezero_size", try std.fmt.allocPrint(arena, "0x{x}", .{size}) });
 +        }
 +
 +        if (macho.headerpad_size) |size| {
-+            try argv.appendSlice(&.{ "-headerpad_size", try allocPrint(arena, "0x{x}", .{size}) });
++            try argv.appendSlice(&.{ "-headerpad_size", try std.fmt.allocPrint(arena, "0x{x}", .{size}) });
 +        }
 +
 +        if (macho.headerpad_max_install_names) {
@@ -219,7 +212,7 @@
 +        }
 +
 +        for (macho.lib_directories) |lib_directory| {
-+            const arg = try allocPrint(arena, "-L{s}", .{lib_directory.path orelse "."});
++            const arg = try std.fmt.allocPrint(arena, "-L{s}", .{lib_directory.path orelse "."});
 +            try argv.append(arg);
 +        }
 +
@@ -234,22 +227,21 @@
 +                if (obj.must_link) try argv.append("-force_load");
 +                try argv.append(try obj.path.toString(arena));
 +            },
-+            .dso => continue,
-+            .dso_exact => |dso_exact| try argv.appendSlice(&.{ "-l", dso_exact.name }),
++            .dso, .tbd => continue,
 +            .res => unreachable,
 +        };
 +
-+        for (comp.c_object_table.keys()) |key| {
-+            try argv.append(try key.status.success.object_path.toString(arena));
++        for (comp.c_objects.items) |c_object| {
++            try argv.append(try c_object.status.success.object_path.toString(arena));
 +        }
 +        if (zcu_obj_path) |p| {
 +            try argv.append(try p.toString(arena));
 +        }
 +
 +        for (comp.link_inputs) |link_input| switch (link_input) {
-+            .object, .archive, .dso_exact => continue,
++            .object, .archive => continue,
 +            .res => unreachable,
-+            .dso => |dso| {
++            inline .dso, .tbd => |dso| {
 +                if (dso.needed) {
 +                    try argv.appendSlice(&.{ "-needed-l", try dso.path.toString(arena) });
 +                } else if (dso.weak) {
@@ -284,10 +276,10 @@
 +
  fn spawnLld(comp: *Compilation, arena: Allocator, argv: []const []const u8) !void {
      const io = comp.io;
-     const gpa = comp.gpa;
+ 
 --- a/src/target.zig
 +++ b/src/target.zig
-@@ -256,7 +256,7 @@
+@@ -280,7 +280,7 @@
  /// The set of targets that Zig supports using LLD to link for.
  pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
      return switch (ofmt) {
@@ -298,13 +290,28 @@
  }
 --- a/src/codegen/llvm/bindings.zig
 +++ b/src/codegen/llvm/bindings.zig
-@@ -312,7 +312,9 @@
+@@ -310,10 +310,12 @@
  extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
  extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
  extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
 +extern fn ZigLLDLinkMachO(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
-
+ 
  pub const LinkCOFF = ZigLLDLinkCOFF;
  pub const LinkELF = ZigLLDLinkELF;
  pub const LinkWasm = ZigLLDLinkWasm;
 +pub const LinkMachO = ZigLLDLinkMachO;
+ 
+ pub const ArchiveKind = enum(c_int) {
+     GNU,
+diff --git a/src/link.zig b/src/link.zig
+index be4505c..70dfd23 100644
+--- a/src/link.zig
++++ b/src/link.zig
+@@ -1294,6 +1294,7 @@ pub const File = struct {
+                 dev.check(tag.devFeature());
+                 return @as(*tag.Type(), @fieldParentPtr("base", base)).setDarwinSdkVersion(version);
+             },
++            .lld => {},
+             else => unreachable,
+         }
+     }

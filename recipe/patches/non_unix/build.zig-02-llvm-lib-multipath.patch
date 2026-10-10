@@ -2,11 +2,11 @@
 # Affects: build.zig
 # Upstream: not filed
 # Drop-when: Upstream supports multi-path llvm_lib_dir natively
-# Last-verified: 2026-06-04 (0.16.0)
+# Last-verified: 2026-09-06 (zig 0.17.0, snapshot 2015+3fdcbc03d)
 
 --- a/build.zig
 +++ b/build.zig
-@@ -833,7 +833,11 @@
+@@ -970,7 +970,11 @@
      assert(cfg.lld_include_dir.len != 0);
      mod.addIncludePath(.{ .cwd_relative = cfg.lld_include_dir });
      mod.addIncludePath(.{ .cwd_relative = cfg.llvm_include_dir });

@@ -23,13 +23,8 @@ PROFILE_DATA) into two generated artifacts, rule-for-rule:
                                          _zig_translate_flags(), unix
                                          profile only (this is the only
                                          profile the bash wrapper ever
-                                         ran under, historically). No
-                                         shell helpers are installed at
-                                         runtime; this artifact stays in
-                                         recipe/building/ for the parity
-                                         test only -- nothing sources it
-                                         at runtime (see
-                                         recipe/install_zig_activation.py:434-437).
+                                         runs under). Sourced by
+                                         _zig-cc-common.sh.
 
 OUT OF SCOPE (left hand-written in the real wrappers, NOT emitted here):
   sysroot detection, the general -Xlinker trigger/drop set besides
@@ -769,9 +764,8 @@ def generate_bash() -> str:
     body = f"""{header}
 #
 # _zig_translate_flags -- shared flag-translation rules R1-R13 (unix
-# profile only -- the bash wrapper that once sourced this fragment has
-# been ported to C. Nothing sources this file at runtime; it is retained
-# as the golden-parity reference for test_flag_translation_parity.py).
+# profile only -- this fragment is only ever sourced by the bash wrapper,
+# which always runs on the unix profile).
 #
 # Contract:
 #   Inputs (globals, caller sets before calling):
@@ -786,8 +780,8 @@ def generate_bash() -> str:
 #                    injected "-mcpu=baseline" (R6, prepended first) and
 #                    translated -target/--target= values (R5); does NOT
 #                    include the zig binary path, the mode token, or
-#                    "-fuse-ld=lld" (those are hand-written in the C
-#                    wrapper, out of scope here).
+#                    "-fuse-ld=lld" (those remain hand-written in the
+#                    sourcing wrapper, out of scope here).
 #     _tr_use_lld  : 0|1  - caller MUST OR this with its own hand-written
 #                    scan for the remaining out-of-scope LLD triggers
 #                    (--version-script, --dynamic-list, --gc-sections,

@@ -16,6 +16,12 @@ function create_zig_linux_libc_file() {
   gcc_lib_dir=${gcc_lib_dir//\/sysroot/}
   gcc_lib_dir=$(dirname "$(find "${gcc_lib_dir}" -name "crtbeginS.o" | head -1)")
 
+  # dirname of an empty string (find found nothing) yields ".", which IS a
+  # directory, so the guard below would otherwise pass with a bogus cwd value.
+  if [[ "${gcc_lib_dir}" == "." ]]; then
+    echo "WARNING: GCC library directory lookup found no crtbeginS.o (find returned nothing); gcc_lib_dir=\".\" is a dirname-of-empty artifact, not a real path" >&2
+  fi
+
   if [[ -z "${gcc_lib_dir}" ]] || [[ ! -d "${gcc_lib_dir}" ]]; then
     echo "WARNING: Could not find GCC library directory for ${CONDA_BUILD_SYSROOT}" >&2
     gcc_lib_dir=""
@@ -30,7 +36,8 @@ sys_include_dir=${CONDA_BUILD_SYSROOT}/usr/include
 crt_dir=${CONDA_BUILD_SYSROOT}/usr/lib
 msvc_lib_dir=
 kernel32_lib_dir=
-gcc_dir=${gcc_lib_dir}
+cc_dir=${gcc_lib_dir}
+darwin_sdk_dir=
 EOF
 
   dbg echo "Zig libc file created: ${output_file}"

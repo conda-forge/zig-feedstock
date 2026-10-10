@@ -28,6 +28,7 @@
  */
 
 #include "nonunix_common.h"
+#include "nonunix_spawn.h"
 #include "_translate.inc"
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,9 +108,8 @@ static void collect_l_dirs(char *const *argv, int argc, const char ***out_dirs, 
  * GNU ld/gcc -l:<file> means: search the -L dirs in order for a file with
  * that EXACT name and link it as an input file. Resolving it here (instead
  * of forwarding -l:<file> to zig) preserves that semantics exactly and
- * avoids the driver panic ("reached unreachable code") observed on
- * win-arm64 when the -l: token is forwarded as-is.
- * Returns a malloc'd resolved path (first match wins), or NULL if
+ * avoids zig 0.17's driver panic ("reached unreachable code") on the -l:
+ * token. Returns a malloc'd resolved path (first match wins), or NULL if
  * not found in any -L dir. On malloc failure sets *oom = 1 and returns
  * NULL, distinct from the not-found case (*oom = 0).
  */
@@ -229,33 +229,16 @@ static int is_xlinker_lld_trigger(const char *arg) {
 }
 
 /* --- Find zig binary --- */
-static const char *resolve_zig_prefix(void) {
-    const char *prefixes[] = { getenv("PREFIX"), getenv("CONDA_PREFIX") };
-    char probe[MAX_PATH];
-    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
-        const char *p = prefixes[i];
-        if (p && p[0]) {
-            snprintf(probe, sizeof(probe), "%s\\Library\\bin\\%s", p, ZIG_BIN_NAME);
-            if (GetFileAttributesA(probe) != INVALID_FILE_ATTRIBUTES)
-                return p;
-        }
-    }
-    return NULL;
-}
-
 static int find_zig(char *out, size_t out_size) {
-    const char *p = resolve_zig_prefix();
-    if (!p) return 0;
-    snprintf(out, out_size, "%s\\Library\\bin\\%s", p, ZIG_BIN_NAME);
-    return 1;
+    return zig_find_in_prefixes(out, out_size, ZIG_BIN_NAME) != NULL;
 }
 
 int main(int argc, char *argv[]) {
     init_zig_global_cache_dir();
 
-    const char *conda_prefix = resolve_zig_prefix();
-    if (!conda_prefix) conda_prefix = getenv("CONDA_PREFIX");
-    if (!conda_prefix) conda_prefix = "";
+    /* Translate profile's prefix, resolved PREFIX-first against the
+     * `Library\lib\zig` marker -- same approach find_zig() uses for the binary. */
+    const char *conda_prefix = zig_prefix_with_subpath("Library\\lib\\zig");
 
     /* Pre-filter over the raw args (argv[0] excluded):
      *  - drop -Xlinker <arg> pairs not owned by the generated translator
@@ -306,7 +289,6 @@ int main(int argc, char *argv[]) {
     profile.is_win_target = IS_MINGW_TARGET;
     profile.conda_prefix = conda_prefix;
     profile.zig_target_arch = ZIG_TARGET_ARCH;
-    profile.sysroot = NULL;  /* R12 is unix-only; the win shim has no sysroot concept. */
 
     int mode_is_cxx = str_eq(ZIG_CC_MODE, "c++");
     char **out_argv = NULL;
@@ -345,9 +327,10 @@ int main(int argc, char *argv[]) {
     if (!find_zig(zig_path, MAX_PATH)) {
         fprintf(stderr, "ERROR: zig-%s: zig binary not found (%s)\n",
                 ZIG_CC_MODE, ZIG_BIN_NAME);
-        fprintf(stderr, "  PREFIX=%s CONDA_PREFIX=%s\n",
-                getenv("PREFIX") ? getenv("PREFIX") : "(unset)",
-                getenv("CONDA_PREFIX") ? getenv("CONDA_PREFIX") : "(unset)");
+        fprintf(stderr, "  PREFIX=%s\n",
+                getenv("PREFIX") ? getenv("PREFIX") : "(unset)");
+        fprintf(stderr, "  CONDA_PREFIX=%s\n",
+                conda_prefix ? conda_prefix : "(unset)");
         free(out_argv);
         return 1;
     }
@@ -384,10 +367,10 @@ int main(int argc, char *argv[]) {
         }
 
         /* -l:<file> resolution: zig's driver panics ("reached unreachable
-         * code") on this GNU exact-filename token, observed on win-arm64.
-         * Resolve it against the -L dirs ourselves and pass the resolved
-         * path instead; a token that resolves nowhere is a hard error,
-         * not a silent passthrough. */
+         * code") on this GNU exact-filename token. Resolve it against the
+         * -L dirs ourselves and pass the resolved path instead; a token
+         * that resolves nowhere is a hard error, not a silent passthrough
+         * into the panic. */
         if (starts_with(arg, "-l:") && arg[3] != '\0') {
             const char *filename = arg + 3;
             int oom = 0;
@@ -470,7 +453,7 @@ int main(int argc, char *argv[]) {
     restore_msys2_system32_path();
 
     /* Execute zig */
-    int ret = (int)_spawnv(_P_WAIT, zig_path, new_argv);
+    int ret = zig_spawn_wait(zig_path, (const char *const *)new_argv);
     free(filtered);
     free(new_argv);
 

@@ -2,14 +2,14 @@
 # Affects: build.zig (addCompilerStep)
 # Upstream: not filed
 # Drop-when: zig defaults to .dynamic CRT linkage on windows-msvc, OR zigcpp.lib switches to /MT static CRT
-# Last-verified: 2026-05-13 (zig 0.16.0)
+# Last-verified: 2026-09-18 (zig 0.17.0, snapshot 2131+d08989840, check_patch_relevancy.sh OFFSET(19))
 # Note: Mixing static libucrt with dynamic ucrt produces ~40 lld-link duplicate-symbol errors
 #       (errno, abort, malloc, ...) because zigcpp.lib uses /MD (dynamic) and config.h's
 #       ZIG_LLVM_LIBRARIES manual -lmsvcrt is also dynamic.
 
 --- a/build.zig
 +++ b/build.zig
-@@ -780,6 +780,16 @@ fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Ste
+@@ -886,6 +886,16 @@
      });
      exe.stack_size = stack_size;
  
@@ -24,5 +24,5 @@
 +    }
 +
      // Must match the condition in CMakeLists.txt.
-     const function_data_sections = options.target.result.cpu.arch.isArm() or options.target.result.cpu.arch.isPowerPC();
- 
+     const function_data_sections = switch (options.target.result.cpu.arch) {
+         .arm,

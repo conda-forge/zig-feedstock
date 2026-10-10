@@ -17,6 +17,7 @@
  */
 
 #include <stdio.h>
+#include "nonunix_spawn.h"
 #include <stdlib.h>
 #include <string.h>
 #include <process.h>
@@ -101,7 +102,7 @@ int main(int argc, char *argv[]) {
     new_argv[ni] = NULL;
 
     /* _spawnv replaces this process, returns exit code */
-    int ret = (int)_spawnv(_P_WAIT, zig_path, new_argv);
+    int ret = zig_spawn_wait(zig_path, (const char *const *)new_argv);
     free(new_argv);
 
     if (ret == -1) {

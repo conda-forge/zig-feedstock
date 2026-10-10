@@ -41,18 +41,13 @@ from typing import Callable
 
 from _test_utils import PASS, FAIL, WARN, SKIP, _results, _build_is_mac, enforce_coverage_floor
 
-# Anchor: __file__ is <base>/testing/<thisfile>. At local-dev time <base> is
-# recipe/; at rattler-build test time the `files: recipe:` entries (recipe.yaml)
-# stage under the test-step dir with the SAME scripts/ building/ testing/ layout,
-# so <base> is the step dir. parents[1] is correct for BOTH layouts; do NOT
-# prepend a "recipe" segment (it only exists in the local checkout, and adding
-# it makes the path resolve one level too deep at rattler test time, which is
-# the FileNotFoundError seen across all CI columns in PR #115).
+# Anchor: __file__ is <base>/testing/<thisfile>; parents[1] walks up one level
+# to <base>, valid both locally (recipe/) and at rattler-build test time.
 _RECIPE_DIR = Path(__file__).resolve().parents[1]
 
 _BASH = shutil.which("bash")
 
-# Measured on the PR #190 green board (commit fa0d7b15) across all 21 build
+# Measured on the PR #189 green board (commit 15f8265f) across all 22 build
 # lanes; mac runs the generated-C leg (29 checks), win/linux SKIP it (16).
 # Exact, no margin.
 _COVERAGE_FLOOR = 29 if _build_is_mac else 16
@@ -488,7 +483,7 @@ def main() -> int:
     run_unix_shim_compile_leg()
 
     print()
-    enforce_coverage_floor(_COVERAGE_FLOOR, "flag-parity", "PR #190 / fa0d7b15")
+    enforce_coverage_floor(_COVERAGE_FLOOR, "flag-parity", "PR #189 / 15f8265f")
     n_pass = len(_results["PASS"])
     n_fail = len(_results["FAIL"])
     n_warn = len(_results["WARN"])

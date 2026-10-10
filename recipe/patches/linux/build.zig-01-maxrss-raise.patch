@@ -1,0 +1,17 @@
+# Purpose: Raise exe.max_rss from 8 GB to 16 GB; ppc64le Stage 1 native bootstrap peaks at 11.41GB
+# Affects: build.zig
+# Upstream: not filed
+# Drop-when: Stage 1 native build peaks under 8 GB again, or the ppc64le two-stage bootstrap is retired
+# Last-verified: 2026-09-22 (zig 0.17.0, snapshot 2228+955228b68)
+
+--- a/build.zig
++++ b/build.zig
+@@ -904,7 +904,7 @@ fn addCompilerStep(b: *std.Build, option
+         // This number should never be raised. If the value is exceeded, then
+         // it is considered a bug in the Zig project that building the
+         // compiler takes more than 8G of memory.
+-        .max_rss = 8_000_000_000,
++        .max_rss = 16_000_000_000,
+         .root_module = addCompilerMod(b, options),
+     });
+     exe.stack_size = stack_size;

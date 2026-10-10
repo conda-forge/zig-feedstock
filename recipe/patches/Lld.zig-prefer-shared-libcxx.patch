@@ -1,6 +1,6 @@
---- a/src/link/Lld.zig	2026-04-22 15:05:46
-+++ b/src/link/Lld.zig	2026-04-22 15:07:08
-@@ -725,7 +725,11 @@
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -727,7 +727,11 @@
          // libc++ dep
          if (comp.config.link_libcpp) {
              try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -13,7 +13,7 @@
          }
  
          // libunwind dep
-@@ -1206,7 +1210,13 @@
+@@ -1232,7 +1236,13 @@
              // libc++ dep
              if (comp.config.link_libcpp) {
                  try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -28,7 +28,7 @@
              }
  
              // libunwind dep
-@@ -1577,7 +1587,12 @@
+@@ -1607,7 +1617,12 @@
              }
  
              if (comp.config.link_libcpp) {
@@ -42,7 +42,7 @@
                  try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
              }
          }
-@@ -1789,10 +1804,12 @@
+@@ -1818,10 +1833,12 @@
          };
  
          if (comp.config.link_libcpp) {
@@ -59,7 +59,7 @@
          }
  
          try argv.append("-lSystem");
-@@ -1965,6 +1982,7 @@
+@@ -1908,6 +1925,7 @@
  const openbsd = @import("../libs/openbsd.zig");
  const wasi_libc = @import("../libs/wasi_libc.zig");
  const link = @import("../link.zig");
@@ -67,22 +67,9 @@
  const lldMain = @import("../main.zig").lldMain;
  const target_util = @import("../target.zig");
  const trace = @import("../tracy.zig").trace;
---- a/src/link/MachO.zig	2026-04-22 15:02:50
-+++ b/src/link/MachO.zig	2026-04-22 15:07:16
-@@ -426,7 +426,11 @@
-     if (comp.config.link_libcpp) {
-         try system_libs.ensureUnusedCapacity(2);
-         system_libs.appendAssumeCapacity(.{ .path = comp.libcxxabi_static_lib.?.full_object_path });
--        system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
-+        if (try libcxx_shared.findSharedLibCxxPath(comp, arena)) |shared_path| {
-+            system_libs.appendAssumeCapacity(.{ .path = shared_path });
-+        } else {
-+            system_libs.appendAssumeCapacity(.{ .path = comp.libcxx_static_lib.?.full_object_path });
-+        }
-     }
- 
-     const is_exe_or_dyn_lib = comp.config.output_mode == .Exe or
-@@ -807,10 +811,12 @@
+--- a/src/link/MachO.zig
++++ b/src/link/MachO.zig
+@@ -711,10 +711,12 @@
          }
  
          if (comp.config.link_libcpp) {
@@ -99,7 +86,7 @@
          }
  
          try argv.append("-lSystem");
-@@ -5458,6 +5464,7 @@
+@@ -5246,6 +5248,7 @@
  const dead_strip = @import("MachO/dead_strip.zig");
  const eh_frame = @import("MachO/eh_frame.zig");
  const fat = @import("MachO/fat.zig");
@@ -107,8 +94,31 @@
  const link = @import("../link.zig");
  const load_commands = @import("MachO/load_commands.zig");
  const relocatable = @import("MachO/relocatable.zig");
---- a/src/link/libcxx_shared.zig	1970-01-01 01:00:00
-+++ b/src/link/libcxx_shared.zig	2026-09-08 10:34:15
+--- a/src/libs/libcxx.zig
++++ b/src/libs/libcxx.zig
+@@ -7,6 +7,7 @@
+ const build_options = @import("build_options");
+ const trace = @import("../tracy.zig").trace;
+ const Module = @import("../Module.zig");
++const libcxx_shared = @import("../link/libcxx_shared.zig");
+ 
+ const libcxxabi_files = [_][]const u8{
+     "src/cxa_aux_runtime.cpp",
+@@ -294,6 +295,12 @@
+     assert(comp.libcxx_static_lib == null);
+     const crt_file = try sub_compilation.toCrtFile();
+     comp.libcxx_static_lib = crt_file;
++    if (target.ofmt == .macho) {
++        if (try libcxx_shared.findSharedLibCxxPath(comp, arena)) |shared_path| {
++            try comp.queuePrelinkTasks(&.{.{ .load_dso = shared_path }});
++            return;
++        }
++    }
+     try comp.queuePrelinkTaskMode(crt_file.full_object_path, false, &config);
+ }
+ 
+--- /dev/null
++++ b/src/link/libcxx_shared.zig
 @@ -0,0 +1,69 @@
 +//! Shared libc++ discovery for conda-forge zig packaging.
 +//! Probes for a shared libc++ library relative to zig_lib_dir,
@@ -172,7 +182,7 @@
 +    return null;
 +}
 +
-+// Find shared libc++ and return its Cache.Path (for MachO system_libs).
++// Find shared libc++ and return its Cache.Path (for the libcxx.zig buildLibCxx hook).
 +// Uses Cache.Path.initCwd() -- probe string is absolute since zig_lib_path is absolute.
 +// Returns null if no shared libc++ found.
 +pub fn findSharedLibCxxPath(comp: *const Compilation, arena: Allocator) !?Cache.Path {

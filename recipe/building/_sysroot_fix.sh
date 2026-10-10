@@ -1,56 +1,49 @@
 #!/usr/bin/env bash
-# Rewrite sysroot linker-script GROUP paths so ld.lld can resolve them
+# Fix sysroot linker scripts to use relative paths instead of absolute /usr/lib64
 
 function fix_sysroot_libc_scripts() {
   local sysroot_base="${1:-${BUILD_PREFIX}}"
-  local only_triplet="${2:-}"
 
-  # auto: absolute GROUP paths for the riscv64 sysroot, relative elsewhere.
-  # legacy / abs force one form for every sysroot.
-  local _mode="${ZIG_SYSROOT_MODE:-auto}"
-  if [[ "${_mode}" != "auto" ]]; then
-    echo "fix_sysroot_libc_scripts: ZIG_SYSROOT_MODE=${_mode} overrides the per-sysroot default"
-  fi
+  dbg echo "Fixing sysroot linker scripts for relative paths..."
 
-  dbg echo "Fixing sysroot linker scripts (mode=${_mode})..."
-
-  # Find all sysroot directories. NOTE: this glob matches EVERY triplet's
-  # sysroot under sysroot_base (usually BUILD_PREFIX), not just the target's.
-  dbg echo "  Sysroot dirs to process (ALL triplets under ${sysroot_base}): ${sysroot_base}/*-conda-linux-gnu/sysroot"
+  # Find all sysroot directories
   for sysroot_dir in "${sysroot_base}"/*-conda-linux-gnu/sysroot; do
     [[ -d "${sysroot_dir}" ]] || continue
 
     local arch_name
     arch_name=$(basename "$(dirname "${sysroot_dir}")")
-    if [[ -n "${only_triplet}" && "${arch_name}" != "${only_triplet}" ]]; then
-      dbg echo "  Skipping sysroot: ${arch_name} (restricted to ${only_triplet})"
-      continue
-    fi
-    dbg echo "  Processing sysroot: ${arch_name} (${sysroot_dir})"
+    dbg echo "  Processing sysroot: ${arch_name}"
+
+    local _patched=0
 
     # Fix libc.so, libpthread.so, libm.so, etc. in usr/lib and usr/lib64
-    for lib_dir in "${sysroot_dir}"/usr/lib "${sysroot_dir}"/usr/lib64; do
+    local -a _lib_dirs=( "${sysroot_dir}"/usr/lib "${sysroot_dir}"/usr/lib64 )
+    # zig gets --libc-runtimes <sysroot>/lib64 (build.sh:190-192); those scripts
+    # need rewriting too. riscv64 only: its branch emits sysroot-ABSOLUTE paths,
+    # which are position-independent. The other arches emit paths RELATIVE to the
+    # script's depth, so widening the list would corrupt them.
+    if [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]]; then
+      _lib_dirs+=( "${sysroot_dir}"/lib64 "${sysroot_dir}"/lib64/lp64d "${sysroot_dir}"/lib )
+    fi
+    for lib_dir in "${_lib_dirs[@]}"; do
       [[ -d "${lib_dir}" ]] || continue
 
       # Find all .so files that are actually linker scripts
-      for _sf_base in libc libpthread libm librt libdl; do
-        script_file="${lib_dir}/${_sf_base}.so"
+      for _script_base in libc libpthread libm librt libdl; do
+        local script_file="${lib_dir}/${_script_base}.so"
         [[ -f "${script_file}" ]] || continue
 
         # Check if it's a linker script (contains "GROUP" or "INPUT")
         if grep -q -E "^(GROUP|INPUT)" "${script_file}" 2>/dev/null; then
           dbg echo "    Patching ${script_file}"
 
-          # usr/lib and usr/lib64 can resolve to the same file; do not overwrite a kept .orig
+          # Backup original
           [[ -f "${script_file}.orig" ]] || cp "${script_file}" "${script_file}.orig"
 
-          local _use_abs=0
-          case "${_mode}" in
-            abs)    _use_abs=1 ;;
-            legacy) _use_abs=0 ;;
-            *)      if [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]]; then _use_abs=1; fi ;;
-          esac
-          if [[ "${_use_abs}" == "1" ]]; then
+          # riscv64: rewrite to sysroot-absolute paths (relative paths lose the
+          # ld-linux AS_NEEDED stub once usr/lib is symlinked to lib64); all
+          # other arches keep the sysroot-relative rewrite.
+          if [[ "${sysroot_dir}" == *riscv64-conda-linux-gnu* ]]; then
             sed -i \
               -e "s| /lib64/| ${sysroot_dir}/lib64/|g" \
               -e "s| /usr/lib64/| ${sysroot_dir}/usr/lib64/|g" \
@@ -60,6 +53,7 @@ function fix_sysroot_libc_scripts() {
               -e "s|( /lib/ld-|( ${sysroot_dir}/lib/ld-|g" \
               "${script_file}"
           else
+            # Replace absolute paths with sysroot-relative paths
             sed -i \
               -e "s| /lib64/| ../../lib64/|g" \
               -e "s| /usr/lib64/| ../lib64/|g" \
@@ -70,15 +64,18 @@ function fix_sysroot_libc_scripts() {
               "${script_file}"
           fi
 
-          dbg echo "  patched $(basename "${script_file}") ($(wc -c < "${script_file}" | tr -d ' ') bytes)"
-          if [[ "${DEBUG_ZIG_BUILD:-0}" == "1" ]]; then
-            dbg echo "    keeping ${script_file}.orig (DEBUG_ZIG_BUILD=1)"
-          else
-            rm -f "${script_file}.orig"
-          fi
+          dbg echo "      patched $(basename "${script_file}") ($(wc -c < "${script_file}") bytes)"
+          _patched=$(( _patched + 1 ))
+          rm -f "${script_file}.orig"
         fi
       done
     done
+
+    if [[ "${_patched}" -eq 0 ]]; then
+      echo "WARNING: [sysroot_fix] ${arch_name}: patched 0 linker scripts (searched: ${_lib_dirs[*]:-none})" >&2
+    else
+      echo "INFO: [sysroot_fix] ${arch_name}: patched ${_patched} linker script(s)" >&2
+    fi
   done
 
   dbg echo "Sysroot linker scripts fixed successfully"

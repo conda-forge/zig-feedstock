@@ -1,15 +1,12 @@
-# Purpose: Downgrade .shr_exact to .shr when safety is enabled to prevent LLVM's target-independent
-#   InstCombine pass from folding shl(lshr_exact(x,N),N) -> x, which eliminates the runtime safety check
+# Purpose: Downgrade .shr_exact to .shr when safety is enabled to prevent LLVM-20 PowerPC backend from folding the safety back-shift check into a no-op
 # Affects: src/Sema.zig
-# Scope: applied to ALL linux targets via recipe.yaml `- if: linux`, not ppc64le-specific
 # Upstream: not filed
-# Drop-when: LLVM 21 (this recipe's llvm_version) InstCombine stops applying that fold, re-tested
-# Test-coverage: NONE. No test in recipe/testing/ exercises @shrExact; removal cannot be CI-validated
-# Last-verified: 2026-09-09 (checked mechanism attribution and test coverage only; codegen behavior not retested)
+# Drop-when: LLVM-20 PowerPC backend fixes @shrExact codegen, or zig switches to self-hosted backend on ppc64le
+# Last-verified: 2026-05-12 (build 23)
 
 --- a/src/Sema.zig
 +++ b/src/Sema.zig
-@@ -13389,7 +13389,15 @@
+@@ -13260,7 +13260,15 @@
          break :rs rhs_src;
      };
      try sema.requireRuntimeBlock(block, src, runtime_src);
@@ -17,7 +14,7 @@
 +    // When safety is enabled, downgrade .shr_exact to .shr so the runtime
 +    // back-shift check (`shl(result, rhs) == lhs`) is not eliminated by
 +    // LLVM InstCombine.  LLVM treats `lshr exact` as a UB promise that no
-+    // bits are lost, which lets it fold `shl(lshr_exact(x,N), N)` -> `x`,
++    // bits are lost, which lets it fold `shl(lshr_exact(x,N), N)` → `x`,
 +    // turning the safety comparison into a trivial `x == x` and dropping the
 +    // panic branch.  When safety is off (ReleaseFast/ReleaseSmall) we keep
 +    // .shr_exact so LLVM can still exploit the UB promise for optimisation.

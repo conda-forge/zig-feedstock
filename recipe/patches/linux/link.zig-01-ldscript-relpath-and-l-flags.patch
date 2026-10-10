@@ -50,7 +50,7 @@
 +                            // Last resort: static archive
 +                            const a_sub = try std.fmt.allocPrint(gpa, "{s}{s}lib{s}.a", .{ script_dir, sep, lib_name });
 +                            const a_path: Path = .{ .root_dir = path.root_dir, .sub_path = a_sub };
-+                            openLoadArchive(base, a_path, query) catch |archive_err| switch (archive_err) {
++                            openLoadArchiveQuery(base, a_path, query) catch |archive_err| switch (archive_err) {
 +                                error.FileNotFound => {
 +                                    gpa.free(a_sub);
 +                                    diags.addParseError(path, "GNU ld script references library not found: {s}", .{arg.path});
@@ -76,7 +76,7 @@
 +                    switch (Compilation.classifyFileExt(arg.path)) {
 +                        .shared_library => try openLoadDso(base, resolved_path, query),
 +                        .object => try openLoadObject(base, resolved_path),
-+                        .static_library => try openLoadArchive(base, resolved_path, query),
++                        .static_library => try openLoadArchiveQuery(base, resolved_path, query),
 +                        else => diags.addParseError(path, "GNU ld script references file with unrecognized extension: {s}", .{arg.path}),
 +                    }
                  }

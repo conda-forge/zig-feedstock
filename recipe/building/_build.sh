@@ -11,14 +11,16 @@ function build_zig_with_zig() {
   current_dir=$(pwd)
 
   dbg echo "[build_zig_with_zig] zig=${zig} build_dir=${build_dir} install_dir=${install_dir}"
-  dbg echo "[build_zig_with_zig] EXTRA_ZIG_ARGS: ${EXTRA_ZIG_ARGS[*]+\"${EXTRA_ZIG_ARGS[*]}\"}"
+  dbg echo "[build_zig_with_zig] ZIG_MAKER_ARGS: ${ZIG_MAKER_ARGS[*]+\"${ZIG_MAKER_ARGS[*]}\"}"
+  dbg echo "[build_zig_with_zig] ZIG_PKG_OPTS: ${ZIG_PKG_OPTS[*]+\"${ZIG_PKG_OPTS[*]}\"}"
 
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1
       local rc=0
       "${zig}" build \
         --prefix "${install_dir}" \
-        ${EXTRA_ZIG_ARGS[@]+"${EXTRA_ZIG_ARGS[@]}"} \
+        ${ZIG_MAKER_ARGS[@]+"${ZIG_MAKER_ARGS[@]}"} \
+        ${ZIG_PKG_OPTS[@]+"${ZIG_PKG_OPTS[@]}"} \
         -Dversion-string="${PKG_VERSION}" 2>&1 || rc=$?
     cd "${current_dir}" || return 1
     if [[ ${rc} -ne 0 ]]; then
@@ -35,7 +37,7 @@ function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array -- always use conda's CC/CXX (clang/gcc),
+  # Build local cmake args array — always use conda's CC/CXX (clang/gcc),
   # never zig-cc (which has a baked-in target that conflicts with cross-builds).
   local cmake_args=()
 
