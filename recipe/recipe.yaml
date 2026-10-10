@@ -364,13 +364,9 @@ outputs:
             - libcxx ${{ llvm_version }}.*
       ignore_run_exports:
         by_name:
-          - if: linux and not ppc64le
+          - if: linux
             then:
               - libxml2-16
-          - if: not unix
-            then:
-              - ucrt
-              - vc14_runtime
     tests:
       # Package contents verification - impl has triplet-prefixed binary
       - package_contents:
@@ -594,6 +590,9 @@ outputs:
       build:
         - python >=3.10
         - llvm-tools ${{ llvm_version }}.*  # llvm-objdump asserts CPU baseline
+        - if: linux or win
+          then:
+            - ${{ stdlib("c") }}  # the libc/CRT-linked shims
         - if: is_cross_compiler or is_cross_target
           then:
             - zig_impl_${{ build_platform }}${{ zig_impl_pin }}
