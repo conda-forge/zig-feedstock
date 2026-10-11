@@ -643,6 +643,14 @@ int main(void) {
     return 0;
 }
 WARM_EOF
+      cat > "${_warm_dir}/warm.cpp" <<'WARM_EOF'
+#include <string>
+#include <stdexcept>
+int main() {
+    try { throw std::runtime_error(std::string("warm")); }
+    catch (const std::exception &e) { return e.what()[0] == 'w' ? 0 : 1; }
+}
+WARM_EOF
 
       # ${_mingw_libarm64}/${_mingw_lib32} are already set unconditionally by
       # the import-lib generation loop above, ahead of any arch branching.
@@ -696,7 +704,7 @@ WARM_EOF
           fi
 
           local _warm_lib
-          _warm_lib="$(_find_by_basename "${_warm_cache}" 'libmingw32.lib')"
+          _warm_lib="$(_find_by_basename "${_warm_cache}" 'libmingw32.lib')" || true
           if [[ -z "${_warm_lib}" || ! -f "${_warm_lib}" ]]; then
               echo "ERROR: libmingw32.lib not found in cache for ${_warm_tgt}; CRT archives will be missing" >&2
               _warm_failed_count=$((_warm_failed_count + 1))
@@ -736,6 +744,52 @@ WARM_EOF
               cp -f "${_warm_lib}" "${_warm_stage}/${_name}.a"
           done
           dbg echo "[_mingw] staged libmingw32+aliases for ${_warm_tgt} under ${_warm_stage}"
+
+          # Real C++ link: zig builds libc++/libc++abi/libunwind on demand into its
+          # cache; stage them so foreign linkers (flexlink) can resolve -lc++ etc.
+          # -mcpu=baseline: on a native lane target==host and zig would otherwise
+          # tune for the build machine's CPU.
+          if ! ZIG_GLOBAL_CACHE_DIR="${_warm_cache}" \
+                  "${_zig_bin}" c++ -target "${_warm_tgt}" -mcpu=baseline -O2 \
+                  "${_warm_dir}/warm.cpp" \
+                  -o "${_warm_cache}/warm-cxx.exe" 2>"${_warm_cache}/warm-cxx.err"; then
+              echo "ERROR: C++ cache-warm link failed for ${_warm_tgt}; libc++ archives will be missing. Errors:" >&2
+              tail -5 "${_warm_cache}/warm-cxx.err" >&2 || true
+              _warm_failed_count=$((_warm_failed_count + 1))
+              _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(cxx-link)"
+              continue
+          fi
+
+          # zig caches these WITHOUT the lib prefix (c++.lib, c++abi.lib, unwind.lib),
+          # unlike libmingw32.lib; lib<name>.a tried second.
+          for _cxx_name in libc++ libc++abi libunwind; do
+              _cxx_src="$(_find_by_basename "${_warm_cache}" "${_cxx_name#lib}.lib")" || true
+              if [[ -z "${_cxx_src}" || ! -f "${_cxx_src}" ]]; then
+                  _cxx_src="$(_find_by_basename "${_warm_cache}" "${_cxx_name}.a")" || true
+              fi
+              if [[ -z "${_cxx_src}" || ! -f "${_cxx_src}" ]]; then
+                  if [[ "${_cxx_name}" == "libunwind" ]]; then
+                      # Optional: windows-gnu may use SEH and never build libunwind.
+                      echo "INFO: [_mingw] ${_cxx_name} not found in cache for ${_warm_tgt} (optional, not staged)" >&2
+                  else
+                      echo "ERROR: ${_cxx_name} not found in cache for ${_warm_tgt}" >&2
+                      _warm_failed_count=$((_warm_failed_count + 1))
+                      _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(no-${_cxx_name})"
+                  fi
+                  continue
+              fi
+              _cxx_size="$(wc -c < "${_cxx_src}" 2>/dev/null || echo 0)"
+              echo "INFO: [_mingw] ${_cxx_name} found for ${_warm_tgt}: ${_cxx_src##*/}, ${_cxx_size} bytes" >&2
+              # Floor is loose on purpose, pending measured sizes.
+              if [[ "${_cxx_name}" == "libc++" && "${_cxx_size}" -lt 100000 ]]; then
+                  echo "ERROR: libc++ for ${_warm_tgt} is ${_cxx_size} bytes, below floor 100000 (stub?)" >&2
+                  _warm_failed_count=$((_warm_failed_count + 1))
+                  _warm_failed_list="${_warm_failed_list} ${_warm_tgt}(libc++-size-${_cxx_size})"
+                  continue
+              fi
+              cp -f "${_cxx_src}" "${_warm_stage}/${_cxx_name}.lib"
+              cp -f "${_cxx_src}" "${_warm_stage}/${_cxx_name}.a"
+          done
       done
 
       rm -rf "${_warm_dir}"

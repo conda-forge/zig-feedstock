@@ -27,6 +27,12 @@ All platforms: wires LLD MachO into the zig cc pipeline and allows
 `Lld.zig-prefer-shared-libcxx.patch` because the latter patches code inside
 the `machoLink` function the former adds.
 
+Scope (2026-10-11): `Lld.zig-prefer-shared-libcxx.patch` is applied under
+`if: osx` only (recipe.yaml:181-183). conda-forge libcxx is rendered only for
+linux-64/osx-64/osx-arm64 (none for windows), so linux and windows-gnu always
+link zig's static libc++/libc++abi. macho-lld-support itself stays on all
+platforms.
+
 ### 1.2 Compile-time deps on macho-lld-support <a id="compile-time-deps-on-macho-lld-support"></a>
 `llvm.zig-lld-ofmt-macho.patch` uses the `.macho` arm of `switch (lld.ofmt)`,
 added by `Lld.zig-macho-lld-support.patch`; it applies cleanly at zero fuzz
