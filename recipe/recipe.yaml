@@ -2,15 +2,15 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 1460
+  build_number: 1461
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
   snapshot: "146+35accc06e"
-  snapshot_ref: "131"
-  build_ref: "1310"
+  snapshot_ref: "146"
+  build_ref: "1460"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
@@ -688,10 +688,7 @@ outputs:
                 then:
                   - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
-              # Cross lanes run the pinned published impl, which may predate the fix.
-              - if: not (is_cross_compiler or is_cross_target)
-                then:
-                  - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
+              - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
               # the cc wrapper must filter them before forwarding to zig cc.
               - if: not unix
                 then:

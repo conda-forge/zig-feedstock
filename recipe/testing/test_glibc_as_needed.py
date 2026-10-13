@@ -38,6 +38,10 @@ from _test_utils import (
 
 setup_zig_global_cache_dir()
 
+_host = os.environ.get("CONDA_ZIG_HOST", "")
+# Only emulated lanes run a foreign zig; cross-compiler lanes run a build-arch zig.
+_triplet = _host.removesuffix("-zig") if os.environ.get("QEMU_EXECVE") else ""
+
 _PT_LOAD = 1
 _PT_DYNAMIC = 2
 _DT_NULL = 0
@@ -112,7 +116,7 @@ def _case(label: str, zig: str, cmd_args: list[str], src_name: str, src: str,
           out_name: str, check) -> bool:
     with tempfile.TemporaryDirectory() as td:
         (Path(td) / src_name).write_text(src)
-        r = _run([zig, *cmd_args], cwd=td, timeout=_LINK_TIMEOUT_S)
+        r = _run([zig, *cmd_args], cwd=td, timeout=_LINK_TIMEOUT_S, target=_triplet or None)
         out = Path(td) / out_name
         if r.returncode != 0 or not out.is_file():
             tail = "TIMEOUT" if timed_out(r) else "\n".join(r.stderr.splitlines()[-15:])
@@ -144,7 +148,7 @@ def main() -> int:
         return 1
     print(f"  zig = {zig}")
     if os.environ.get("QEMU_EXECVE"):
-        print("  note: emulated lane; no target binary is executed")
+        print("  note: emulated lane; zig runs under qemu, output is only parsed")
 
     a_ok = _case(
         "GLIBC-AS-NEEDED-A", zig,
