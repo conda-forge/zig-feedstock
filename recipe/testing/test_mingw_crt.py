@@ -288,6 +288,37 @@ def test_staged_archives(staged: list[tuple[str, Path]]) -> None:
                 PASS(f"{lib} size ({target})", f"{size} bytes")
 
 
+def test_cxx_runtime_archives(staged: list[tuple[str, Path]]) -> None:
+    """libc++.a / libc++abi.a staged per arch (REQUIRED); libunwind.a optional.
+
+    Separate from test_staged_archives: its list carries the 1MB threshold,
+    which is too high for the C++ runtime archives.
+    """
+    print("--- Staged C++ runtime archives (per target) ---")
+    for target, lib_dir in staged:
+        if not lib_dir.is_dir():
+            continue
+        for lib in ("libc++.a", "libc++abi.a"):
+            p = lib_dir / lib
+            if not p.is_file():
+                FAIL(f"{lib} present ({target})", f"missing: {p}")
+                continue
+            size = p.stat().st_size
+            if lib == "libc++.a" and size <= 100_000:
+                FAIL(f"{lib} size ({target})", f"{size} bytes, expected >100000")
+            elif size == 0:
+                FAIL(f"{lib} nonempty ({target})", f"0 bytes: {p}")
+            else:
+                PASS(f"{lib} size ({target})", f"{size} bytes")
+        unwind = lib_dir / "libunwind.a"
+        if not unwind.is_file():
+            print(f"  INFO: libunwind.a absent ({target}) -- optional on windows-gnu")
+        elif unwind.stat().st_size == 0:
+            FAIL(f"libunwind.a nonempty ({target})", f"0 bytes: {unwind}")
+        else:
+            PASS(f"libunwind.a present ({target})", f"{unwind.stat().st_size} bytes")
+
+
 def test_prebuilt_implibs(staged: list[tuple[str, Path]]) -> None:
     """Pre-generated import libs per arch (_mingw.sh Steps 1/2/3/4, _mingw.sh:236-334).
 
@@ -491,6 +522,7 @@ def main() -> int:
     ]
 
     test_staged_archives(staged)
+    test_cxx_runtime_archives(staged)
     test_alias_archive_identity(staged)
     test_prebuilt_implibs(staged)
     test_libpthread_import_lib(staged)

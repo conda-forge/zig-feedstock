@@ -6,8 +6,8 @@ Runs during zig_impl_$platform test phase using the triplet-prefixed binary
 directly (no activation wrappers). Verifies that the zig binary:
 
   1. Falls back to static libc++ when no shared lib is at probe paths (default)
-  2. Probes the correct paths for shared libc++ (strace on Linux)
-  3. Uses shared libc++ when a real .so is placed at the probe path
+  2. Carries the shared libc++ probe names on macOS only (patch scoped to osx)
+  3. Uses shared libc++ when a real dylib is placed at the probe path (macOS)
 
 Usage:
   python test_libcxx_shared.py <conda_triplet>
@@ -38,8 +38,6 @@ from _test_utils import (
     _build_is_win,
     _build_is_mac,
     _is_emulated,
-    _native_machine,
-    _record,
     _results,
     _run,
     PASS,
@@ -75,7 +73,7 @@ _arch = _conda_triplet.split("-")[0] if _conda_triplet else platform.machine()
 is_arm64 = _arch in ("aarch64", "arm64")
 is_ppc64le = _arch == "powerpc64le"
 
-# Emulation detection: (_native_machine and _is_emulated imported from _test_utils)
+# Emulation detection: _is_emulated is imported from _test_utils.
 
 def _sysctl_int(name: bytes) -> int | None:
     """Integer sysctl value by name; None if unavailable or not macOS."""
@@ -347,10 +345,10 @@ def test_libcxx_fallback_static() -> None:
 # ===================================================================
 def test_libcxx_probe_paths() -> None:
     """
-    Verify zig probes the expected paths for shared libc++.
+    Verify the shared libc++ probe strings are compiled in on macOS only.
 
-    Linux: strace captures access()/faccessat() syscalls.
-    All:   structural check that probe target dirs resolve correctly.
+    macOS:         darwin probe names (libc++.1.dylib / libc++.dylib) present.
+    Linux/Windows: probe names absent (patch scoped to osx).
     """
     print("--- [patch-0008] Shared libc++ probe paths ---")
 
@@ -380,277 +378,509 @@ def test_libcxx_probe_paths() -> None:
         else:
             WARN(f"probe dir missing: {label}", "standard library directory absent")
 
-    # --- Diagnostic: check if patch 0008 is compiled into the binary ---
-    if zig:
-        strings_bin = shutil.which("strings")
-        if strings_bin:
-            r_str = _run([strings_bin, zig], timeout=10)
-            if r_str.returncode == 0:
-                has_probe_str = any("zig-llvm/lib" in l for l in r_str.stdout.splitlines())
-                has_libcxx_so = any("libc++.so.1" in l for l in r_str.stdout.splitlines())
-                if has_probe_str or has_libcxx_so:
-                    PASS("patch 0008 strings found in binary",
-                         f"zig-llvm/lib={has_probe_str}, libc++.so.1={has_libcxx_so}")
-                else:
-                    FAIL("patch 0008 strings NOT in binary",
-                         "libcxx_shared.zig was not compiled into this zig")
+    # Is patch 0008 compiled into the binary? Applied on macOS only.
+    data = Path(zig).read_bytes()
+    if is_macos_target:
+        found = [n for n in LIBCXX_NAMES["macos"] if n.encode() in data]
+        if found:
+            PASS("patch 0008 darwin probe names found in binary", ", ".join(found))
         else:
-            SKIP("strings probe", "strings not on PATH, cannot inspect binary contents")
-
-    # --- Diagnostic: verbose link output ---
-    if not is_linux_target or _build_is_win:
-        SKIP("verbose-link", "Linux-only")
-        return
-
-    # --- Strace test ---
-    strace = shutil.which("strace")
-    if not strace:
-        SKIP("strace probe", "strace not found in PATH")
-        return
-
-    with tempfile.TemporaryDirectory() as td:
-        src = Path(td) / "probe.cpp"
-        src.write_text(
-            '#include <string>\n'
-            'extern "C" {\n'
-            '  __attribute__((visibility("default")))\n'
-            '  int cxx_probe(void) { std::string s("probe"); return (int)s.size(); }\n'
-            '}\n'
-        )
-
-        # Run with --verbose-link to see actual linker args
-        out = Path(td) / "libprobe.so"
-        r_vl = _run([zig, "c++", "-shared", "--verbose-link",
-                      "-o", str(out), str(src)], cwd=td, timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
-        if r_vl.returncode == 0 or r_vl.stderr:
-            # Look for libc++ in verbose output (both stdout and stderr)
-            verbose = r_vl.stdout + "\n" + r_vl.stderr
-            libcxx_args = [l.strip() for l in verbose.splitlines()
-                           if "libc++" in l and "libcxx" not in l.lower()]
-            if libcxx_args:
-                print("    verbose-link libc++ references:")
-                for arg in libcxx_args[:5]:
-                    print(f"      {arg[:200]}")
-            else:
-                # Show ALL verbose output for diagnosis
-                print("    verbose-link output (no libc++ found):")
-                for line in verbose.splitlines():
-                    if line.strip():
-                        print(f"      {line.strip()[:200]}")
-
-        out = Path(td) / "libprobe_strace.so"
-        cmd = [
-            strace, "-f", "-e", "trace=access,faccessat,faccessat2",
-            zig, "c++", "-shared", "-o", str(out), str(src),
-        ]
-        r = _run(cmd, cwd=td, timeout=120)
-
-        if r.stderr == "TIMEOUT":
-            WARN("strace probe", "timed out (120s)")
-            return
-
-        if r.returncode != 0:
-            WARN("strace compilation failed",
-                 f"rc={r.returncode}, linking never reached (no probes expected)")
-
-        strace_out = r.stderr
-        names = LIBCXX_NAMES.get(plat, [])
-        probed = []
-        for line in strace_out.splitlines():
-            low = line.lower()
-            if "libc++" in line and ("access" in low or "faccessat" in low):
-                probed.append(line.strip())
-
-        if not probed:
-            WARN("no libc++ probes detected in strace",
-                 "patch 0008 may not be applied or link_libcpp path not entered")
-            return
-
-        PASS(f"zig probes for shared libc++ ({len(probed)} access calls)")
-
-        for name in names:
-            if any(name in p for p in probed):
-                PASS(f"probes for {name}")
-            else:
-                WARN(f"no probe for {name}",
-                     "may be optimized by kernel or strace filter")
-
-        zigllvm_idx = next((i for i, p in enumerate(probed) if "zig-llvm" in p), -1)
-        lib_idx = next((i for i, p in enumerate(probed)
-                        if "zig-llvm" not in p and "libc++" in p), -1)
-        if zigllvm_idx >= 0 and lib_idx >= 0:
-            if zigllvm_idx < lib_idx:
-                PASS("probe order correct: zig-llvm/lib before lib/")
-            else:
-                WARN("probe order unexpected",
-                     f"zig-llvm at idx {zigllvm_idx}, lib/ at idx {lib_idx}")
-        elif zigllvm_idx >= 0:
-            PASS("zig-llvm/lib probed")
+            FAIL("patch 0008 darwin probe names NOT in binary",
+                 "libcxx_shared.zig was not compiled into this zig")
+    else:
+        present = [n for n in LIBCXX_NAMES.get(plat, []) if n.encode() in data]
+        if present:
+            WARN("shared libc++ probe names present in non-macOS zig",
+                 ", ".join(present))
+        else:
+            PASS("shared libc++ probe names absent (patch not applied)")
 
 
 # ===================================================================
 # Test 3: Shared libc++ simulation (place real .so, verify linkage)
 # ===================================================================
 def _check_needed_libcxx(zig: str, label: str) -> None:
-    """Compile C++ with real std:: usage and check for dynamic libc++ dependency."""
+    """Check for dynamic libc++ dependency, then run the report-only probes."""
     with tempfile.TemporaryDirectory() as td:
-        cxx_src = Path(td) / "test.cpp"
-        if is_linux_target:
-            cxx_out = Path(td) / "libtest.so"
-        elif is_macos_target:
-            cxx_out = Path(td) / "libtest.dylib"
-        elif is_win_target:
-            cxx_out = Path(td) / "test.dll"
-        else:
-            SKIP(f"{label}", "unknown output format")
-            return
+        cxx_out = Path(td) / "libtest.dylib"
+        _compile_and_check_needed(zig, label, td, cxx_out)
+        # Measurements run even when the check above returned early.
+        if cxx_out.exists():
+            _report_libcxxabi_doubled(cxx_out, td)
+        _report_xdylib_exception(zig, td)
 
-        cxx_src.write_text(
-            '#include <string>\n'
-            '#include <typeinfo>\n'
-            'extern "C" {\n'
-            '  __attribute__((visibility("default")))\n'
-            '  const char* cxx_rtti(void) {\n'
-            '    return typeid(std::string).name();\n'
+
+def _compile_and_check_needed(zig: str, label: str, td: str, cxx_out: Path) -> None:
+    """Compile C++ with real std:: usage and check for dynamic libc++ dependency."""
+    cxx_src = Path(td) / "test.cpp"
+    cxx_src.write_text(
+        '#include <string>\n'
+        '#include <stdexcept>\n'
+        '#include <typeinfo>\n'
+        'extern "C" {\n'
+        '  __attribute__((visibility("default")))\n'
+        '  const char* cxx_rtti(void) {\n'
+        '    return typeid(std::string).name();\n'
+        '  }\n'
+        '  __attribute__((visibility("default")))\n'
+        '  void cxx_throw(void) { throw std::runtime_error("x"); }\n'
+        '}\n'
+    )
+
+    r = _run([zig, "c++", "-shared", "-o", str(cxx_out), str(cxx_src)],
+             cwd=td, timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+
+    if timed_out(r):
+        FAIL(f"{label}: C++ compilation timed out after {_COMPILE_TIMEOUT_S}s")
+        return
+
+    if r.returncode != 0:
+        FAIL(f"{label}: C++ compilation failed",
+             f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return
+
+    if not cxx_out.exists():
+        FAIL(f"{label}: output missing")
+        return
+
+    PASS(f"{label}: C++ shared lib compiled")
+
+    otool = shutil.which("otool")
+    if not otool:
+        SKIP(f"{label}: otool check", "otool not found")
+        return
+    r2 = _run([otool, "-L", str(cxx_out)], cwd=td)
+    if r2.returncode != 0:
+        WARN(f"{label}: otool failed", f"rc={r2.returncode}")
+        return
+    libcxx_deps = [l for l in r2.stdout.splitlines() if "libc++" in l]
+    if libcxx_deps:
+        PASS(f"{label}: libc++ dylib dependency in output (shared linkage!)")
+        for dep in libcxx_deps:
+            print(f"    {dep.strip()}")
+    else:
+        all_deps = [l.strip() for l in r2.stdout.splitlines()
+                    if l.strip() and not l.strip().startswith(str(cxx_out))]
+        FAIL(f"{label}: no libc++ dylib dependency (still static)")
+        print("    All load commands:")
+        for dep in all_deps:
+            print(f"      {dep}")
+
+
+_ABI_SYMBOLS = (
+    "__cxa_throw",
+    "__cxa_allocate_exception",
+    "__gxx_personality_v0",
+    "__cxa_begin_catch",
+    "_ZTVN10__cxxabiv117__class_type_infoE",
+)
+
+
+def _otool_deps(path: Path, td: str) -> list[str]:
+    """Print and return `otool -L` lines for path (empty if otool missing)."""
+    otool = shutil.which("otool")
+    if not otool:
+        return []
+    r = _run([otool, "-L", str(path)], cwd=td)
+    lines = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    print("    otool -L:")
+    for line in lines:
+        print(f"      {line}")
+    return lines
+
+
+def _report_libcxxabi_doubled(out: Path, td: str, tag: str = "") -> int | None:
+    """Report-only: which libc++abi symbols `out` defines itself.
+
+    Returns the defined-symbol count, or None if nm was unusable.
+    """
+    try:
+        _otool_deps(out, td)
+        nm = shutil.which("nm") or shutil.which("llvm-nm")
+        if not nm:
+            WARN("libcxxabi-doubled", "nm not found")
+            return None
+        r = _run([nm, "-m", str(out)], cwd=td)
+        if r.returncode != 0:
+            WARN("libcxxabi-doubled", f"nm -m rc={r.returncode}")
+            return None
+        defined = 0
+        for sym in _ABI_SYMBOLS:
+            lines = [l for l in r.stdout.splitlines()
+                     if l.split()[-1:] in ([sym], ["_" + sym])
+                     or f" {sym} " in l or f" _{sym} " in l]
+            if not lines:
+                print(f"    {sym}: absent")
+            elif any("(undefined)" not in l for l in lines):
+                defined += 1
+                print(f"    {sym}: DEFINED locally")
+            else:
+                print(f"    {sym}: undefined (from dylib)")
+        # libc++ (std::__1) symbols: any defined => statically carried
+        cxx = [l for l in r.stdout.splitlines() if "St3__1" in l]
+        cxx_def = sum(1 for l in cxx if "(undefined)" not in l)
+        print(f"    libc++ std::__1 symbols: {cxx_def} defined, "
+              f"{len(cxx) - cxx_def} imported")
+        doubled = "yes" if defined else "no"
+        print(f"    {tag}LIBCXXABI-DOUBLED: {doubled} "
+              f"({defined} abi symbols defined locally)")
+        return defined
+    except Exception as e:  # report-only
+        WARN("libcxxabi-doubled", f"probe error: {e}")
+        return None
+
+
+def test_zig_binary_libcxx() -> None:
+    """Report-only (macOS): is libc++/libc++abi shared or static in zig itself."""
+    print("--- [report] shipped zig binary libc++ linkage ---")
+    if not (is_macos_target and _build_is_mac):
+        SKIP("zig-bin-libcxx", "macOS-only measurement")
+        return
+    zig = _find_zig_binary()
+    if not zig:
+        SKIP("zig-bin-libcxx", f"zig binary not found ({_zig_bin_name})")
+        return
+    try:
+        real = Path(zig).resolve()
+        print(f"    zig binary: {real}")
+        deps = _otool_deps(real, str(real.parent))
+        if not deps:
+            WARN("zig-bin-libcxx", "otool not found or no output")
+        libcxx = [d.split(" (")[0] for d in deps[1:]
+                  if "libc++." in d or "libc++abi" in d]
+        shared = [d for d in libcxx if "libc++abi" not in d]
+        linkage = f"shared({shared[0]})" if shared else "static"
+        defined = _report_libcxxabi_doubled(real, str(real.parent), "ZIG-BIN-")
+        print(f"    ZIG-BIN-LIBCXX: {linkage}")
+        if defined is None:
+            print("    ZIG-BIN-LIBCXXABI-DOUBLED: unknown (nm failed)")
+    except Exception as e:  # report-only
+        WARN("zig-bin-libcxx", f"probe error: {e}")
+
+
+def _xdylib_otool(exe: Path) -> None:
+    """Print LC_RPATH entries and linked dylibs of exe (report-only)."""
+    otool = shutil.which("otool") or shutil.which("llvm-otool")
+    if not otool:
+        print("    XDYLIB: otool unavailable")
+        return
+    lines = _run([otool, "-l", str(exe)], cwd=str(exe.parent)).stdout.splitlines()
+    for i, l in enumerate(lines):
+        if l.strip() == "cmd LC_RPATH":
+            for p in lines[i + 1:i + 4]:
+                if p.strip().startswith("path "):
+                    print(f"    XDYLIB: LC_RPATH {p.strip()}")
+    out = _run([otool, "-L", str(exe)], cwd=str(exe.parent)).stdout
+    for l in out.splitlines():
+        print(f"    XDYLIB: {l.rstrip()}")
+
+
+def _report_xdylib_exception(zig: str, td: str) -> None:
+    """Report-only: exception thrown in a dylib is caught by the executable."""
+    try:
+        d = Path(td) / "xdylib"
+        d.mkdir()
+        (d / "thrower.cpp").write_text(
+            '#include <stdexcept>\n'
+            'extern "C++" __attribute__((visibility("default")))\n'
+            'void thrower() { throw std::runtime_error("boom"); }\n'
+        )
+        (d / "main.cpp").write_text(
+            '#include <exception>\n'
+            '#include <cstdio>\n'
+            'void thrower();\n'
+            'int main() {\n'
+            '  try { thrower(); } catch (const std::exception&) {\n'
+            '    std::puts("CAUGHT"); return 0;\n'
             '  }\n'
+            '  return 1;\n'
             '}\n'
         )
-
-        r = _run([zig, "c++", "-shared", "-o", str(cxx_out), str(cxx_src)],
-                 cwd=td, timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
-
-        if timed_out(r):
-            FAIL(f"{label}: C++ compilation timed out after {_COMPILE_TIMEOUT_S}s")
-            return
-
+        r = _run([zig, "c++", "-shared", "-o", str(d / "libthrower.dylib"),
+                  str(d / "thrower.cpp")], cwd=str(d),
+                 timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
         if r.returncode != 0:
-            FAIL(f"{label}: C++ compilation failed",
-                 f"rc={r.returncode}\n{r.stderr[:2000]}")
+            WARN("libcxxabi-xdylib-exception",
+                 f"dylib build rc={r.returncode}\n{r.stderr[:500]}")
+            return
+        r = _run([zig, "c++", "-o", str(d / "xmain"), str(d / "main.cpp"),
+                  "-L" + str(d), "-lthrower", "-Wl,-rpath," + str(d)],
+                 cwd=str(d), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+        if r.returncode != 0:
+            WARN("libcxxabi-xdylib-exception",
+                 f"exe build rc={r.returncode}\n{r.stderr[:500]}")
+            return
+        _xdylib_otool(d / "xmain")
+        r = _run([str(d / "xmain")], cwd=str(d), timeout=60)
+        verdict = "caught" if "CAUGHT" in r.stdout else "NOT caught"
+        line = f"LIBCXXABI-XDYLIB-EXCEPTION: {verdict} (rc={r.returncode})"
+        print(f"    {line}")
+        if verdict != "caught":
+            print(f"    XDYLIB: stderr tail:\n{_tail(r.stderr, 15)}")
+            print(f"    XDYLIB: stdout tail:\n{_tail(r.stdout, 15)}")
+            r2 = _run(["env", f"DYLD_LIBRARY_PATH={_prefix}/lib", str(d / "xmain")],
+                      cwd=str(d), timeout=60)
+            v2 = "caught" if "CAUGHT" in r2.stdout else "NOT caught"
+            print(f"    LIBCXXABI-XDYLIB-EXCEPTION-DYLD-PATH: {v2} "
+                  f"(rc={r2.returncode})")
+            if v2 != "caught":
+                print(_tail(r2.stderr, 15))
+            WARN("libcxxabi-xdylib-exception", line)
+    except Exception as e:  # report-only
+        WARN("libcxxabi-xdylib-exception", f"probe error: {e}")
+
+
+_PROBE_ARCH = {
+    "x86_64": "x86_64",
+    "aarch64": "aarch64",
+    "ppc64le": "powerpc64le",
+    "powerpc64le": "powerpc64le",
+    "riscv64": "riscv64",
+}
+
+_PROBE_THROWER = (
+    '#include <stdexcept>\n'
+    '#include <string>\n'
+    'struct Base { virtual ~Base() {} };\n'
+    'struct Derived : Base { int v = 42; };\n'
+    'extern "C++" __attribute__((visibility("default")))\n'
+    'void thrower(int x) { throw std::runtime_error("boom" + std::to_string(x)); }\n'
+    'extern "C++" __attribute__((visibility("default")))\n'
+    'Base* make_base() { return new Derived(); }\n'
+)
+
+_PROBE_MAIN = (
+    '#include <exception>\n'
+    '#include <iostream>\n'
+    '#include <map>\n'
+    '#include <memory>\n'
+    '#include <string>\n'
+    '#include <thread>\n'
+    '#include <vector>\n'
+    'struct Base { virtual ~Base() {} };\n'
+    'struct Derived : Base { int v = 42; };\n'
+    'void thrower(int);\n'
+    'Base* make_base();\n'
+    'int main() {\n'
+    '  try { thrower(1); } catch (const std::exception& e) {\n'
+    '    std::cout << "CAUGHT " << e.what() << std::endl;\n'
+    '  }\n'
+    '  std::vector<std::string> v{"a", "b"};\n'
+    '  std::map<std::string, int> m{{"x", 1}};\n'
+    '  int n = 0;\n'
+    '  std::thread t([&] { n = (int)v.size() + m["x"]; });\n'
+    '  t.join();\n'
+    '  std::unique_ptr<Base> b(make_base());\n'
+    '  auto* d = dynamic_cast<Derived*>(b.get());\n'
+    '  auto sp = std::make_shared<int>(n);\n'
+    '  if (!d || d->v != 42 || *sp != 3) return 2;\n'
+    '  std::cout << "OK" << std::endl;\n'
+    '  return 0;\n'
+    '}\n'
+)
+
+
+def _vkey(p: Path) -> tuple[int, ...]:
+    try:
+        return tuple(int(x) for x in p.name.split("."))
+    except ValueError:
+        return (-1,)
+
+
+def _find_conda_gcc() -> tuple[Path, str, str] | None:
+    """Return (include/c++ dir, triplet, version) of the newest conda GCC."""
+    found = sorted(_prefix.glob("lib/gcc/*-conda-linux-gnu/*/include/c++"),
+                   key=lambda p: _vkey(p.parent.parent))
+    if not found:
+        return None
+    best = found[-1]
+    return best, best.parent.parent.parent.name, best.parent.parent.name
+
+
+def _head(text: str, n: int = 15) -> str:
+    return "\n".join(text.splitlines()[:n])
+
+
+def _tail(text: str, n: int = 15) -> str:
+    return "\n".join(text.splitlines()[-n:])
+
+
+def _probe_sym_report(probe: Path, td: Path) -> None:
+    readelf = shutil.which("readelf") or shutil.which("llvm-readelf")
+    nm = shutil.which("nm") or shutil.which("llvm-nm")
+    if readelf:
+        needed: list[str] = []
+        for f in (probe, td / "libthrower.so"):
+            r = _run([readelf, "-d", str(f)], cwd=str(td))
+            needed += [l.split("[")[-1].rstrip("]") for l in r.stdout.splitlines()
+                       if "NEEDED" in l and "[" in l]
+        print(f"    LIBSTDCXX-PROBE-NEEDED: {', '.join(needed) or '(none)'}")
+        r = _run([readelf, "-V", str(probe)], cwd=str(td))
+        words = r.stdout.replace("(", " ").replace(")", " ").split()
+        for pre in ("GLIBCXX_", "GLIBC_"):
+            vers = [tuple(int(x) for x in w[len(pre):].split("."))
+                    for w in words
+                    if w.startswith(pre) and w[len(pre):].replace(".", "").isdigit()]
+            if vers:
+                print(f"    max {pre}: {'.'.join(map(str, max(vers)))}")
+    else:
+        print("    LIBSTDCXX-PROBE-NEEDED: skipped (no readelf)")
+    if nm:
+        r = _run([nm, "-D", "--undefined-only", str(probe)], cwd=str(td))
+        n = sum(1 for l in r.stdout.splitlines() if "St3__1" in l)
+        print(f"    LIBSTDCXX-PROBE-LIBCXX-SYMS: {n}")
+    else:
+        print("    LIBSTDCXX-PROBE-LIBCXX-SYMS: skipped (no nm)")
+
+
+def test_libstdcxx_probe() -> None:
+    """Report-only (Linux): zig cc against conda's shared GNU libstdc++."""
+    print("--- [report] zig cc vs conda libstdc++ ---")
+    if not is_linux_target:
+        SKIP("libstdcxx-probe", "Linux-only measurement")
+        return
+    if _arch == "s390x":
+        SKIP("libstdcxx-probe", "s390x not supported")
+        return
+    zig = _find_zig_binary()
+    if not zig:
+        SKIP("libstdcxx-probe", f"zig binary not found ({_zig_bin_name})")
+        return
+    arch = _PROBE_ARCH.get(platform.machine())
+    if not arch:
+        SKIP("libstdcxx-probe", f"unmapped machine {platform.machine()}")
+        return
+    try:
+        _libstdcxx_probe_run(zig, arch)
+    except Exception as e:  # report-only
+        WARN("libstdcxx-probe", f"probe error: {e}")
+
+
+def _libstdcxx_probe_run(zig: str, arch: str) -> None:
+    gcc = _find_conda_gcc()
+    if not gcc:
+        WARN("LIBSTDCXX-PROBE: missing gcc include/c++ dir",
+             f"no match under {_prefix}/lib/gcc")
+        return
+    hdr, triplet, ver = gcc
+    libdir_dev = _prefix / "lib" / "gcc" / triplet / ver
+    wanted = {
+        f"{triplet}/bits/c++config.h": hdr / triplet / "bits" / "c++config.h",
+        "backward": hdr / "backward",
+        "libstdc++.so.6": _prefix / "lib" / "libstdc++.so.6",
+        "libgcc_s.so.1": _prefix / "lib" / "libgcc_s.so.1",
+        "gcc libdir": libdir_dev,
+    }
+    missing = [k for k, p in wanted.items() if not p.exists()]
+    if missing:
+        have = [k for k in wanted if k not in missing]
+        WARN(f"LIBSTDCXX-PROBE: missing {', '.join(missing)}",
+             f"found: {', '.join(have) or 'nothing'}")
+        return
+    print(f"    LIBSTDCXX-PROBE: gcc {ver} triplet {triplet}")
+
+    libs = [str(_prefix / "lib" / "libstdc++.so.6"),
+            str(_prefix / "lib" / "libgcc_s.so.1")]
+    rpath = f"-Wl,-rpath,{_prefix}/lib"
+    flags = ["-target", f"{arch}-linux-gnu.2.28", "-nostdlib++", "-std=c++17", "-w",
+             "-I", str(hdr), "-I", str(hdr / triplet),  # -I so libstdc++ precedes zig's libc -isystem dirs (include_next)
+             "-I", str(hdr / "backward")]
+
+    def cc(args: list[str], td: Path):
+        return _run([zig, "cc"] + args, cwd=str(td),
+                    timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+
+    def verdict(tag: str, r) -> bool:
+        if timed_out(r):
+            print(f"    {tag}: FAIL (timeout {_COMPILE_TIMEOUT_S}s)")
+            return False
+        ok = r.returncode == 0
+        print(f"    {tag}: {'ok' if ok else 'FAIL'}")
+        if not ok:
+            print(_tail(r.stderr, 30))
+        return ok
+
+    with tempfile.TemporaryDirectory() as tds:
+        td = Path(tds)
+        (td / "override" / "sys").mkdir(parents=True)
+        (td / "override" / "sys" / "single_threaded.h").write_text(
+            "/* probe override: zig generic-glibc #errors below 2.32; 0 = not single-threaded, so libstdc++ always uses atomics */\n"
+            "#pragma once\n"
+            "static const char __libc_single_threaded = 0;\n")
+        i = flags.index("-I")
+        flags = flags[:i] + ["-I", str(td / "override")] + flags[i:]
+        print("    LIBSTDCXX-PROBE: using sys/single_threaded.h override "
+              "(static const __libc_single_threaded = 0)")
+        (td / "thrower.cpp").write_text(_PROBE_THROWER)
+        (td / "main.cpp").write_text(_PROBE_MAIN)
+
+        r = cc(flags + ["-shared", "-fPIC", "thrower.cpp"] + libs + [rpath,
+               "-o", "libthrower.so"], td)
+        if not verdict("LIBSTDCXX-PROBE-COMPILE", r):
+            WARN("LIBSTDCXX-PROBE-COMPILE", "compile failed (report-only)")
             return
 
-        if not cxx_out.exists():
-            FAIL(f"{label}: output missing")
+        r = cc(flags + ["main.cpp", "libthrower.so"] + libs
+               + [rpath, f"-Wl,-rpath,{td}", "-o", "probe"], td)
+        if not verdict("LIBSTDCXX-PROBE-LINK", r):
+            WARN("LIBSTDCXX-PROBE-LINK", "link failed (report-only)")
             return
 
-        PASS(f"{label}: C++ shared lib compiled")
+        r = _run(["env", f"LD_LIBRARY_PATH={td}:{_prefix}/lib", str(td / "probe")],
+                 cwd=str(td), timeout=60, target=_conda_triplet)
+        ran = (r.returncode == 0 and "CAUGHT" in r.stdout and "OK" in r.stdout)
+        if ran:
+            print("    LIBSTDCXX-PROBE-RUN: ok")
+            PASS("libstdcxx-probe: compile+link+run against conda libstdc++")
+        else:
+            print(f"    LIBSTDCXX-PROBE-RUN: FAIL (rc={r.returncode})")
+            print(_head(r.stdout, 10))
+            print(_tail(r.stderr, 30))
+            WARN("LIBSTDCXX-PROBE-RUN", f"rc={r.returncode} (report-only)")
 
-        # Platform-specific dynamic dependency check
-        if is_linux_target:
-            readelf = shutil.which("readelf")
-            if not readelf:
-                SKIP(f"{label}: readelf check", "readelf not found")
-                return
-            r2 = _run([readelf, "-d", str(cxx_out)], cwd=td)
-            if r2.returncode != 0:
-                WARN(f"{label}: readelf failed", f"rc={r2.returncode}")
-                return
-            needed = [l for l in r2.stdout.splitlines() if "NEEDED" in l]
-            libcxx_needed = [l for l in needed if "libc++" in l]
-            if libcxx_needed:
-                PASS(f"{label}: NEEDED libc++ in output (shared linkage!)")
-                for dep in libcxx_needed:
-                    print(f"    {dep.strip()}")
-            else:
-                FAIL(f"{label}: no NEEDED libc++ (still static)")
-                print("    All NEEDED entries:")
-                for dep in needed:
-                    print(f"      {dep.strip()}")
+        _probe_sym_report(td / "probe", td)
 
-        elif is_macos_target:
-            otool = shutil.which("otool")
-            if not otool:
-                SKIP(f"{label}: otool check", "otool not found")
-                return
-            r2 = _run([otool, "-L", str(cxx_out)], cwd=td)
-            if r2.returncode != 0:
-                WARN(f"{label}: otool failed", f"rc={r2.returncode}")
-                return
-            libcxx_deps = [l for l in r2.stdout.splitlines() if "libc++" in l]
-            if libcxx_deps:
-                PASS(f"{label}: libc++ dylib dependency in output (shared linkage!)")
-                for dep in libcxx_deps:
-                    print(f"    {dep.strip()}")
-            else:
-                all_deps = [l.strip() for l in r2.stdout.splitlines()
-                            if l.strip() and not l.strip().startswith(str(cxx_out))]
-                FAIL(f"{label}: no libc++ dylib dependency (still static)")
-                print("    All load commands:")
-                for dep in all_deps:
-                    print(f"      {dep}")
+        r = cc(flags + ["main.cpp", "libthrower.so", libs[0], rpath,
+                        f"-Wl,-rpath,{td}", "-o", "probe_nogcc"], td)
+        if r.returncode == 0:
+            print("    LIBSTDCXX-PROBE-NO-LIBGCC_S: links")
+        else:
+            undef = [l.strip() for l in r.stderr.splitlines()
+                     if "undefined" in l][:5]
+            print("    LIBSTDCXX-PROBE-NO-LIBGCC_S: undefined: "
+                  + ("; ".join(undef) or _head(r.stderr, 3)))
 
-        elif is_win_target:
-            # On non-unix cross-compile, use objdump (from binutils) to check DLL imports
-            objdump = shutil.which("objdump")
-            if not objdump:
-                SKIP(f"{label}: objdump check", "objdump not found")
-                return
-            r2 = _run([objdump, "-p", str(cxx_out)], cwd=td)
-            if r2.returncode != 0:
-                WARN(f"{label}: objdump failed", f"rc={r2.returncode}")
-                return
-            dll_imports = [l for l in r2.stdout.splitlines()
-                           if "DLL Name" in l or "libc++" in l.lower()]
-            libcxx_imports = [l for l in dll_imports if "libc++" in l.lower()]
-            if libcxx_imports:
-                PASS(f"{label}: libc++ DLL import in output (shared linkage!)")
-                for dep in libcxx_imports:
-                    print(f"    {dep.strip()}")
-            else:
-                FAIL(f"{label}: no libc++ DLL import (still static)")
-                print("    All DLL imports:")
-                for dep in dll_imports:
-                    print(f"      {dep.strip()}")
+        alias_cmd = [zig, "c++", "-target", f"{arch}-linux-gnu.2.28",
+                     "-std=c++17", "main.cpp", "libthrower.so", "-lstdc++",
+                     rpath, f"-Wl,-rpath,{td}", "-o", "probe_alias"]
+        r = _run(alias_cmd, cwd=str(td), timeout=_COMPILE_TIMEOUT_S,
+                 target=_conda_triplet)
+        nm = shutil.which("nm") or shutil.which("llvm-nm")
+        if r.returncode == 0 and nm:
+            r2 = _run([nm, "-D", "--undefined-only", str(td / "probe_alias")],
+                      cwd=str(td))
+            n = sum(1 for l in r2.stdout.splitlines() if "St3__1" in l)
+            print(f"    LIBSTDCXX-PROBE-ALIAS: -lstdc++ gives libc++ ({n} St3__1 syms)")
+        else:
+            print("    LIBSTDCXX-PROBE-ALIAS: unmeasured "
+                  f"(rc={r.returncode}, nm={'yes' if nm else 'no'})")
 
 
 def _platform_shared_lib_info() -> tuple[str, str, str | None]:
-    """Return (primary_name, soname_or_id, symlink_name) for the platform.
-
-    symlink_name is None when no symlink is needed.
-    """
-    if is_linux_target:
-        return "libc++.so.1", "libc++.so.1", "libc++.so"
-    if is_macos_target:
-        return "libc++.1.dylib", "libc++.1.dylib", "libc++.dylib"
-    if is_win_target:
-        return "libc++.dll.a", "", None
-    return "", "", None
+    """Return (primary_name, install_name, symlink_name) for macOS."""
+    return "libc++.1.dylib", "libc++.1.dylib", "libc++.dylib"
 
 
-def _build_shared_libcxx(
-    zig: str, libcxx_a: Path, td_path: Path
-) -> Path | None:
+def _build_shared_libcxx(zig: str, libcxx_a: Path, td_path: Path) -> Path | None:
     """Build a shared libc++ from static libc++.a. Returns output path or None."""
     primary, soname, _ = _platform_shared_lib_info()
-    if not primary:
-        return None
-
     shared_build = td_path / primary
-
-    if is_linux_target:
-        cmd = [
-            zig, "cc", "-shared",
-            "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
-            "-Wl,-soname," + soname,
-            "-o", str(shared_build),
-        ]
-    elif is_macos_target:
-        cmd = [
-            zig, "cc", "-shared",
-            "-Wl,-force_load," + str(libcxx_a),
-            "-Wl,-install_name,@rpath/" + soname,
-            "-o", str(shared_build),
-        ]
-    elif is_win_target:
-        # Build import lib + DLL from static archive
-        dll_build = td_path / "libc++.dll"
-        cmd = [
-            zig, "cc", "-shared",
-            "-Wl,--whole-archive", str(libcxx_a), "-Wl,--no-whole-archive",
-            "-Wl,--out-implib," + str(shared_build),
-            "-o", str(dll_build),
-        ]
-    else:
-        return None
+    cmd = [
+        zig, "cc", "-shared",
+        "-Wl,-force_load," + str(libcxx_a),
+        "-Wl,-install_name,@rpath/" + soname,
+        "-o", str(shared_build),
+    ]
 
     r = _run(cmd, cwd=str(td_path), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
     if r.returncode != 0 or not shared_build.exists():
@@ -674,10 +904,11 @@ def test_libcxx_shared_simulation() -> None:
     """
     print("--- [patch-0008] Shared libc++ simulation ---")
 
-    plat = _get_platform_key()
-    if not plat:
-        SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
+    if not is_macos_target:
+        SKIP("libcxx-simulation",
+             "shared libc++ path is macOS-only (patch scoped to osx)")
         return
+    plat = "macos"
 
     zig = _find_zig_binary()
     if not zig:
@@ -722,11 +953,9 @@ def test_libcxx_shared_simulation() -> None:
             # Phase 1: Find zig's cached libc++.a
             libcxx_a, libcxx_a_reason = _find_libcxx_static(zig, td_path)
             if not libcxx_a:
-                # Fallback: search zig lib dir for any libc++.a
                 zig_lib_candidates = list(zig_lib.rglob("libc++.a"))
-                if zig_lib_candidates:
-                    libcxx_a = zig_lib_candidates[0]
-                else:
+                libcxx_a = zig_lib_candidates[0] if zig_lib_candidates else None
+                if not libcxx_a:
                     SKIP("libcxx-simulation", libcxx_a_reason)
                     return
 
@@ -753,12 +982,6 @@ def test_libcxx_shared_simulation() -> None:
                 shared_symlink.symlink_to(primary)
             PASS(f"placed {primary} at probe path")
 
-            # On non-unix, also copy the DLL next to the import lib
-            if is_win_target:
-                dll_build = td_path / "libc++.dll"
-                if dll_build.exists():
-                    shutil.copy2(str(dll_build), str(probe_dir / "libc++.dll"))
-
             # Phase 4: Compile and check dynamic dependency
             _check_needed_libcxx(zig, "libcxx-from-cache")
 
@@ -768,10 +991,6 @@ def test_libcxx_shared_simulation() -> None:
             shared_symlink.unlink()
         if shared_lib.exists():
             shared_lib.unlink()
-        # non-unix: also clean up DLL
-        dll_placed = probe_dir / "libc++.dll"
-        if dll_placed.exists():
-            dll_placed.unlink()
         for d in [probe_dir] + list(reversed(created_dirs)):
             try:
                 d.rmdir()
@@ -801,6 +1020,8 @@ def main() -> int:
     test_libcxx_fallback_static()
     test_libcxx_probe_paths()
     test_libcxx_shared_simulation()
+    test_zig_binary_libcxx()
+    test_libstdcxx_probe()
 
     print()
     n_pass = len(_results["PASS"])

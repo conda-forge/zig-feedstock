@@ -27,6 +27,12 @@ All platforms: wires LLD MachO into the zig cc pipeline and allows
 `Lld.zig-prefer-shared-libcxx.patch` because the latter patches code inside
 the `machoLink` function the former adds.
 
+Scope (2026-10-11): `Lld.zig-prefer-shared-libcxx.patch` is applied under
+`if: osx` only (recipe.yaml:181-183). conda-forge libcxx is rendered only for
+linux-64/osx-64/osx-arm64 (none for windows), so linux and windows-gnu always
+link zig's static libc++/libc++abi. macho-lld-support itself stays on all
+platforms.
+
 ### 1.2 Compile-time deps on macho-lld-support <a id="compile-time-deps-on-macho-lld-support"></a>
 `llvm.zig-lld-ofmt-macho.patch` uses the `.macho` arm of `switch (lld.ofmt)`,
 added by `Lld.zig-macho-lld-support.patch`; it applies cleanly at zero fuzz
@@ -79,10 +85,12 @@ Lowers ppc64le `glibc_min` from 2.19 to 2.17: the abilists have full 2.17
 data. Drop this patch when the conda-forge ppc64le glibc floor reaches 2.18
 or higher.
 
-### 1.7 Patch: Lld.zig-no-unconditional-as-needed-glibc-bundled <a id="patch-lld-no-unconditional-as-needed-glibc-bundled"></a>
-Honours `-Wl,--no-as-needed` for bundled glibc libs (e.g. `-lm`). Without
-this patch, zig drops `-lm` from `DT_NEEDED` even when the caller
-explicitly requested `--no-as-needed`, breaking `dlsym(sin)` at runtime.
+### 1.7 Patch: Lld.zig-glibc-libs-honour-no-as-needed <a id="patch-lld-glibc-libs-honour-no-as-needed"></a>
+Honours `-Wl,--no-as-needed` for bundled glibc libs (e.g. `-lm`), per
+conda-forge/zig-feedstock#209. Default is pristine (all stubs `--as-needed`);
+only a libc lib passed via `-l` while `--no-as-needed` was active is forced
+into `DT_NEEDED`. Unconditional (target-keyed, identical on every host).
+Replaced the linux-only patch that forced every stub `--no-as-needed`.
 
 ### 1.8 Patch: Sema.zig-shr-exact-safety-downgrade <a id="patch-sema-shr-exact-safety-downgrade"></a>
 Removed at 0.18.0-dev.131: absorbed upstream (src/Sema.zig emits .shr when safety is on).

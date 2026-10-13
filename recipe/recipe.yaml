@@ -2,13 +2,13 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 1312
+  build_number: 1460
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
-  snapshot: "131+41f885830"
+  snapshot: "146+35accc06e"
   snapshot_ref: "131"
   build_ref: "1310"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
@@ -174,11 +174,15 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: 6944073597cb6ece01e0f16dc8479edfb539dd4cd66b445e567faebc24fa306b
+    sha256: 5fe13b3147d231ff5ca0ecaad69b47d4ab2b4e5b936c1f7d087a35312c385e14
     patches:
       # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
-      - patches/Lld.zig-prefer-shared-libcxx.patch
+      - if: osx
+        then:
+          - patches/Lld.zig-prefer-shared-libcxx.patch
+      # See recipe/NOTES.md 1.7.
+      - patches/Lld.zig-glibc-libs-honour-no-as-needed.patch
       # See recipe/NOTES.md 1.2.
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
@@ -202,8 +206,6 @@ source:
           - patches/linux/target.zig-glibc-needs-libunwind.patch
           # See recipe/NOTES.md 1.6.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
-          # See recipe/NOTES.md 1.7.
-          - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
           # See recipe/NOTES.md 1.9.
           - patches/linux/build.zig-01-maxrss-raise.patch
       # See recipe/NOTES.md 1.10.
@@ -237,32 +239,32 @@ source:
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: cdecd965d8b8795afbb9f1a780904cba190d257ee7cd1d33347c4026dab5f64c
+            sha256: 1061dbb921f62b67765810609a80c17fa69eeced9f21e9a7e0d06b4e0d7a3715
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: ace7690851068ab61e0c377afe7426565b318b6b22b70f145b30bd30910ad405
+            sha256: 09251ef727afa183aabb904bf70300614de58963ad70329c9e3ecda03ebdb949
             target_directory: zig-bootstrap
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 48935a7ae2519a553b4f9eb15400d9bb561010ebe8dc56bdc1d852de3306f2c6
+            sha256: 7200a37ab074878c28e4baa3608667b99ceef2bdccd7fa8009014a71f529a242
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 792bae330fa10186f7950e82af75bb9be4940fb85997c0be221737eeb085aa2b
+            sha256: b97b6314f73cf14f55f3ad1b7c316ccf2a6e0aec3895e318f1f0f7f35fc911db
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 356b6492ebd9724dd28eb66d7651f82c084e6bb66dffd1efe405309def0d27c0
+            sha256: ec5d64aae44b54ce8425ecd7b40f1fa5c8061d1dc80939b02ed036513d69ae67
             target_directory: zig-bootstrap
       - if: build_platform == "win-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 64c270a1ffe5d753061d68116b9b91724d27df4bb6a77502522743c34319fe9a
+            sha256: 1b221ff8185872e6cc57eafc349ddc739404be09f688eab76a15912277411ea7
             target_directory: zig-bootstrap
 
 build:
@@ -422,6 +424,12 @@ outputs:
             - if: osx
               then:
                 - libcxx
+            - if: linux and not s390x
+              then:
+                - libstdcxx-devel_${{ target_platform }}
+                - libgcc-devel_${{ target_platform }}
+                - libstdcxx
+                - libgcc
             - if: linux and build_platform != target_platform
               then:
                 - sysroot_${{ target_platform }}
@@ -680,6 +688,10 @@ outputs:
                 then:
                   - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
+              # Cross lanes run the pinned published impl, which may predate the fix.
+              - if: not (is_cross_compiler or is_cross_target)
+                then:
+                  - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
               # the cc wrapper must filter them before forwarding to zig cc.
               - if: not unix
                 then:
@@ -712,6 +724,7 @@ outputs:
                 - testing/_test_utils.py
                 - testing/test-cross-shim.bat
                 - testing/test_zig_toolchain.py
+                - testing/test_glibc_as_needed.py
 
           # Verify <triplet>-zig-windres wrapper: -o flag translation works
           - script:
