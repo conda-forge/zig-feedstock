@@ -998,6 +998,97 @@ def test_libcxx_shared_simulation() -> None:
                 pass
 
 
+_XARCH_TARGETS = ("aarch64-macos", "x86_64-macos")
+
+
+def _build_arch_stub(zig: str, tgt: str, td: Path) -> Path | None:
+    """Build a stub libc++.1.dylib for tgt; returns its directory or None."""
+    d = td / tgt
+    d.mkdir()
+    src = td / "stub.c"
+    src.write_text("int zig_feedstock_libcxx_stub(void){return 0;}\n")
+    r = _run([zig, "cc", "-shared", "-target", tgt,
+              "-Wl,-install_name,@rpath/libc++.1.dylib",
+              "-o", str(d / "libc++.1.dylib"), str(src)],
+             cwd=str(td), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+    if r.returncode != 0 or not (d / "libc++.1.dylib").exists():
+        FAIL(f"libcxx-arch-select: build {tgt} stub dylib",
+             f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return None
+    return d
+
+
+def _link_has_libcxx(zig: str, tgt: str, ldir: Path, td: Path,
+                     label: str) -> bool | None:
+    """Link a C++ main against -L ldir; True if libc++ dylib is linked."""
+    src = td / "main.cpp"
+    src.write_text("int main(){return 0;}\n")
+    out = td / f"a.out.{label}"
+    r = _run([zig, "c++", "-target", tgt, f"-L{ldir}", str(src), "-o", str(out)],
+             cwd=str(td), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+    if r.returncode != 0 or not out.exists():
+        FAIL(f"libcxx-arch-select: {label}: link",
+             f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return None
+    otool = shutil.which("otool") or shutil.which("llvm-otool")
+    if not otool:
+        SKIP(f"libcxx-arch-select: {label}", "otool not found")
+        return None
+    r2 = _run([otool, "-L", str(out)], cwd=str(td))
+    if r2.returncode != 0:
+        WARN(f"libcxx-arch-select: {label}: otool", f"rc={r2.returncode}")
+        return None
+    return any("libc++.1.dylib" in l for l in r2.stdout.splitlines())
+
+
+def test_libcxx_arch_select() -> None:
+    """
+    darwin link picks a shared libc++ only if it has a slice for the target arch.
+
+    MATCH:    -L dir with a target-arch stub -> libc++.1.dylib is linked.
+    MISMATCH: (cross target only) -L dir with the other arch's stub
+              -> no libc++ dylib (static fallback).
+    """
+    print("--- [patch-0008] Shared libc++ target-arch selection ---")
+    if not (is_macos_target and _build_is_mac):
+        SKIP("libcxx-arch-select", "needs a macOS build host and macOS target")
+        return
+    zig = _find_zig_binary()
+    if not zig:
+        SKIP("libcxx-arch-select", f"zig binary not found ({_zig_bin_name})")
+        return
+
+    host = "aarch64" if platform.machine() in ("arm64", "aarch64") else "x86_64"
+    with tempfile.TemporaryDirectory() as tds:
+        td = Path(tds)
+        stubs: dict[str, Path] = {}
+        for tgt in _XARCH_TARGETS:
+            d = _build_arch_stub(zig, tgt, td)
+            if d is None:
+                return
+            stubs[tgt] = d
+
+        for tgt in _XARCH_TARGETS:
+            got = _link_has_libcxx(zig, tgt, stubs[tgt], td, f"{tgt}-match")
+            if got is None:
+                continue
+            if got:
+                PASS(f"libcxx-arch-select: {tgt} picks matching-arch libc++.1.dylib")
+            else:
+                FAIL(f"libcxx-arch-select: {tgt} ignored matching-arch libc++.1.dylib")
+
+            if tgt.split("-")[0] == host:
+                continue
+            other = next(t for t in _XARCH_TARGETS if t != tgt)
+            got = _link_has_libcxx(zig, tgt, stubs[other], td, f"{tgt}-mismatch")
+            if got is None:
+                continue
+            if got:
+                FAIL(f"libcxx-arch-select: {tgt} linked wrong-arch libc++.1.dylib")
+            else:
+                PASS(f"libcxx-arch-select: {tgt} rejects wrong-arch libc++ (static)")
+
+
 # ===================================================================
 # Main
 # ===================================================================
@@ -1020,6 +1111,7 @@ def main() -> int:
     test_libcxx_fallback_static()
     test_libcxx_probe_paths()
     test_libcxx_shared_simulation()
+    test_libcxx_arch_select()
     test_zig_binary_libcxx()
     test_libstdcxx_probe()
 

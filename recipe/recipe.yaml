@@ -640,6 +640,10 @@ outputs:
             then:
               - libstdcxx >=${{ cxx_compiler_version }}
               - libgcc >=${{ cxx_compiler_version }}
+          # zig c++ links the consumer's HOST libc++.1.dylib (Lld.zig-prefer-shared-libcxx.patch)
+          - if: xc_osx
+            then:
+              - libcxx >=${{ llvm_version }}
     tests:
       # test-env solve (below) happens before script-level is_testable guards
       - if: is_testable
