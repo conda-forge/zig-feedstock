@@ -84,10 +84,12 @@ Lowers ppc64le `glibc_min` from 2.19 to 2.17: the abilists have full 2.17
 data. Drop this patch when the conda-forge ppc64le glibc floor reaches 2.18
 or higher.
 
-### 1.7 Patch: Lld.zig-no-unconditional-as-needed-glibc-bundled <a id="patch-lld-no-unconditional-as-needed-glibc-bundled"></a>
-Honours `-Wl,--no-as-needed` for bundled glibc libs (e.g. `-lm`). Without
-this patch, zig drops `-lm` from `DT_NEEDED` even when the caller
-explicitly requested `--no-as-needed`, breaking `dlsym(sin)` at runtime.
+### 1.7 Patch: Lld.zig-glibc-libs-honour-no-as-needed <a id="patch-lld-glibc-libs-honour-no-as-needed"></a>
+Honours `-Wl,--no-as-needed` for bundled glibc libs (e.g. `-lm`), per
+conda-forge/zig-feedstock#209. Default is pristine (all stubs `--as-needed`);
+only a libc lib passed via `-l` while `--no-as-needed` was active is forced
+into `DT_NEEDED`. Unconditional (target-keyed, identical on every host).
+Replaced the linux-only patch that forced every stub `--no-as-needed`.
 
 ### 1.8 Patch: Sema.zig-shr-exact-safety-downgrade <a id="patch-sema-shr-exact-safety-downgrade"></a>
 LLVM backend: downgrades `.shr_exact` to `.shr` when safety checks are on.

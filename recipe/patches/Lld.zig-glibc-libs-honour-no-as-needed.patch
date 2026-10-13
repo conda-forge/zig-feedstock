@@ -1,0 +1,90 @@
+# Purpose: Honour -Wl,--no-as-needed for bundled glibc stub libs (conda-forge/zig-feedstock#209).
+# Problem: createModule drops -l<libc-name> queries (isLibCLibName -> link_libc) and
+#          with them the `needed` flag, so elfLink emits every bundled glibc stub
+#          under --as-needed. `-Wl,--no-as-needed -lm` then yields no DT_NEEDED on
+#          libm.so.6, breaking consumers that rely on it (e.g. dlopen by SONAME).
+# Fix:     main.zig records libc lib names requested while --no-as-needed was active
+#          and passes them via Compilation.CreateOptions.libc_no_as_needed_libs
+#          (hashed into the link cache manifest). elfLink wraps only those stubs in
+#          --no-as-needed/--as-needed. Default stays pristine: all stubs --as-needed.
+# Host:    unconditional; behaviour is target-keyed (isGnuLibC), identical on all hosts.
+# Supersedes: linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
+# Upstream: not filed
+# Drop-when: upstream propagates `needed` for libc lib names
+# Applies-after: Lld.zig-macho-lld-support.patch, Lld.zig-prefer-shared-libcxx.patch
+# Last-verified: 2026-10-12 (zig 0.17.0, LLVM 22)
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -3671,6 +3671,7 @@
+         .mingw_unicode_entry_point = mingw_unicode_entry_point,
+         .link_inputs = create_module.link_inputs.items,
+         .windows_lib_names = create_module.windows_libs.keys(),
++        .libc_no_as_needed_libs = create_module.libc_no_as_needed_libs.items,
+         .want_compiler_rt = if (zig_cc_explicitly_link_compiler_rt) true else want_compiler_rt,
+         .want_ubsan_rt = want_ubsan_rt,
+         .hash_style = hash_style,
+@@ -3997,6 +3998,8 @@
+     /// `unresolved_link_inputs` and `windows_libs`.
+     cli_link_inputs: std.ArrayList(link.UnresolvedInput),
+     windows_libs: std.array_hash_map.String(void),
++    /// libc lib names (e.g. "m") passed via -l while --no-as-needed was active.
++    libc_no_as_needed_libs: std.ArrayList([]const u8) = .empty,
+     /// The local variable `unresolved_link_inputs` is fed into library
+     /// resolution, mutating the input array, and producing this data as
+     /// output. Allocated with gpa.
+@@ -4135,4 +4138,5 @@
+                 if (std.zig.target.isLibCLibName(target, lib_name)) {
+                     create_module.opts.link_libc = true;
++                    if (nq.query.needed) try create_module.libc_no_as_needed_libs.append(arena, lib_name);
+                     continue;
+                 }
+--- a/src/Compilation.zig
++++ b/src/Compilation.zig
+@@ -96,6 +96,8 @@
+ function_sections: bool,
+ data_sections: bool,
+ link_eh_frame_hdr: bool,
++/// libc lib names to link with --no-as-needed (bundled glibc stubs only).
++libc_no_as_needed_libs: []const []const u8,
+ native_system_include_paths: []const []const u8,
+ /// List of symbols forced as undefined in the symbol table
+ /// thus forcing their resolution by the linker.
+@@ -1523,6 +1525,7 @@
+     linker_max_memory: ?u64 = null,
+     linker_global_base: ?u64 = null,
+     linker_export_symbol_names: []const []const u8 = &.{},
++    libc_no_as_needed_libs: []const []const u8 = &.{},
+     linker_print_gc_sections: bool = false,
+     linker_print_icf_sections: bool = false,
+     linker_print_map: bool = false,
+@@ -2153,6 +2156,7 @@
+             .native_system_include_paths = options.native_system_include_paths,
+             .force_undefined_symbols = options.force_undefined_symbols,
+             .link_eh_frame_hdr = link_eh_frame_hdr,
++            .libc_no_as_needed_libs = options.libc_no_as_needed_libs,
+             .global_cc_argv = options.global_cc_argv,
+             .file_system_inputs = options.file_system_inputs,
+             .parent_whole_cache = options.parent_whole_cache,
+@@ -3412,6 +3416,7 @@
+     man.hash.add(comp.zigc_strat);
+     man.hash.add(comp.rc_includes);
+     man.hash.addListOfBytes(comp.force_undefined_symbols.keys());
++    man.hash.addListOfBytes(comp.libc_no_as_needed_libs);
+     man.hash.add(comp.framework_dirs.len);
+     for (comp.framework_dirs) |framework_dir| {
+         man.hash.addBytes(framework_dir.path orelse ".");
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -1267,7 +1267,12 @@
+                         const lib_path = try arena.print("{f}{c}lib{s}.so.{d}", .{
+                             comp.glibc_so_files.?.dir_path, fs.path.sep, lib.name, lib.sover,
+                         });
++                        const force = for (comp.libc_no_as_needed_libs) |n| {
++                            if (std.mem.eql(u8, n, lib.name)) break true;
++                        } else false;
++                        if (force) try argv.append("--no-as-needed");
+                         try argv.append(lib_path);
++                        if (force) try argv.append("--as-needed");
+                     }
+                     try argv.append(try comp.crtFileAsString(arena, "libc_nonshared.a"));
+                 } else if (target.isMuslLibC()) {

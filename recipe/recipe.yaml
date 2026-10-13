@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 1
+  build_number: 2
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -176,6 +176,8 @@ source:
       # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
       - patches/Lld.zig-prefer-shared-libcxx.patch
+      # See recipe/NOTES.md 1.7.
+      - patches/Lld.zig-glibc-libs-honour-no-as-needed.patch
       # See recipe/NOTES.md 1.2.
       - patches/llvm.zig-lld-ofmt-macho.patch
       - patches/Config.zig-macho-no-auto-lld.patch
@@ -199,8 +201,6 @@ source:
           - patches/linux/target.zig-glibc-needs-libunwind.patch
           # See recipe/NOTES.md 1.6.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
-          # See recipe/NOTES.md 1.7.
-          - patches/linux/Lld.zig-no-unconditional-as-needed-glibc-bundled.patch
           # See recipe/NOTES.md 1.8.
           - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
           # See recipe/NOTES.md 1.9.
@@ -680,6 +680,10 @@ outputs:
                   - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                   - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
+              # Cross-compiler lanes test the published zig_impl pin, which predates the fix.
+              - if: not is_cross_compiler
+                then:
+                  - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
               # the cc wrapper must filter them before forwarding to zig cc.
               - if: not unix
                 then:
@@ -712,6 +716,7 @@ outputs:
                 - testing/_test_utils.py
                 - testing/test-cross-shim.bat
                 - testing/test_zig_toolchain.py
+                - testing/test_glibc_as_needed.py
 
           # Verify <triplet>-zig-windres wrapper: -o flag translation works
           - script:
