@@ -347,43 +347,6 @@ def _win_run_case(prefix: Path, td: Path) -> None:
             + ("" if ok else f" {_tail(r)}"))
 
 
-_MSVC_PROBE = (
-    '#include <iostream>\n'
-    '#include <string>\n'
-    '#include <thread>\n'
-    '#include <stdexcept>\n'
-    'int main() {\n'
-    '  std::string s = "msvc";\n'
-    '  int n = 0;\n'
-    '  std::thread t([&] { n = 1; });\n'
-    '  t.join();\n'
-    '  try { throw std::runtime_error(s); } catch (const std::exception& e) {\n'
-    '    std::cout << "CAUGHT " << e.what() << " " << n << std::endl;\n'
-    '  }\n'
-    '  return 0;\n'
-    '}\n'
-)
-
-
-def _msvc_probe(cxx: str, td: Path) -> None:
-    """Report-only: never sets _failed."""
-    (td / "msvc.cpp").write_text(_MSVC_PROBE)
-
-    def step(label: str, cmd: list[str]) -> bool:
-        r = _with_env({"ZIG_WIN_ABI": "msvc"},
-                      lambda: _run(cmd, cwd=td, timeout=_LINK_TIMEOUT_S))
-        if r.returncode == 0:
-            print(f"LIBSTDCXX-MSVC: INFO {label} rc=0 {r.stdout.strip()!r}")
-            return True
-        err = "TIMEOUT" if timed_out(r) else "\n".join(r.stderr.splitlines()[:20])
-        print(f"LIBSTDCXX-MSVC: WARN {label} rc={r.returncode:#x}\n{err}")
-        return False
-
-    if step("compile", [cxx, "-std=c++17", "-c", "msvc.cpp", "-o", "msvc.obj"]) and \
-            step("link", [cxx, "msvc.obj", "-o", "msvc.exe"]):
-        step("run", [str(td / "msvc.exe")])
-
-
 def _main_win() -> int:
     prefix = resolve_test_prefix("Library/bin")
     cxx = _find_win_tool(prefix, f"{_xtriplet}-zig-cxx")
@@ -400,7 +363,6 @@ def _main_win() -> int:
         if _win_build(cxx, td):
             _win_check_outputs(prefix, td)
             _win_run_case(prefix, td)
-        _msvc_probe(cxx, td)
     return 1 if _failed else 0
 
 

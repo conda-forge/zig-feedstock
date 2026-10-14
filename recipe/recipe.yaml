@@ -235,6 +235,7 @@ source:
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
           # See recipe/NOTES.md 1.12.
           - patches/non_unix/gccmain-do-global-ctors-guard.patch
+          - patches/non_unix/Compilation.zig-msvc-no-libcxxabi.patch
     target_directory: zig-source
 
   - if: bootstrap_via_upstream
@@ -837,11 +838,13 @@ outputs:
               - if: is_native and xc_w64
                 then:
                   - python testing/test_aarch64_msvc_ucrt.py
+                  - python testing/test_msvc_libcxx.py
                 else:
                   - echo "SKIP aarch64 msvc ucrt probe (non-native win-64)"
             files:
               recipe:
                 - testing/test_aarch64_msvc_ucrt.py
+                - testing/test_msvc_libcxx.py
             requirements:
               build:
                 - python >=3.10
