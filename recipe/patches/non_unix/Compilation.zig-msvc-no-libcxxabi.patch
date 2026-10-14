@@ -1,0 +1,67 @@
+diff --git a/src/Compilation.zig b/src/Compilation.zig
+index 6fe94477..d01e2075 100644
+--- a/src/Compilation.zig
++++ b/src/Compilation.zig
+@@ -2531,7 +2531,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
+             }
+             if (build_options.have_llvm and is_exe_or_dyn_lib and comp.config.link_libcpp) {
+                 comp.queued_jobs.libcxx = true;
+-                comp.queued_jobs.libcxxabi = true;
++                comp.queued_jobs.libcxxabi = target_util.libCxxNeedsLibCxxAbi(target);
+             }
+             if (build_options.have_llvm and is_exe_or_dyn_lib and comp.config.any_sanitize_thread) {
+                 comp.queued_jobs.libtsan = true;
+diff --git a/src/libs/libcxx.zig b/src/libs/libcxx.zig
+index 70a61705..daa78b56 100644
+--- a/src/libs/libcxx.zig
++++ b/src/libs/libcxx.zig
+@@ -537,6 +537,10 @@ pub fn addCxxArgs(
+     if (target.os.tag == .linux) {
+         try cflags.append("-D_LIBCPP_HAS_TIME_ZONE_DATABASE");
+     }
++    if (target.abi == .msvc) {
++        // c++.lib is linked by path; drop __config's #pragma comment(lib, "libc++.lib").
++        try cflags.append("-D_LIBCPP_NO_AUTO_LINK");
++    }
+     // See libcxx/include/__algorithm/pstl_backends/cpu_backends/backend.h
+     // for potentially enabling some fancy features here, which would
+     // require corresponding changes in libcxx.zig, as well as
+diff --git a/src/link/Lld.zig b/src/link/Lld.zig
+index 9f00b4bc..2aaee2a3 100644
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -731,8 +731,17 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
+         if (comp.config.link_libcpp) {
+-            try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
++            if (comp.libcxxabi_static_lib) |libcxxabi| {
++                try argv.append(try libcxxabi.full_object_path.toString(arena));
++            }
+             if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
+                 try argv.append(shared_path);
+             } else {
+                 try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
+             }
++            if (target.abi == .msvc) {
++                // vcruntime exception_ptr internals are exported only by the STL lib.
++                try argv.append(switch (comp.config.link_mode) {
++                    .static => "libcpmt.lib",
++                    .dynamic => "msvcprt.lib",
++                });
++            }
+         }
+diff --git a/src/target.zig b/src/target.zig
+index 3037bbba..7a20020b 100644
+--- a/src/target.zig
++++ b/src/target.zig
+@@ -61,6 +61,11 @@ pub fn libCxxNeedsLibUnwind(target: *const std.Target) bool {
+     };
+ }
+ 
++/// MSVC: libc++ uses vcruntime instead of libc++abi.
++pub fn libCxxNeedsLibCxxAbi(target: *const std.Target) bool {
++    return !(target.os.tag == .windows and target.abi == .msvc);
++}
++
+ pub fn requiresPie(target: *const std.Target, link_mode: std.lang.LinkMode) bool {
+     return switch (target.os.tag) {
+         .ashetos,
