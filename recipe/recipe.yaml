@@ -759,6 +759,11 @@ outputs:
                 - if: xc_w64
                   then:
                     - llvm-tools ${{ llvm_version }}.*  # llvm-objdump for test_cxx_runtime IMPORTS
+                - if: xc_w64 and build_platform == "win-64"
+                  then:
+                    # runtime DLLs for test_cxx_runtime RUN; x86_64 only (not installable on win-arm64 hosts)
+                    - libstdcxx >=${{ mingw_gcc_version }}
+                    - libgcc >=${{ mingw_gcc_version }}
             files:
               recipe:
                 - testing/_test_utils.py

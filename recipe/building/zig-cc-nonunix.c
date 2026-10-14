@@ -335,29 +335,31 @@ static const char *cxx_fmt(int slot, const char *fmt, ...) {
 }
 
 /* Fill pre (before user args, at most 1) and post (after, at most 7) with the
- * flags that build C++ against the GCC libstdc++ under <prefix>; returns 0
- * (zig libc++ kept) if it is not found.  reset_x: user args set -x, so end it
- * before the appended libs.  Full paths, never -l: _mingw.sh ships empty
- * libstdc++.a/libgcc stubs a -l lookup could hit. */
+ * flags that build C++ against the GCC libstdc++ under <prefix>; returns -1
+ * (after an error on stderr) if it is not found.  reset_x: user args set -x,
+ * so end it before the appended libs.  Full paths, never -l: _mingw.sh ships
+ * empty libstdc++.a/libgcc stubs a -l lookup could hit. */
 static int mingw_libstdcxx_args(const char *prefix, int links, int reset_x,
                                 const char **pre, int *n_pre,
                                 const char **post, int *n_post) {
     char gcc[CXX_PATH_MAX];
-    const char *dbg = getenv("DEBUG_ZIG_BUILD");
     const char *i1 = NULL, *i2 = NULL, *l1 = NULL, *l2 = NULL, *l3 = NULL;
     if (prefix && find_gcc_dir(prefix, gcc, sizeof gcc) == 0) {
-        i1 = cxx_fmt(0, "-isystem%s\\include\\c++", gcc);
-        i2 = cxx_fmt(1, "-isystem%s\\include\\c++\\" GCC_TRIPLET, gcc);
+        /* -I, not -isystem: zig's mingw libc -isystem dirs precede user ones,
+         * so libstdc++'s #include_next <stdlib.h> would find nothing after. */
+        i1 = cxx_fmt(0, "-I%s\\include\\c++", gcc);
+        i2 = cxx_fmt(1, "-I%s\\include\\c++\\" GCC_TRIPLET, gcc);
         l1 = cxx_fmt(2, "%s\\libstdc++.dll.a", gcc);
         l2 = cxx_fmt(3, "%s\\libgcc_s.a", gcc);
         const char *p1 = cxx_fmt(4, "%s\\Library\\x86_64-w64-mingw32\\sysroot\\usr\\lib\\libwinpthread.dll.a", prefix);
         l3 = (p1 && path_is_file(p1)) ? p1 : cxx_fmt(5, "%s\\Library\\lib\\libwinpthread.dll.a", prefix);
     }
     if (!i1 || !i2 || !l1 || !path_is_file(l1)) {
-        if (dbg && str_eq(dbg, "1"))
-            fprintf(stderr, "zig-wrapper: no GCC libstdc++ for " GCC_TRIPLET
-                            " under '%s'; using zig libc++\n", prefix ? prefix : "");
-        return 0;
+        fprintf(stderr, "ERROR: zig-%s: libstdc++.dll.a not found for " GCC_TRIPLET
+                        " under '%s\\Library\\lib\\gcc\\" GCC_TRIPLET "'"
+                        " (set ZIG_CXX_RUNTIME=zig or ZIG_WIN_ABI=msvc to skip)\n",
+                ZIG_CC_MODE, prefix ? prefix : "");
+        return -1;
     }
     pre[(*n_pre)++] = "-nostdlib++";
     post[(*n_post)++] = i1;
@@ -374,6 +376,29 @@ static int mingw_libstdcxx_args(const char *prefix, int links, int reset_x,
             post[(*n_post)++] = l3;
     }
     return 1;
+}
+
+/* Target the wrapper injects: ZIG_TARGET, with its windows ABI swapped to
+ * ZIG_WIN_ABI (gnu|msvc) when that is set; anything else keeps the baked one. */
+static const char *injected_target(char *buf, size_t bufsz) {
+    const char *abi = getenv("ZIG_WIN_ABI");
+    if (!abi || !(str_eq(abi, "gnu") || str_eq(abi, "msvc")))
+        return ZIG_TARGET;
+    const char *sfx[2] = { "-windows-msvc", "-windows-gnu" };
+    size_t tl = strlen(ZIG_TARGET);
+    for (int i = 0; i < 2; i++) {
+        size_t sl = strlen(sfx[i]);
+        if (tl > sl && str_eq(ZIG_TARGET + tl - sl, sfx[i])) {
+            int n = snprintf(buf, bufsz, "%.*s-windows-%s", (int)(tl - sl), ZIG_TARGET, abi);
+            return (n > 0 && (size_t)n < bufsz) ? buf : ZIG_TARGET;
+        }
+    }
+    return ZIG_TARGET;
+}
+
+static int target_abi_is_gnu(const char *t) {
+    size_t tl = strlen(t), sl = strlen("-windows-gnu");
+    return tl >= sl && str_eq(t + tl - sl, "-windows-gnu");
 }
 
 int main(int argc, char *argv[]) {
@@ -577,13 +602,18 @@ int main(int argc, char *argv[]) {
     const char *cxx_pre[1];
     const char *cxx_post[7];
     int n_cxx_pre = 0, n_cxx_post = 0;
-    if (cxx_gcc_wanted && !has_target) {
+    char target_buf[96];
+    const char *inj_target = injected_target(target_buf, sizeof target_buf);
+    if (cxx_gcc_wanted && !has_target && target_abi_is_gnu(inj_target)) {
         int reset_x = 0;
         for (int i = 0; i < fi; i++)
             if (starts_with(filtered[i], "-x")) { reset_x = 1; break; }
         if (mingw_libstdcxx_args(conda_prefix, invocation_links(filtered, fi), reset_x,
-                                 cxx_pre, &n_cxx_pre, cxx_post, &n_cxx_post))
-            mode = "cc";
+                                 cxx_pre, &n_cxx_pre, cxx_post, &n_cxx_post) < 0) {
+            free(filtered);
+            return 1;
+        }
+        mode = "cc";
     }
 
     /* Build final argv: zig mode [-nostdlib++] [-fuse-ld=lld] [-target TARGET]
@@ -605,7 +635,7 @@ int main(int argc, char *argv[]) {
         new_argv[ni++] = "-fuse-ld=lld";
     if (!has_target) {
         new_argv[ni++] = "-target";
-        new_argv[ni++] = ZIG_TARGET;
+        new_argv[ni++] = inj_target;
     }
 
     for (int i = 0; i < fi; i++)
