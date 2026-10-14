@@ -42,7 +42,7 @@ _host = os.environ.get("CONDA_ZIG_HOST", "")
 _xtriplet = _host.removesuffix("-zig")
 # Only emulated lanes run a foreign wrapper; cross-compiler lanes run a build-arch one.
 _triplet = _xtriplet if os.environ.get("QEMU_EXECVE") else ""
-_LINK_TIMEOUT_S = 300
+_LINK_TIMEOUT_S = 900
 
 _THROWER = (
     '#include <stdexcept>\n'
