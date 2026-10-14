@@ -2,12 +2,12 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 2
+  build_number: 3
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Bootstrap = zig_impl 0.17.0 published on conda-forge main.
-  bootstrap_build_ref: "0"
+  bootstrap_build_ref: "2"
   zig_impl_pin: '[version="${{ abi_version }}.*", build_number=">=${{ bootstrap_build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
@@ -615,6 +615,22 @@ outputs:
           then:
             - binutils_impl_${{ xtarget_ }} >=2.45
             - gcc_impl_${{ xtarget_ }} >=14.3
+        # zig-cxx links linux C++ against GCC's libstdc++ (zig-cc-unix.c STEP 10a)
+        # (not s390x: no conda-forge libstdcxx-devel there; zig libc++ kept)
+        - if: xc_lnx and not xc_s390x
+          then:
+            - libstdcxx-devel_${{ xtarget_ }} ${{ cxx_compiler_version }}.*
+            - libgcc-devel_${{ xtarget_ }} ${{ cxx_compiler_version }}.*
+        - if: xc_lnx and not xc_s390x and is_cross_compiler
+          then:
+            - libstdcxx-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
+            - libgcc-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
+      run_exports:
+        strong:
+          - if: xc_lnx and not xc_s390x
+            then:
+              - libstdcxx >=${{ cxx_compiler_version }}
+              - libgcc >=${{ cxx_compiler_version }}
     tests:
       # test-env solve (below) happens before script-level is_testable guards
       - if: is_testable
@@ -657,6 +673,12 @@ outputs:
                   then:
                     - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cc
                     - ${{ library }}bin/${{ xc_build_triplet }}-zig-force-load-cxx
+                - if: xc_lnx
+                  then:
+                    - share/zig/cxx-overlay/${{ conda_triplet }}/sys/single_threaded.h
+                - if: xc_lnx and is_cross_compiler
+                  then:
+                    - share/zig/cxx-overlay/${{ xc_build_triplet }}/sys/single_threaded.h
                 # Post-install tests
                 - etc/conda/test-files/zig*
 
@@ -684,6 +706,7 @@ outputs:
               - if: not is_cross_compiler
                 then:
                   - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
+              - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_cxx_runtime.py
               # the cc wrapper must filter them before forwarding to zig cc.
               - if: not unix
                 then:
@@ -717,6 +740,7 @@ outputs:
                 - testing/test-cross-shim.bat
                 - testing/test_zig_toolchain.py
                 - testing/test_glibc_as_needed.py
+                - testing/test_cxx_runtime.py
 
           # Verify <triplet>-zig-windres wrapper: -o flag translation works
           - script:

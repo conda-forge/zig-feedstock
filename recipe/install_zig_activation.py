@@ -472,6 +472,25 @@ def install_zig_cc_wrappers(
             shutil.copymode(first, dst)
         print(f"Installed {len(mux_names)} multiplexer wrappers (1 compiled, {len(mux_names) - 1} copied)")
 
+        if "-linux-gnu" in conda_triplet:
+            install_cxx_overlay(prefix, conda_triplet)
+
+
+# zig's generic-glibc header #errors below 2.32; libstdc++'s ext/atomicity.h
+# includes it. 0 = never single-threaded, so libstdc++ always uses atomics.
+_SINGLE_THREADED_H = (
+    "#pragma once\n"
+    "static const char __libc_single_threaded = 0;\n"
+)
+
+
+def install_cxx_overlay(prefix: Path, conda_triplet: str):
+    """Install the sys/single_threaded.h overlay the C++ wrapper puts first on -I."""
+    dst = prefix / "share" / "zig" / "cxx-overlay" / conda_triplet / "sys" / "single_threaded.h"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(_SINGLE_THREADED_H)
+    print(f"  Installed: {dst}")
+
 
 def install_unix_cross_wrappers(
     prefix: Path, recipe_dir: Path,

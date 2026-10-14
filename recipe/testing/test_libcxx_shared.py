@@ -655,6 +655,11 @@ def test_libcxx_shared_simulation() -> None:
     """
     print("--- [patch-0008] Shared libc++ simulation ---")
 
+    if is_win_target:
+        SKIP("libcxx-simulation",
+             "windows (no shared libc++ shipped; mingw staging covered by test_mingw_crt.py)")
+        return
+
     plat = _get_platform_key()
     if not plat:
         SKIP("libcxx-simulation", f"unsupported target ({_conda_triplet})")
