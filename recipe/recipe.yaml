@@ -637,12 +637,12 @@ outputs:
           then:
             - libstdcxx-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
             - libgcc-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
-        # win-64 zig-cxx links MinGW GCC libstdc++ (m2w64-sysroot: libwinpthread.dll.a)
+        # win-64 zig-cxx links MinGW GCC libstdc++ (mingw-w64-ucrt-x86_64-winpthreads-git provides libwinpthread.dll.a, installs on arm64 hosts)
         - if: xc_w64
           then:
             - libstdcxx-devel_win-64 ${{ mingw_gcc_version }}.*
             - libgcc-devel_win-64 ${{ mingw_gcc_version }}.*
-            - m2w64-sysroot_win-64
+            - mingw-w64-ucrt-x86_64-winpthreads-git
       run_exports:
         strong:
           - if: xc_lnx and not xc_s390x

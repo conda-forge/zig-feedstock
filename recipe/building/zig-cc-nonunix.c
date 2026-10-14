@@ -350,7 +350,8 @@ static int mingw_libstdcxx_args(const char *prefix, int links, int reset_x,
         i2 = cxx_fmt(1, "-isystem%s\\include\\c++\\" GCC_TRIPLET, gcc);
         l1 = cxx_fmt(2, "%s\\libstdc++.dll.a", gcc);
         l2 = cxx_fmt(3, "%s\\libgcc_s.a", gcc);
-        l3 = cxx_fmt(4, "%s\\Library\\lib\\libwinpthread.dll.a", prefix);
+        const char *p1 = cxx_fmt(4, "%s\\Library\\x86_64-w64-mingw32\\sysroot\\usr\\lib\\libwinpthread.dll.a", prefix);
+        l3 = (p1 && path_is_file(p1)) ? p1 : cxx_fmt(5, "%s\\Library\\lib\\libwinpthread.dll.a", prefix);
     }
     if (!i1 || !i2 || !l1 || !path_is_file(l1)) {
         if (dbg && str_eq(dbg, "1"))
