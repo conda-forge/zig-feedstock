@@ -23,6 +23,9 @@ context:
 
   bootstrap_via_upstream: false
 
+  # conda-forge MinGW GCC used by the win-64 zig-cxx libstdc++ route
+  mingw_gcc_version: "16.2"
+
   # Manual global override for local dev only; SKIP_LANGREF export derives from it.
   is_testable: >-
     ${{
@@ -634,12 +637,22 @@ outputs:
           then:
             - libstdcxx-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
             - libgcc-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
+        # win-64 zig-cxx links MinGW GCC libstdc++ (m2w64-sysroot: libwinpthread.dll.a)
+        - if: xc_w64
+          then:
+            - libstdcxx-devel_win-64 ${{ mingw_gcc_version }}.*
+            - libgcc-devel_win-64 ${{ mingw_gcc_version }}.*
+            - m2w64-sysroot_win-64
       run_exports:
         strong:
           - if: xc_lnx and not xc_s390x
             then:
               - libstdcxx >=${{ cxx_compiler_version }}
               - libgcc >=${{ cxx_compiler_version }}
+          - if: xc_w64
+            then:
+              - libstdcxx >=${{ mingw_gcc_version }}
+              - libgcc >=${{ mingw_gcc_version }}
           # zig c++ links the consumer's HOST libc++.1.dylib (Lld.zig-prefer-shared-libcxx.patch)
           - if: xc_osx
             then:
@@ -743,6 +756,9 @@ outputs:
                 - if: ppc64le
                   then:
                     - libclang-cpp ${{ llvm_version }}.*
+                - if: xc_w64
+                  then:
+                    - llvm-tools ${{ llvm_version }}.*  # llvm-objdump for test_cxx_runtime IMPORTS
             files:
               recipe:
                 - testing/_test_utils.py
