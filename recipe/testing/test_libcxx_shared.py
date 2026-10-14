@@ -746,7 +746,8 @@ def test_libstdcxx_probe() -> None:
     if not zig:
         SKIP("libstdcxx-probe", f"zig binary not found ({_zig_bin_name})")
         return
-    arch = _PROBE_ARCH.get(platform.machine())
+    # Emulated lanes run on an aarch64 host: target the triplet arch, not the host's.
+    arch = _arch if os.environ.get("QEMU_EXECVE") else _PROBE_ARCH.get(platform.machine())
     if not arch:
         SKIP("libstdcxx-probe", f"unmapped machine {platform.machine()}")
         return
