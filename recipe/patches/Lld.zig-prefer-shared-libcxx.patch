@@ -1,6 +1,6 @@
 --- a/src/libs/libcxx.zig
 +++ b/src/libs/libcxx.zig
-@@ -7,6 +7,7 @@ const Compilation = @import("../Compilation.zig");
+@@ -7,6 +7,7 @@
  const build_options = @import("build_options");
  const trace = @import("../tracy.zig").trace;
  const Module = @import("../Module.zig");
@@ -8,7 +8,7 @@
  
  const libcxxabi_files = [_][]const u8{
      "src/cxa_aux_runtime.cpp",
-@@ -287,6 +288,12 @@ pub fn buildLibCxx(comp: *Compilation, prog_node: std.Progress.Node) BuildError!
+@@ -287,6 +288,12 @@
      assert(comp.libcxx_static_lib == null);
      const crt_file = try sub_compilation.toCrtFile();
      comp.libcxx_static_lib = crt_file;
@@ -21,7 +21,7 @@
      try comp.queuePrelinkTaskMode(crt_file.full_object_path, false, &config);
  }
  
-@@ -307,6 +314,9 @@ pub fn buildLibCxxAbi(comp: *Compilation, prog_node: std.Progress.Node) BuildErr
+@@ -307,6 +314,9 @@
      const output_mode = .Lib;
      const link_mode = .static;
      const target = &comp.root_mod.resolved_target.result;
@@ -33,7 +33,7 @@
      const cxx_include_path = try comp.dirs.zig_lib.join(arena, &.{ "libcxx", "include" });
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -727,7 +727,11 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
+@@ -727,7 +727,11 @@
          // libc++ dep
          if (comp.config.link_libcpp) {
              try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -46,7 +46,7 @@
          }
  
          // libunwind dep
-@@ -1232,7 +1236,13 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
+@@ -1232,7 +1236,13 @@
              // libc++ dep
              if (comp.config.link_libcpp) {
                  try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
@@ -61,7 +61,7 @@
              }
  
              // libunwind dep
-@@ -1595,7 +1605,12 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
+@@ -1595,7 +1605,12 @@
  
          if (comp.config.link_libc and is_exe_or_dyn_lib) {
              if (comp.config.link_libcpp) {
@@ -75,7 +75,7 @@
                  try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
              }
          }
-@@ -1806,10 +1821,12 @@ fn machoLink(lld: *Lld, arena: Allocator) !void {
+@@ -1806,10 +1821,12 @@
          };
  
          if (comp.config.link_libcpp) {
@@ -92,7 +92,7 @@
          }
  
          try argv.append("-lSystem");
-@@ -1895,6 +1912,7 @@ const glibc = @import("../libs/glibc.zig");
+@@ -1895,6 +1912,7 @@
  const netbsd = @import("../libs/netbsd.zig");
  const openbsd = @import("../libs/openbsd.zig");
  const link = @import("../link.zig");
@@ -102,7 +102,7 @@
  const trace = @import("../tracy.zig").trace;
 --- a/src/link/MachO.zig
 +++ b/src/link/MachO.zig
-@@ -711,10 +711,12 @@ fn dumpArgv(self: *MachO, comp: *Compilation) !void {
+@@ -711,10 +711,12 @@
          }
  
          if (comp.config.link_libcpp) {
@@ -119,7 +119,7 @@
          }
  
          try argv.append("-lSystem");
-@@ -5246,6 +5248,7 @@ const codegen = @import("../codegen.zig");
+@@ -5246,6 +5248,7 @@
  const dead_strip = @import("MachO/dead_strip.zig");
  const eh_frame = @import("MachO/eh_frame.zig");
  const fat = @import("MachO/fat.zig");
@@ -127,37 +127,45 @@
  const link = @import("../link.zig");
  const load_commands = @import("MachO/load_commands.zig");
  const relocatable = @import("MachO/relocatable.zig");
+--- a/src/Compilation.zig
++++ b/src/Compilation.zig
+@@ -83,6 +83,8 @@
+ link_inputs: []const link.Input,
+ /// Needed only for passing -F args to clang.
+ framework_dirs: []const Cache.Directory,
++/// User library search directories (-L), in order.
++lib_directories: []const Cache.Directory = &.{},
+ /// These are only for DLLs dependencies fulfilled by the `.def` files shipped
+ /// with Zig. Static libraries are provided as `link.Input` values.
+ windows_libs: std.array_hash_map.String(void),
+@@ -2136,6 +2138,7 @@
+             .ubsan_rt_strat = ubsan_rt_strat,
+             .zigc_strat = zigc_strat,
+             .link_inputs = options.link_inputs,
++            .lib_directories = options.lib_directories,
+             .framework_dirs = options.framework_directories,
+             .llvm_opt_bisect_limit = options.llvm_opt_bisect_limit,
+             .skip_linker_dependencies = options.skip_linker_dependencies,
 --- /dev/null
 +++ b/src/link/libcxx_shared.zig
-@@ -0,0 +1,71 @@
-+//! Shared libc++ discovery for conda-forge zig packaging.
-+//! Probes for a shared libc++ library relative to zig_lib_dir,
-+//! falling back to null (caller uses static libc++.a).
+@@ -0,0 +1,120 @@
++//! Shared libc++ discovery for conda-forge zig packaging (darwin targets only).
++//! Probes the user's library search dirs (-L) and then dirs relative to
++//! zig_lib_dir for a shared libc++ dylib, falling back to null (caller
++//! uses static libc++.a). Other targets always get null.
 +//!
-+//! Cross-compilation guard: zig_lib_dir points to the BUILD host's
-+//! zig installation. When target arch != host arch, the shared libs
-+//! there are for the wrong architecture. Skip probing in that case
-+//! and let the caller fall back to static libc++.a.
++//! A candidate is accepted only if its Mach-O header matches the target
++//! architecture, so a host-arch dylib is never linked into a cross-arch
++//! target.
 +
 +const std = @import("std");
-+const builtin = @import("builtin");
 +const Io = std.Io;
 +const Allocator = std.mem.Allocator;
 +const Cache = std.Build.Cache;
 +const Compilation = @import("../Compilation.zig");
 +
-+/// Platform-specific shared library names for libc++.
-+/// Keyed by target OS tag.
-+fn sharedLibCxxNames(os_tag: std.Target.Os.Tag) []const []const u8 {
-+    if (os_tag.isDarwin()) {
-+        return &.{ "libc++.1.dylib", "libc++.dylib" };
-+    }
-+    return switch (os_tag) {
-+        .linux, .freebsd, .netbsd, .openbsd, .dragonfly => &.{ "libc++.so.1", "libc++.so" },
-+        .windows => &.{"libc++.dll.a"},
-+        else => &.{},
-+    };
-+}
++/// Shared library names for libc++ on darwin.
++const shared_names = [_][]const u8{ "libc++.1.dylib", "libc++.dylib" };
 +
 +/// Probe directories relative to zig_lib (which is <prefix>/lib/zig/).
 +/// Two levels up reaches <prefix>/, then:
@@ -168,34 +176,94 @@
 +    "../../lib",
 +};
 +
++const mh_magic_64: u32 = 0xfeedfacf;
++const fat_magic: u32 = 0xcafebabe;
++const fat_magic_64: u32 = 0xcafebabf;
++const cputype_x86_64: u32 = 0x01000007;
++const cputype_arm64: u32 = 0x0100000c;
++
++fn machoCpuType(arch: std.Target.Cpu.Arch) ?u32 {
++    return switch (arch) {
++        .x86_64 => cputype_x86_64,
++        .aarch64 => cputype_arm64,
++        else => null,
++    };
++}
++
++/// True if the Mach-O file at `path` contains a slice for `want` (a cputype).
++/// Any read error or unknown magic yields false.
++fn machoHasCpuType(io: Io, path: []const u8, want: u32) bool {
++    const file = Io.Dir.cwd().openFile(io, path, .{}) catch return false;
++    defer file.close(io);
++
++    var head: [8]u8 = undefined;
++    const n = file.readPositionalAll(io, &head, 0) catch return false;
++    if (n != head.len) return false;
++
++    // Thin 64-bit, little-endian: magic, then cputype.
++    if (std.mem.readInt(u32, head[0..4], .little) == mh_magic_64) {
++        return std.mem.readInt(u32, head[4..8], .little) == want;
++    }
++
++    // Fat, big-endian: magic, nfat_arch, then fat_arch entries.
++    const magic = std.mem.readInt(u32, head[0..4], .big);
++    const entry_size: usize = switch (magic) {
++        fat_magic => 20, // cputype, cpusubtype, offset, size, align
++        fat_magic_64 => 32, // cputype, cpusubtype, offset(8), size(8), align, reserved
++        else => return false,
++    };
++    const nfat = std.mem.readInt(u32, head[4..8], .big);
++    // A real fat file holds a handful of slices; bound the scan.
++    if (nfat == 0 or nfat > 64) return false;
++
++    var i: usize = 0;
++    while (i < nfat) : (i += 1) {
++        var ent: [4]u8 = undefined;
++        const got = file.readPositionalAll(io, &ent, 8 + i * entry_size) catch return false;
++        if (got != ent.len) return false;
++        if (std.mem.readInt(u32, &ent, .big) == want) return true;
++    }
++    return false;
++}
++
++fn candidateOk(comp: *const Compilation, probe: []const u8) bool {
++    const io = comp.io;
++    Io.Dir.cwd().access(io, probe, .{}) catch return false;
++    const target = &comp.root_mod.resolved_target.result;
++    const want = machoCpuType(target.cpu.arch) orelse return false;
++    return machoHasCpuType(io, probe, want);
++}
++
 +/// Find shared libc++ and return its path as a string (for argv-based linkers).
++/// Searches the user's -L dirs first, then zig_lib-relative dirs.
 +/// Returns null if no shared libc++ found. Errors only on allocation failure.
 +pub fn findSharedLibCxxString(comp: *const Compilation, arena: Allocator) !?[]const u8 {
 +    const target = &comp.root_mod.resolved_target.result;
 +
-+    // Cross-compilation: zig_lib_dir is on the build host, so probed
-+    // shared libs have the host architecture, not the target's.
-+    if (target.cpu.arch != builtin.cpu.arch) return null;
++    // Shared libc++ is a conda osx policy; other targets keep static libc++.a.
++    if (!target.os.tag.isDarwin()) return null;
 +
-+    const names = sharedLibCxxNames(target.os.tag);
-+    if (names.len == 0) return null;
++    for (comp.lib_directories) |dir| {
++        const dir_path = dir.path orelse ".";
++        for (&shared_names) |name| {
++            const probe = try std.fs.path.join(arena, &.{ dir_path, name });
++            if (candidateOk(comp, probe)) return probe;
++        }
++    }
 +
 +    const zig_lib_path = comp.dirs.zig_lib.path orelse return null;
-+    const io = comp.io;
 +
 +    for (&probe_subdirs) |subdir| {
-+        for (names) |name| {
++        for (&shared_names) |name| {
 +            const probe = try std.fs.path.join(arena, &.{ zig_lib_path, subdir, name });
-+            // Check if file exists via access()
-+            Io.Dir.cwd().access(io, probe, .{}) catch continue;
-+            return probe;
++            if (candidateOk(comp, probe)) return probe;
 +        }
 +    }
 +    return null;
 +}
 +
 +// Find shared libc++ and return its Cache.Path (for MachO system_libs).
-+// Uses Cache.Path.initCwd() -- probe string is absolute since zig_lib_path is absolute.
++// Uses Cache.Path.initCwd(); the probe string may be relative to the cwd (a -L dir can be).
 +// Returns null if no shared libc++ found.
 +pub fn findSharedLibCxxPath(comp: *const Compilation, arena: Allocator) !?Cache.Path {
 +    const str = try findSharedLibCxxString(comp, arena) orelse return null;
