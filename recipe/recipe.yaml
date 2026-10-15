@@ -2,15 +2,15 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 2520
+  build_number: 2530
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
-  snapshot: "252+86dc5ce25"
-  snapshot_ref: "146"
-  build_ref: "1460"
+  snapshot: "253+16d31ceed"
+  snapshot_ref: "252"
+  build_ref: "2520"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
@@ -21,7 +21,7 @@ context:
   llvm_src_version: "23.1.3"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # conda-forge MinGW GCC used by the win-64 zig-cxx libstdc++ route
   mingw_gcc_version: "16.2"
@@ -177,7 +177,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: 4d59b512dcfb15164470e5400857e23e7b2219aa485b9ee3a9b0e99506ea4422
+    sha256: 2151febadf2d96b13ee3114ada03f35920ec3dddaf0002bf31810a53ddafc1c3
     patches:
       # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
@@ -235,6 +235,7 @@ source:
           - patches/non_unix/selfinfo-windows-arm64-ptrcast-aligncast.patch
           # See recipe/NOTES.md 1.12.
           - patches/non_unix/gccmain-do-global-ctors-guard.patch
+          - patches/non_unix/Compilation.zig-msvc-no-libcxxabi.patch
     target_directory: zig-source
 
   - if: bootstrap_via_upstream
@@ -242,32 +243,32 @@ source:
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 459786723940a29c19658d7d34572dfe87bd1ab933d9286d3b51fb5656e3eb17
+            sha256: 67dc7ad4c493945b0d68bb8691849c233d3ee7afaca0c43038e4f4d5e6cbe40d
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 3ad121510de1eb8a9f1720074e271824a071a6ee8ef745ee5317149c31a3a29f
+            sha256: e54055e7ccc95da370af9124c499ed55c3680aecdd2c0bdb9ec41f2a17a0d55c
             target_directory: zig-bootstrap
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 268555a90fc72e281882b2eba469fc88f0005aee26981451a9d61bc4bca3f302
+            sha256: 422a59788143e54371949562374711ad8ef0fc093d357e27b75fd00239458251
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: c98f5a68d328bf4bacf6d110da4e7250f8af62b745eb70a3c4f0fb7f2efe1c21
+            sha256: cf7ee94438fe0ccf527b8c2d13fa2f51a6ab44cb1aeabe52220fdf12e539f089
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 1897812f8c7123b373c15afb7c152bf1cc98eb32eebe60c87402bb3f0d233d85
+            sha256: 93c3055637c72f6199128daee798b605fd9a67cb054b257cbffc2de6d236ed2e
             target_directory: zig-bootstrap
       - if: build_platform == "win-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: 2a5d32a5ecbfc1e0997af36ffbc21308b3a8c293bb69821ef382ec2b255e41da
+            sha256: 6361867e0bed8653ccc83732d536bd40ae882bef5ec92635e168b35577c83f66
             target_directory: zig-bootstrap
 
 build:
@@ -837,11 +838,13 @@ outputs:
               - if: is_native and xc_w64
                 then:
                   - python testing/test_aarch64_msvc_ucrt.py
+                  - python testing/test_msvc_libcxx.py
                 else:
                   - echo "SKIP aarch64 msvc ucrt probe (non-native win-64)"
             files:
               recipe:
                 - testing/test_aarch64_msvc_ucrt.py
+                - testing/test_msvc_libcxx.py
             requirements:
               build:
                 - python >=3.10
