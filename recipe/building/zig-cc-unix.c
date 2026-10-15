@@ -5,7 +5,8 @@
  * The tool is selected by basename(argv[0]) with @WRAPPER_PREFIX@ stripped:
  *
  *   zig-cc       -> zig cc   + full flag filtering  (see run_cc)
- *   zig-cxx      -> zig c++  + full flag filtering  (see run_cc)
+ *   zig-cxx      -> zig c++  + full flag filtering  (see run_cc; linux-gnu:
+ *                   zig cc + GCC libstdc++, STEP 10a)
  *   zig-ar       -> zig ar,     thin-archive 'T' modifier stripped
  *   zig-ranlib   -> zig ranlib, passthrough
  *   zig-rc       -> zig rc,     passthrough
@@ -47,6 +48,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <dirent.h>
+#include <stdarg.h>
 
 #define ZIG_BIN "@ZIG_BIN@"
 #define ZIG_TARGET "@ZIG_TARGET@"
@@ -185,6 +188,168 @@ static char *build_l_flag(const char *sysroot, const char *suffix) {
     }
     snprintf(buf, len, "-L%s%s", sysroot, suffix);
     return buf;
+}
+
+/* ---- linux-gnu C++ runtime: conda-forge GCC libstdc++, not zig libc++ ---- */
+
+static int cxx_runtime_optout(int argc, char **argv) {
+    const char *rt = getenv("ZIG_CXX_RUNTIME");
+    int i;
+    if (rt && str_eq(rt, "zig"))
+        return 1;
+    for (i = 0; i < argc; i++) {
+        const char *a = argv[i];
+        if (str_eq(a, "-nostdlib++") || str_eq(a, "-nostdlib") ||
+            str_eq(a, "-nodefaultlibs") || starts_with(a, "-stdlib=") ||
+            str_eq(a, "-nostdinc++") || str_eq(a, "-nostdinc") ||
+            str_eq(a, "-static") || str_eq(a, "-static-libstdc++"))
+            return 1;
+    }
+    return 0;
+}
+
+static int is_linux_gnu_target(void) {
+    return strstr(WRAPPER_PREFIX, "-linux-gnu") != NULL &&
+           (strstr(ZIG_TARGET, "-linux-gnu") != NULL || str_eq(ZIG_TARGET, "native"));
+}
+
+/* 1 if the invocation links: no compile-only/query flag and at least one
+ * existing input file (or @response file). */
+static int invocation_links(const char **args, int n) {
+    int i, has_input = 0;
+    for (i = 0; i < n; i++) {
+        const char *a = args[i];
+        if (str_eq(a, "-c") || str_eq(a, "-S") || str_eq(a, "-E") ||
+            str_eq(a, "-M") || str_eq(a, "-MM") || str_eq(a, "-fsyntax-only") ||
+            str_eq(a, "-###") || str_eq(a, "--version") || str_eq(a, "--help") ||
+            starts_with(a, "-print-") || starts_with(a, "-dump"))
+            return 0;
+        if (a[0] == '@' ? is_regular_file(a + 1) : (a[0] != '-' && is_regular_file(a)))
+            has_input = 1;
+    }
+    return has_input;
+}
+
+/* Numeric compare of dotted version strings (digits and dots only). */
+static int version_cmp(const char *a, const char *b) {
+    while (*a || *b) {
+        char *ea, *eb;
+        long x = strtol(a, &ea, 10), y = strtol(b, &eb, 10);
+        if (x != y)
+            return x < y ? -1 : 1;
+        a = *ea == '.' ? ea + 1 : ea;
+        b = *eb == '.' ? eb + 1 : eb;
+    }
+    return 0;
+}
+
+/* <prefix>/lib/gcc/<triplet>/<highest version with include/c++>. */
+static int find_gcc_dir(const char *prefix, const char *triplet, char *out, size_t outsz) {
+    char base[PATH_MAX], probe[PATH_MAX], best[256] = "";
+    int n = snprintf(base, sizeof base, "%s/lib/gcc/%s", prefix, triplet);
+    if (n <= 0 || (size_t)n >= sizeof base)
+        return -1;
+    DIR *d = opendir(base);
+    if (!d)
+        return -1;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        const char *v = e->d_name;
+        size_t vl = strlen(v);
+        if (!vl || v[0] == '.' || strspn(v, "0123456789.") != vl || vl >= sizeof best)
+            continue;
+        n = snprintf(probe, sizeof probe, "%s/%s/include/c++", base, v);
+        if (n <= 0 || (size_t)n >= sizeof probe || !zig_sysroot_is_dir(probe))
+            continue;
+        if (!best[0] || version_cmp(v, best) > 0)
+            memcpy(best, v, vl + 1);
+    }
+    closedir(d);
+    if (!best[0])
+        return -1;
+    n = snprintf(out, outsz, "%s/%s", base, best);
+    return (n > 0 && (size_t)n < outsz) ? 0 : -1;
+}
+
+/* Install prefix of this wrapper (<prefix>/bin/<name>); CONDA_PREFIX fallback. */
+static int wrapper_prefix(char *buf, size_t sz) {
+    if (zig_self_path(buf, sz) == 0) {
+        int k;
+        for (k = 0; k < 2; k++) {
+            char *s = strrchr(buf, '/');
+            if (!s)
+                return -1;
+            *s = '\0';
+        }
+        return 0;
+    }
+    const char *cp = getenv("CONDA_PREFIX");
+    if (!cp || !*cp)
+        return -1;
+    int n = snprintf(buf, sz, "%s", cp);
+    return (n > 0 && (size_t)n < sz) ? 0 : -1;
+}
+
+static char cxx_slots[6][PATH_MAX];
+
+__attribute__((format(printf, 2, 3)))
+static const char *cxx_fmt(int slot, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(cxx_slots[slot], PATH_MAX, fmt, ap);
+    va_end(ap);
+    return (n > 0 && n < PATH_MAX) ? cxx_slots[slot] : NULL;
+}
+
+/* Fill pre (before user args) and post (after, at most 10) with the flags that
+ * build C++ against <gccdir>'s libstdc++; returns 0 (zig libc++ kept) if not
+ * found.  reset_x: user args set -x, so end it before the appended libs.
+ * The overlay shadows sys/single_threaded.h, which zig's generic glibc
+ * headers #error on below 2.32. */
+static int gnu_libstdcxx_args(int links, int reset_x, const char **pre, int *n_pre,
+                              const char **post, int *n_post) {
+    char triplet[256], prefix[PATH_MAX] = "", gcc[PATH_MAX];
+    const char *dbg = getenv("DEBUG_ZIG_BUILD");
+    size_t tl = strlen(WRAPPER_PREFIX);
+    if (tl < 2 || tl > sizeof triplet)
+        return 0;
+    memcpy(triplet, WRAPPER_PREFIX, tl - 1);
+    triplet[tl - 1] = '\0';
+
+    const char *ov = NULL, *i1 = NULL, *i2 = NULL, *i3 = NULL, *l1 = NULL, *l2 = NULL;
+    if (wrapper_prefix(prefix, sizeof prefix) == 0 &&
+        find_gcc_dir(prefix, triplet, gcc, sizeof gcc) == 0) {
+        ov = cxx_fmt(0, "-I%s/share/zig/cxx-overlay/%s", prefix, triplet);
+        i1 = cxx_fmt(1, "-I%s/include/c++", gcc);
+        i2 = cxx_fmt(2, "-I%s/include/c++/%s", gcc, triplet);
+        i3 = cxx_fmt(3, "-I%s/include/c++/backward", gcc);
+        l1 = cxx_fmt(4, "%s/libstdc++.so", gcc);
+        l2 = cxx_fmt(5, "%s/libgcc_s.so.1", gcc);
+    }
+    if (!ov || !i1 || !i2 || !i3 || !l1 || !l2 || !zig_sysroot_is_dir(ov + 2)) {
+        if (dbg && str_eq(dbg, "1"))
+            fprintf(stderr, "zig-wrapper: no GCC libstdc++/overlay for %s under '%s'; "
+                            "using zig libc++\n", triplet, prefix);
+        return 0;
+    }
+    pre[(*n_pre)++] = "-nostdlib++";
+    post[(*n_post)++] = ov;
+    post[(*n_post)++] = i1;
+    post[(*n_post)++] = i2;
+    post[(*n_post)++] = i3;
+    if (links) {
+        if (reset_x) {
+            post[(*n_post)++] = "-x";
+            post[(*n_post)++] = "none";
+        }
+        post[(*n_post)++] = l1;
+        post[(*n_post)++] = l2;
+        post[(*n_post)++] = "-lm";
+        /* conda's libgcc_s/libstdc++ may need a newer glibc than the target;
+         * the runtime dep enforces it. */
+        post[(*n_post)++] = "-Wl,--allow-shlib-undefined";
+    }
+    return 1;
 }
 
 /* zig-cc / zig-cxx.  Port of recipe/scripts/_zig-cc-common.sh.
@@ -375,6 +540,22 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
     }
     int inject_target = !has_target;
 
+    /* ---- STEP 10a: linux-gnu c++ builds against conda-forge's GCC
+     * libstdc++ via `zig cc -nostdlib++`, as conda-forge clang does.
+     * ZIG_CXX_RUNTIME=zig keeps zig's libc++. ---- */
+    const char *cxx_pre[1];
+    const char *cxx_post[10];
+    int n_cxx_pre = 0, n_cxx_post = 0;
+    if (mode_is_cxx && inject_target && is_linux_gnu_target() &&
+        !cxx_runtime_optout(raw_argc, raw_argv)) {
+        int reset_x = 0;
+        for (i = 0; i < fi; i++)
+            if (starts_with(filtered[i], "-x")) { reset_x = 1; break; }
+        if (gnu_libstdcxx_args(invocation_links(filtered, fi), reset_x,
+                               cxx_pre, &n_cxx_pre, cxx_post, &n_cxx_post))
+            mode = "cc";
+    }
+
     /* ---- STEP 10b (replaces recipe/scripts/_zig-force-load-common.sh:29-96):
      * -all_load rewrite.
      *
@@ -454,7 +635,7 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
      * args, NULL -- matching bash's
      * _exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}"
      * "${_sysroot_flags[@]}" "${_final_args[@]}"). */
-    int max_args = fi + n_sysroot_flags + n_force_load_extra + 6;
+    int max_args = fi + n_sysroot_flags + n_force_load_extra + n_cxx_pre + n_cxx_post + 6;
     const char **new_argv = (const char **)malloc(sizeof(char *) * (size_t)max_args);
     if (!new_argv) {
         fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
@@ -466,6 +647,8 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
     int ni = 0;
     new_argv[ni++] = zig_bin;
     new_argv[ni++] = mode;
+    for (i = 0; i < n_cxx_pre; i++)
+        new_argv[ni++] = cxx_pre[i];
     if (inject_lld)
         new_argv[ni++] = "-fuse-ld=lld";
     if (inject_target) {
@@ -478,6 +661,8 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
         new_argv[ni++] = filtered[i];
     for (i = 0; i < n_force_load_extra; i++)
         new_argv[ni++] = force_load_extra[i];
+    for (i = 0; i < n_cxx_post; i++)
+        new_argv[ni++] = cxx_post[i];
     new_argv[ni] = NULL;
 
     /* exec_zig() replaces this process on success and returns only on

@@ -746,7 +746,8 @@ def test_libstdcxx_probe() -> None:
     if not zig:
         SKIP("libstdcxx-probe", f"zig binary not found ({_zig_bin_name})")
         return
-    arch = _PROBE_ARCH.get(platform.machine())
+    # Emulated lanes run on an aarch64 host: target the triplet arch, not the host's.
+    arch = _arch if os.environ.get("QEMU_EXECVE") else _PROBE_ARCH.get(platform.machine())
     if not arch:
         SKIP("libstdcxx-probe", f"unmapped machine {platform.machine()}")
         return
@@ -998,6 +999,107 @@ def test_libcxx_shared_simulation() -> None:
                 pass
 
 
+_XARCH_TARGETS = ("aarch64-macos", "x86_64-macos")
+
+
+_STUB_VERSION = "99.77.55"
+
+
+def _build_arch_stub(zig: str, tgt: str, td: Path) -> Path | None:
+    """Build a stub libc++.1.dylib (unique version) for tgt; returns its dir."""
+    d = td / tgt
+    d.mkdir()
+    src = td / "stub.c"
+    src.write_text("int zig_feedstock_libcxx_stub(void){return 0;}\n")
+    r = _run([zig, "cc", "-shared", "-target", tgt,
+              "-Wl,-install_name,@rpath/libc++.1.dylib",
+              f"-Wl,-current_version,{_STUB_VERSION}",
+              "-Wl,-compatibility_version,1.0.0",
+              "-o", str(d / "libc++.1.dylib"), str(src)],
+             cwd=str(td), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+    if r.returncode != 0 or not (d / "libc++.1.dylib").exists():
+        FAIL(f"libcxx-arch-select: build {tgt} stub dylib",
+             f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return None
+    return d
+
+
+def _link_libcxx_lines(zig: str, tgt: str, ldir: Path, td: Path,
+                       label: str) -> list[str] | None:
+    """Link a C++ main against -L ldir; return otool -L lines naming libc++."""
+    src = td / "main.cpp"
+    src.write_text("int main(){return 0;}\n")
+    out = td / f"a.out.{label}"
+    r = _run([zig, "c++", "-target", tgt, f"-L{ldir}", str(src), "-o", str(out)],
+             cwd=str(td), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+    if r.returncode != 0 or not out.exists():
+        FAIL(f"libcxx-arch-select: {label}: link",
+             f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return None
+    otool = shutil.which("otool") or shutil.which("llvm-otool")
+    if not otool:
+        SKIP(f"libcxx-arch-select: {label}", "otool not found")
+        return None
+    r2 = _run([otool, "-L", str(out)], cwd=str(td))
+    if r2.returncode != 0:
+        WARN(f"libcxx-arch-select: {label}: otool", f"rc={r2.returncode}")
+        return None
+    return [ln.strip() for ln in r2.stdout.splitlines() if "libc++" in ln]
+
+
+def _is_stub(lines: list[str]) -> bool:
+    return any(f"current version {_STUB_VERSION}" in ln for ln in lines)
+
+
+def test_libcxx_arch_select() -> None:
+    """
+    darwin link picks a shared libc++ only if it has a slice for the target arch.
+
+    MATCH:    -L dir with a target-arch stub -> the stub is linked (the -L dirs
+              take precedence over the zig_lib-relative probe).
+    MISMATCH: -L dir with only the other arch's stub -> the stub is NOT linked.
+              The matching-arch conda libc++ or none (static) is acceptable.
+    """
+    print("--- [patch-0008] Shared libc++ target-arch selection ---")
+    if not (is_macos_target and _build_is_mac):
+        SKIP("libcxx-arch-select", "needs a macOS build host and macOS target")
+        return
+    zig = _find_zig_binary()
+    if not zig:
+        SKIP("libcxx-arch-select", f"zig binary not found ({_zig_bin_name})")
+        return
+
+    with tempfile.TemporaryDirectory() as tds:
+        td = Path(tds)
+        stubs: dict[str, Path] = {}
+        for tgt in _XARCH_TARGETS:
+            d = _build_arch_stub(zig, tgt, td)
+            if d is None:
+                return
+            stubs[tgt] = d
+
+        for tgt in _XARCH_TARGETS:
+            lines = _link_libcxx_lines(zig, tgt, stubs[tgt], td, f"{tgt}-match")
+            if lines is None:
+                continue
+            if _is_stub(lines):
+                PASS(f"libcxx-arch-select: {tgt} picks matching-arch libc++ stub via -L")
+            else:
+                FAIL(f"libcxx-arch-select: {tgt} ignored matching-arch libc++ stub",
+                     f"otool libc++ lines: {lines}")
+
+            other = next(t for t in _XARCH_TARGETS if t != tgt)
+            lines = _link_libcxx_lines(zig, tgt, stubs[other], td, f"{tgt}-mismatch")
+            if lines is None:
+                continue
+            if _is_stub(lines):
+                FAIL(f"libcxx-arch-select: {tgt} linked wrong-arch libc++ stub",
+                     f"otool libc++ lines: {lines}")
+            else:
+                what = lines[0] if lines else "none (static)"
+                PASS(f"libcxx-arch-select: {tgt} rejects wrong-arch libc++ stub; linked: {what}")
+
+
 # ===================================================================
 # Main
 # ===================================================================
@@ -1020,6 +1122,7 @@ def main() -> int:
     test_libcxx_fallback_static()
     test_libcxx_probe_paths()
     test_libcxx_shared_simulation()
+    test_libcxx_arch_select()
     test_zig_binary_libcxx()
     test_libstdcxx_probe()
 
