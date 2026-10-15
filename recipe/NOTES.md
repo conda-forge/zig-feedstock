@@ -203,7 +203,7 @@ For native/cross-target: depends on `zig_impl` for the same `xtarget_`
 cross-compiler: depends on `zig_impl` for the BUILD platform instead -- an
 external package, since `pin_subpackage` only reaches same-recipe outputs
 and the cross-compiler's own `zig_impl` is a different `xtarget_`'s build.
-The `zig_` cross package runs on `zig_impl_<xc_build_platform> ${{ abi_version }}.*`.
+The `zig_` cross package runs on `zig_impl_<xc_build_platform>[version="${{ abi_version }}.*", build_number=">=3"]` to ensure the glibc --no-as-needed fix is present.
 
 ### 2.7 Tests (zig_ output): native-triplet compiler suite listing <a id="tests-native-triplet-compiler-suite-listing"></a>
 Cross-compiler builds only: alongside the target-triplet wrapper suite,

@@ -461,6 +461,19 @@
   ref: "recipe/NOTES.md 1.12"
   status: DEFENSIBLE
 
+- file: non_unix/Compilation.zig-msvc-no-libcxxabi.patch
+  selector: not-unix
+  purpose: "windows-msvc C++: skips building and linking libc++abi (new target_util.libCxxNeedsLibCxxAbi; Compilation.zig queues libcxxabi only when true; Lld.zig coffLink links it only if built), so libc++ uses its own vcruntime mode as upstream LLVM does for MSVC; and adds -D_LIBCPP_NO_AUTO_LINK in libcxx.zig addCxxArgs, because __config otherwise emits #pragma comment(lib, \"libc++.lib\") while zig links its c++.lib by path"
+  notes: "also links libcpmt.lib (static CRT) or msvcprt.lib (dynamic CRT) for vcruntime exception_ptr symbols"
+  symptom: "zig c++ -target x86_64-windows-msvc: compile -c ok, link fails building libcxxabi: vcruntime_typeinfo.h:137 'target of using declaration conflicts with declaration already in scope' vs libcxxabi cxxabi.h type_info (MSVC 14.44 / 14.51; ziglang/zig #5312, #18685)"
+  tested_by: "recipe/testing/test_msvc_libcxx.py (gated is_native and xc_w64): compile, link and run of std::string + std::thread + throw/catch"
+  justification: OBSERVED-FAILURE
+  verify: "ablate on win-64 native: test_msvc_libcxx.py link step fails with the type_info clash"
+  depends_on: ""
+  cost: ""
+  ref: "ziglang/zig#5312"
+  status: PROBE
+
 - file: "recipe/build.sh ppc64le -fplt flag block (NOT A PATCH)"
   selector: linux-ppc64le
   purpose: "exports -fplt into CFLAGS/CXXFLAGS for linux-ppc64le, under the pre-existing target_platform guard, so GCC emits standard PLT call sequences instead of the inline-PLT relocations it emits under conda-forge's -fno-plt default"
