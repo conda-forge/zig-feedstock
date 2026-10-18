@@ -2,15 +2,15 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 2530
+  build_number: 3490
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
   snapshot: "349+d924f83bf"
-  snapshot_ref: "252"
-  build_ref: "2520"
+  snapshot_ref: "253"
+  build_ref: "2530"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
