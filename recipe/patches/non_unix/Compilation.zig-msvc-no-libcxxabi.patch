@@ -30,17 +30,15 @@ diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 index 9f00b4bc..2aaee2a3 100644
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
-@@ -731,8 +731,17 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
+@@ -729,8 +729,17 @@ fn coffLink(lld: *Lld, arena: Allocator) !void {
+
+         // libc++ dep
          if (comp.config.link_libcpp) {
 -            try argv.append(try comp.libcxxabi_static_lib.?.full_object_path.toString(arena));
 +            if (comp.libcxxabi_static_lib) |libcxxabi| {
 +                try argv.append(try libcxxabi.full_object_path.toString(arena));
 +            }
-             if (try libcxx_shared.findSharedLibCxxString(comp, arena)) |shared_path| {
-                 try argv.append(shared_path);
-             } else {
-                 try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
-             }
+             try argv.append(try comp.libcxx_static_lib.?.full_object_path.toString(arena));
 +            if (target.abi == .msvc) {
 +                // vcruntime exception_ptr internals are exported only by the STL lib.
 +                try argv.append(switch (comp.config.link_mode) {
@@ -49,6 +47,8 @@ index 9f00b4bc..2aaee2a3 100644
 +                });
 +            }
          }
+
+         // libunwind dep
 diff --git a/src/target.zig b/src/target.zig
 index 3037bbba..7a20020b 100644
 --- a/src/target.zig
@@ -56,7 +56,7 @@ index 3037bbba..7a20020b 100644
 @@ -61,6 +61,11 @@ pub fn libCxxNeedsLibUnwind(target: *const std.Target) bool {
      };
  }
- 
+
 +/// MSVC: libc++ uses vcruntime instead of libc++abi.
 +pub fn libCxxNeedsLibCxxAbi(target: *const std.Target) bool {
 +    return !(target.os.tag == .windows and target.abi == .msvc);

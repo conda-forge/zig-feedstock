@@ -59,5 +59,11 @@ if [[ -z "${ZIG_GLOBAL_CACHE_DIR:-}" ]]; then
     fi
 fi
 
+# === Share conda's libc++ inside conda builds (osx opt-in probe; issue #220) ===
+if [[ -n "${CONDA_BUILD:-}" && -z "${ZIG_LIBCXX:-}" ]]; then
+    export ZIG_LIBCXX=shared
+    export _CONDA_ZIG_LIBCXX_AUTO=1
+fi
+
 # === Cleanup temporaries ===
 unset _CONDA_TRIPLET _CROSS_TARGET_TRIPLET _wrapper_dir _zig_bin

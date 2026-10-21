@@ -390,7 +390,7 @@ def _main_win() -> int:
     if not cxx:
         return int(not _report("WRAPPER", False, f"{_xtriplet}-zig-cxx not found"))
     print(f"  wrapper = {cxx}")
-    with tempfile.TemporaryDirectory() as tds:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tds:
         td = Path(tds)
         (td / "thrower.cpp").write_text(_THROWER_WIN)
         (td / "main.cpp").write_text(_MAIN)
@@ -426,7 +426,7 @@ def main() -> int:
     if _triplet:
         print("  note: emulated lane; the wrapper runs under qemu")
 
-    with tempfile.TemporaryDirectory() as tds:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tds:
         td = Path(tds)
         (td / "thrower.cpp").write_text(_THROWER)
         (td / "main.cpp").write_text(_MAIN)
