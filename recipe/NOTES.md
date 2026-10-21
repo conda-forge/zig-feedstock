@@ -32,6 +32,10 @@ in `src/libs/libcxx.zig` `buildLibCxx` does `.load_dso` of
 `findSharedLibCxxPath` on macho, and the zig-llvm/lib probe is gone.
 `macho-lld-support` was regenerated (hunk move only).
 
+`prefer-shared-libcxx` is applied on osx only and shared libc++ is opt-in
+via `ZIG_LIBCXX=shared` (activation sets it under `CONDA_BUILD`); darwin
+links pick a dylib only with a slice for the target arch (issue #220).
+
 ### 1.2 Compile-time deps on macho-lld-support <a id="compile-time-deps-on-macho-lld-support"></a>
 `llvm.zig-lld-ofmt-macho.patch` uses the `.macho` arm of `switch (lld.ofmt)`,
 added by `Lld.zig-macho-lld-support.patch`; it applies cleanly at zero fuzz

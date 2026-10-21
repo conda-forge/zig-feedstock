@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 4
+  build_number: 5
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -178,7 +178,9 @@ source:
     patches:
       # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
-      - patches/Lld.zig-prefer-shared-libcxx.patch
+      - if: osx
+        then:
+          - patches/Lld.zig-prefer-shared-libcxx.patch
       # See recipe/NOTES.md 1.7.
       - patches/Lld.zig-glibc-libs-honour-no-as-needed.patch
       # See recipe/NOTES.md 1.2.
@@ -645,6 +647,10 @@ outputs:
             then:
               - libstdcxx >=${{ mingw_gcc_version }}
               - libgcc >=${{ mingw_gcc_version }}
+          # conda builds link conda's libc++.1.dylib (ZIG_LIBCXX=shared, issue #220)
+          - if: xc_osx
+            then:
+              - libcxx >=${{ llvm_version }}
     tests:
       # test-env solve (below) happens before script-level is_testable guards
       - if: is_testable
@@ -710,6 +716,12 @@ outputs:
                   - if not defined CONDA_ZIG_HOST exit /b 1
                   - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
                   - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
+              # ZIG_LIBCXX=shared is auto-set only under CONDA_BUILD (issue #220)
+              - if: unix
+                then:
+                  - (unset ZIG_LIBCXX CONDA_BUILD; . "$PREFIX/etc/conda/activate.d/zig_activate.sh"; test -z "${ZIG_LIBCXX:-}")
+                  - (unset ZIG_LIBCXX; CONDA_BUILD=1; . "$PREFIX/etc/conda/activate.d/zig_activate.sh"; test "$ZIG_LIBCXX" = shared)
+                  - (ZIG_LIBCXX=static; CONDA_BUILD=1; . "$PREFIX/etc/conda/activate.d/zig_activate.sh"; test "$ZIG_LIBCXX" = static)
               # Wrapper + functional validation tests (Python, cross-platform)
               - if: linux
                 then:
