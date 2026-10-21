@@ -7,7 +7,8 @@ directly (no activation wrappers). Verifies that the zig binary:
 
   1. Falls back to static libc++ when no shared lib is at probe paths (default)
   2. Carries the shared libc++ probe names on macOS only (patch scoped to osx)
-  3. Uses shared libc++ when a real dylib is placed at the probe path (macOS)
+  3. Uses shared libc++ only when ZIG_LIBCXX=shared AND a dylib is at the
+     probe path (macOS); unset / other values stay static (issue #220)
 
 Usage:
   python test_libcxx_shared.py <conda_triplet>
@@ -20,6 +21,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import shutil
@@ -399,15 +401,63 @@ def test_libcxx_probe_paths() -> None:
 # ===================================================================
 # Test 3: Shared libc++ simulation (place real .so, verify linkage)
 # ===================================================================
+@contextlib.contextmanager
+def _zig_libcxx(value: str | None):
+    """Set (or remove, for None) ZIG_LIBCXX in os.environ; _run children inherit it."""
+    old = os.environ.get("ZIG_LIBCXX")
+    if value is None:
+        os.environ.pop("ZIG_LIBCXX", None)
+    else:
+        os.environ["ZIG_LIBCXX"] = value
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop("ZIG_LIBCXX", None)
+        else:
+            os.environ["ZIG_LIBCXX"] = old
+
+
+def _check_optin_default(zig: str) -> None:
+    """With a shared libc++ available, unset/non-"shared" ZIG_LIBCXX stays static."""
+    otool = shutil.which("otool")
+    if not otool:
+        SKIP("libcxx-optin-default: otool check", "otool not found")
+        return
+    for value in (None, "static"):
+        label = f"libcxx-optin-default[ZIG_LIBCXX={value}]"
+        with tempfile.TemporaryDirectory() as td, _zig_libcxx(value):
+            src = Path(td) / "main.cpp"
+            src.write_text('#include <string>\n'
+                           'int main() { std::string s("x"); return (int)s.size() - 1; }\n')
+            out = Path(td) / "a.out"
+            r = _run([zig, "c++", "-o", str(out), str(src)],
+                     cwd=td, timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
+            if r.returncode != 0 or not out.exists():
+                FAIL(f"{label}: compile", f"rc={r.returncode}\n{r.stderr[:2000]}")
+                continue
+            r2 = _run([otool, "-L", str(out)], cwd=td)
+            deps = [l.strip() for l in r2.stdout.splitlines()[1:] if l.strip()]
+            if any("libc++" in d for d in deps):
+                FAIL(f"{label}: libc++ dylib linked without opt-in", "; ".join(deps))
+            elif not any("libSystem" in d for d in deps):
+                FAIL(f"{label}: libSystem missing from load commands", "; ".join(deps))
+            else:
+                PASS(f"{label}: static libc++ (only system dylibs)")
+
+
 def _check_needed_libcxx(zig: str, label: str) -> None:
     """Check for dynamic libc++ dependency, then run the report-only probes."""
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory() as td, _zig_libcxx("shared"):
         cxx_out = Path(td) / "libtest.dylib"
         _compile_and_check_needed(zig, label, td, cxx_out)
         # Measurements run even when the check above returned early.
         if cxx_out.exists():
             _report_libcxxabi_doubled(cxx_out, td)
-        _report_xdylib_exception(zig, td)
+        _report_xdylib_exception(zig, td, "shared")
+    with tempfile.TemporaryDirectory() as td, _zig_libcxx(None):
+        _report_xdylib_exception(zig, td, "static")
+    _check_optin_default(zig)
 
 
 def _compile_and_check_needed(zig: str, label: str, td: str, cxx_out: Path) -> None:
@@ -575,8 +625,9 @@ def _xdylib_otool(exe: Path) -> None:
         print(f"    XDYLIB: {l.rstrip()}")
 
 
-def _report_xdylib_exception(zig: str, td: str) -> None:
+def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
     """Report-only: exception thrown in a dylib is caught by the executable."""
+    wtag = "libcxxabi-xdylib-exception"
     try:
         d = Path(td) / "xdylib"
         d.mkdir()
@@ -600,34 +651,42 @@ def _report_xdylib_exception(zig: str, td: str) -> None:
                   str(d / "thrower.cpp")], cwd=str(d),
                  timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
         if r.returncode != 0:
-            WARN("libcxxabi-xdylib-exception",
-                 f"dylib build rc={r.returncode}\n{r.stderr[:500]}")
+            WARN(wtag, f"[{mode}] dylib build rc={r.returncode}\n{r.stderr[:500]}")
             return
         r = _run([zig, "c++", "-o", str(d / "xmain"), str(d / "main.cpp"),
-                  "-L" + str(d), "-lthrower", "-Wl,-rpath," + str(d)],
+                  "-L" + str(d), "-lthrower", "-Wl,-rpath," + str(d),
+                  f"-Wl,-rpath,{_prefix}/lib"],
                  cwd=str(d), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
         if r.returncode != 0:
-            WARN("libcxxabi-xdylib-exception",
-                 f"exe build rc={r.returncode}\n{r.stderr[:500]}")
+            WARN(wtag, f"[{mode}] exe build rc={r.returncode}\n{r.stderr[:500]}")
             return
         _xdylib_otool(d / "xmain")
+        if mode == "static":
+            _report_libcxxabi_doubled(d / "libthrower.dylib", td, "XDYLIB-THROWER-")
+            _report_libcxxabi_doubled(d / "xmain", td, "XDYLIB-MAIN-")
         r = _run([str(d / "xmain")], cwd=str(d), timeout=60)
-        verdict = "caught" if "CAUGHT" in r.stdout else "NOT caught"
-        line = f"LIBCXXABI-XDYLIB-EXCEPTION: {verdict} (rc={r.returncode})"
+        if "CAUGHT" in r.stdout:
+            verdict = "caught"
+        elif "Library not loaded" in r.stderr:
+            verdict = "LOAD-FAIL"
+        else:
+            verdict = "NOT caught"
+        line = f"LIBCXXABI-XDYLIB-EXCEPTION[{mode}]: {verdict} (rc={r.returncode})"
         print(f"    {line}")
-        if verdict != "caught":
-            print(f"    XDYLIB: stderr tail:\n{_tail(r.stderr, 15)}")
-            print(f"    XDYLIB: stdout tail:\n{_tail(r.stdout, 15)}")
+        if verdict == "caught":
+            return
+        print(f"    XDYLIB[{mode}]: stderr tail:\n{_tail(r.stderr, 15)}")
+        if verdict == "NOT caught":
+            print(f"    XDYLIB[{mode}]: stdout tail:\n{_tail(r.stdout, 15)}")
+        else:
             r2 = _run(["env", f"DYLD_LIBRARY_PATH={_prefix}/lib", str(d / "xmain")],
                       cwd=str(d), timeout=60)
             v2 = "caught" if "CAUGHT" in r2.stdout else "NOT caught"
-            print(f"    LIBCXXABI-XDYLIB-EXCEPTION-DYLD-PATH: {v2} "
+            print(f"    LIBCXXABI-XDYLIB-EXCEPTION[{mode}]-DYLD-PATH: {v2} "
                   f"(rc={r2.returncode})")
-            if v2 != "caught":
-                print(_tail(r2.stderr, 15))
-            WARN("libcxxabi-xdylib-exception", line)
+        WARN(wtag, line)
     except Exception as e:  # report-only
-        WARN("libcxxabi-xdylib-exception", f"probe error: {e}")
+        WARN(wtag, f"[{mode}] probe error: {e}")
 
 
 _PROBE_ARCH = {
@@ -1051,6 +1110,53 @@ def _is_stub(lines: list[str]) -> bool:
     return any(f"current version {_STUB_VERSION}" in ln for ln in lines)
 
 
+def _dylib_has_arch(path: Path, tgt_arch: str) -> bool | None:
+    """True/False if path has a Mach-O slice for tgt_arch; None if no tool."""
+    want = {"aarch64": "arm64", "x86_64": "x86_64"}.get(tgt_arch, tgt_arch)
+    cwd = str(path.parent)
+    lipo = shutil.which("lipo") or shutil.which("llvm-lipo")
+    if lipo:
+        r = _run([lipo, "-archs", str(path)], cwd=cwd)
+        if r.returncode == 0:
+            return want in r.stdout.split()
+    otool = shutil.which("otool") or shutil.which("llvm-otool")
+    if otool:
+        r = _run([otool, "-hv", str(path)], cwd=cwd)
+        if r.returncode == 0:
+            return want.upper() in r.stdout.upper().split()
+    file_tool = shutil.which("file")
+    if file_tool:
+        r = _run([file_tool, str(path)], cwd=cwd)
+        if r.returncode == 0:
+            return want in r.stdout
+    return None
+
+
+def _classify_linked(lines: list[str]) -> str:
+    if _is_stub(lines):
+        return "stub"
+    return "conda" if lines else "static"
+
+
+def _check_mismatch_fallback(tgt: str, lines: list[str]) -> None:
+    """Wrong-arch -L stub must be rejected; expect conda libc++ or static."""
+    got = _classify_linked(lines)
+    conda = Path(_prefix) / "lib" / "libc++.1.dylib"
+    has = _dylib_has_arch(conda, tgt.split("-")[0]) if conda.exists() else False
+    expected = None if has is None else ("conda" if has else "static")
+    label = f"libcxx-arch-select: {tgt} rejects wrong-arch -L stub"
+    if got == "stub":
+        FAIL(f"{label}: linked wrong-arch libc++ stub", f"otool libc++ lines: {lines}")
+    elif expected is None:
+        PASS(f"{label}, falls back to {got} (fallback unverified)")
+    elif got != expected:
+        FAIL(f"{label}: wrong fallback (got {got}, expected {expected})",
+             f"otool libc++ lines: {lines}")
+    else:
+        what = "conda libc++" if got == "conda" else "static"
+        PASS(f"libcxx-arch-select: {tgt} rejects wrong-arch -L stub, falls back to {what}")
+
+
 def test_libcxx_arch_select() -> None:
     """
     darwin link picks a shared libc++ only if it has a slice for the target arch.
@@ -1082,7 +1188,7 @@ def test_libcxx_arch_select() -> None:
             lines = _link_libcxx_lines(zig, tgt, stubs[tgt], td, f"{tgt}-match")
             if lines is None:
                 continue
-            if _is_stub(lines):
+            if _is_stub(lines) and any("@rpath/libc++.1.dylib" in ln for ln in lines):
                 PASS(f"libcxx-arch-select: {tgt} picks matching-arch libc++ stub via -L")
             else:
                 FAIL(f"libcxx-arch-select: {tgt} ignored matching-arch libc++ stub",
@@ -1092,12 +1198,7 @@ def test_libcxx_arch_select() -> None:
             lines = _link_libcxx_lines(zig, tgt, stubs[other], td, f"{tgt}-mismatch")
             if lines is None:
                 continue
-            if _is_stub(lines):
-                FAIL(f"libcxx-arch-select: {tgt} linked wrong-arch libc++ stub",
-                     f"otool libc++ lines: {lines}")
-            else:
-                what = lines[0] if lines else "none (static)"
-                PASS(f"libcxx-arch-select: {tgt} rejects wrong-arch libc++ stub; linked: {what}")
+            _check_mismatch_fallback(tgt, lines)
 
 
 # ===================================================================
@@ -1119,10 +1220,12 @@ def main() -> int:
     if not check_emulation_env(_conda_triplet):
         return 1
 
-    test_libcxx_fallback_static()
+    with _zig_libcxx(None):
+        test_libcxx_fallback_static()
     test_libcxx_probe_paths()
     test_libcxx_shared_simulation()
-    test_libcxx_arch_select()
+    with _zig_libcxx("shared"):
+        test_libcxx_arch_select()
     test_zig_binary_libcxx()
     test_libstdcxx_probe()
 
