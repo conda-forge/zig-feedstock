@@ -48,7 +48,7 @@ def main():
     # Unix vs non-Unix (mingw32 = non-Unix)
     is_nonunix = "mingw32" in conda_triplet
     # Execution architecture is independent of the compiler's codegen target.
-    nonunix_shim_target = os.environ["SHIM_ZIG_TRIPLET"] if is_nonunix and shim_on_target else None
+    shim_exec_target = os.environ["SHIM_ZIG_TRIPLET"] if shim_on_target else None
 
     # Cross-target triplet: only set for cross-compiler builds
     cross_target_triplet = conda_triplet if cross_compiler == "true" else ""
@@ -85,7 +85,7 @@ def main():
         conda_triplet=conda_triplet,
         is_nonunix=is_nonunix,
         shim_on_target=shim_on_target,
-        nonunix_shim_target=nonunix_shim_target,
+        shim_exec_target=shim_exec_target,
     )
 
 
@@ -113,11 +113,11 @@ def main():
             conda_triplet=native_triplet,
             is_nonunix=is_nonunix,
             shim_on_target=shim_on_target,
-            nonunix_shim_target=nonunix_shim_target,
+            shim_exec_target=shim_exec_target,
         )
 
         if is_nonunix:
-            install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet, shim_target=nonunix_shim_target)
+            install_nonunix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet, shim_target=shim_exec_target)
         else:
             install_unix_cross_wrappers(prefix, recipe_dir, native_triplet, conda_triplet, zig_triplet)
 
@@ -363,7 +363,7 @@ def install_zig_cc_wrappers(
     conda_triplet: str,
     is_nonunix: bool = False,
     shim_on_target: bool = False,
-    nonunix_shim_target: str | None = None,
+    shim_exec_target: str | None = None,
 ):
     """Install zig-cc/cxx/ar/ranlib/asm/rc wrapper scripts from templates."""
 
@@ -405,7 +405,7 @@ def install_zig_cc_wrappers(
                     "@ZIG_BIN_NAME@": zig_bin_name,
                     "@IS_MINGW_TARGET@": "1" if is_mingw else "0",
                 }
-                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements, extra_args=("-lkernel32",), target=nonunix_shim_target)
+                _compile_c_shim(cc_src, wrapper_dir / f"{conda_triplet}-{exe_name}.exe", mode_replacements, extra_args=("-lkernel32",), target=shim_exec_target)
             print(f"Compiled {len(cc_modes)} cc/cxx shims")
 
         # Compile .exe shims for simple pass-through tools
@@ -425,7 +425,7 @@ def install_zig_cc_wrappers(
                     "@ZIG_BIN_NAME@": zig_bin_name,
                     "@ZIG_PREFIX_ARGS@": prefix_args,
                 }
-                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements, extra_args=("-lkernel32",), target=nonunix_shim_target)
+                _compile_c_shim(tool_src, wrapper_dir / f"{conda_triplet}-{name}.exe", tool_replacements, extra_args=("-lkernel32",), target=shim_exec_target)
             print(f"Compiled {len(tool_prefix_args)} tool shims")
 
         # Compile zig-windres.exe (dedicated shim with -o -> -fo translation)
@@ -435,7 +435,7 @@ def install_zig_cc_wrappers(
                 **replacements,
                 "@ZIG_BIN_NAME@": zig_bin_name,
             }
-            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements, extra_args=("-lkernel32",), target=nonunix_shim_target)
+            _compile_c_shim(windres_src, wrapper_dir / f"{conda_triplet}-zig-windres.exe", windres_replacements, extra_args=("-lkernel32",), target=shim_exec_target)
 
     else:
         wrapper_dir = prefix / "bin"
@@ -460,7 +460,10 @@ def install_zig_cc_wrappers(
         # Compile natively unless the wrapper will run on the target machine
         # (target_platform != build_platform), where a natively compiled shim
         # would be the wrong architecture. See _compile_c_shim.
-        shim_target = _with_glibc_floor(cc_target, target_arch) if shim_on_target else None
+        shim_target = (
+            _with_glibc_floor(shim_exec_target, shim_exec_target.split("-")[0])
+            if shim_on_target and shim_exec_target else None
+        )
         # macOS: reserve Mach-O header padding, else conda's post-build
         # install_name_tool rpath rewrite fails ("load commands do not fit").
         mux_extra = ("-Wl,-headerpad_max_install_names",) if "darwin" in conda_triplet else ()

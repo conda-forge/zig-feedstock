@@ -236,17 +236,19 @@ def test_libcxx_fallback_static() -> None:
 
     zig_lib = _find_zig_lib_dir()
 
-    # Precondition: verify no shared libc++ at probe paths
+    # Shared libc++ is opt-in via ZIG_LIBCXX=shared (main() runs this with it
+    # unset), so a libc++ already at the probe path (zig_impl run-depends on
+    # libcxx on osx) must NOT change the default; the link below proves that.
     if zig_lib:
         names = LIBCXX_NAMES.get(plat, [])
-        for subdir in PROBE_SUBDIRS:
-            for name in names:
-                probe = (zig_lib / subdir / name).resolve()
-                if probe.exists():
-                    SKIP("libcxx-static-fallback",
-                         f"shared libc++ already at {probe}")
-                    return
-        PASS("precondition: no shared libc++ at probe paths")
+        present = [str((zig_lib / subdir / name).resolve())
+                   for subdir in PROBE_SUBDIRS for name in names
+                   if (zig_lib / subdir / name).exists()]
+        if present:
+            print(f"    INFO: shared libc++ at probe path ({', '.join(present)}); "
+                  f"default must still link static")
+        else:
+            PASS("precondition: no shared libc++ at probe paths")
 
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "cxxlib.cpp"
@@ -591,7 +593,10 @@ def _xdylib_otool(exe: Path) -> None:
 
 
 def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
-    """Report-only: exception thrown in a dylib is caught by the executable."""
+    """Exception thrown in a dylib is caught by the executable.
+
+    FAIL in shared mode; WARN in static mode (static default is not expected to catch).
+    """
     wtag = "libcxxabi-xdylib-exception"
     try:
         d = Path(td) / "xdylib"
@@ -649,7 +654,13 @@ def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
             v2 = "caught" if "CAUGHT" in r2.stdout else "NOT caught"
             print(f"    LIBCXXABI-XDYLIB-EXCEPTION[{mode}]-DYLD-PATH: {v2} "
                   f"(rc={r2.returncode})")
-        WARN(wtag, line)
+        if mode == "shared":
+            FAIL(wtag, line)
+        elif verdict == "NOT caught":
+            WARN(wtag, f"{line}: expected under static default libc++ (each image "
+                       f"carries its own libc++abi); use ZIG_LIBCXX=shared + rpath")
+        else:
+            WARN(wtag, line)
     except Exception as e:  # report-only
         WARN(wtag, f"[{mode}] probe error: {e}")
 

@@ -282,7 +282,7 @@ fi
 # osx-cross's config.h may already resolve via ${PREFIX} (cmake found target-arch
 # LLVM directly) -- zero matches there is a valid outcome, not a failure; see the
 # BUILD_PREFIX post-condition assertion below for the check that actually matters.
-is_osx      && is_cross && _cfg_subst     "${cmake_build_dir}/config.h" "(ZIG_LLVM_\\w+ \")${BUILD_PREFIX}" "\\1${PREFIX}"
+is_osx      && is_cross && CFG_SUBST_ZERO_OK=1 _cfg_subst     "${cmake_build_dir}/config.h" "(ZIG_LLVM_\\w+ \")${BUILD_PREFIX}" "\\1${PREFIX}"
 is_not_unix && is_cross && _cfg_subst_lit "${cmake_build_dir}/config.h" "${BUILD_PREFIX}" "${PREFIX}"
 # Do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS:
 # duplicate LC_LOAD_DYLIB, dyld aborts on SDK >= 26. See reference doc S8.
@@ -412,6 +412,10 @@ rm -f "${PREFIX}/bin/zig.pdb"
 # macOS: --search-prefix adds a library search but does not embed LC_RPATH in the Mach-O binary.
 if is_osx; then
   install_name_tool -add_rpath "${PREFIX}/lib" "${PREFIX}/bin/zig"
+  # install_name_tool invalidates the signature; re-sign ad hoc.
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force -s - "${PREFIX}/bin/zig"
+  fi
 fi
 
 if is_linux; then

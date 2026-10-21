@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 5
+  build_number: 6
   name: zig
   version: "0.17.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -534,8 +534,9 @@ outputs:
                 - if: osx
                   then:
                     - echo '_main' > test_lld.exp
-                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,test_lld.exp -o test_lld test_lld.c
-                    - echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"
+                    - ${{ conda_triplet }}-zig cc -fuse-ld=lld -Wl,-exported_symbols_list,test_lld.exp -o test_lld test_lld.c 2> test_lld.err
+                    - cat test_lld.err
+                    - if grep -q "argument unused.*fuse-ld" test_lld.err; then echo "SKIP -fuse-ld=lld - ignored by driver on Mach-O, linked by zig MachO linker"; echo "PASS native MachO link with -exported_symbols_list"; else echo "PASS -fuse-ld=lld with -exported_symbols_list (macOS/Mach-O via LLD)"; fi
                 - if: linux
                   then:
                     - echo '{ main; };' > test_lld.dyn
@@ -558,11 +559,11 @@ outputs:
 
       # See recipe/NOTES.md 2.5.
       - script:
-          - if: xc_w64
+          - if: xc_w64 or (xc_warm64 and is_native)
             then:
               - python testing/test_mingw_crt.py
             else:
-              - echo "SKIP x86_64-windows-gnu CRT test (non-Windows target)"
+              - echo "SKIP mingw CRT test (not win-64 or native win-arm64)"
         files:
           recipe:
             - testing/_test_utils.py
@@ -775,11 +776,11 @@ outputs:
 
           # Verify <triplet>-zig-windres wrapper: -o flag translation works
           - script:
-              - if: xc_w64 or xc_warm64
+              - if: xc_w64 or xc_warm64 or xc_win32
                 then:
                   - python testing/test_windres.py
                 else:
-                  - echo "SKIP windres wrapper test (non-Windows target)"
+                  - echo "SKIP windres wrapper test (not a Windows target)"
             files:
               recipe:
                 - testing/test_windres.py
@@ -835,12 +836,12 @@ outputs:
 
           # Verify the aarch64-windows-msvc custom-entry link still appends ucrt.lib.
           - script:
-              - if: is_native and xc_w64
+              - if: is_native and (xc_w64 or xc_warm64)
                 then:
                   - python testing/test_aarch64_msvc_ucrt.py
                   - python testing/test_msvc_libcxx.py
                 else:
-                  - echo "SKIP aarch64 msvc ucrt probe (non-native win-64)"
+                  - echo "SKIP msvc ucrt/libc++ probes (not native win-64 or win-arm64)"
             files:
               recipe:
                 - testing/test_aarch64_msvc_ucrt.py

@@ -92,7 +92,13 @@ with open(path, 'w', newline='') as f:
     f.write(''.join(out))
 sys.exit(0 if total > 0 else 1)
 PY
-  [[ ${_rc} -ne 0 ]] && echo "WARNING: config.h substitution matched nothing: ${_pat}" >&2
+  if [[ ${_rc} -ne 0 ]]; then
+    if [[ "${CFG_SUBST_ZERO_OK:-}" == "1" ]]; then
+      echo "INFO: config.h substitution matched nothing (expected): ${_pat}"
+    else
+      echo "WARNING: config.h substitution matched nothing: ${_pat}" >&2
+    fi
+  fi
   return 0
 }
 

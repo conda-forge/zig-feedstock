@@ -1,16 +1,30 @@
-"""Probe: x86_64-windows-msvc C++17 (string, thread, exception) compiles, links, runs.
+"""Probe: <host-arch>-windows-msvc C++17 (string, thread, exception) compiles, links, runs.
 
 Invokes the build-arch zig directly (no triplet wrapper); link builds libc++.
+The target follows the host: aarch64 on win-arm64, x86_64 on win-64.
 """
 
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-TARGET = "x86_64-windows-msvc"
+
+def _host_target(build_zig):
+    # CONDA_ZIG_BUILD names the build arch (aarch64-w64-mingw32-zig); an x64
+    # Python emulated on arm64 would misreport platform.machine().
+    if build_zig.startswith("aarch64"):
+        return "aarch64-windows-msvc"
+    if build_zig.startswith("x86_64"):
+        return "x86_64-windows-msvc"
+    if platform.machine().lower() in ("arm64", "aarch64"):
+        return "aarch64-windows-msvc"
+    return "x86_64-windows-msvc"
+
+
 TIMEOUT_S = 900
 STDERR_LINES = 20
 
@@ -77,7 +91,9 @@ def main():
 
     with tempfile.TemporaryDirectory() as td:
         Path(td, "msvc.cpp").write_text(SOURCE)
-        base = [zig, "c++", "-target", TARGET, "-std=c++17"]
+        target = _host_target(build_zig)
+        print("MSVC-LIBCXX: target %s" % target)
+        base = [zig, "c++", "-target", target, "-std=c++17"]
 
         proc = _step("compile", base + ["-c", "msvc.cpp", "-o", "msvc.obj"], td)
         if proc is None or proc.returncode != 0:

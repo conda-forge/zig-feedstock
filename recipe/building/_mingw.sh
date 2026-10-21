@@ -417,11 +417,16 @@ SYNCHRONIZATION_DEF
         fi
         [[ -n "${_gen_rep_lib}" ]] || continue
         if [[ -n "${_coff_py}" ]] && [[ -f "${_coff_helper}" ]]; then
-          _gen_actual_machine="$("${_coff_py}" "${_coff_helper}" "${_gen_rep_lib}" 2>/dev/null)"
-          read -r _ _gen_actual_machine _ <<< "${_gen_actual_machine}" || true
+          _gen_helper_rc=0
+          _gen_helper_out="$("${_coff_py}" "${_coff_helper}" "${_gen_rep_lib}")" || _gen_helper_rc=$?
+          _gen_helper_out="${_gen_helper_out//$'\r'/}"
+          _gen_actual_machine="${_gen_helper_out##* }"
           if [[ -z "${_gen_actual_machine}" || "${_gen_actual_machine}" == "UNKNOWN" ]]; then
-            echo "WARNING: could not determine machine type of ${_gen_rep_lib} (helper returned '${_gen_actual_machine:-empty}'); skipping machine-type check for ${_gen_pair_arch}" >&2
-          elif [[ "${_gen_actual_machine}" != "${_gen_expect_machine}" ]]; then
+            echo "ERROR: [_mingw] could not determine machine type of ${_gen_rep_lib} (helper rc=${_gen_helper_rc}, output '${_gen_helper_out:-empty}')" >&2
+            return 1
+          fi
+          echo "INFO: [_mingw] ${_gen_pair_arch} $(basename "${_gen_rep_lib}") machine=${_gen_actual_machine} (expected ${_gen_expect_machine})"
+          if [[ "${_gen_actual_machine}" != "${_gen_expect_machine}" ]]; then
             _coff_bad="${_coff_bad}  - ${_gen_pair_arch} (${_gen_pair_dir}): machine-type mismatch in $(basename "${_gen_rep_lib}"): expected ${_gen_expect_machine}, got ${_gen_actual_machine}
 "
           fi

@@ -177,6 +177,20 @@ void OtherEntry(void) { ExitProcess(1); }
         ("long",   ["-Wl,--entry,MyEntry"]),
     ]
 
+    # STRICT variants that must link (concat and comma) per wrapper arch, as
+    # measured by CI on c6306adf. Others are expected to fail.
+    expected_by_arch = {
+        "x86_64": {"nostartfiles", "nodefaultlibs", "nostartfiles_force_u",
+                   "nostartfiles_with_main"},
+        "i686": {"nostartfiles", "nodefaultlibs", "nostartfiles_with_main"},
+        "aarch64": {"nostartfiles_with_main"},
+    }
+    wrapper_arch = Path(zig_cc_exe).name.split("-", 1)[0]
+    expected_strict = expected_by_arch.get(wrapper_arch)
+    if expected_strict is None:
+        print(f"INFO: no expected strict-variant set for arch {wrapper_arch!r}; "
+              f"any-strict rule applies")
+
     PER_LINK_TIMEOUT_S = 300
     TOTAL_BUDGET_S = 700
 
@@ -246,7 +260,10 @@ void OtherEntry(void) { ExitProcess(1); }
                         if ("error" in ln.lower() or ">>>" in ln)]
                 if not keep:
                     continue
-                print(f"  --- {form_name} {var_name} ---")
+                is_expected_fail = (expected_strict is not None
+                                    and var_name not in expected_strict)
+                label = "expected-failure detail" if is_expected_fail else "failing-cell detail"
+                print(f"  --- {form_name} {var_name} [{label}] ---")
                 for ln in keep[:20]:
                     print(f"    {ln.strip()[:300]}")
         print("=== end failing-cell detail ===")
@@ -477,6 +494,17 @@ void OtherEntry(void) { ExitProcess(1); }
         print("=== end matrix ===")
         sys.stdout.flush()
         print("")
+
+    if expected_strict is not None:
+        missing = sorted(expected_strict - set(strict_ok))
+        unexpected = sorted(set(strict_ok) - expected_strict)
+        if unexpected:
+            print(f"REPORT: [{wrapper_arch}] STRICT variant(s) outside the expected set "
+                  f"now link: {', '.join(unexpected)} (update expected_by_arch)")
+        if missing:
+            sys.stdout.flush()
+            sys.exit(f"FAIL: [{zig_cc_exe}] expected STRICT variant(s) did not link for "
+                     f"both -Wl,-eSYM and -Wl,-e,SYM: {', '.join(missing)}")
 
     if strict_ok:
         print(f"PASS: [{zig_cc_exe}] -Wl,-eSYM and -Wl,-e,SYM honoured; "

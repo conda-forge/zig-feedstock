@@ -5,7 +5,7 @@ Regression test for conda-forge/zig-feedstock#209.
 Cross-linking to *-linux-gnu must honour --as-needed for zig's bundled glibc
 stubs (only referenced libs in DT_NEEDED) while still honouring an explicit
 -Wl,--no-as-needed -lm. Runs identically on every host OS; reads DT_NEEDED with
-a pure-Python ELF64-LE parser (no readelf).
+a pure-Python ELF64 parser (LE/BE) (no readelf).
 
   Case A: trivial main (issue repro, as C to skip a libc++ build) must not NEED
           librt/libutil/libresolv.
@@ -51,18 +51,19 @@ _LINK_TIMEOUT_S = 300
 
 
 def read_dt_needed(path: Path) -> list[str]:
-    """Return DT_NEEDED names of an ELF64 little-endian file, in order."""
+    """Return DT_NEEDED names of an ELF64 file (either endianness), in order."""
     data = path.read_bytes()
-    if data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
-        raise ValueError(f"{path.name}: not an ELF64 little-endian file")
-    e_phoff = struct.unpack_from("<Q", data, 0x20)[0]
-    e_phentsize, e_phnum = struct.unpack_from("<HH", data, 0x36)
+    if data[:4] != b"\x7fELF" or data[4] != 2 or data[5] not in (1, 2):
+        raise ValueError(f"{path.name}: not an ELF64 file")
+    e = "<" if data[5] == 1 else ">"  # EI_DATA
+    e_phoff = struct.unpack_from(e + "Q", data, 0x20)[0]
+    e_phentsize, e_phnum = struct.unpack_from(e + "HH", data, 0x36)
 
     loads: list[tuple[int, int, int]] = []  # (vaddr, offset, filesz)
     dyn: tuple[int, int] | None = None  # (offset, filesz)
     for i in range(e_phnum):
         p_type, _flags, p_off, p_vaddr, _paddr, p_filesz = struct.unpack_from(
-            "<IIQQQQ", data, e_phoff + i * e_phentsize
+            e + "IIQQQQ", data, e_phoff + i * e_phentsize
         )
         if p_type == _PT_LOAD:
             loads.append((p_vaddr, p_off, p_filesz))
@@ -75,7 +76,7 @@ def read_dt_needed(path: Path) -> list[str]:
     strtab_vaddr = None
     off, size = dyn
     for pos in range(off, off + size, 16):
-        tag, val = struct.unpack_from("<qQ", data, pos)
+        tag, val = struct.unpack_from(e + "qQ", data, pos)
         if tag == _DT_NULL:
             break
         if tag == _DT_NEEDED:
