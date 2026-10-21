@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 3490
+  build_number: 3491
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
@@ -723,6 +723,12 @@ outputs:
                   - if not defined CONDA_ZIG_HOST exit /b 1
                   - echo CONDA_ZIG_BUILD=%CONDA_ZIG_BUILD%
                   - echo CONDA_ZIG_HOST=%CONDA_ZIG_HOST%
+              # ZIG_LIBCXX=shared is auto-set only under CONDA_BUILD (issue #220)
+              - if: unix
+                then:
+                  - (unset ZIG_LIBCXX CONDA_BUILD; . "$PREFIX/etc/conda/activate.d/zig_activate.sh"; test -z "${ZIG_LIBCXX:-}")
+                  - (unset ZIG_LIBCXX; CONDA_BUILD=1; . "$PREFIX/etc/conda/activate.d/zig_activate.sh"; test "$ZIG_LIBCXX" = shared)
+                  - (ZIG_LIBCXX=static; CONDA_BUILD=1; . "$PREFIX/etc/conda/activate.d/zig_activate.sh"; test "$ZIG_LIBCXX" = static)
               # Wrapper + functional validation tests (Python, cross-platform)
               - if: linux
                 then:

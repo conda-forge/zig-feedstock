@@ -148,7 +148,7 @@
              .skip_linker_dependencies = options.skip_linker_dependencies,
 --- /dev/null
 +++ b/src/link/libcxx_shared.zig
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,124 @@
 +//! Shared libc++ discovery for conda-forge zig packaging (darwin targets only).
 +//! Probes the user's library search dirs (-L) and then dirs relative to
 +//! zig_lib_dir for a shared libc++ dylib, falling back to null (caller
@@ -242,6 +242,10 @@
 +
 +    // Shared libc++ is a conda osx policy; other targets keep static libc++.a.
 +    if (!target.os.tag.isDarwin()) return null;
++
++    // Opt-in: shared only when ZIG_LIBCXX is exactly "shared"; else static (upstream).
++    const opt = comp.environ_map.get("ZIG_LIBCXX") orelse return null;
++    if (!std.mem.eql(u8, opt, "shared")) return null;
 +
 +    for (comp.lib_directories) |dir| {
 +        const dir_path = dir.path orelse ".";
