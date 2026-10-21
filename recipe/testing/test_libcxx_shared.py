@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
@@ -756,6 +757,18 @@ def _find_conda_gcc() -> tuple[Path, str, str] | None:
     return best, best.parent.parent.parent.name, best.parent.parent.name
 
 
+def _glibc_floor(paths: list[Path]) -> tuple[int, int] | None:
+    """Max numeric GLIBC_x.y version string across the given files."""
+    vers: list[tuple[int, int]] = []
+    try:
+        for p in paths:
+            vers += [(int(a), int(b)) for a, b in
+                     re.findall(rb"GLIBC_(\d+)\.(\d+)", p.read_bytes())]
+    except OSError:
+        return None
+    return max(vers) if vers else None
+
+
 def _head(text: str, n: int = 15) -> str:
     return "\n".join(text.splitlines()[:n])
 
@@ -841,8 +854,12 @@ def _libstdcxx_probe_run(zig: str, arch: str) -> None:
 
     libs = [str(_prefix / "lib" / "libstdc++.so.6"),
             str(_prefix / "lib" / "libgcc_s.so.1")]
+    floor = _glibc_floor([Path(p) for p in libs])
+    glibc = ".".join(map(str, max((2, 28), floor or (2, 28))))
+    print(f"    LIBSTDCXX-PROBE: glibc target {glibc} "
+          "(max GLIBC_ verneed of libstdc++/libgcc_s)")
     rpath = f"-Wl,-rpath,{_prefix}/lib"
-    flags = ["-target", f"{arch}-linux-gnu.2.28", "-nostdlib++", "-std=c++17", "-w",
+    flags = ["-target", f"{arch}-linux-gnu.{glibc}", "-nostdlib++", "-std=c++17", "-w",
              "-I", str(hdr), "-I", str(hdr / triplet),  # -I so libstdc++ precedes zig's libc -isystem dirs (include_next)
              "-I", str(hdr / "backward")]
 
@@ -910,7 +927,7 @@ def _libstdcxx_probe_run(zig: str, arch: str) -> None:
             print("    LIBSTDCXX-PROBE-NO-LIBGCC_S: undefined: "
                   + ("; ".join(undef) or _head(r.stderr, 3)))
 
-        alias_cmd = [zig, "c++", "-target", f"{arch}-linux-gnu.2.28",
+        alias_cmd = [zig, "c++", "-target", f"{arch}-linux-gnu.{glibc}",
                      "-std=c++17", "main.cpp", "libthrower.so", "-lstdc++",
                      rpath, f"-Wl,-rpath,{td}", "-o", "probe_alias"]
         r = _run(alias_cmd, cwd=str(td), timeout=_COMPILE_TIMEOUT_S,
