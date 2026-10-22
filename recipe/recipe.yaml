@@ -406,26 +406,21 @@ outputs:
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*
-      # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
+      # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch is osx-only;
+      # linux/win link libstdc++ or static libc++, covered by test_cxx_runtime.py)
       - script:
-          - if: linux
+          - if: osx
             then:
-              - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
-              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-          - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+              - export PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+            else:
+              - echo "SKIP test_libcxx_shared (shared libc++ path is osx-only)"
         requirements:
           build:
             - python >=3.10
-            - if: build_platform != target_platform
-              then:
-                - ${{ qemu_pkg }}
           run:
             - if: osx
               then:
                 - libcxx
-            - if: linux and build_platform != target_platform
-              then:
-                - sysroot_${{ target_platform }}
         files:
           recipe:
             - testing/_test_utils.py
