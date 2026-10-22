@@ -45,6 +45,16 @@ def SKIP(name: str, detail: str = "") -> None:
     _record("SKIP", name, detail)
 
 
+def print_summary() -> None:
+    """Print the shared one-line results tally."""
+    n_pass = len(_results["PASS"])
+    n_fail = len(_results["FAIL"])
+    n_warn = len(_results["WARN"])
+    n_skip = len(_results["SKIP"])
+    print(f"=== Results: {n_pass} passed, {n_fail} failed, "
+          f"{n_warn} warnings, {n_skip} skipped ===")
+
+
 def registered_check_count() -> int:
     """Total recorded outcomes across PASS/FAIL/WARN/SKIP."""
     return sum(len(v) for v in _results.values())
@@ -138,6 +148,8 @@ def resolve_test_prefix(marker: str = "bin") -> Path:
 # qemu-execve-<arch> binary was resolved), NOT on host arch or CI.
 _native_machine = _platform.machine()
 _is_emulated = sys.platform == "linux" and bool(os.environ.get("QEMU_EXECVE", ""))
+# Cold compiles under qemu have been measured at ~937s.
+EMULATED_TIMEOUT_S = 1800
 
 
 def _canonical_arch(arch: str) -> str:
@@ -356,8 +368,11 @@ def _run(
     timeout: int = 30,
     cwd: str | Path | None = None,
     target: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a command, return CompletedProcess. Never raises on non-zero rc.
+
+    `env`, when given, is the child's full environment (default None inherits).
 
     If `target` is a conda triplet, the command is prefixed with
     `emulation_prefix(target)` (a qemu-execve-<arch> wrapper) when the
@@ -372,6 +387,7 @@ def _run(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd,
+            env=env,
             # POSIX: give the child its own process group so the killpg on the
             # timeout path reaches only the child tree. Without it the child
             # inherits OUR pgid and killpg() SIGKILLs this harness too.
@@ -457,6 +473,16 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
         _can_execute_cache[key] = False
         return False
     result = False
+    timeout = EMULATED_TIMEOUT_S if _is_emulated else 120
+    probe_timed_out = False
+
+    def _note_timeout(proc: subprocess.CompletedProcess[str]) -> None:
+        nonlocal probe_timed_out
+        if timed_out(proc):
+            probe_timed_out = True
+            if _is_emulated:
+                FAIL("target probe", f"TIMEOUT under emulation after {timeout}s")
+
     try:
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "probe.c"
@@ -465,19 +491,22 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
             # target= on the compile too: on an unhosted lane zig_cc is itself a
             # target-arch binary and needs the emulator.
             r_compile = _run([zig_cc, "-o", str(exe), str(src)], cwd=td,
-                             target=triplet, timeout=120)
+                             target=triplet, timeout=timeout)
             produced = exe if exe.exists() else exe.with_suffix(".exe")
             if r_compile.returncode != 0 or not produced.exists():
                 _probe_diag(triplet, "compile", r_compile,
                             "" if produced.exists() else "no output binary produced")
+                _note_timeout(r_compile)
             else:
-                r_exec = _run([str(produced)], target=triplet, timeout=120)
+                r_exec = _run([str(produced)], target=triplet, timeout=timeout)
                 result = r_exec.returncode == 0
                 if not result:
                     _probe_diag(triplet, "exec", r_exec)
+                    _note_timeout(r_exec)
     except Exception as exc:
         print(f"  can_execute_target({triplet}): probe raised "
               f"{type(exc).__name__}: {exc}")
         result = False
-    _can_execute_cache[key] = result
+    if not probe_timed_out:  # a timeout is not a measurement; don't cache it
+        _can_execute_cache[key] = result
     return result

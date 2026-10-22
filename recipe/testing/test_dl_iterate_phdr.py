@@ -20,7 +20,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-from _test_utils import FAIL, PASS, SKIP, _run, check_emulation_env, resolve_test_prefix, timed_out
+from _test_utils import (
+    FAIL,
+    PASS,
+    SKIP,
+    _run,
+    check_emulation_env,
+    print_summary,
+    resolve_test_prefix,
+    timed_out,
+)
 
 _LINK_TIMEOUT_S = 900  # emulated zig build-exe compile+link needs headroom
 _RUN_TIMEOUT_S = 30    # a hung process (patch absent) must not stall CI forever
@@ -144,6 +153,12 @@ def _flip_pt_phdr_to_null(src: Path, dst: Path) -> bool:
 
 
 def main(conda_triplet: str, zig_triplet: str) -> int:
+    rc = _main(conda_triplet, zig_triplet)
+    print_summary()
+    return rc
+
+
+def _main(conda_triplet: str, zig_triplet: str) -> int:
     if not check_emulation_env(conda_triplet):
         return 1
 

@@ -346,8 +346,10 @@ static int gnu_libstdcxx_args(int links, int reset_x, const char **pre, int *n_p
         post[(*n_post)++] = l2;
         post[(*n_post)++] = "-lm";
         /* conda's libgcc_s/libstdc++ may need a newer glibc than the target;
-         * the runtime dep enforces it. */
-        post[(*n_post)++] = "-Wl,--allow-shlib-undefined";
+         * the runtime dep enforces it.  ZIG_ALLOW_SHLIB_UNDEFINED=0 opts out. */
+        const char *asu = getenv("ZIG_ALLOW_SHLIB_UNDEFINED");
+        if (!(asu && str_eq(asu, "0")))
+            post[(*n_post)++] = "-Wl,--allow-shlib-undefined";
     }
     return 1;
 }
@@ -515,6 +517,9 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
         size_t head_len = (size_t)(macos_pos - ZIG_TARGET);
         const char *last_dash = strrchr(ZIG_TARGET, '-');
         const char *tail = last_dash ? last_dash + 1 : ZIG_TARGET;
+        /* arm64 macOS floor is 11.0 (clang bumps lower targets) */
+        if (strncmp(ZIG_TARGET, "aarch64-", 8) == 0 && strtol(macos_dep, NULL, 10) < 11)
+            macos_dep = "11.0";
         snprintf(rewritten_target, sizeof(rewritten_target), "%.*s-macos.%s-%s",
                  (int)head_len, ZIG_TARGET, macos_dep, tail);
         zig_target_final = rewritten_target;
@@ -635,7 +640,16 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
      * args, NULL -- matching bash's
      * _exec_args=("${_mode}" "${_lld_flag[@]}" "${_target_flag[@]}"
      * "${_sysroot_flags[@]}" "${_final_args[@]}"). */
-    int max_args = fi + n_sysroot_flags + n_force_load_extra + n_cxx_pre + n_cxx_post + 6;
+    /* ppc64le: zig defaults long double to IEEE128, which makes glibc headers
+     * reference __printfieee128 (glibc 2.32+); we target 2.17. */
+    int has_mabi = 0;
+    for (i = 0; i < fi; i++) {
+        if (starts_with(filtered[i], "-mabi=")) { has_mabi = 1; break; }
+    }
+    int inject_mabi = inject_target && !has_mabi &&
+                      str_eq(ZIG_TARGET_ARCH, "powerpc64le");
+
+    int max_args = fi + n_sysroot_flags + n_force_load_extra + n_cxx_pre + n_cxx_post + 7;
     const char **new_argv = (const char **)malloc(sizeof(char *) * (size_t)max_args);
     if (!new_argv) {
         fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
@@ -655,6 +669,8 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
         new_argv[ni++] = "-target";
         new_argv[ni++] = zig_target_final;
     }
+    if (inject_mabi)
+        new_argv[ni++] = "-mabi=ibmlongdouble";
     for (i = 0; i < n_sysroot_flags; i++)
         new_argv[ni++] = sysroot_flags[i];
     for (i = 0; i < fi; i++)
@@ -713,6 +729,42 @@ static int is_ar_modifier_with_T(const char *a) {
     return has_T;
 }
 
+#ifdef __APPLE__
+/* zig 0.17 `zig ar` cannot create a new archive on Darwin (see _mingw.sh). */
+static int ar_creates_missing(int argc, char *argv[]) {
+    struct stat st;
+    const char *op;
+    int i;
+    if (argc < 3)
+        return 0;
+    op = argv[1][0] == '-' ? argv[1] + 1 : argv[1];
+    if (!*op || strspn(op, "abcdfilmnopqrstuvxzDTUV") != strlen(op) ||
+        (!strchr(op, 'r') && !strchr(op, 'q')))
+        return 0;
+    for (i = 2; i < argc; i++)
+        if (argv[i][0] != '-')
+            return stat(argv[i], &st) != 0;
+    return 0;
+}
+
+static int ar_find_tool(const char *zig_bin, char *out, size_t sz) {
+    const char *cp = getenv("CONDA_PREFIX");
+    const char *slash = strrchr(zig_bin, '/');
+    int n;
+    if (slash) {
+        n = snprintf(out, sz, "%.*s/llvm-ar", (int)(slash - zig_bin), zig_bin);
+        if (n > 0 && (size_t)n < sz && access(out, X_OK) == 0)
+            return 1;
+    }
+    if (cp && *cp) {
+        n = snprintf(out, sz, "%s/bin/llvm-ar", cp);
+        if (n > 0 && (size_t)n < sz && access(out, X_OK) == 0)
+            return 1;
+    }
+    return 0;
+}
+#endif
+
 static int run_ar(const char *zig_bin, const char *prog, int argc, char *argv[]) {
     const char **new_argv =
         (const char **)malloc(sizeof(char *) * (size_t)(argc + 2));
@@ -742,6 +794,15 @@ static int run_ar(const char *zig_bin, const char *prog, int argc, char *argv[])
         }
     }
     new_argv[ni] = NULL;
+#ifdef __APPLE__
+    if (ar_creates_missing(argc, argv)) {
+        char tool[PATH_MAX];
+        if (!ar_find_tool(zig_bin, tool, sizeof tool))
+            snprintf(tool, sizeof tool, "/usr/bin/ar");
+        new_argv[1] = tool;
+        return exec_zig(tool, (char *const *)(new_argv + 1));
+    }
+#endif
     return exec_zig(zig_bin, (char *const *)new_argv);
 }
 

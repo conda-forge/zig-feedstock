@@ -903,8 +903,10 @@ def _libstdcxx_probe_run(zig: str, arch: str) -> None:
             WARN("LIBSTDCXX-PROBE-LINK", "link failed (report-only)")
             return
 
-        r = _run(["env", f"LD_LIBRARY_PATH={td}:{_prefix}/lib", str(td / "probe")],
-                 cwd=str(td), timeout=60, target=_conda_triplet)
+        # env via the process environment: an `env` argv0 would be exec'd by qemu
+        # as a bare host binary on emulated lanes.
+        r = _run([str(td / "probe")], cwd=str(td), timeout=60, target=_conda_triplet,
+                 env={**os.environ, "LD_LIBRARY_PATH": f"{td}:{_prefix}/lib"})
         ran = (r.returncode == 0 and "CAUGHT" in r.stdout and "OK" in r.stdout)
         if ran:
             print("    LIBSTDCXX-PROBE-RUN: ok")
