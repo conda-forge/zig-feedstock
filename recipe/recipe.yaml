@@ -728,6 +728,9 @@ outputs:
                 then:
                   - export QEMU_EXECVE="${QEMU_EXECVE:-$(command -v qemu-execve-${{ qemu_arch }} || true)}"
                   - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
+              - if: osx
+                then:
+                  - export ZIG_TEST_TARGET_PLATFORM="${{ target_platform }}"
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
               - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_cxx_runtime.py

@@ -97,49 +97,76 @@ SYNCHRONIZATION_DEF
       : # brush 0.4.0 $? guard
       _fresh_zig_bin="${PREFIX}/bin/${CONDA_TRIPLET}-zig"
     fi
-    if [[ -x "${_fresh_zig_bin}" ]] && "${_fresh_zig_bin}" version >/dev/null 2>&1; then
-      _zig_bin="${_fresh_zig_bin}"
-      echo "INFO: using freshly built zig for mingw CRT: ${_zig_bin}"
-      if is_cross; then
-        echo "INFO: build_platform (${build_platform}) != target_platform (${target_platform}): only Rosetta 2 (osx-arm64 -> osx-64) runs the fresh zig transparently."
-        echo "INFO: emulated linux lanes reach QEMU only via QEMU_EXECVE, so their fresh zig fails the probe and takes the bootstrap path."
-        echo "WARN: mingw CRT cache-warm links will be SLOW under emulation; this is expected, NOT a hang."
+    _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
+    if [[ -z "${_zig_bin}" ]]; then
+      if is_not_unix; then
+        _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
+      else
+        : # brush 0.4.0 $? guard
+        _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
       fi
+    fi
+    _boot_zig_bin="${_zig_bin}"
+    if is_not_unix; then
+      _boot_mingw="${BUILD_PREFIX}/Library/lib/zig/libc/mingw"
     else
       : # brush 0.4.0 $? guard
-      _zig_bin="$(command -v "${BUILD_ZIG}" 2>/dev/null || true)"
-      if [[ -z "${_zig_bin}" ]]; then
-        if is_not_unix; then
-          _zig_bin="${BUILD_PREFIX}/Library/bin/${BUILD_ZIG}"
-        else
-          : # brush 0.4.0 $? guard
-          _zig_bin="${BUILD_PREFIX}/bin/${BUILD_ZIG}"
-        fi
-      fi
-      echo "INFO: using bootstrap zig for mingw CRT: ${_zig_bin}"
-      if is_not_unix; then
-        _boot_mingw="${BUILD_PREFIX}/Library/lib/zig/libc/mingw"
-      else
-        : # brush 0.4.0 $? guard
-        _boot_mingw="${BUILD_PREFIX}/lib/zig/libc/mingw"
-      fi
-      _fresh_mingw="${_zig_lib}/libc/mingw"
+      _boot_mingw="${BUILD_PREFIX}/lib/zig/libc/mingw"
+    fi
+    _fresh_mingw="${_zig_lib}/libc/mingw"
+
+    # Sets _mingw_cmp (match|drift|unknown), _mingw_drift, _mingw_drift_n.
+    _mingw_compare_trees() {
+      _mingw_drift=""
+      _mingw_drift_n=0
       if ! command -v diff >/dev/null 2>&1 || [[ ! -d "${_boot_mingw}" || ! -d "${_fresh_mingw}" ]]; then
-        echo "INFO: [_mingw] cannot compare bootstrap mingw sources with this build's (diff or tree missing)"
+        _mingw_cmp="unknown"
+        return 0
+      fi
+      # Bootstrap-only files are its own generated import libs/objects/.def; ignore them.
+      _mingw_drift="$(diff -rq -x '*.a' -x '*.o' -x '*.obj' -x '*.lib' "${_boot_mingw}" "${_fresh_mingw}" 2>&1 | grep -v "^Only in ${_boot_mingw}" || true)"
+      if [[ -n "${_mingw_drift}" ]]; then
+        _mingw_drift_n="$(printf '%s\n' "${_mingw_drift}" | wc -l)"
+        _mingw_cmp="drift"
       else
-        : # brush 0.4.0 $? guard
-        # Bootstrap-only files are its own generated import libs/objects/.def; ignore them.
-        _mingw_drift="$(diff -rq -x '*.a' -x '*.o' -x '*.obj' -x '*.lib' "${_boot_mingw}" "${_fresh_mingw}" 2>&1 | grep -v "^Only in ${_boot_mingw}" || true)"
-        _mingw_drift_n=0
-        if [[ -n "${_mingw_drift}" ]]; then
-          _mingw_drift_n="$(printf '%s\n' "${_mingw_drift}" | wc -l)"
-        fi
-        if [[ "${_mingw_drift_n}" -eq 0 ]]; then
-          echo "INFO: [_mingw] bootstrap mingw sources match this build's tree"
-        else
-          echo "WARN: [_mingw] bootstrap mingw sources differ from this build's in ${_mingw_drift_n} file(s); the staged CRT reflects the bootstrap's tree"
-          printf '%s\n' "${_mingw_drift}" | sed -n '1,10s/^/  /p'
-        fi
+        _mingw_cmp="match"
+      fi
+      return 0
+    }
+
+    _mingw_use_fresh=0
+    if [[ -x "${_fresh_zig_bin}" ]] && "${_fresh_zig_bin}" version >/dev/null 2>&1; then
+      _mingw_use_fresh=1
+    fi
+    _mingw_cmp=""
+    # Linux cross lanes run the fresh zig under QEMU (binfmt_misc): ~1h45m vs
+    # ~6 min for the native bootstrap. Prefer bootstrap iff its mingw tree matches.
+    if [[ "${_mingw_use_fresh}" -eq 1 ]] && is_cross && is_linux; then
+      _mingw_compare_trees
+      if [[ "${_mingw_cmp}" == "match" ]]; then
+        _mingw_use_fresh=0
+        echo "INFO: [_mingw] emulated lane: using native bootstrap zig (mingw tree matches)"
+      else
+        echo "WARN: [_mingw] emulated lane: bootstrap mingw tree ${_mingw_cmp} (${_mingw_drift_n} file(s)); using fresh zig under emulation (slow, NOT a hang)"
+      fi
+    fi
+
+    if [[ "${_mingw_use_fresh}" -eq 1 ]]; then
+      _zig_bin="${_fresh_zig_bin}"
+      echo "INFO: using freshly built zig for mingw CRT: ${_zig_bin}"
+    else
+      _zig_bin="${_boot_zig_bin}"
+      echo "INFO: using bootstrap zig for mingw CRT: ${_zig_bin}"
+      if [[ -z "${_mingw_cmp}" ]]; then
+        _mingw_compare_trees
+      fi
+      if [[ "${_mingw_cmp}" == "unknown" ]]; then
+        echo "INFO: [_mingw] cannot compare bootstrap mingw sources with this build's (diff or tree missing)"
+      elif [[ "${_mingw_cmp}" == "match" ]]; then
+        echo "INFO: [_mingw] bootstrap mingw sources match this build's tree"
+      else
+        echo "WARN: [_mingw] bootstrap mingw sources differ from this build's in ${_mingw_drift_n} file(s); the staged CRT reflects the bootstrap's tree"
+        printf '%s\n' "${_mingw_drift}" | sed -n '1,10s/^/  /p'
       fi
     fi
     _def_include="${_mingw_common}/../def-include"

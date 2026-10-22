@@ -42,6 +42,7 @@ from _test_utils import (
     SKIP,
     can_execute_target,
     check_emulation_env,
+    check_shim_host_arch_darwin,
     print_summary,
     resolve_test_prefix,
     setup_zig_global_cache_dir,
@@ -1619,6 +1620,8 @@ def main() -> int:
             print(f"  [patched] Overlaid {zig_bin} with locally-built native zig")
 
     if not check_emulation_env(_triplet):
+        return 1
+    if not check_shim_host_arch_darwin(_triplet):
         return 1
 
     test_wrapper_existence()
