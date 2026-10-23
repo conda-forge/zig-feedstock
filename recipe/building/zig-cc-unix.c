@@ -160,9 +160,9 @@ static int is_l_libpthread_so(const char *arg) {
 /*
  * Post-translation drop filter: unix-only drops NOT covered by the
  * generated R1-R9 manifest (GCC-specific flags Clang rejects, GCC
- * runtime libs zig doesn't ship / can't link). Mirrors the `case "$_fa"
- * in` arms at _zig-cc-common.sh:142-159; everything not matched here is
- * kept (bash's `*) _final_args+=("$_fa") ;;` at :159).
+ * runtime libs zig doesn't ship / can't link). Everything not matched is
+ * kept. -l:libpthread.* is redundant: zig links libpthread itself for
+ * glibc < 2.34 targets.
  */
 static int is_post_translate_drop(const char *arg) {
     return starts_with(arg, "-march=") || starts_with(arg, "-mtune=") ||

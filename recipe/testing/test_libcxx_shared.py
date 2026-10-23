@@ -311,7 +311,7 @@ def test_libcxx_fallback_static() -> None:
 
             # Symbol visibility: with static libc++, C++ symbols should
             # NOT appear in dynamic symbol table
-            nm = shutil.which("nm")
+            nm = shutil.which("nm") or shutil.which("llvm-nm")
             if nm:
                 r3 = _run([nm, "-D", str(out)], cwd=td)
                 if r3.returncode == 0:
@@ -323,6 +323,8 @@ def test_libcxx_fallback_static() -> None:
                     else:
                         WARN("some libc++ symbols in dynamic table",
                              f"count={len(exported)}")
+                else:
+                    WARN("nm -D", f"rc={r3.returncode}")
             else:
                 SKIP("nm check", "nm not on PATH, cannot inspect dynamic symbols")
 
