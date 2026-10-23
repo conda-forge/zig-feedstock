@@ -1235,13 +1235,19 @@ def test_force_load_wrappers() -> None:
             _matrix: list[str] = []
             _winner: tuple[str, Path] | None = None
             _passed: set[str] = set()
+            _diag: list[str] = []
+
+            def _flush_diag() -> None:
+                for _line in _diag:
+                    print(_line)
+                _diag.clear()
 
             def _probe(
                 tag: str, argv: list[str] | None, cwd: Path, out_dir: Path | None = None
             ) -> None:
                 nonlocal _winner
                 if argv is None:
-                    print(f"    DIAG archiver_candidate={tag} exists=False")
+                    _diag.append(f"    DIAG archiver_candidate={tag} exists=False")
                     _matrix.append(f"{tag}:rc=MISSING:exists=False")
                     return
                 _out_dir = out_dir if out_dir is not None else Path(td)
@@ -1249,12 +1255,12 @@ def test_force_load_wrappers() -> None:
                 try:
                     pr = _run([*argv, "rcs", str(out), str(obj)], cwd=cwd, timeout=60)
                 except Exception as exc:
-                    print(f"    DIAG archiver_try={tag}=EXC:{exc}")
+                    _diag.append(f"    DIAG archiver_try={tag}=EXC:{exc}")
                     _matrix.append(f"{tag}:rc=EXC:exists=False")
                     return
                 ok = pr.returncode == 0 and out.exists()
-                print(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
-                      f"exists={out.exists()} stderr={pr.stderr[:300]}")
+                _diag.append(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
+                             f"exists={out.exists()} stderr={pr.stderr[:300]}")
                 _matrix.append(f"{tag}:rc={pr.returncode}:exists={out.exists()}")
                 if ok:
                     _passed.add(tag)
@@ -1291,7 +1297,7 @@ def test_force_load_wrappers() -> None:
             # Candidate: the zig-ar wrapper itself, baseline datapoint.
             _probe("zig_ar_primary", [str(zig_ar)], Path(td))
 
-            print(f"    DIAG archiver_matrix={','.join(_matrix)}")
+            _diag.append(f"    DIAG archiver_matrix={','.join(_matrix)}")
 
             # The shipped wrapper must create a new archive on Darwin, where
             # bare `zig ar` cannot.
@@ -1300,17 +1306,20 @@ def test_force_load_wrappers() -> None:
                 if "zig_ar_primary" in _passed:
                     PASS(_label)
                 else:
+                    _flush_diag()
                     FAIL(_label, f"matrix={','.join(_matrix)}")
 
             if _winner is not None:
                 tag, out = _winner
-                print(f"    DIAG archiver_selected={tag}")
+                _diag.append(f"    DIAG archiver_selected={tag}")
                 shutil.move(str(out), str(arch))
                 if arch.exists():
                     return arch
+                _flush_diag()
                 _archive_error = f"ar rcs lib{name}.a: {tag} succeeded but move to {arch.name} failed"
                 return None
 
+            _flush_diag()
             _archive_error = f"ar rcs lib{name}.a: all archiver candidates failed ({','.join(_matrix)})"
             return None
 
