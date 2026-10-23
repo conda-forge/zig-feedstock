@@ -308,7 +308,7 @@ outputs:
         file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
-          SNAPSHOT_REF: ${{ snapshot_ref }}
+          ZIG_SNAPSHOT: ${{ snapshot }}
           BUILD_REF: ${{ build_ref }}
           ZIG_TRIPLET: ${{ zig_triplet }}
 
