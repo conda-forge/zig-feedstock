@@ -20,6 +20,7 @@ Exit codes: 0 = all cases passed or skipped, 1 = at least one FAIL.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import shutil
@@ -94,12 +95,25 @@ _MAIN = (
 _failed = False
 
 
-def _report(case: str, ok: bool, detail: str) -> bool:
+def _report(case: str, ok: bool, detail: str, prefix: str = "LIBSTDCXX-") -> bool:
     global _failed
-    print(f"LIBSTDCXX-{case}: {'PASS' if ok else 'FAIL'} ({detail})")
+    print(f"{prefix}{case}: {'PASS' if ok else 'FAIL'} ({detail})")
     if not ok:
         _failed = True
     return ok
+
+
+@contextlib.contextmanager
+def _tempdir():
+    """Temp dir whose cleanup errors are tolerated but printed."""
+    tds = tempfile.mkdtemp()
+    try:
+        yield Path(tds)
+    finally:
+        try:
+            shutil.rmtree(tds)
+        except OSError as e:
+            print(f"NOTE: tempdir cleanup failed ({e}), ignored")
 
 
 def _skip(case: str, why: str) -> None:
@@ -174,6 +188,19 @@ def _build(cxx: str, td: Path) -> bool:
         if r.returncode != 0:
             return _report("BUILD", False, f"{label} rc={r.returncode} {_tail(r)}")
     return _report("BUILD", True, "libthrower.so + probe")
+
+
+def _strict_link_case(cxx: str, td: Path) -> None:
+    """Report-only: the wrapper's --allow-shlib-undefined hides glibc skew."""
+    r = _run([cxx, "-std=c++17", "main.cpp", "libthrower.so", "-o", "probe_strict",
+              "-Wl,--no-allow-shlib-undefined"],
+             cwd=td, timeout=_LINK_TIMEOUT_S, target=_triplet or None)
+    if r.returncode == 0:
+        print("LIBSTDCXX-SHLIB-UNDEFINED: PASS (links clean)")
+        return
+    undef = [ln for ln in r.stderr.splitlines() if "undefined" in ln]
+    print(f"LIBSTDCXX-SHLIB-UNDEFINED: WARN (rc={r.returncode})")
+    print("\n".join(undef[:40]) if undef else _tail(r))
 
 
 def _check_outputs(td: Path) -> None:
@@ -366,22 +393,23 @@ _MSVC_PROBE = (
 
 
 def _msvc_probe(cxx: str, td: Path) -> None:
-    """Report-only: never sets _failed."""
+    """Asserts compile, link and run; only reached on a native windows host."""
     (td / "msvc.cpp").write_text(_MSVC_PROBE)
 
-    def step(label: str, cmd: list[str]) -> bool:
+    def step(label: str, cmd: list[str]):
         r = _with_env({"ZIG_WIN_ABI": "msvc"},
                       lambda: _run(cmd, cwd=td, timeout=_LINK_TIMEOUT_S))
         if r.returncode == 0:
-            print(f"LIBSTDCXX-MSVC: INFO {label} rc=0 {r.stdout.strip()!r}")
-            return True
+            return r
         err = "TIMEOUT" if timed_out(r) else "\n".join(r.stderr.splitlines()[:20])
-        print(f"LIBSTDCXX-MSVC: WARN {label} rc={r.returncode:#x}\n{err}")
-        return False
+        _report("MSVC", False, f"{label} rc={r.returncode:#x}\n{err}")
+        return None
 
     if step("compile", [cxx, "-std=c++17", "-c", "msvc.cpp", "-o", "msvc.obj"]) and \
             step("link", [cxx, "msvc.obj", "-o", "msvc.exe"]):
-        step("run", [str(td / "msvc.exe")])
+        r = step("run", [str(td / "msvc.exe")])
+        if r is not None:
+            _report("MSVC", "CAUGHT msvc" in r.stdout, f"run {r.stdout.strip()!r}")
 
 
 def _main_win() -> int:
@@ -390,8 +418,7 @@ def _main_win() -> int:
     if not cxx:
         return int(not _report("WRAPPER", False, f"{_xtriplet}-zig-cxx not found"))
     print(f"  wrapper = {cxx}")
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tds:
-        td = Path(tds)
+    with _tempdir() as td:
         (td / "thrower.cpp").write_text(_THROWER_WIN)
         (td / "main.cpp").write_text(_MAIN)
         (td / "plain.cpp").write_text(_PLAIN)
@@ -404,21 +431,43 @@ def _main_win() -> int:
     return 1 if _failed else 0
 
 
+def _main_s390x(cxx: str) -> int:
+    """No conda libstdc++ route: the wrapper keeps zig libc++."""
+    with _tempdir() as td:
+        (td / "thrower.cpp").write_text(_THROWER)
+        (td / "main.cpp").write_text(_MAIN)
+        env = {"ZIG_WRAPPER_PRINT_ARGV": "1", "ZIG_CXX_RUNTIME": ""}
+        r = _with_env(env, lambda: _run([cxx, "main.cpp", "-o", "probe"], cwd=td,
+                                        timeout=60, target=_triplet or None))
+        a = r.stdout.splitlines() if r.returncode == 0 else []
+        argv_ok = (bool(a) and "-nostdlib++" not in a
+                   and not any(x.endswith("/libstdc++.so") for x in a))
+        if not _build(cxx, td):
+            return 1
+        needed = read_dt_needed(td / "libthrower.so") + read_dt_needed(td / "probe")
+        print(f"  NEEDED: {' '.join(needed)}")
+        ok = argv_ok and "libstdc++.so.6" not in needed
+        _report("LIBCXX-S390X-DEFAULT", ok,
+                "no libstdc++.so/-nostdlib++ in argv, no libstdc++.so.6 NEEDED" if ok
+                else f"argv_ok={argv_ok} libstdc++.so.6 in NEEDED="
+                     f"{'libstdc++.so.6' in needed}", prefix="")
+    return 1 if _failed else 0
+
+
 def main() -> int:
     print("=== zig-cxx GCC libstdc++ runtime tests ===")
     if _xtriplet == _WIN_TRIPLET and os.name == "nt":
         return _main_win()
     if "-linux-gnu" not in _xtriplet:
-        _skip("ALL", f"linux-gnu targets only (CONDA_ZIG_HOST={_host!r})")
-        return 0
-    if _xtriplet.startswith("s390x-"):
-        print("LIBSTDCXX: SKIP (no conda-forge libstdcxx-devel for s390x; "
-              "zig libc++ kept)")
+        _skip("ALL", f"no conda libstdc++ route for {_xtriplet or _host!r}; "
+                     "zig libc++ kept")
         return 0
     prefix = resolve_test_prefix("bin")
     cxx = _find_tool(prefix, f"{_xtriplet}-zig-cxx")
     if not cxx:
         return int(not _report("WRAPPER", False, f"{_xtriplet}-zig-cxx not found"))
+    if _xtriplet.startswith("s390x-"):
+        return _main_s390x(cxx)
     gcc = _gcc_dir(resolve_test_prefix("lib/gcc"))
     if not gcc:
         return int(not _report("GCCDIR", False, f"no lib/gcc/{_xtriplet}/*/include/c++"))
@@ -426,12 +475,12 @@ def main() -> int:
     if _triplet:
         print("  note: emulated lane; the wrapper runs under qemu")
 
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tds:
-        td = Path(tds)
+    with _tempdir() as td:
         (td / "thrower.cpp").write_text(_THROWER)
         (td / "main.cpp").write_text(_MAIN)
         _argv_cases(cxx, td)
         if _build(cxx, td):
+            _strict_link_case(cxx, td)
             _check_outputs(td)
             _run_case(td, _find_tool(prefix, f"{_xtriplet}-zig-cc"), gcc)
     return 1 if _failed else 0

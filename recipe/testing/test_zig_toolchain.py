@@ -42,6 +42,8 @@ from _test_utils import (
     SKIP,
     can_execute_target,
     check_emulation_env,
+    check_shim_host_arch_darwin,
+    print_summary,
     resolve_test_prefix,
     setup_zig_global_cache_dir,
     timed_out,
@@ -233,109 +235,103 @@ def test_flag_filtering() -> None:
         obj = Path(td) / "test.o"
         src.write_text(_HELLO_C)
 
-        if _is_emulated or _is_cross_compiler:
-            SKIP("compile with conda gcc flags", "emulated/cross CI — cannot execute target binary")
+        # These GCC flags are injected by conda-build. Wrappers must filter them.
+        gcc_flags = [
+            "-march=nocona",
+            "-mtune=haswell",
+            "-fstack-protector-strong",
+            "-fno-plt",
+        ]
+        cmd = [zig_cc] + gcc_flags + ["-c", "-o", str(obj), str(src)]
+        r = _run(cmd, cwd=td)
+        if r.returncode == 0 and obj.exists():
+            PASS("compile with conda gcc flags succeeds (flags filtered)")
         else:
-            # These GCC flags are injected by conda-build. Wrappers must filter them.
-            gcc_flags = [
-                "-march=nocona",
-                "-mtune=haswell",
-                "-fstack-protector-strong",
-                "-fno-plt",
-            ]
-            cmd = [zig_cc] + gcc_flags + ["-c", "-o", str(obj), str(src)]
-            r = _run(cmd, cwd=td)
-            if r.returncode == 0 and obj.exists():
-                PASS("compile with conda gcc flags succeeds (flags filtered)")
-            else:
-                FAIL("compile with conda gcc flags succeeds",
-                     f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
+            FAIL("compile with conda gcc flags succeeds",
+                 f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
 
         # --- Verify self-hosted linker flags are filtered ---
         # zig cc may use the self-hosted linker which doesn't support these.
         # The wrapper should silently filter them so compilation succeeds.
-        if _is_emulated or _is_cross_compiler:
-            SKIP("linker flag filtering", "emulated/cross CI — cannot execute target binary")
-        else:
-            # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
-            # Verifies the full pipeline:
-            # 1. Wrapper detects --dynamic-list -> injects -fuse-ld=lld
-            # 2. Patched zig binary honors -fuse-ld=lld -> selects LLD
-            # 3. Patched zig binary passes unknown linker arg to LLD
-            # 4. LLD processes --dynamic-list successfully
-            main_src = Path(td) / "main_dl.c"
-            main_src.write_text("int main(void) { return 0; }\n")
-            dynlist = Path(td) / "test.dynlist"
-            dynlist.write_text("{ main; };\n")
+        # --- Auto-LLD promotion: --dynamic-list triggers -fuse-ld=lld ---
+        # Verifies the full pipeline:
+        # 1. Wrapper detects --dynamic-list -> injects -fuse-ld=lld
+        # 2. Patched zig binary honors -fuse-ld=lld -> selects LLD
+        # 3. Patched zig binary passes unknown linker arg to LLD
+        # 4. LLD processes --dynamic-list successfully
+        main_src = Path(td) / "main_dl.c"
+        main_src.write_text("int main(void) { return 0; }\n")
+        dynlist = Path(td) / "test.dynlist"
+        dynlist.write_text("{ main; };\n")
 
-            # Step 1 & 2: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
-            # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
-            if is_ppc64le_target:
-                # ppc64le: -fuse-ld=lld WARNS (non-fatal) instead of being
-                # blocked -- ablation round 4 measured PASS lld_link_linux.
-                # Verify the flag passes through (link succeeds) AND the
-                # wrapper still emits its WARNING breadcrumb on stderr.
-                # WARNING: asserts OUR wrapper's warn-and-continue behavior.
-                # If the warning in zig-cc-unix.c is ever removed/reworded,
-                # update this assertion in the same change.
-                exe_ppc = Path(td) / "test_lld_ppc64le"
-                r_warn = _run([zig_cc, "-fuse-ld=lld", "-o", str(exe_ppc),
-                               str(main_src)], cwd=td, timeout=30)
-                if (r_warn.returncode == 0 and exe_ppc.exists()
-                        and "WARNING" in r_warn.stderr
-                        and "ppc64le" in r_warn.stderr):
-                    PASS("-fuse-ld=lld passes through on ppc64le (warning emitted)")
-                else:
-                    FAIL("-fuse-ld=lld ppc64le warn-and-continue",
-                         f"rc={r_warn.returncode} stderr={r_warn.stderr[:500]}")
-                SKIP("--dynamic-list auto-LLD promotion", "covered by explicit -fuse-ld=lld case above on ppc64le")
-                # -fuse-ld=bfd counterpart: NOT added. Investigated
-                # (see recipe/testing/test_dl_iterate_phdr.py
-                # BFD_UNREACHABLE_REASON) -- zig's own arg parser has no
-                # -fuse-ld= table entry at all, and our patch
-                # (main.zig-fuse-ld-lld-cc-path.patch) only special-cases the
-                # literal string "-fuse-ld=lld". "-fuse-ld=bfd" is an inert
-                # passthrough token here, not a real linker switch, so
-                # asserting it "links successfully" would just be asserting
-                # that zig ignores an unrecognized flag -- not that bfd ran.
-                SKIP("-fuse-ld=bfd explicit link", "flag is inert in this toolchain, see comment above")
-            elif not is_linux_target:
-                _reason = f"non-Linux target ({_triplet}), see zig_impl tests"
-                SKIP("--dynamic-list auto-LLD promotion", _reason)
-                SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
+        # Step 1 & 2: -fuse-ld=lld + --dynamic-list test (Linux/ELF only in toolchain test)
+        # macOS/Windows: tested via zig_impl recipe tests with platform-appropriate flags
+        if is_ppc64le_target:
+            # ppc64le: -fuse-ld=lld WARNS (non-fatal) instead of being
+            # blocked -- ablation round 4 measured PASS lld_link_linux.
+            # Verify the flag passes through (link succeeds) AND the
+            # wrapper still emits its WARNING breadcrumb on stderr.
+            # WARNING: asserts OUR wrapper's warn-and-continue behavior.
+            # If the warning in zig-cc-unix.c is ever removed/reworded,
+            # update this assertion in the same change.
+            exe_ppc = Path(td) / "test_lld_ppc64le"
+            r_warn = _run([zig_cc, "-fuse-ld=lld", "-o", str(exe_ppc),
+                           str(main_src)], cwd=td, timeout=30)
+            if (r_warn.returncode == 0 and exe_ppc.exists()
+                    and "WARNING" in r_warn.stderr
+                    and "ppc64le" in r_warn.stderr):
+                PASS("-fuse-ld=lld passes through on ppc64le (warning emitted)")
             else:
-                # Step 1: Verify --dynamic-list succeeds via wrapper (auto-LLD promotion)
-                exe_dl = Path(td) / "test_dynlist_lld"
-                dl_cmd = [
-                    zig_cc,
-                    "-Wno-unused-command-line-argument",
-                    f"-Wl,--dynamic-list={dynlist}",
-                    "-o", str(exe_dl), str(main_src),
-                ]
-                r_dl = _run(dl_cmd, cwd=td, timeout=60)
-                if r_dl.stderr == "TIMEOUT":
-                    WARN("--dynamic-list auto-LLD", "timed out (60s)")
-                elif r_dl.returncode == 0 and exe_dl.exists():
-                    PASS("--dynamic-list auto-LLD promotion (wrapper + patched zig)")
-                else:
-                    FAIL("--dynamic-list auto-LLD promotion",
-                         f"rc={r_dl.returncode} stdout={r_dl.stdout[:2000]} stderr={r_dl.stderr[:2000]}")
+                FAIL("-fuse-ld=lld ppc64le warn-and-continue",
+                     f"rc={r_warn.returncode} stderr={r_warn.stderr[:500]}")
+            SKIP("--dynamic-list auto-LLD promotion", "covered by explicit -fuse-ld=lld case above on ppc64le")
+            # -fuse-ld=bfd counterpart: NOT added. Investigated
+            # (see recipe/testing/test_dl_iterate_phdr.py
+            # BFD_UNREACHABLE_REASON) -- zig's own arg parser has no
+            # -fuse-ld= table entry at all, and our patch
+            # (main.zig-fuse-ld-lld-cc-path.patch) only special-cases the
+            # literal string "-fuse-ld=lld". "-fuse-ld=bfd" is an inert
+            # passthrough token here, not a real linker switch, so
+            # asserting it "links successfully" would just be asserting
+            # that zig ignores an unrecognized flag -- not that bfd ran.
+            SKIP("-fuse-ld=bfd explicit link", "flag is inert in this toolchain, see comment above")
+        elif not is_linux_target:
+            _reason = f"non-Linux target ({_triplet}), see zig_impl tests"
+            SKIP("--dynamic-list auto-LLD promotion", _reason)
+            SKIP("-fuse-ld=lld explicit with --dynamic-list", _reason)
+        else:
+            # Step 1: Verify --dynamic-list succeeds via wrapper (auto-LLD promotion)
+            exe_dl = Path(td) / "test_dynlist_lld"
+            dl_cmd = [
+                zig_cc,
+                "-Wno-unused-command-line-argument",
+                f"-Wl,--dynamic-list={dynlist}",
+                "-o", str(exe_dl), str(main_src),
+            ]
+            r_dl = _run(dl_cmd, cwd=td, timeout=60)
+            if r_dl.stderr == "TIMEOUT":
+                WARN("--dynamic-list auto-LLD", "timed out (60s)")
+            elif r_dl.returncode == 0 and exe_dl.exists():
+                PASS("--dynamic-list auto-LLD promotion (wrapper + patched zig)")
+            else:
+                FAIL("--dynamic-list auto-LLD promotion",
+                     f"rc={r_dl.returncode} stdout={r_dl.stdout[:2000]} stderr={r_dl.stderr[:2000]}")
 
-                # Step 2: Verify explicit -fuse-ld=lld also works
-                exe_explicit = Path(td) / "test_explicit_lld"
-                explicit_cmd = [
-                    zig_cc, "-fuse-ld=lld",
-                    f"-Wl,--dynamic-list={dynlist}",
-                    "-o", str(exe_explicit), str(main_src),
-                ]
-                r_exp = _run(explicit_cmd, cwd=td, timeout=60)
-                if r_exp.stderr == "TIMEOUT":
-                    WARN("-fuse-ld=lld explicit", "timed out (60s)")
-                elif r_exp.returncode == 0 and exe_explicit.exists():
-                    PASS("-fuse-ld=lld explicit with --dynamic-list")
-                else:
-                    FAIL("-fuse-ld=lld explicit with --dynamic-list",
-                         f"rc={r_exp.returncode} stdout={r_exp.stdout[:2000]} stderr={r_exp.stderr[:2000]}")
+            # Step 2: Verify explicit -fuse-ld=lld also works
+            exe_explicit = Path(td) / "test_explicit_lld"
+            explicit_cmd = [
+                zig_cc, "-fuse-ld=lld",
+                f"-Wl,--dynamic-list={dynlist}",
+                "-o", str(exe_explicit), str(main_src),
+            ]
+            r_exp = _run(explicit_cmd, cwd=td, timeout=60)
+            if r_exp.stderr == "TIMEOUT":
+                WARN("-fuse-ld=lld explicit", "timed out (60s)")
+            elif r_exp.returncode == 0 and exe_explicit.exists():
+                PASS("-fuse-ld=lld explicit with --dynamic-list")
+            else:
+                FAIL("-fuse-ld=lld explicit with --dynamic-list",
+                     f"rc={r_exp.returncode} stdout={r_exp.stdout[:2000]} stderr={r_exp.stderr[:2000]}")
 
 
 # ===================================================================
@@ -347,10 +343,6 @@ def test_target_override() -> None:
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("target override", "ZIG_CC not set")
-        return
-
-    if _is_emulated or _is_cross_compiler:
-        SKIP("target override", "emulated/cross CI — cannot execute target binary")
         return
 
     with tempfile.TemporaryDirectory() as td:
@@ -416,10 +408,6 @@ def test_driveless_abs_path() -> None:
 # ===================================================================
 def test_shared_lib() -> None:
     print("--- Shared library creation ---")
-
-    if _is_emulated or _is_cross_compiler:
-        SKIP("shared lib creation", "emulated/cross CI — cannot execute target binary")
-        return
 
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
@@ -529,10 +517,6 @@ def test_exe_linking() -> None:
     (like pthread_atfork_stub.o) are required at runtime."""
     print("--- Executable linking ---")
 
-    if _is_emulated or _is_cross_compiler:
-        SKIP("exe linking", "emulated/cross CI — cannot execute target binary")
-        return
-
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
         SKIP("exe linking", "ZIG_CC not set")
@@ -563,15 +547,52 @@ def test_exe_linking() -> None:
 # ===================================================================
 # Section 4c — Libc linking (verifies zig can resolve and link libc)
 # ===================================================================
+def _diag_darwin_libc(zig_cc: str, src: Path, td: str) -> None:
+    """Print DIAG lines locating the SDK/include path zig uses; never raises."""
+
+    def probe(label: str, cmd: list[str], use_stderr: bool = False) -> None:
+        try:
+            p = _run(cmd, cwd=td, timeout=30)
+            text = p.stderr if use_stderr else p.stdout + p.stderr
+            print(f"    DIAG libc_{label} rc={p.returncode}\n{text[:3000]}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"    DIAG libc_{label}=EXC:{exc}")
+
+    for name in ("SDKROOT", "CONDA_BUILD_SYSROOT", "MACOSX_DEPLOYMENT_TARGET",
+                 "DEVELOPER_DIR", "CONDA_ZIG_HOST", "CONDA_ZIG_BUILD"):
+        print(f"    DIAG libc_env_{name}={os.environ.get(name)!r}")
+    probe("proc_translated", ["sysctl", "-n", "sysctl.proc_translated"])
+    probe("uname_m", ["uname", "-m"])
+    probe("xcrun_sdk_path", ["xcrun", "--sdk", "macosx", "--show-sdk-path"])
+    probe("xcode_select", ["xcode-select", "-p"])
+    probe("shim_verbose", [zig_cc, "-v", "-lc", "-o", str(Path(td) / "diag_v"), str(src)],
+          use_stderr=True)
+    zig_arch = "aarch64" if _triplet.startswith(("arm64", "aarch64")) else "x86_64"
+    zig_target = f"{zig_arch}-macos.{os.environ.get('MACOSX_DEPLOYMENT_TARGET') or '11.0'}-none"
+    print(f"    DIAG libc_zig_target={zig_target}")
+    found: dict[str, str] = {}
+    try:
+        for tag, name in (("which", "zig"), ("host", os.environ.get("CONDA_ZIG_HOST") or "")):
+            path = shutil.which(name) if name else None
+            if path:
+                found[f"{tag}"] = path
+    except Exception as exc:  # noqa: BLE001
+        print(f"    DIAG libc_locate=EXC:{exc}")
+    for tag, zig in found.items():
+        print(f"    DIAG libc_zig_{tag}={zig}")
+        probe(f"{tag}_env", [zig, "env"])
+        probe(f"{tag}_libc", [zig, "libc", "-target", zig_target])
+        probe(f"{tag}_raw_cc",
+              [zig, "cc", "-target", zig_target, "-lc",
+               "-o", str(Path(td) / f"diag_raw_{tag}"), str(src)],
+              use_stderr=True)
+
+
 def test_libc_linking() -> None:
     """Compile and link a program that calls libc functions (printf, strlen).
     This exercises zig's libc detection and linking — the same code path
     that crashes with TODO panic in zig's doctest examples using -lc."""
     print("--- Libc linking ---")
-
-    if _is_emulated or _is_cross_compiler:
-        SKIP("libc linking", "emulated/cross CI — cannot execute target binary")
-        return
 
     zig_cc = _env_var("ZIG_CC")
     if not zig_cc:
@@ -592,6 +613,8 @@ def test_libc_linking() -> None:
             WARN("libc linking", "timed out (60s)")
             return
         if r.returncode != 0:
+            if sys.platform == "darwin":
+                _diag_darwin_libc(zig_cc, src, td)
             FAIL("libc linking",
                  f"rc={r.returncode} stdout={r.stdout[:2000]} stderr={r.stderr[:2000]}")
             return
@@ -600,8 +623,12 @@ def test_libc_linking() -> None:
             return
         PASS("libc linking")
 
-        # If native (not cross), try running it
-        if not _is_cross_compiler and not is_win_target:
+        # Only the execute step needs a runnable target
+        if is_win_target:
+            return
+        if _is_cross_compiler or not can_execute_target(_triplet, zig_cc):
+            SKIP("libc exe runs", "target binary not executable on this runner")
+        else:
             r2 = _run([str(out)], cwd=td, timeout=10, target=_triplet)
             if r2.returncode == 0 and "len=5" in r2.stdout:
                 PASS("libc exe runs correctly")
@@ -1207,13 +1234,20 @@ def test_force_load_wrappers() -> None:
             # unchanged; only collected diagnostics differ.
             _matrix: list[str] = []
             _winner: tuple[str, Path] | None = None
+            _passed: set[str] = set()
+            _diag: list[str] = []
+
+            def _flush_diag() -> None:
+                for _line in _diag:
+                    print(_line)
+                _diag.clear()
 
             def _probe(
                 tag: str, argv: list[str] | None, cwd: Path, out_dir: Path | None = None
             ) -> None:
                 nonlocal _winner
                 if argv is None:
-                    print(f"    DIAG archiver_candidate={tag} exists=False")
+                    _diag.append(f"    DIAG archiver_candidate={tag} exists=False")
                     _matrix.append(f"{tag}:rc=MISSING:exists=False")
                     return
                 _out_dir = out_dir if out_dir is not None else Path(td)
@@ -1221,13 +1255,15 @@ def test_force_load_wrappers() -> None:
                 try:
                     pr = _run([*argv, "rcs", str(out), str(obj)], cwd=cwd, timeout=60)
                 except Exception as exc:
-                    print(f"    DIAG archiver_try={tag}=EXC:{exc}")
+                    _diag.append(f"    DIAG archiver_try={tag}=EXC:{exc}")
                     _matrix.append(f"{tag}:rc=EXC:exists=False")
                     return
                 ok = pr.returncode == 0 and out.exists()
-                print(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
-                      f"exists={out.exists()} stderr={pr.stderr[:300]}")
+                _diag.append(f"    DIAG archiver_try={tag} -> rc={pr.returncode} "
+                             f"exists={out.exists()} stderr={pr.stderr[:300]}")
                 _matrix.append(f"{tag}:rc={pr.returncode}:exists={out.exists()}")
+                if ok:
+                    _passed.add(tag)
                 if ok and _winner is None:
                     _winner = (tag, out)
                 elif not ok:
@@ -1261,17 +1297,29 @@ def test_force_load_wrappers() -> None:
             # Candidate: the zig-ar wrapper itself, baseline datapoint.
             _probe("zig_ar_primary", [str(zig_ar)], Path(td))
 
-            print(f"    DIAG archiver_matrix={','.join(_matrix)}")
+            _diag.append(f"    DIAG archiver_matrix={','.join(_matrix)}")
+
+            # The shipped wrapper must create a new archive on Darwin, where
+            # bare `zig ar` cannot.
+            if sys.platform == "darwin":
+                _label = f"zig-ar wrapper creates new archive ({name})"
+                if "zig_ar_primary" in _passed:
+                    PASS(_label)
+                else:
+                    _flush_diag()
+                    FAIL(_label, f"matrix={','.join(_matrix)}")
 
             if _winner is not None:
                 tag, out = _winner
-                print(f"    DIAG archiver_selected={tag}")
+                _diag.append(f"    DIAG archiver_selected={tag}")
                 shutil.move(str(out), str(arch))
                 if arch.exists():
                     return arch
+                _flush_diag()
                 _archive_error = f"ar rcs lib{name}.a: {tag} succeeded but move to {arch.name} failed"
                 return None
 
+            _flush_diag()
             _archive_error = f"ar rcs lib{name}.a: all archiver candidates failed ({','.join(_matrix)})"
             return None
 
@@ -1582,6 +1630,8 @@ def main() -> int:
 
     if not check_emulation_env(_triplet):
         return 1
+    if not check_shim_host_arch_darwin(_triplet):
+        return 1
 
     test_wrapper_existence()
     test_activation_variables()
@@ -1606,9 +1656,7 @@ def main() -> int:
     n_pass = len(_results["PASS"])
     n_fail = len(_results["FAIL"])
     n_warn = len(_results["WARN"])
-    n_skip = len(_results["SKIP"])
-    print(f"=== Results: {n_pass} passed, {n_fail} failed, "
-          f"{n_warn} warnings, {n_skip} skipped ===")
+    print_summary()
 
     if n_fail > 0:
         print("\nFailed tests:")

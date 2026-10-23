@@ -201,6 +201,14 @@ presence/size for all three mingw targets (x86_64/aarch64/x86-windows-gnu)
 is asserted inside `_mingw.sh` itself, at generation time, on every lane
 that runs it.
 
+`_mingw.sh` CRT cache-warm zig choice: the fresh zig is used when its
+`version` probe passes. On linux cross (emulated) lanes, where binfmt is
+registered by smithy >=2026.10.21, the probe passes but runs under QEMU;
+`_mingw_compare_trees` (match/drift/unknown) then decides: `match` uses the
+native bootstrap zig, otherwise the fresh zig is kept with a WARN. osx and
+native lanes are unchanged. Measured: emulated ppc64le 2h37m -> 36m,
+riscv64 2h49m -> 46m.
+
 ### 2.6 Requirements.run (zig_ output): pin_subpackage vs external zig_impl <a id="requirements-run-pin-subpackage-vs-external-zig-impl"></a>
 For native/cross-target: depends on `zig_impl` for the same `xtarget_`
 (`pin_subpackage` works, since it is the same recipe's output). For
@@ -228,8 +236,34 @@ copied into the test's `files:` list or `_compile_c_shim` is skipped
 entirely and the count assertion misfires (passes vacuously instead of
 exercising anything).
 
+`install_zig_activation.py` `shim_exec_target` (was `nonunix_shim_target`)
+is `SHIM_ZIG_TRIPLET` (the `target_platform` triple) whenever
+`SHIM_RUNS_ON_TARGET` is true, for unix and non-unix alike. The unix C
+multiplexer shim is cross-compiled for that execution host (with the glibc
+floor), not for the xtarget codegen triple. Previously the aarch64
+`zig_linux-64` package shipped an x86_64 shim and `osx_64_xtarget_osx-arm64`
+shipped an arm64 shim inside an x86_64 package.
+
+`zig-cc-unix.c`: an aarch64 macOS deployment target below 11.0 is raised to
+11.0 in the codegen target (an osx-64 env can carry
+`MACOSX_DEPLOYMENT_TARGET=10.9`).
+
 ### 2.10 Tests: test_flag_translation_parity.py unix shim leg <a id="tests-flag-translation-parity-unix-shim-leg"></a>
 The Leg (C) syntax-check covers the unix shim. Both `zig-cc-unix.c` and
 `unix_common.h` are needed in the test's `files:` list -- the `.c` file
 `#include`s `unix_common.h`. Without both, the leg SKIPs and the shim can
-silently rot uncompiled again.
+silently rot uncompiled again. When only a cross-arch zig is present, the
+genC and unix-shim legs SKIP (one SKIP each) and the coverage floor is 16
+instead of 29.
+
+### 2.11 Tests: osx-only libc++ and shim host-arch checks <a id="tests-osx-libcxx-shim-host-arch"></a>
+`test_libcxx_shared.py` runs on osx only (echo SKIP elsewhere), matching
+`Lld.zig-prefer-shared-libcxx.patch` and `ZIG_LIBCXX`, which are osx-only
+and inert elsewhere; its linux qemu/sysroot test requirements were dropped.
+The linux libstdc++ contract is covered by `test_cxx_runtime.py`.
+
+`_test_utils.check_shim_host_arch_darwin` (called from
+`test_zig_toolchain.py` `main()`) reads the Mach-O thin/fat header of
+`<triplet>-zig-cc` and compares it to `ZIG_TEST_TARGET_PLATFORM` (exported
+by the `recipe.yaml` osx test script). It FAILs when the host arch cannot
+be determined.

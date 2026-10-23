@@ -2,7 +2,7 @@
 
 Guards patches/non_unix/Lld.zig-remove-ucrt.patch, whose aarch64 branch keeps
 ucrt.lib because libvcruntime's abort/calloc/free are otherwise unresolved.
-Runs on win-64 native, using the build-arch zig to cross-probe aarch64.
+Runs on win-64 native (cross-probing aarch64) and win-arm64 native.
 """
 
 import os
@@ -57,7 +57,8 @@ def main():
         print("REPORT: no lld-link line observed - probe may be vacuous")
 
     # Report-only: a runner without a complete ARM64 CRT must not redden the lane.
-    print("REPORT: exit=%d (link success is report-only)" % proc.returncode)
+    print("REPORT: exit=%d (link success is report-only: the runner's ARM64 CRT may "
+          "be incomplete; the gate is the ucrt token below)" % proc.returncode)
     entry_form = "-ENTRY:%s" % ENTRY
     print("REPORT: %s %s" % (entry_form, "present" if entry_form in combined else "absent"))
     print("REPORT: ucrt.lib in tail slice: %s" % ("ucrt.lib" in tail.lower()))

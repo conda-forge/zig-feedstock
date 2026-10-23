@@ -45,6 +45,16 @@ def SKIP(name: str, detail: str = "") -> None:
     _record("SKIP", name, detail)
 
 
+def print_summary() -> None:
+    """Print the shared one-line results tally."""
+    n_pass = len(_results["PASS"])
+    n_fail = len(_results["FAIL"])
+    n_warn = len(_results["WARN"])
+    n_skip = len(_results["SKIP"])
+    print(f"=== Results: {n_pass} passed, {n_fail} failed, "
+          f"{n_warn} warnings, {n_skip} skipped ===")
+
+
 def registered_check_count() -> int:
     """Total recorded outcomes across PASS/FAIL/WARN/SKIP."""
     return sum(len(v) for v in _results.values())
@@ -138,6 +148,8 @@ def resolve_test_prefix(marker: str = "bin") -> Path:
 # qemu-execve-<arch> binary was resolved), NOT on host arch or CI.
 _native_machine = _platform.machine()
 _is_emulated = sys.platform == "linux" and bool(os.environ.get("QEMU_EXECVE", ""))
+# Cold compiles under qemu have been measured at ~937s.
+EMULATED_TIMEOUT_S = 1800
 
 
 def _canonical_arch(arch: str) -> str:
@@ -265,6 +277,71 @@ def check_qemu_execve_consistency(triplet: str) -> bool:
         FAIL(name, f"QEMU_EXECVE={qemu_execve} is not executable")
         return False
     PASS(name, f"{arch} binary on {native} runner via {expected}")
+    return True
+
+
+_MACHO_CPUS = {0x01000007: "x86_64", 0x0100000C: "aarch64"}
+_DARWIN_PLATFORM_ARCH = {"osx-64": "x86_64", "osx-arm64": "aarch64"}
+
+
+def macho_arches(path: Path) -> list[str] | None:
+    """Arches of a Mach-O (thin or fat) file from its header; None if not Mach-O."""
+    try:
+        with open(path, "rb") as fh:
+            hdr = fh.read(8)
+            if len(hdr) < 8:
+                return None
+            if hdr[:4] == b"\xca\xfe\xba\xbe":
+                n = int.from_bytes(hdr[4:8], "big")
+                if n > 16:  # Java class files share this magic
+                    return None
+                ents = fh.read(20 * n)
+                cpus = [int.from_bytes(ents[i * 20:i * 20 + 4], "big") for i in range(n)]
+            elif hdr[:4] == b"\xcf\xfa\xed\xfe":
+                cpus = [int.from_bytes(hdr[4:8], "little")]
+            elif hdr[:4] == b"\xfe\xed\xfa\xcf":
+                cpus = [int.from_bytes(hdr[4:8], "big")]
+            else:
+                return None
+    except OSError:
+        return None
+    return [_MACHO_CPUS.get(c, f"cputype={c:#x}") for c in cpus]
+
+
+def check_shim_host_arch_darwin(triplet: str) -> bool:
+    """macOS: the shipped <triplet>-zig-cc shim must match the package host arch.
+
+    Package host arch comes from ZIG_TEST_TARGET_PLATFORM (recipe target_platform),
+    falling back to the Mach-O arch of `zig`. Not platform.machine() (Rosetta)
+    and not the triplet (xtarget codegen arch).
+
+    Returns False after recording a FAIL on mismatch; no-op off Darwin.
+    """
+    if sys.platform != "darwin":
+        return True
+    name = "shim host arch"
+    prefix = resolve_test_prefix("bin")
+    shim = prefix / "bin" / f"{triplet}-zig-cc"
+    if not shim.exists():
+        SKIP(name, f"{shim} not found")
+        return True
+    shim = shim.resolve()
+    arches = macho_arches(shim)
+    if arches is None:
+        SKIP(name, f"{shim} is not a Mach-O (shell script?)")
+        return True
+    host = _DARWIN_PLATFORM_ARCH.get(os.environ.get("ZIG_TEST_TARGET_PLATFORM", ""))
+    if host is None:
+        zig_arches = macho_arches((prefix / "bin" / "zig").resolve())
+        host = zig_arches[0] if zig_arches and len(zig_arches) == 1 else None
+    if host is None:
+        FAIL(name, "cannot determine package host arch (ZIG_TEST_TARGET_PLATFORM "
+                   f"unset/unknown, {prefix}/bin/zig not thin Mach-O)")
+        return False
+    if host not in arches:
+        FAIL(name, f"shim {shim} is {'+'.join(arches)} but package host is {host}")
+        return False
+    PASS(name, f"shim is {'+'.join(arches)}, package host {host}")
     return True
 
 
@@ -457,6 +534,12 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
         _can_execute_cache[key] = False
         return False
     result = False
+    timeout = EMULATED_TIMEOUT_S if _is_emulated else 120
+
+    def _timeout_fail(proc: subprocess.CompletedProcess[str]) -> None:
+        if _is_emulated and timed_out(proc):
+            FAIL("target probe", f"TIMEOUT under emulation after {timeout}s")
+
     try:
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "probe.c"
@@ -465,16 +548,18 @@ def can_execute_target(triplet: str, zig_cc: str | None = None) -> bool:
             # target= on the compile too: on an unhosted lane zig_cc is itself a
             # target-arch binary and needs the emulator.
             r_compile = _run([zig_cc, "-o", str(exe), str(src)], cwd=td,
-                             target=triplet, timeout=120)
+                             target=triplet, timeout=timeout)
             produced = exe if exe.exists() else exe.with_suffix(".exe")
             if r_compile.returncode != 0 or not produced.exists():
                 _probe_diag(triplet, "compile", r_compile,
                             "" if produced.exists() else "no output binary produced")
+                _timeout_fail(r_compile)
             else:
-                r_exec = _run([str(produced)], target=triplet, timeout=120)
+                r_exec = _run([str(produced)], target=triplet, timeout=timeout)
                 result = r_exec.returncode == 0
                 if not result:
                     _probe_diag(triplet, "exec", r_exec)
+                    _timeout_fail(r_exec)
     except Exception as exc:
         print(f"  can_execute_target({triplet}): probe raised "
               f"{type(exc).__name__}: {exc}")

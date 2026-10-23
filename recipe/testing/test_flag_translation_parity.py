@@ -14,7 +14,7 @@ two legs left, both fragment-independent:
     GENERATED translators directly (_translate.inc via a small C harness,
     and _translate.gen.sh sourced in bash), proving the manifest-driven
     unix and win profiles agree.
-  - Leg (C): run_unix_shim_compile_leg -- `-fsyntax-only` compiles
+  - Leg (C): run_unix_shim_compile_leg -- `-c` compiles
     zig-cc-unix.c (the live runtime path) to keep it warning-clean.
 
 Not pytest: matches the custom PASS/FAIL/WARN/SKIP harness used by
@@ -29,6 +29,7 @@ Exit codes:
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -39,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from _test_utils import PASS, FAIL, WARN, SKIP, _results, _build_is_mac, enforce_coverage_floor
+from _test_utils import PASS, FAIL, WARN, SKIP, _results, enforce_coverage_floor
 
 # Anchor: __file__ is <base>/testing/<thisfile>; parents[1] walks up one level
 # to <base>, valid both locally (recipe/) and at rattler-build test time.
@@ -47,10 +48,6 @@ _RECIPE_DIR = Path(__file__).resolve().parents[1]
 
 _BASH = shutil.which("bash")
 
-# Measured on the PR #189 green board (commit 15f8265f) across all 22 build
-# lanes; mac runs the generated-C leg (29 checks), win/linux SKIP it (16).
-# Exact, no margin.
-_COVERAGE_FLOOR = 29 if _build_is_mac else 16
 
 # ---------------------------------------------------------------------------
 # GENERATED-leg constants (recipe/building/_translate.inc, _translate.gen.sh)
@@ -282,20 +279,126 @@ GEN_CASES: list[GenCase] = [
 # ---------------------------------------------------------------------------
 # Leg (A): generated-C (_translate.inc via the compiled _translate_harness.c)
 # ---------------------------------------------------------------------------
+def _zig_cache_env(base: Path) -> dict[str, str]:
+    """Env with a temp local zig cache; the global cache stays shared so a warm mingw CRT is reused."""
+    env = dict(os.environ)
+    env["ZIG_LOCAL_CACHE_DIR"] = str(base / "zig-local-cache")
+    return env
+
+
+_HOST_PREFIXES = {
+    "amd64": ("x86_64-",),
+    "x86_64": ("x86_64-",),
+    "arm64": ("aarch64-", "arm64-"),
+    "aarch64": ("aarch64-", "arm64-"),
+    "ppc64le": ("powerpc64le-", "ppc64le-"),
+    "s390x": ("s390x-",),
+    "riscv64": ("riscv64-",),
+}
+
+
+def _find_cc() -> list[str] | None:
+    """Host C compiler argv: shipped host-arch <triplet>-zig cc, bare zig cc, then cc/gcc/clang.
+    Shipped zig first: runner clang on Windows has no libc headers; zig cc bundles them.
+    Only host-arch <triplet>-zig qualifies: other *-zig are cross targets.
+    Deliberately not the <triplet>-zig-cc wrappers, which target a cross arch."""
+    machine = platform.machine().lower()
+    host_prefixes = _HOST_PREFIXES.get(machine, (machine + "-",))
+    for var in ("CONDA_PREFIX", "PREFIX"):
+        prefix = os.environ.get(var)
+        if not prefix:
+            continue
+        for sub in ("bin", "Library/bin"):
+            d = Path(prefix) / sub
+            if not d.is_dir():
+                continue
+            shipped = sorted(
+                p for p in d.iterdir()
+                if p.is_file()
+                and (p.name.endswith("-zig") or p.name.endswith("-zig.exe"))
+                and p.name.startswith(host_prefixes)
+            )
+            if shipped:
+                return [str(shipped[0]), "cc"]
+    zig = shutil.which("zig")
+    if not zig:
+        for var in ("CONDA_PREFIX", "PREFIX"):
+            prefix = os.environ.get(var)
+            if prefix:
+                zig = shutil.which("zig", path=str(Path(prefix) / "bin"))
+                if zig:
+                    break
+    if zig:
+        return [zig, "cc"]
+    for exe in ("cc", "gcc", "clang"):
+        found = shutil.which(exe)
+        if found:
+            return [found]
+    return None
+
+
+def _cross_arch_zig() -> str | None:
+    """Name of a shipped non-host-arch <triplet>-zig (emulated lane), else None."""
+    machine = platform.machine().lower()
+    host_prefixes = _HOST_PREFIXES.get(machine, (machine + "-",))
+    for var in ("CONDA_PREFIX", "PREFIX"):
+        prefix = os.environ.get(var)
+        if not prefix:
+            continue
+        for sub in ("bin", "Library/bin"):
+            d = Path(prefix) / sub
+            if not d.is_dir():
+                continue
+            for p in sorted(d.iterdir()):
+                if (
+                    p.is_file()
+                    and (p.name.endswith("-zig") or p.name.endswith("-zig.exe"))
+                    and not p.name.startswith(host_prefixes)
+                ):
+                    return p.name
+    return None
+
+
+def _skip_cross_arch(name: str, zig_name: str) -> None:
+    SKIP(name, f"only a cross-arch zig ({zig_name}) for host {platform.machine()}; covered on host-arch lanes")
+
+
+def _coverage_floor() -> int:
+    # Cross-arch-only lanes skip genC + unix-shim (one SKIP each, replacing a FAIL): 16.
+    return 16 if _find_cc() is None and _cross_arch_zig() else 29
+
+
+# A cold zig cache builds the mingw CRT/libc on first compile (>120s on win CI).
+_HARNESS_COMPILE_TIMEOUT_S = 900
+
+
 def _compile_c_harness() -> Path | None:
     """Compile _translate_harness.c against the GENERATED _translate.inc.
-    Returns the binary path, or None if no C compiler is on PATH (the leg
-    SKIPs gracefully in that case)."""
-    cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+    Returns the binary path, or None if no C compiler is found (the leg
+    FAILs in that case). A compile failure is a FAIL, not a SKIP."""
+    cc = _find_cc()
     if not cc:
         return None
     tmpdir = Path(tempfile.mkdtemp(prefix="zig_translate_harness_"))
-    binpath = tmpdir / "_translate_harness"
-    proc = subprocess.run(
-        [cc, "-I", str(_BUILDING_DIR), str(_HARNESS_C), "-o", str(binpath)],
-        capture_output=True, text=True, timeout=60,
-    )
+    suffix = ".exe" if sys.platform == "win32" else ""
+    binpath = tmpdir / f"_translate_harness{suffix}"
+    try:
+        proc = subprocess.run(
+            [*cc, "-I", str(_BUILDING_DIR), str(_HARNESS_C), "-o", str(binpath)],
+            capture_output=True, text=True, timeout=_HARNESS_COMPILE_TIMEOUT_S,
+            env=_zig_cache_env(tmpdir),
+        )
+    except subprocess.TimeoutExpired:
+        FAIL(
+            "[genC] harness compile",
+            f"timed out after {_HARNESS_COMPILE_TIMEOUT_S}s (cc={cc})",
+        )
+        return None
     if proc.returncode != 0 or not binpath.exists():
+        FAIL(
+            "[genC] harness compile",
+            f"cc={cc} rc={proc.returncode}:\n{proc.stderr.strip()}",
+        )
         return None
     return binpath
 
@@ -334,9 +437,15 @@ def run_generated_c_leg() -> None:
     """Leg (A): assert the GENERATED C translator (_translate.inc) matches
     the golden table's token-based predicates."""
     print("--- Generated-C leg (_translate.inc via _translate_harness.c) ---")
+    if _find_cc() is None:
+        cross = _cross_arch_zig()
+        if cross:
+            _skip_cross_arch("generated-C leg (genC)", cross)
+        else:
+            FAIL("generated-C leg (genC)", "no C compiler found (cc/gcc/clang/zig)")
+        return
     harness = _compile_c_harness()
-    if harness is None:
-        SKIP("generated-C leg (genC)", "no C compiler found on PATH")
+    if harness is None:  # compile failure already reported as FAIL
         return
 
     conda_prefix = tempfile.mkdtemp(prefix="zig_translate_conda_")
@@ -417,7 +526,7 @@ def run_unix_shim_compile_leg() -> None:
     zig-cc-unix.c IS now compiled by install_zig_activation.py (the unix
     multiplexer), but only on unix build hosts; this leg is the strict
     syntax gate that keeps it warning-clean everywhere else.
-    Syntax-only: nothing is linked and no artifact is produced.
+    Compile-only (-c to a temp .o): nothing is linked.
 
     -std=c11 is deliberately STRICTER than production, which passes no -std=
     at all (_compile_c_shim in install_zig_activation.py).  Strict mode forces
@@ -444,16 +553,29 @@ def run_unix_shim_compile_leg() -> None:
         SKIP(name, "unix shim sources are POSIX-only (Windows host)")
         return
 
-    cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+    cc = _find_cc()
     if not cc:
-        SKIP(name, "no C compiler on PATH")
+        cross = _cross_arch_zig()
+        if cross:
+            _skip_cross_arch(name, cross)
+        else:
+            FAIL(name, "no C compiler found (cc/gcc/clang/zig)")
         return
 
-    proc = subprocess.run(
-        [cc, "-std=c11", "-Wall", "-Wextra", "-fsyntax-only", str(_UNIX_SHIM_C)],
-        capture_output=True,
-        text=True,
-    )
+    # Real compile (-c -o) into a temp dir: zig cc ignores -c with -fsyntax-only.
+    with tempfile.TemporaryDirectory(prefix="zig_shim_compile_") as td:
+        try:
+            proc = subprocess.run(
+                [*cc, "-std=c11", "-Wall", "-Wextra", "-c", str(_UNIX_SHIM_C),
+                 "-o", str(Path(td) / "zig-cc-unix.o")],
+                capture_output=True,
+                text=True,
+                timeout=_HARNESS_COMPILE_TIMEOUT_S,
+                env=_zig_cache_env(Path(td)),
+            )
+        except subprocess.TimeoutExpired:
+            FAIL(name, f"compile timed out after {_HARNESS_COMPILE_TIMEOUT_S}s (cc={cc})")
+            return
     diagnostics = proc.stderr.strip()
     if proc.returncode != 0:
         FAIL(name, f"compile FAILED (cc={cc}, rc={proc.returncode}):\n{diagnostics}")
@@ -483,7 +605,7 @@ def main() -> int:
     run_unix_shim_compile_leg()
 
     print()
-    enforce_coverage_floor(_COVERAGE_FLOOR, "flag-parity", "PR #189 / 15f8265f")
+    enforce_coverage_floor(_coverage_floor(), "flag-parity", "PR #189 / 15f8265f")
     n_pass = len(_results["PASS"])
     n_fail = len(_results["FAIL"])
     n_warn = len(_results["WARN"])
