@@ -33,6 +33,22 @@ if [[ "${PKG_NAME:-}" != "zig_impl_"* ]]; then
   exit 1
 fi
 
+# Ordering guard: build_number = <snapshot><rev>; keeps newest snapshot newest.
+if [[ -z "${SNAPSHOT_REF:-}" || -z "${PKG_BUILDNUM:-}" ]]; then
+  echo "SKIP: build-number guard (SNAPSHOT_REF=>${SNAPSHOT_REF:-}< PKG_BUILDNUM=>${PKG_BUILDNUM:-}<)"
+else
+  _bn_lo=$(( SNAPSHOT_REF * 10 ))
+  if [[ "${PKG_BUILDNUM}" -lt "${_bn_lo}" || "${PKG_BUILDNUM}" -gt $(( _bn_lo + 9 )) ]]; then
+    echo "ERROR: build_number ${PKG_BUILDNUM} outside snapshot ${SNAPSHOT_REF} range [${_bn_lo}, $(( _bn_lo + 9 ))] - fix build_number in recipe.yaml"
+    exit 1
+  fi
+  if [[ -n "${BUILD_REF:-}" && "${BUILD_REF}" -gt "${PKG_BUILDNUM}" ]]; then
+    echo "ERROR: build_ref ${BUILD_REF} is newer than build_number ${PKG_BUILDNUM} - bootstrap must not outrank this build"
+    exit 1
+  fi
+  unset _bn_lo
+fi
+
 # === Build caching for quick recipe iteration ===
 # Set ZIG_USE_CACHE=1 to enable build caching:
 #   - First run: builds normally, caches result
@@ -273,7 +289,7 @@ fi
 # osx-cross's config.h may already resolve via ${PREFIX} (cmake found target-arch
 # LLVM directly) -- zero matches there is a valid outcome, not a failure; see the
 # BUILD_PREFIX post-condition assertion below for the check that actually matters.
-is_osx      && is_cross && _cfg_subst     "${cmake_build_dir}/config.h" "(ZIG_LLVM_\\w+ \")${BUILD_PREFIX}" "\\1${PREFIX}"
+is_osx      && is_cross && CFG_SUBST_ZERO_OK=1 _cfg_subst     "${cmake_build_dir}/config.h" "(ZIG_LLVM_\\w+ \")${BUILD_PREFIX}" "\\1${PREFIX}"
 is_not_unix && is_cross && _cfg_subst_lit "${cmake_build_dir}/config.h" "${BUILD_PREFIX}" "${PREFIX}"
 # Do NOT inject ${PREFIX}/lib/libc++.dylib into ZIG_LLVM_LIBRARIES on macOS:
 # duplicate LC_LOAD_DYLIB, dyld aborts on SDK >= 26. See reference doc S8.

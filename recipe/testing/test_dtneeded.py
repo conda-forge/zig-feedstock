@@ -16,7 +16,14 @@ import subprocess
 import sys
 import tempfile
 
-from _test_utils import _run, check_emulation_env, resolve_test_prefix
+from _test_utils import (
+    FAIL,
+    PASS,
+    _run,
+    check_emulation_env,
+    print_summary,
+    resolve_test_prefix,
+)
 
 _LINK_TIMEOUT_S = 900  # emulated zig cc compile+link needs headroom
 
@@ -87,6 +94,12 @@ def _dump_verbose_diagnostics(triplet: str, src: str, binary: str,
 
 
 def main(triplet: str, zig_target: str | None = None) -> int:
+    rc = _main(triplet, zig_target)
+    print_summary()
+    return rc
+
+
+def _main(triplet: str, zig_target: str | None = None) -> int:
     if not check_emulation_env(triplet):
         return 1
 
@@ -102,7 +115,7 @@ def main(triplet: str, zig_target: str | None = None) -> int:
         # Quiet first attempt.
         result = _build(triplet, src, binary, zig_target=zig_target)
         if result.returncode != 0:
-            print("FAIL: zig cc failed to compile/link", file=sys.stderr)
+            FAIL("zig cc compile/link", f"rc={result.returncode}")
             print(result.stdout, file=sys.stderr)
             print(result.stderr, file=sys.stderr)
             _dump_verbose_diagnostics(triplet, src, binary, zig_target, list(result.args))
@@ -110,25 +123,22 @@ def main(triplet: str, zig_target: str | None = None) -> int:
 
         readelf_bin = shutil.which("readelf")
         if readelf_bin is None:
-            print("FAIL: readelf not found on PATH", file=sys.stderr)
+            FAIL("readelf available", "not found on PATH")
             return 1
         readelf = _run([readelf_bin, "-d", binary])
         if readelf.returncode != 0:
-            print("FAIL: readelf -d failed", file=sys.stderr)
+            FAIL("readelf -d", f"rc={readelf.returncode}")
             print(readelf.stdout, file=sys.stderr)
             print(readelf.stderr, file=sys.stderr)
             return 1
 
         if re.search(r"NEEDED\b.*libm", readelf.stdout):
-            print("PASS -Wl,--no-as-needed -lm puts libm in DT_NEEDED")
+            PASS("-Wl,--no-as-needed -lm puts libm in DT_NEEDED")
             return 0
 
         # Failure path: dump verbose diagnostics so the CI log shows
         # zig's actual LLD invocation and any env-level interference.
-        print(
-            "FAIL: libm not in DT_NEEDED after -Wl,--no-as-needed -lm",
-            file=sys.stderr,
-        )
+        FAIL("libm in DT_NEEDED", "absent after -Wl,--no-as-needed -lm")
         print("--- readelf -d (failing binary) ---", file=sys.stderr)
         print(readelf.stdout, file=sys.stderr)
         print("--- ZIG VERBOSE LINK/CC (stderr) ---", file=sys.stderr)
