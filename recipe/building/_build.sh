@@ -34,12 +34,81 @@ function build_zig_with_zig() {
   fi
 }
 
+# osx has no conda compiler activation: the bootstrap zig is CC/CXX for the
+# zigcpp cmake build, with conda's libc++ headers (ABI match with libLLVM).
+function setup_osx_zig_cc() {
+  local dir="${SRC_DIR}/_zigcc"
+  mkdir -p "${dir}" || return 1
+  printf '#!/bin/sh\nexec "%s" cc -target %s "$@"\n' \
+    "${BUILD_ZIG}" "${ZIG_TRIPLET}" > "${dir}/zig-cc"
+  # `zig cc` + -I: `zig c++` injects its bundled libcxx; -I beats every -isystem
+  printf '#!/bin/sh\nexec "%s" cc -target %s -nostdinc++ -I "%s/include/c++/v1" "$@"\n' \
+    "${BUILD_ZIG}" "${ZIG_TRIPLET}" "${PREFIX}" > "${dir}/zig-c++"
+  chmod +x "${dir}/zig-cc" "${dir}/zig-c++" || return 1
+
+  # One-shot diagnostic: header search order (never fatal)
+  {
+    echo "=== zig-c++ include search order ==="
+    echo | "${dir}/zig-c++" -x c++ -E -v - 2>&1 | sed -n '/#include "..." search starts here/,/End of search list/p'
+    echo "=== zig c++ (reference) ==="
+    echo | "${BUILD_ZIG}" c++ -target "${ZIG_TRIPLET}" -x c++ -E -v - 2>&1 | sed -n '/#include "..." search starts here/,/End of search list/p'
+  } || true
+  export CC="${dir}/zig-cc"
+  export CXX="${dir}/zig-c++"
+  EXTRA_CMAKE_ARGS+=(
+    -DCMAKE_AR="$(command -v llvm-ar)"
+    -DCMAKE_RANLIB="$(command -v llvm-ranlib)"
+    -DCMAKE_FIND_FRAMEWORK=LAST
+    -DCMAKE_FIND_APPBUNDLE=LAST
+  )
+
+  # What conda's clang activation used to export via CMAKE_ARGS
+  local _int
+  _int="$(command -v llvm-install-name-tool || command -v install_name_tool || true)"
+  if [[ -n "${_int}" ]]; then
+    export INSTALL_NAME_TOOL="${_int}"
+    EXTRA_CMAKE_ARGS+=(-DCMAKE_INSTALL_NAME_TOOL="${_int}")
+  fi
+  [[ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]] && \
+    EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET}")
+  [[ -n "${CONDA_BUILD_SYSROOT:-}" ]] && \
+    EXTRA_CMAKE_ARGS+=(-DCMAKE_OSX_SYSROOT="${CONDA_BUILD_SYSROOT}")
+
+  if is_cross; then
+    local _arch
+    case "${target_platform}" in
+      osx-64) _arch=x86_64 ;;
+      *)      _arch=arm64 ;;
+    esac
+    # llvm-config derives its prefix from its own location: a build-arch copy
+    # in PREFIX/bin (listed first below) yields host-arch LLVM/clang paths.
+    if [[ -x "${BUILD_PREFIX}/bin/llvm-config" ]]; then
+      rm -f "${PREFIX}/bin/llvm-config"
+      cp "${BUILD_PREFIX}/bin/llvm-config" "${PREFIX}/bin/llvm-config" || return 1
+    fi
+    # CMAKE_OSX_ARCHITECTURES is already set in build.sh
+    EXTRA_CMAKE_ARGS+=(
+      -DCMAKE_SYSTEM_NAME=Darwin
+      -DCMAKE_SYSTEM_PROCESSOR="${_arch}"
+      -DCMAKE_PREFIX_PATH="${PREFIX}"
+      -DCMAKE_PROGRAM_PATH="${PREFIX}/bin;${BUILD_PREFIX}/bin"
+      -DCMAKE_FIND_ROOT_PATH="${PREFIX};${CONDA_BUILD_SYSROOT:-}"
+      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+      -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+      -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+    )
+  else
+    EXTRA_CMAKE_ARGS+=(-DCMAKE_PROGRAM_PATH="${BUILD_PREFIX}/bin;${PREFIX}/bin")
+  fi
+}
+
 function configure_cmake() {
   local build_dir=$1
   local install_dir=$2
 
-  # Build local cmake args array — always use conda's CC/CXX (clang/gcc),
-  # never zig-cc (which has a baked-in target that conflicts with cross-builds).
+  # Build local cmake args array — conda's CC/CXX (clang/gcc), except osx
+  # (setup_osx_zig_cc); never zig-cc elsewhere (baked-in target breaks cross).
   local cmake_args=()
 
   # Merge with global EXTRA_CMAKE_ARGS if it exists
@@ -63,6 +132,9 @@ function configure_cmake_zigcpp() {
   local build_dir=$1
   local install_dir=$2
 
+  if is_osx; then
+    setup_osx_zig_cc || return 1
+  fi
   configure_cmake "${build_dir}" "${install_dir}"
   pushd "${build_dir}"
     cmake --build . --target zigcpp -- -j"${CPU_COUNT}" ${NINJA_FLAGS:-}
