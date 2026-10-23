@@ -69,7 +69,7 @@
   selector: unconditional
   purpose: "link shared libc++ when available instead of bundling zig's own static libc++, via new src/link/libcxx_shared.zig; hooks buildLibCxx in src/libs/libcxx.zig"
   symptom: ""
-  tested_by: "recipe/testing/test_libcxx_shared.py (recipe.yaml:437-458)"
+  tested_by: "recipe/testing/test_libcxx_shared.py (recipe.yaml:417-434, osx only)"
   justification: EXTERNAL-CONDITION
   verify: "conda's LLVM/clang are built against a shared libc++; without this patch zig would statically bundle its own while linking that shared-libc++ LLVM. Ablate with macho group; osx-64 + osx-arm64 exercise the probe."
   depends_on: "APPLY-TIME: depends on Lld.zig-macho-lld-support (NOTES.md 1.1)."

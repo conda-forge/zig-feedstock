@@ -135,7 +135,7 @@ defended -- the test is the symptom, encoded executably, re-checked every
 lane, every run.
 
 Grounded on this tree: `Lld.zig-prefer-shared-libcxx` is covered by
-`testing/test_libcxx_shared.py` (recipe.yaml:441), and
+`testing/test_libcxx_shared.py` (recipe.yaml:417-434, osx only), and
 `main.zig-fuse-ld-lld-cc-path` is covered by the `-fuse-ld=lld` test at
 recipe.yaml:546-570. Both run on every applicable lane.
 

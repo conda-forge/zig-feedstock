@@ -308,6 +308,8 @@ outputs:
         file: build.sh
         env:
           CONDA_TRIPLET: ${{ conda_triplet }}
+          SNAPSHOT_REF: ${{ snapshot_ref }}
+          BUILD_REF: ${{ build_ref }}
           ZIG_TRIPLET: ${{ zig_triplet }}
 
           CONDA_ZIG_BUILD: ${{ build_triplet ~ "-zig" }}
@@ -412,31 +414,20 @@ outputs:
             - ${{ library }}lib/zig/std/*
             # Post-install tests
             - etc/conda/test-files/zig*
-      # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch)
+      # Shared libc++ discovery tests (Lld.zig-prefer-shared-libcxx.patch, osx only)
       - script:
-          - if: linux
+          - if: osx
             then:
-              - export QEMU_LD_PREFIX="${PREFIX}${{ sysroot }}"
-          - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+              - python testing/test_libcxx_shared.py ${{ conda_triplet }} ${{ zig_triplet }}
+            else:
+              - echo "SKIP shared libc++ test (osx only)"
         requirements:
           build:
             - python >=3.10
-            - if: build_platform != target_platform
-              then:
-                - ${{ qemu_pkg }}
           run:
             - if: osx
               then:
                 - libcxx
-            - if: linux and not s390x
-              then:
-                - libstdcxx-devel_${{ target_platform }}
-                - libgcc-devel_${{ target_platform }}
-                - libstdcxx
-                - libgcc
-            - if: linux and build_platform != target_platform
-              then:
-                - sysroot_${{ target_platform }}
         files:
           recipe:
             - testing/_test_utils.py

@@ -386,12 +386,10 @@ def test_libmingw32_members(staged: list[tuple[str, Path]]) -> None:
 
     Runs the member listing for all three staged dirs -- an unreadable
     archive or a listing with zero members is arch-independent and always
-    a FAIL. The specific ucrt_*/thread/mutex member names are asserted
-    (FAIL on absence) only for x86_64-windows-gnu (lib-common); for
-    libarm64/lib32 any mismatch only WARNs, printing the actual matching
-    member lines so they can be confirmed from CI and hardened to FAIL
-    later. 0.17 has no member-COUNT floor (unlike the byte-size floor at
-    _mingw.sh:699) so only presence, never a specific count, is asserted.
+    a FAIL. The ucrt_*/thread/mutex member names are arch-independent
+    mingw-w64 sources and FAIL on absence for every staged arch. There is
+    no member-COUNT floor (unlike the byte-size floor in _mingw.sh), so
+    only presence, never a specific count, is asserted.
     """
     print("--- libmingw32.lib source member check (zig ar t) ---")
     zig_exe, _triplet = _find_zig_exe()
@@ -426,10 +424,8 @@ def test_libmingw32_members(staged: list[tuple[str, Path]]) -> None:
             name = f"libmingw32.lib member {member} ({target})"
             if found:
                 PASS(name)
-            elif target == "x86_64-windows-gnu":
-                FAIL(name, "not found in ar t output")
             else:
-                WARN(name, "not confirmed for this arch; see PASS lines above for actual members")
+                FAIL(name, "not found in ar t output")
 
 
 def test_gui_subsystem_link_probes() -> None:
