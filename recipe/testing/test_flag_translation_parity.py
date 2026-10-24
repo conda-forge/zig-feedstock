@@ -336,6 +336,14 @@ def _find_cc() -> list[str] | None:
     return None
 
 
+def _cpu_pin(cc: list[str]) -> list[str]:
+    """-mcpu=baseline for bare zig cc only: host-CPU detection on icelake-server
+    runners emits 'icelake_server', which clang rejects. Other compilers: none."""
+    if len(cc) > 1 and cc[1] == "cc" and Path(cc[0]).stem.endswith("zig"):
+        return ["-mcpu=baseline"]
+    return []
+
+
 def _cross_arch_zig() -> str | None:
     """Name of a shipped non-host-arch <triplet>-zig (emulated lane), else None."""
     machine = platform.machine().lower()
@@ -383,7 +391,7 @@ def _compile_c_harness() -> Path | None:
     binpath = tmpdir / f"_translate_harness{suffix}"
     try:
         proc = subprocess.run(
-            [*cc, "-I", str(_BUILDING_DIR), str(_HARNESS_C), "-o", str(binpath)],
+            [*cc, *_cpu_pin(cc), "-I", str(_BUILDING_DIR), str(_HARNESS_C), "-o", str(binpath)],
             capture_output=True, text=True, timeout=_HARNESS_COMPILE_TIMEOUT_S,
             env=_zig_cache_env(tmpdir),
         )
@@ -565,7 +573,7 @@ def run_unix_shim_compile_leg() -> None:
     with tempfile.TemporaryDirectory(prefix="zig_shim_compile_") as td:
         try:
             proc = subprocess.run(
-                [*cc, "-std=c11", "-Wall", "-Wextra", "-c", str(_UNIX_SHIM_C),
+                [*cc, *_cpu_pin(cc), "-std=c11", "-Wall", "-Wextra", "-c", str(_UNIX_SHIM_C),
                  "-o", str(Path(td) / "zig-cc-unix.o")],
                 capture_output=True,
                 text=True,

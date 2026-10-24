@@ -71,10 +71,11 @@ def enforce_coverage_floor(floor: int, label: str, provenance: str = "") -> None
     """
     count = registered_check_count()
     if count < floor:
-        FAIL(
-            f"coverage-floor-{label}",
-            f"registered {count} checks, floor is {floor} ({provenance})",
-        )
+        detail = f"registered {count} checks, floor is {floor} ({provenance})"
+        earlier = _results["FAIL"]
+        if earlier:
+            detail += f"; preceded by {len(earlier)} earlier FAIL(s), first: {earlier[0]}"
+        FAIL(f"coverage-floor-{label}", detail)
 
 
 # ---------------------------------------------------------------------------

@@ -448,7 +448,7 @@ rm -f "${PREFIX}/bin/zig.pdb"
 
 # macOS: --search-prefix adds a library search but does not embed LC_RPATH in the Mach-O binary.
 if is_osx; then
-  install_name_tool -add_rpath "${PREFIX}/lib" "${PREFIX}/bin/zig"
+  "${INSTALL_NAME_TOOL:-install_name_tool}" -add_rpath "${PREFIX}/lib" "${PREFIX}/bin/zig"
 fi
 
 if is_linux; then
