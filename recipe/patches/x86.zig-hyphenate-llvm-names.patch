@@ -1,0 +1,38 @@
+--- a/lib/std/Target/x86.zig
++++ b/lib/std/Target/x86.zig
+@@ -3136,7 +3136,7 @@
+     };
+     pub const goldmont_plus: CpuModel = .{
+         .name = "goldmont_plus",
+-        .llvm_name = "goldmont_plus",
++        .llvm_name = "goldmont-plus",
+         .features = featureSet(&[_]Feature{
+             .@"64bit",
+             .aes,
+@@ -3566,7 +3566,7 @@
+     };
+     pub const icelake_client: CpuModel = .{
+         .name = "icelake_client",
+-        .llvm_name = "icelake_client",
++        .llvm_name = "icelake-client",
+         .features = featureSet(&[_]Feature{
+             .@"64bit",
+             .adx,
+@@ -3631,7 +3631,7 @@
+     };
+     pub const icelake_server: CpuModel = .{
+         .name = "icelake_server",
+-        .llvm_name = "icelake_server",
++        .llvm_name = "icelake-server",
+         .features = featureSet(&[_]Feature{
+             .@"64bit",
+             .adx,
+@@ -4878,7 +4878,7 @@
+     };
+     pub const skylake_avx512: CpuModel = .{
+         .name = "skylake_avx512",
+-        .llvm_name = "skylake_avx512",
++        .llvm_name = "skylake-avx512",
+         .features = featureSet(&[_]Feature{
+             .@"64bit",
+             .adx,

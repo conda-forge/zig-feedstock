@@ -9,8 +9,8 @@ context:
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
   snapshot: "624+b7f2c6d8f"
-  snapshot_ref: "470"
-  build_ref: "4700"
+  snapshot_ref: "567"
+  build_ref: "5670"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
@@ -21,7 +21,7 @@ context:
   llvm_src_version: "23.1.3"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # conda-forge MinGW GCC used by the win-64 zig-cxx libstdc++ route
   mingw_gcc_version: "16.2"
@@ -199,6 +199,8 @@ source:
       - patches/non_unix/mingw.zig-02-arm64-stubs.patch
       # See recipe/NOTES.md 1.4.
       - patches/posix.zig-dl-iterate-phdr-no-pt-phdr.patch
+      # Upstream x86 llvm_name uses '_' (icelake_server); LLVM wants '-'.
+      - patches/x86.zig-hyphenate-llvm-names.patch
       - if: linux
         then:
           - patches/linux/llvm.zig-triple-no-glibc-version.patch
