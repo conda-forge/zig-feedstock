@@ -1,11 +1,11 @@
 --- a/lib/std/zig/llvm/Builder.zig
 +++ b/lib/std/zig/llvm/Builder.zig
-@@ -364,13 +364,8 @@
+@@ -378,13 +378,8 @@
          .semver,
          .windows,
          => {},
 -        inline .hurd, .linux => |ver| if (target.abi.isGnu()) {
--            try llvm_triple.print("{d}.{d}.{d}", .{
+-            try llvm_triple.print(allocator, "{d}.{d}.{d}", .{
 -                ver.glibc.major,
 -                ver.glibc.minor,
 -                ver.glibc.patch,
@@ -13,6 +13,6 @@
 -        } else if (@TypeOf(ver) == std.Target.Os.LinuxVersionRange and target.abi.isAndroid()) {
 +        .hurd => {},
 +        .linux => |ver| if (target.abi.isAndroid()) {
-             try llvm_triple.print("{d}", .{ver.android});
+             try llvm_triple.print(allocator, "{d}", .{ver.android});
          },
      }
