@@ -9,6 +9,8 @@ directly (no activation wrappers). Verifies that the zig binary:
   2. Carries the shared libc++ probe names on macOS only (patch scoped to osx)
   3. Uses shared libc++ only when ZIG_LIBCXX=shared AND a dylib is at the
      probe path (macOS); unset / other values stay static (issue #220)
+  4. An exception thrown in a dylib is caught by the exe in both modes
+     (asserted); static mode also asserts no libc++ dylib dependency
 
 Usage:
   python test_libcxx_shared.py <conda_triplet>
@@ -449,16 +451,16 @@ def _check_optin_default(zig: str) -> None:
 
 
 def _check_needed_libcxx(zig: str, label: str) -> None:
-    """Check for dynamic libc++ dependency, then run the report-only probes."""
+    """Check dynamic libc++ dependency and cross-dylib exceptions in both modes."""
     with tempfile.TemporaryDirectory() as td, _zig_libcxx("shared"):
         cxx_out = Path(td) / "libtest.dylib"
         _compile_and_check_needed(zig, label, td, cxx_out)
         # Measurements run even when the check above returned early.
         if cxx_out.exists():
             _report_libcxxabi_doubled(cxx_out, td)
-        _report_xdylib_exception(zig, td, "shared")
+        _check_xdylib_exception(zig, td, "shared")
     with tempfile.TemporaryDirectory() as td, _zig_libcxx(None):
-        _report_xdylib_exception(zig, td, "static")
+        _check_xdylib_exception(zig, td, "static")
     _check_optin_default(zig)
 
 
@@ -627,8 +629,23 @@ def _xdylib_otool(exe: Path) -> None:
         print(f"    XDYLIB: {l.rstrip()}")
 
 
-def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
-    """Report-only: exception thrown in a dylib is caught by the executable."""
+def _check_static_no_libcxx_dylib(d: Path, tag: str) -> None:
+    """Static mode (#220): neither dylib nor exe may link a libc++ dylib."""
+    otool = shutil.which("otool") or shutil.which("llvm-otool")
+    if not otool:
+        SKIP(f"{tag}[static]: no libc++ dylib dependency", "otool not found")
+        return
+    for name in ("libthrower.dylib", "xmain"):
+        out = _run([otool, "-L", str(d / name)], cwd=str(d)).stdout
+        deps = [l.strip() for l in out.splitlines()[1:] if l.strip()]
+        if any("libc++" in dep for dep in deps):
+            FAIL(f"{tag}[static]: {name} links a libc++ dylib", "; ".join(deps))
+        else:
+            PASS(f"{tag}[static]: {name} has no libc++ dylib dependency")
+
+
+def _check_xdylib_exception(zig: str, td: str, mode: str) -> None:
+    """Exception thrown in a dylib is caught by the executable (shared and static libc++)."""
     wtag = "libcxxabi-xdylib-exception"
     try:
         d = Path(td) / "xdylib"
@@ -653,19 +670,22 @@ def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
                   str(d / "thrower.cpp")], cwd=str(d),
                  timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
         if r.returncode != 0:
-            WARN(wtag, f"[{mode}] dylib build rc={r.returncode}\n{r.stderr[:500]}")
+            FAIL(f"{wtag}[{mode}]: dylib build failed",
+                 f"rc={r.returncode}\n{r.stderr[:500]}")
             return
         r = _run([zig, "c++", "-o", str(d / "xmain"), str(d / "main.cpp"),
                   "-L" + str(d), "-lthrower", "-Wl,-rpath," + str(d),
                   f"-Wl,-rpath,{_prefix}/lib"],
                  cwd=str(d), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
         if r.returncode != 0:
-            WARN(wtag, f"[{mode}] exe build rc={r.returncode}\n{r.stderr[:500]}")
+            FAIL(f"{wtag}[{mode}]: exe build failed",
+                 f"rc={r.returncode}\n{r.stderr[:500]}")
             return
         _xdylib_otool(d / "xmain")
         if mode == "static":
             _report_libcxxabi_doubled(d / "libthrower.dylib", td, "XDYLIB-THROWER-")
             _report_libcxxabi_doubled(d / "xmain", td, "XDYLIB-MAIN-")
+            _check_static_no_libcxx_dylib(d, wtag)
         r = _run([str(d / "xmain")], cwd=str(d), timeout=60)
         if "CAUGHT" in r.stdout:
             verdict = "caught"
@@ -676,6 +696,7 @@ def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
         line = f"LIBCXXABI-XDYLIB-EXCEPTION[{mode}]: {verdict} (rc={r.returncode})"
         print(f"    {line}")
         if verdict == "caught":
+            PASS(f"{wtag}[{mode}]: exception caught across dylib boundary")
             return
         print(f"    XDYLIB[{mode}]: stderr tail:\n{_tail(r.stderr, 15)}")
         if verdict == "NOT caught":
@@ -686,9 +707,10 @@ def _report_xdylib_exception(zig: str, td: str, mode: str) -> None:
             v2 = "caught" if "CAUGHT" in r2.stdout else "NOT caught"
             print(f"    LIBCXXABI-XDYLIB-EXCEPTION[{mode}]-DYLD-PATH: {v2} "
                   f"(rc={r2.returncode})")
-        WARN(wtag, line)
-    except Exception as e:  # report-only
-        WARN(wtag, f"[{mode}] probe error: {e}")
+        FAIL(f"{wtag}[{mode}]: exception not caught across dylib boundary",
+             f"{line}\n{_tail(r.stderr, 15)}")
+    except Exception as e:
+        FAIL(f"{wtag}[{mode}]: probe error", str(e))
 
 
 def _tail(text: str, n: int = 15) -> str:
