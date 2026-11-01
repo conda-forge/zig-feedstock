@@ -1,0 +1,14 @@
+--- a/src/libs/libcxx.zig
++++ b/src/libs/libcxx.zig
+@@ -503,6 +503,11 @@ pub fn addCxxArgs(
+     try cflags.append("-D_LIBCPP_HAS_UNICODE");
+     try cflags.append("-D_LIBCPP_HAS_WIDE_CHARACTERS");
+     try cflags.append("-D_LIBCPP_HAS_NO_STD_MODULES");
++    if (target.os.tag.isDarwin()) {
++        // Compare type_info by name: each image's static libc++abi has its
++        // own hidden typeinfo, so pointer compare breaks cross-dylib catch.
++        try cflags.append("-D_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION=2");
++    }
+     if (target.os.tag == .linux) {
+         try cflags.append("-D_LIBCPP_HAS_TIME_ZONE_DATABASE");
+     }

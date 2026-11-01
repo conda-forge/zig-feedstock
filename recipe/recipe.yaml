@@ -193,6 +193,8 @@ source:
       - patches/main.zig-fuse-ld-lld-cc-path.patch
       - patches/build.zig-02-doctest-forward-target.patch
       - patches/build.zig-03-compiler-step-zig-lib-dir.patch
+      # Darwin libc++ typeinfo comparison (-D_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION=2).
+      - patches/libcxx.zig-darwin-typeinfo-comparison.patch
       # See recipe/NOTES.md 1.3.
       - patches/non_unix/mingw.zig-01-include-setjmp-s.patch
       - patches/non_unix/mingw-setjmp-no-crtimp.patch
