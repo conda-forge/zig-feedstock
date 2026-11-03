@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import platform
 import shutil
+import struct
 import sys
 import tempfile
 
@@ -396,6 +397,7 @@ def test_shared_lib() -> None:
 
         if is_win_target and _build_is_win:
             _test_shared_lib_windows(zig_cc, obj, td)
+            _test_export_all_symbols_windows(zig_cc, td)
         elif is_macos_target and _build_is_mac:
             _test_shared_lib_unix(zig_cc, obj, td, ext=".dylib")
         elif is_linux_target and not _build_is_win:
@@ -475,6 +477,65 @@ def _test_shared_lib_windows(zig_cc: str, obj: Path, td: str) -> None:
                  f"rc={r2.returncode}")
     else:
         SKIP("zig ar t import lib", "ZIG_AR not found")
+
+
+def _pe_export_names(path: Path) -> set[str]:
+    """Names in a PE/PE32+ export directory; empty set if there is none."""
+    d = path.read_bytes()
+    pe = struct.unpack_from("<I", d, 0x3C)[0]
+    if d[pe:pe + 4] != b"PE\0\0":
+        return set()
+    nsec, optsize = struct.unpack_from("<H12xH", d, pe + 6)
+    opt = pe + 24
+    dd = opt + (0x70 if struct.unpack_from("<H", d, opt)[0] == 0x20B else 0x60)
+    exp_rva = struct.unpack_from("<I", d, dd)[0]
+    if not exp_rva:
+        return set()
+    secs = opt + optsize
+
+    def off(rva: int) -> int:
+        for i in range(nsec):
+            vsize, va, rawsize, raw = struct.unpack_from("<4I", d, secs + 40 * i + 8)
+            if va <= rva < va + max(vsize, rawsize):
+                return rva - va + raw
+        raise ValueError(f"RVA {rva:#x} not in any section")
+
+    nnames, names_rva = struct.unpack_from("<I4xI", d, off(exp_rva) + 24)
+    names = set()
+    for i in range(nnames):
+        s = off(struct.unpack_from("<I", d, off(names_rva) + 4 * i)[0])
+        names.add(d[s:d.index(b"\0", s)].decode("ascii", "replace"))
+    return names
+
+
+def _test_export_all_symbols_windows(zig_cc: str, td: str) -> None:
+    name = "-Wl,--export-all-symbols honoured"
+    src = Path(td) / "exports.c"
+    dll = Path(td) / "exports.dll"
+    src.write_text("__declspec(dllexport) int zx_dllexp(void) { return 1; }\n"
+                   "int zx_plain(void) { return 2; }\n")
+    # Export-all is a MinGW feature; win-64/win-32 wrappers default to msvc.
+    r = _run([zig_cc, "-shared", "-Wl,--export-all-symbols", "-o", str(dll), str(src)],
+             cwd=td, timeout=180,
+             env=dict(os.environ, ZIG_VERBOSE_LINK="1", ZIG_WIN_ABI="gnu"))
+    lines = (r.stderr + "\n" + r.stdout).splitlines()
+    link = next((ln for ln in lines if "lld-link" in ln),
+                next((ln for ln in lines if "lld" in ln), ""))
+    i = link.find("-lldmingw")
+    shown = link[max(0, i - 60):i + 300] if i >= 0 else link[:400]
+    if r.returncode != 0 or not dll.exists():
+        FAIL(name, f"link failed rc={r.returncode} stderr={r.stderr[:200]}; {shown}")
+        return
+    exports = _pe_export_names(dll)
+    if "zx_dllexp" not in exports:
+        FAIL(name, "dllexport symbol not exported")
+    elif "zx_plain" in exports:
+        PASS(name)
+    elif "-export-all-symbols" in link:
+        FAIL(name, f"flag reached lld but plain symbol not exported; {shown}")
+    else:
+        WARN(name, "zig did not pass -export-all-symbols to lld (unpatched zig?); "
+                   f"{shown or 'no lld-link line: ' + r.stderr[:300]}")
 
 
 # ===================================================================

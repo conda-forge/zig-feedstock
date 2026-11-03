@@ -1,0 +1,25 @@
+--- a/src/link/Lld.zig
++++ b/src/link/Lld.zig
+@@ -471,6 +471,9 @@
+ 
+         if (target.isMinGW()) {
+             try argv.append("-lldmingw");
++            if (is_dyn_lib and comp.config.rdynamic) {
++                try argv.append("-export-all-symbols");
++            }
+         }
+ 
+         try argv.append("-ERRORLIMIT:0");
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -2868,7 +2868,9 @@
+                     linker_dynamicbase = false;
+                 } else if (mem.eql(u8, arg, "--high-entropy-va")) {
+                     // This option does not do anything.
+-                } else if (mem.eql(u8, arg, "--export-all-symbols")) {
++                } else if (mem.eql(u8, arg, "--export-all-symbols") or
++                    mem.eql(u8, arg, "-export-all-symbols"))
++                {
+                     create_module.opts.rdynamic = true;
+                 } else if (mem.eql(u8, arg, "--color-diagnostics") or
+                     mem.eql(u8, arg, "--color-diagnostics=always"))
