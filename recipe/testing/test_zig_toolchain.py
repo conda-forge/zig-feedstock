@@ -514,19 +514,28 @@ def _test_export_all_symbols_windows(zig_cc: str, td: str) -> None:
     dll = Path(td) / "exports.dll"
     src.write_text("__declspec(dllexport) int zx_dllexp(void) { return 1; }\n"
                    "int zx_plain(void) { return 2; }\n")
+    # Export-all is a MinGW feature; win-64/win-32 wrappers default to msvc.
     r = _run([zig_cc, "-shared", "-Wl,--export-all-symbols", "-o", str(dll), str(src)],
-             cwd=td, timeout=180)
+             cwd=td, timeout=180,
+             env=dict(os.environ, ZIG_VERBOSE_LINK="1", ZIG_WIN_ABI="gnu"))
+    lines = (r.stderr + "\n" + r.stdout).splitlines()
+    link = next((ln for ln in lines if "lld-link" in ln),
+                next((ln for ln in lines if "lld" in ln), ""))
+    i = link.find("-lldmingw")
+    shown = link[max(0, i - 60):i + 300] if i >= 0 else link[:400]
     if r.returncode != 0 or not dll.exists():
-        FAIL(name, f"link failed rc={r.returncode} stderr={r.stderr[:200]}")
+        FAIL(name, f"link failed rc={r.returncode} stderr={r.stderr[:200]}; {shown}")
         return
     exports = _pe_export_names(dll)
     if "zx_dllexp" not in exports:
         FAIL(name, "dllexport symbol not exported")
     elif "zx_plain" in exports:
         PASS(name)
+    elif "-export-all-symbols" in link:
+        FAIL(name, f"flag reached lld but plain symbol not exported; {shown}")
     else:
-        WARN(name, "zig drops the flag; only dllexport symbols exported "
-                   "(known gap, see ZIG_RECIPE_LLM_REFERENCE.md section 8)")
+        WARN(name, "zig did not pass -export-all-symbols to lld (unpatched zig?); "
+                   f"{shown or 'no lld-link line: ' + r.stderr[:300]}")
 
 
 # ===================================================================
