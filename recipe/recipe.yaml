@@ -10,7 +10,7 @@ context:
   bootstrap_version: "0.18"
   snapshot: "860+8e8cf3835"
   snapshot_ref: "828"
-  build_ref: "8280"
+  build_ref: "8281"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
