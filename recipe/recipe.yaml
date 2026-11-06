@@ -2,13 +2,13 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 8600
+  build_number: 8610
   name: zig
   version: "0.18.0"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
-  snapshot: "860+8e8cf3835"
+  snapshot: "861+1a0778dc2"
   snapshot_ref: "828"
   build_ref: "8281"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
@@ -177,7 +177,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/builds/zig-${{ version }}-dev.${{ snapshot }}.tar.xz
-    sha256: 1f713c92b790f60b36386110ae952bd8c2abb922cd3f9b472dfedcf75853c3a2
+    sha256: ce496c03b4d51229de4a6d9bada8c5f8fe9f5f6edd07019ab7fc580b56073876
     patches:
       # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
@@ -249,32 +249,32 @@ source:
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 544bd14a24307a3910530d3310c23f97f56e3aac74afa2f579f9a4443c4f683a
+            sha256: 49225b4b3151a11346d4c469a308ddf037d316cda234505b8fb34262ae9dd1ae
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-linux-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: cef3b4602e82881b01ee67a524c4b043f8a0777beac31145fde604f47659eb42
+            sha256: 383e69e9e844d5e1ad98fb5ab8bfa54e9c1eb96d9fb5e3c68a28ca40e1b6f2fc
             target_directory: zig-bootstrap
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: 63047b5074aa4ea597172568eed3aa89548e7b576791fdb7cf9f4db1d01678b2
+            sha256: f3f435ff4a2650b2b62fcd799aa5a122b38a9c0db60f2c7a41e9ed03ad17180f
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-macos-${{ version }}-dev.${{ snapshot }}.tar.xz
-            sha256: bf82c60c5121cc7d6c76fdb07442f37f44930192d4c50c3f3ad78746193d9cee
+            sha256: 440239f221f2954ebe825087a83bc255007f51e96287e80381189d5e01af3dc7
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/builds/zig-x86_64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: f02b82940efdc3570c64ecf4227afd28f2a9b45a09cf518411a6fe9d97a6e88a
+            sha256: e9d1c39ae088c2d67cf0c5930847e7a26a449d3e93e2eba67a71f30c40758ab7
             target_directory: zig-bootstrap
       - if: build_platform == "win-arm64"
         then:
           - url: https://ziglang.org/builds/zig-aarch64-windows-${{ version }}-dev.${{ snapshot }}.zip
-            sha256: a892be02e2c3874499901fb6060d69a4e25d94c06908c7bcaab959e236ba9912
+            sha256: ce21a4dfd473688d0cc7761e7ff8dcc380e0a5d2ac0516da0c605399f948abb0
             target_directory: zig-bootstrap
 
 build:
