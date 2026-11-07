@@ -24,6 +24,7 @@ Previously required wrapper injection via aarch64-w64-mingw32-zig.exe
 
 drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
 
+diff --git a/lib/libc/mingw/crt/fpreset_arm64.c b/lib/libc/mingw/crt/fpreset_arm64.c
 --- /dev/null
 +++ b/lib/libc/mingw/crt/fpreset_arm64.c
 @@ -0,0 +1,11 @@
@@ -38,7 +39,7 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
 + */
 +void _fpreset(void) {}
 +void fpreset(void) {}
-
+diff --git a/src/libs/mingw.zig b/src/libs/mingw.zig
 --- a/src/libs/mingw.zig
 +++ b/src/libs/mingw.zig
 @@ -122,6 +122,17 @@
@@ -47,7 +48,7 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
                      }
 +                    if (target.cpu.arch == .aarch64) {
 +                        for (mingw32_arm64_src) |dep| {
-+                            try c_source_files.append(.{
++                            try c_source_files.append(arena, .{
 +                                .src_path = try comp.dirs.zig_lib.join(arena, &.{
 +                                    "libc", "mingw", dep,
 +                                }),
@@ -59,10 +60,10 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
                  } else {
                      @panic("unsupported arch");
                  }
-@@ -918,6 +929,10 @@
+@@ -910,6 +921,10 @@
      "math" ++ path.sep_str ++ "arm-common" ++ path.sep_str ++ "ldexpl.c",
  };
-
+ 
 +const mingw32_arm64_src = [_][]const u8{
 +    "crt" ++ path.sep_str ++ "fpreset_arm64.c",
 +};
@@ -70,7 +71,7 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
  const mingw32_winpthreads_src = [_][]const u8{
      // winpthreads
      "winpthreads" ++ path.sep_str ++ "barrier.c",
-
+diff --git a/lib/libc/mingw/lib-common/ucrtbase-common.def.in b/lib/libc/mingw/lib-common/ucrtbase-common.def.in
 --- a/lib/libc/mingw/lib-common/ucrtbase-common.def.in
 +++ b/lib/libc/mingw/lib-common/ucrtbase-common.def.in
 @@ -388,7 +388,9 @@
@@ -83,7 +84,7 @@ drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
  _fputc_nolock
  _fputchar
  _fputwc_nolock
-
+diff --git a/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in b/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
 --- a/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
 +++ b/lib/libc/mingw/lib-common/api-ms-win-crt-runtime-l1-1-0.def.in
 @@ -44,7 +44,9 @@

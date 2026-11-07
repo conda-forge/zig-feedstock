@@ -1,15 +1,17 @@
+diff --git a/src/link/Lld.zig b/src/link/Lld.zig
 --- a/src/link/Lld.zig
 +++ b/src/link/Lld.zig
 @@ -471,6 +471,9 @@
  
          if (target.isMinGW()) {
-             try argv.append("-lldmingw");
+             try argv.append(gpa, "-lldmingw");
 +            if (is_dyn_lib and comp.config.rdynamic) {
-+                try argv.append("-export-all-symbols");
++                try argv.append(gpa, "-export-all-symbols");
 +            }
          }
  
-         try argv.append("-ERRORLIMIT:0");
+         try argv.appendSlice(gpa, &.{ "-ERRORLIMIT:0", "-NOLOGO" });
+diff --git a/src/main.zig b/src/main.zig
 --- a/src/main.zig
 +++ b/src/main.zig
 @@ -2868,7 +2868,9 @@
