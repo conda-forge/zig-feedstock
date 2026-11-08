@@ -13,8 +13,10 @@ if [[ -z "${_zml_root}" ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
-_zml_msvc="$(ls -d "${_zml_root}"/msvc-* 2>/dev/null | sort -V | tail -n 1)"
-_zml_sdk="$(ls -d "${_zml_root}"/winsdk-* 2>/dev/null | sort -V | tail -n 1)"
+_zml_sort() { sort -V 2>/dev/null || sort; }
+_zml_msvc="$(ls -d "${_zml_root}"/msvc-* 2>/dev/null | _zml_sort | tail -n 1)"
+_zml_sdk="$(ls -d "${_zml_root}"/winsdk-* 2>/dev/null | _zml_sort | tail -n 1)"
+unset -f _zml_sort
 if [[ ! -d "${_zml_msvc}/include" || ! -d "${_zml_sdk}/include" ]]; then
     echo "zig msvc: no msvc-*/winsdk-* trees under ${_zml_root} (not downloaded yet?)" >&2
     unset _zml_root _zml_msvc _zml_sdk
@@ -23,7 +25,13 @@ fi
 
 # SDK headers keep MS casing (Windows.h); conda clang uses a VFS overlay zig
 # cannot take, so add lowercase aliases once on case-sensitive filesystems.
-if [[ ! -e "${_zml_root}/.zig-lc-headers" ]]; then
+# Probe: on a case-insensitive FS (macOS APFS) the lowercase name already resolves.
+_zml_ci=0
+if touch "${_zml_root}/.ZIG-CASE-PROBE" 2>/dev/null; then
+    [[ -e "${_zml_root}/.zig-case-probe" ]] && _zml_ci=1
+    rm -f "${_zml_root}/.ZIG-CASE-PROBE"
+fi
+if [[ "${_zml_ci}" == 0 && ! -e "${_zml_root}/.zig-lc-headers" ]]; then
     for _zml_d in "${_zml_sdk}/include" "${_zml_msvc}/include"; do
         while IFS= read -r _zml_h; do
             _zml_lc="$(dirname "${_zml_h}")/$(basename "${_zml_h}" | tr '[:upper:]' '[:lower:]')"
@@ -59,4 +67,4 @@ fi
 export ZIG_MSVC_LIBC_FILE="${_zml_file}"
 export ZIG_MSVC_EXTRA_INCLUDES="${_zml_sdk}/include/um:${_zml_sdk}/include/shared:${_zml_sdk}/include/winrt"
 
-unset _zml_root _zml_msvc _zml_sdk _zml_file _zml_d _zml_h _zml_lc
+unset _zml_root _zml_msvc _zml_sdk _zml_file _zml_ci _zml_d _zml_h _zml_lc

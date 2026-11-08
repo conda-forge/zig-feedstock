@@ -9,8 +9,8 @@ context:
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
   snapshot: "930+1d9e7ec5a"
-  snapshot_ref: "828"
-  build_ref: "8281"
+  snapshot_ref: "930"
+  build_ref: "9300"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
@@ -21,7 +21,7 @@ context:
   llvm_src_version: "23.1.3"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # conda-forge MinGW GCC used by the win-64 zig-cxx libstdc++ route
   mingw_gcc_version: "16.2"
@@ -51,11 +51,11 @@ context:
   xc_osx:        ${{ "osx"   in xtarget_ and "osx"   in build_platform }}
   xc_nlo:        ${{ "win"   in xtarget_ and "win"   in build_platform }}
 
-  # linux-hosted win-64 target, msvc ABI (mirror of clang_win-64)
-  xc_lnx_w64:    ${{ xc_w64 and build_platform == "linux-64" and target_platform == "linux-64" }}
+  # unix-hosted win-64 target, msvc ABI (mirror of clang_win-64)
+  xc_unix_w64:   ${{ xc_w64 and build_platform == target_platform and build_platform in ["linux-64", "osx-arm64"] }}
 
   xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-32'] }}
-  xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo or xc_lnx_w64) and xc_host_valid }}
+  xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo or xc_unix_w64) and xc_host_valid }}
 
   # Silly shortcuts
   exe:     ${{ ".exe" if not unix else "" }}
@@ -102,7 +102,7 @@ context:
       "s390x-conda-linux-gnu"                  if xc_s390x                            else
       "x86_64-apple-darwin13.4.0"              if xc_o64                              else
       "arm64-apple-darwin20.0.0"               if xc_oarm64                           else
-      "x86_64-pc-windows-msvc"                 if xc_lnx_w64                          else
+      "x86_64-pc-windows-msvc"                 if xc_unix_w64                          else
       "x86_64-w64-mingw32"                     if xc_w64                              else
       "aarch64-w64-mingw32"                    if xc_warm64                           else
       "i686-w64-mingw32"                       if xc_win32                            else
@@ -587,7 +587,7 @@ outputs:
       name: zig_${{ xtarget_ }}
     build:
       skip: not (is_native or is_cross_compiler or is_cross_target)
-      string: ${{ "msvc_" if xc_lnx_w64 else "" }}${{ hash }}_${{ snapshot | replace("+", "_") }}_${{ build_number }}
+      string: ${{ "msvc_" if xc_unix_w64 else "" }}${{ hash }}_${{ snapshot | replace("+", "_") }}_${{ build_number }}
       script:
         file: install_zig_activation.py
         env:
@@ -639,18 +639,18 @@ outputs:
           then:
             - libstdcxx-devel_${{ xtarget_ }} ${{ cxx_compiler_version }}.*
             - libgcc-devel_${{ xtarget_ }} ${{ cxx_compiler_version }}.*
-        - if: (xc_lnx or xc_lnx_w64) and not xc_s390x and is_cross_compiler
+        - if: (xc_lnx or (xc_unix_w64 and linux)) and not xc_s390x and is_cross_compiler
           then:
             - libstdcxx-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
             - libgcc-devel_${{ xc_build_platform }} ${{ cxx_compiler_version }}.*
         # win-64 zig-cxx links MinGW GCC libstdc++ (mingw-w64-ucrt-x86_64-winpthreads-git provides libwinpthread.dll.a, installs on arm64 hosts)
-        - if: xc_w64 and not xc_lnx_w64
+        - if: xc_w64 and not xc_unix_w64
           then:
             - libstdcxx-devel_win-64 ${{ mingw_gcc_version }}.*
             - libgcc-devel_win-64 ${{ mingw_gcc_version }}.*
             - mingw-w64-ucrt-x86_64-winpthreads-git
-        # linux-hosted win-64 targets the msvc ABI (headers/libs fetched via CONDA_BUILD_WINSDK)
-        - if: xc_lnx_w64
+        # unix-hosted win-64 targets the msvc ABI (headers/libs fetched via CONDA_BUILD_WINSDK)
+        - if: xc_unix_w64
           then:
             - msvc-headers-libs
             - winsdk
@@ -660,11 +660,11 @@ outputs:
             then:
               - libstdcxx >=${{ cxx_compiler_version }}
               - libgcc >=${{ cxx_compiler_version }}
-          - if: xc_w64 and not xc_lnx_w64
+          - if: xc_w64 and not xc_unix_w64
             then:
               - libstdcxx >=${{ mingw_gcc_version }}
               - libgcc >=${{ mingw_gcc_version }}
-          - if: xc_lnx_w64
+          - if: xc_unix_w64
             then:
               - vc >=14.2
               - vc14_runtime >=14.29.30139
@@ -718,10 +718,10 @@ outputs:
                 - if: xc_lnx
                   then:
                     - share/zig/cxx-overlay/${{ conda_triplet }}/sys/single_threaded.h
-                - if: (xc_lnx or xc_lnx_w64) and is_cross_compiler
+                - if: (xc_lnx or (xc_unix_w64 and linux)) and is_cross_compiler
                   then:
                     - share/zig/cxx-overlay/${{ xc_build_triplet }}/sys/single_threaded.h
-                - if: xc_lnx_w64
+                - if: xc_unix_w64
                   then:
                     - etc/conda/activate.d/zig_msvc_libc.sh
                     - etc/conda/deactivate.d/zig_msvc_libc.sh
@@ -730,7 +730,7 @@ outputs:
 
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
                 # Verify CONDA_ZIG_BUILD and CONDA_ZIG_HOST are set by activation
                 - if: unix
@@ -755,7 +755,7 @@ outputs:
                 - if: linux
                   then:
                     - export QEMU_LD_PREFIX="${PREFIX}/${{ conda_triplet }}/sysroot"
-                - if: not xc_lnx_w64
+                - if: not xc_unix_w64
                   then:
                     - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_zig_toolchain.py
                     - ${{ "export" if unix else "set" }} PYTHONIOENCODING=utf-8 && python testing/test_glibc_as_needed.py
@@ -803,18 +803,18 @@ outputs:
                 - testing/test_glibc_as_needed.py
                 - testing/test_cxx_runtime.py
 
-          # linux-hosted msvc target: link C/C++ and check COFF imports (CI sets CONDA_BUILD_WINSDK)
+          # unix-hosted msvc target: link C/C++ and check COFF imports (CI sets CONDA_BUILD_WINSDK)
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
-                - if: xc_lnx_w64
+                - if: xc_unix_w64
                   then:
                     - . "$PREFIX/etc/conda/activate.d/zig_activate.sh"
                     - . "$PREFIX/etc/conda/activate.d/zig_msvc_libc.sh"
                     - python testing/test_msvc_cross.py
                   else:
-                    - echo "SKIP msvc cross link probe (not linux-hosted win-64)"
+                    - echo "SKIP msvc cross link probe (not unix-hosted win-64)"
             files:
               recipe:
                 - testing/test_msvc_cross.py
@@ -827,9 +827,9 @@ outputs:
           # Verify <triplet>-zig-windres wrapper: -o flag translation works
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
-                - if: (xc_w64 and not xc_lnx_w64) or xc_warm64
+                - if: (xc_w64 and not xc_unix_w64) or xc_warm64
                   then:
                     - python testing/test_windres.py
                   else:
@@ -844,9 +844,9 @@ outputs:
           # Verify <triplet>-zig-cc wrapper: -Wl,-eSYM to -Wl,/ENTRY:SYM translation
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
-                - if: (xc_w64 and not xc_lnx_w64) or xc_warm64 or xc_win32
+                - if: (xc_w64 and not xc_unix_w64) or xc_warm64 or xc_win32
                   then:
                     - python testing/test_wl_entry_translation.py
                   else:
@@ -861,7 +861,7 @@ outputs:
           # See recipe/NOTES.md 2.8.
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
                 - if: is_native and (xc_w64 or xc_warm64)
                   then:
@@ -881,9 +881,9 @@ outputs:
           # Verify <triplet>-zig-cc wrapper resolves GNU -l:<filename> against -L dirs.
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
-                - if: (xc_w64 and not xc_lnx_w64) or xc_warm64
+                - if: (xc_w64 and not xc_unix_w64) or xc_warm64
                   then:
                     - python testing/test_l_colon_link.py
                   else:
@@ -899,7 +899,7 @@ outputs:
           # Verify the aarch64-windows-msvc custom-entry link still appends ucrt.lib.
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
                 - if: is_native and (xc_w64 or xc_warm64)
                   then:
@@ -918,7 +918,7 @@ outputs:
           # See recipe/NOTES.md 2.9.
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
                 - python testing/test_nonunix_shim_target.py
             files:
@@ -937,7 +937,7 @@ outputs:
           # Golden/characterization parity tests for the zig-cc wrapper flag
           - script:
               env:
-                CI: ${{ "yup, it's CI" if xc_lnx_w64 else "" }}  # rattler-build#2781
+                CI: ${{ "yup, it's CI" if xc_unix_w64 else "" }}  # rattler-build#2781
               content:
                 - python testing/test_flag_translation_parity.py
                 - python building/gen_translators.py --check
