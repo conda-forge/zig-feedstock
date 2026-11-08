@@ -31,6 +31,10 @@ def _dbg(msg: str) -> None:
         print(msg, flush=True)
 
 
+def _host_is_nonunix() -> bool:
+    return sys.platform == "win32"
+
+
 def main():
     if os.environ.get("DEBUG_ZIG_BUILD") == "1":
         print("=== Installing Zig Activation Package ===")
@@ -45,8 +49,9 @@ def main():
     cross_compiler = os.environ.get("CROSS_COMPILER", "false").strip().lower()
     shim_on_target = os.environ.get("SHIM_RUNS_ON_TARGET", "false").strip().lower() == "true"
 
-    # Unix vs non-Unix (mingw32 = non-Unix)
-    is_nonunix = "mingw32" in conda_triplet
+    # Unix vs non-Unix is a property of the HOST, never of the target triplet
+    # (a linux host can target *-windows-msvc).
+    is_nonunix = _host_is_nonunix()
     # Execution architecture is independent of the compiler's codegen target.
     shim_exec_target = os.environ["SHIM_ZIG_TRIPLET"] if shim_on_target else None
 
@@ -354,6 +359,9 @@ def install_activation_scripts(
     else:
         _install_template(scripts_dir / "activate.sh", activate_dir / "zig_activate.sh", replacements)
         _install_template(scripts_dir / "deactivate.sh", deactivate_dir / "zig_deactivate.sh", replacements)
+        if zig_triplet.endswith("-windows-msvc"):
+            _install_template(scripts_dir / "zig_msvc_libc.sh", activate_dir / "zig_msvc_libc.sh", replacements)
+            _install_template(scripts_dir / "zig_msvc_libc_deactivate.sh", deactivate_dir / "zig_msvc_libc.sh", replacements)
 
 
 def install_zig_cc_wrappers(

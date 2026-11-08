@@ -1,9 +1,5 @@
 MACOSX_SDK_VERSION:
 - '11.0'
-c_compiler:
-- clang
-c_compiler_version:
-- 23
 c_stdlib:
 - macosx_deployment_target
 c_stdlib_version:
@@ -12,10 +8,6 @@ channel_sources:
 - conda-forge/label/zig_dev,conda-forge
 channel_targets:
 - conda-forge zig_dev
-cxx_compiler:
-- clangxx
-cxx_compiler_version:
-- 23
 libxml2_devel:
 - '2.15'
 macos_machine:
@@ -24,9 +16,6 @@ target_platform:
 - osx-64
 xtarget_:
 - osx-64
-zip_keys:
-- - c_compiler_version
-  - cxx_compiler_version
 zlib:
 - '1'
 zstd:

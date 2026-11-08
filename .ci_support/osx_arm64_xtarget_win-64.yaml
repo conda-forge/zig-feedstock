@@ -1,0 +1,22 @@
+MACOSX_SDK_VERSION:
+- '11.0'
+c_stdlib:
+- macosx_deployment_target
+c_stdlib_version:
+- '11.0'
+channel_sources:
+- conda-forge/label/zig_dev,conda-forge
+channel_targets:
+- conda-forge zig_dev
+libxml2_devel:
+- '2.15'
+macos_machine:
+- arm64-apple-darwin20.0.0
+target_platform:
+- osx-arm64
+xtarget_:
+- win-64
+zlib:
+- '1'
+zstd:
+- '1.5'

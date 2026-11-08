@@ -31,7 +31,7 @@ class NonunixShimTargetTests(unittest.TestCase):
                     'NATIVE_TRIPLET': native + '-w64-mingw32',
                     'NATIVE_ZIG_TRIPLET': native + '-windows-gnu',
                 }
-                with patch.dict(os.environ, env, clear=True), patch.object(activation, '_compile_c_shim') as compile_shim:
+                with patch.dict(os.environ, env, clear=True), patch.object(activation, '_compile_c_shim') as compile_shim, patch.object(activation, '_host_is_nonunix', return_value=True):
                     activation.main()
                 self.assertEqual(compile_shim.call_count, 17 if cross else 8)
                 for call in compile_shim.call_args_list:

@@ -80,6 +80,8 @@ static int zig_tr_z_o_check(const char *arg) {
 static const char *zig_tr_translate_target(const char *val, const zig_translate_profile *profile) {
         if (zig_tr_starts_with(val, "x86_64-w64-mingw32")) return "x86_64-windows-gnu";
         if (zig_tr_starts_with(val, "aarch64-w64-mingw32")) return "aarch64-windows-gnu";
+        if (zig_tr_starts_with(val, "x86_64-pc-windows-msvc")) return "x86_64-windows-msvc";
+        if (zig_tr_starts_with(val, "aarch64-pc-windows-msvc")) return "aarch64-windows-msvc";
         {
             const char *p = strstr(val, "-conda-linux-gnu");
             if (p) {

@@ -283,6 +283,8 @@ R5_TRIPLET_TRANSLATE = dict(
         families=[
             dict(prefix="x86_64-w64-mingw32", replace="x86_64-windows-gnu", profiles=PROFILES),
             dict(prefix="aarch64-w64-mingw32", replace="aarch64-windows-gnu", profiles=PROFILES),
+            dict(prefix="x86_64-pc-windows-msvc", replace="x86_64-windows-msvc", profiles=PROFILES),
+            dict(prefix="aarch64-pc-windows-msvc", replace="aarch64-windows-msvc", profiles=PROFILES),
             dict(infix="-conda-linux-gnu", replace_suffix="-linux-gnu", profiles=PROFILES),
             # unix-profile-only: the Windows shim never targets darwin.
             dict(prefix="x86_64-apple-darwin", replace="x86_64-macos-none", profiles=("unix",)),

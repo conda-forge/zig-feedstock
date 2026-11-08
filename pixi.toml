@@ -5,7 +5,7 @@
 
 [workspace]
 name = "zig-feedstock"
-version = "2026.10.21"  # conda-smithy version used to generate this file
+version = "2026.11.6"  # conda-smithy version used to generate this file
 description = "Pixi configuration for conda-forge/zig-feedstock"
 authors = ["@conda-forge/zig"]
 channels = ["conda-forge"]
@@ -29,6 +29,7 @@ description = "Lint the feedstock recipe"
 [feature.build.dependencies]
 conda-build = ">=26.3"
 conda-forge-ci-setup = "4.*"
+python = "3.14.*"
 rattler-build = "*"
 
 [feature.build.tasks.inspect-all]
@@ -82,6 +83,15 @@ description = "Debug zig-feedstock with variant linux_64_xtarget_linux-s390x dir
 [feature.build.tasks."inspect-linux_64_xtarget_linux-s390x"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_xtarget_linux-s390x.yaml"
 description = "List contents of zig-feedstock packages built for variant linux_64_xtarget_linux-s390x"
+[feature.build.tasks."build-linux_64_xtarget_win-64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_64_xtarget_win-64.yaml --target-platform linux-64"
+description = "Build zig-feedstock with variant linux_64_xtarget_win-64 directly (without setup scripts)"
+[feature.build.tasks."debug-linux_64_xtarget_win-64"]
+cmd = "rattler-build debug setup --recipe recipe -m .ci_support/linux_64_xtarget_win-64.yaml --target-platform linux-64"
+description = "Debug zig-feedstock with variant linux_64_xtarget_win-64 directly (without setup scripts)"
+[feature.build.tasks."inspect-linux_64_xtarget_win-64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_64_xtarget_win-64.yaml"
+description = "List contents of zig-feedstock packages built for variant linux_64_xtarget_win-64"
 [feature.build.tasks."build-linux_aarch64_xtarget_linux-64"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_xtarget_linux-64.yaml --target-platform linux-aarch64"
 description = "Build zig-feedstock with variant linux_aarch64_xtarget_linux-64 directly (without setup scripts)"
@@ -127,6 +137,15 @@ description = "Debug zig-feedstock with variant linux_aarch64_xtarget_linux-s390
 [feature.build.tasks."inspect-linux_aarch64_xtarget_linux-s390x"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_xtarget_linux-s390x.yaml"
 description = "List contents of zig-feedstock packages built for variant linux_aarch64_xtarget_linux-s390x"
+[feature.build.tasks."build-linux_aarch64_xtarget_win-64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/linux_aarch64_xtarget_win-64.yaml --target-platform linux-aarch64"
+description = "Build zig-feedstock with variant linux_aarch64_xtarget_win-64 directly (without setup scripts)"
+[feature.build.tasks."debug-linux_aarch64_xtarget_win-64"]
+cmd = "rattler-build debug setup --recipe recipe -m .ci_support/linux_aarch64_xtarget_win-64.yaml --target-platform linux-aarch64"
+description = "Debug zig-feedstock with variant linux_aarch64_xtarget_win-64 directly (without setup scripts)"
+[feature.build.tasks."inspect-linux_aarch64_xtarget_win-64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/linux_aarch64_xtarget_win-64.yaml"
+description = "List contents of zig-feedstock packages built for variant linux_aarch64_xtarget_win-64"
 [feature.build.tasks."build-linux_ppc64le_xtarget_linux-ppc64le"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/linux_ppc64le_xtarget_linux-ppc64le.yaml --target-platform linux-ppc64le"
 description = "Build zig-feedstock with variant linux_ppc64le_xtarget_linux-ppc64le directly (without setup scripts)"
@@ -181,6 +200,15 @@ description = "Debug zig-feedstock with variant osx_arm64_xtarget_osx-arm64 dire
 [feature.build.tasks."inspect-osx_arm64_xtarget_osx-arm64"]
 cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_arm64_xtarget_osx-arm64.yaml"
 description = "List contents of zig-feedstock packages built for variant osx_arm64_xtarget_osx-arm64"
+[feature.build.tasks."build-osx_arm64_xtarget_win-64"]
+cmd = "rattler-build build --recipe recipe -m .ci_support/osx_arm64_xtarget_win-64.yaml --target-platform osx-arm64"
+description = "Build zig-feedstock with variant osx_arm64_xtarget_win-64 directly (without setup scripts)"
+[feature.build.tasks."debug-osx_arm64_xtarget_win-64"]
+cmd = "rattler-build debug setup --recipe recipe -m .ci_support/osx_arm64_xtarget_win-64.yaml --target-platform osx-arm64"
+description = "Debug zig-feedstock with variant osx_arm64_xtarget_win-64 directly (without setup scripts)"
+[feature.build.tasks."inspect-osx_arm64_xtarget_win-64"]
+cmd = "inspect_artifacts --recipe-dir recipe -m .ci_support/osx_arm64_xtarget_win-64.yaml"
+description = "List contents of zig-feedstock packages built for variant osx_arm64_xtarget_win-64"
 [feature.build.tasks."build-win_64_xtarget_win-32"]
 cmd = "rattler-build build --recipe recipe -m .ci_support/win_64_xtarget_win-32.yaml --target-platform win-64"
 description = "Build zig-feedstock with variant win_64_xtarget_win-32 directly (without setup scripts)"

@@ -6,11 +6,11 @@ channel_targets:
 c_compiler_version:
   - if: osx
     then:
-      - 23
+      - "23"
 cxx_compiler_version:
   - if: osx
     then:
-      - 23
+      - "23"
 
 xtarget_:
   - linux-64

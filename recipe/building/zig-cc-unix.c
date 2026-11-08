@@ -357,6 +357,54 @@ static int gnu_libstdcxx_args(int links, int reset_x, const char **pre, int *n_p
 /* zig-cc / zig-cxx.  Port of recipe/scripts/_zig-cc-common.sh.
  * argv is the FULL argv (argv[0] is the wrapper name); raw args start at 1,
  * exactly as before the multiplexer refactor. */
+/* Linux-hosted win-64 MSVC ABI: when the effective target is
+ * *-windows-msvc and ZIG_MSVC_LIBC_FILE is set, set ZIG_LIBC=<file> (zig cc
+ * rejects --libc; a user --libc or non-empty ZIG_LIBC is left alone) and build
+ * `-fms-runtime-lib=dll [-dynamic] [-isystem <dir>]...` (extra dirs
+ * from colon-separated ZIG_MSVC_EXTRA_INCLUDES).  -dynamic only on link steps:
+ * zig picks msvcrt/vcruntime/ucrt import libs only from the link mode.  Returns a malloc'd array
+ * (*n entries, may be 0), or NULL on allocation failure.  The dir strings
+ * live in a single leaked copy; the process execs right after. */
+static const char **msvc_libc_args(const char *const *args, int n_args,
+                                   const char *default_target, int *n) {
+    const char *target = default_target;
+    const char *libc_file = getenv("ZIG_MSVC_LIBC_FILE");
+    const char *extra = getenv("ZIG_MSVC_EXTRA_INCLUDES");
+    int i, user_libc = 0, user_rt = 0, cap = 4; /* rt, -dynamic, 1st dir pair */
+    int compile_only = 0, user_lm = 0;
+    for (i = 0; i < n_args; i++) {
+        if (str_eq(args[i], "-target") && i + 1 < n_args) target = args[i + 1];
+        else if (starts_with(args[i], "--target=")) target = args[i] + 9;
+        else if (str_eq(args[i], "--libc") || starts_with(args[i], "--libc=")) user_libc = 1;
+        else if (starts_with(args[i], "-fms-runtime-lib=")) user_rt = 1;
+        else if (str_eq(args[i], "-c") || str_eq(args[i], "-S") || str_eq(args[i], "-E")) compile_only = 1;
+        else if (str_eq(args[i], "-static") || str_eq(args[i], "-dynamic")) user_lm = 1;
+    }
+    *n = 0;
+    const char *env_libc = getenv("ZIG_LIBC");
+    if (env_libc && *env_libc) user_libc = 1;
+    if (!strstr(target, "-windows-msvc") || user_libc || !libc_file || !*libc_file)
+        return (const char **)calloc(1, sizeof(char *));
+    size_t extra_len = extra ? strlen(extra) : 0;
+    for (i = 0; (size_t)i < extra_len; i++)
+        if (extra[i] == ':') cap += 2;
+    const char **out = (const char **)malloc(sizeof(char *) * (size_t)cap);
+    char *buf = (char *)malloc(extra_len + 1);
+    if (!out || !buf) { free(out); free(buf); return NULL; }
+    setenv("ZIG_LIBC", libc_file, 1);
+    if (!user_rt) out[(*n)++] = "-fms-runtime-lib=dll";
+    if (!user_rt && !compile_only && !user_lm) out[(*n)++] = "-dynamic";
+    if (extra_len) {
+        char *dir, *save = NULL;
+        memcpy(buf, extra, extra_len + 1);
+        for (dir = strtok_r(buf, ":", &save); dir; dir = strtok_r(NULL, ":", &save)) {
+            out[(*n)++] = "-isystem";
+            out[(*n)++] = dir;
+        }
+    }
+    return out;
+}
+
 static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
                   int argc, char *argv[]) {
     int i;
@@ -649,12 +697,18 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
     int inject_mabi = inject_target && !has_mabi &&
                       str_eq(ZIG_TARGET_ARCH, "powerpc64le");
 
-    int max_args = fi + n_sysroot_flags + n_force_load_extra + n_cxx_pre + n_cxx_post + 7;
+    int n_msvc = 0;
+    const char **msvc_args = msvc_libc_args((const char *const *)filtered, fi,
+                                            zig_target_final, &n_msvc);
+    int max_args = fi + n_sysroot_flags + n_force_load_extra + n_cxx_pre + n_cxx_post +
+                   n_msvc + 7;
     const char **new_argv = (const char **)malloc(sizeof(char *) * (size_t)max_args);
-    if (!new_argv) {
+    if (!new_argv || !msvc_args) {
         fprintf(stderr, "ERROR: %s: malloc failed\n", prog);
         free(filtered);
         free(force_load_extra);
+        free(new_argv);
+        free(msvc_args);
         return 1;
     }
 
@@ -673,6 +727,8 @@ static int run_cc(const char *zig_bin, const char *prog, int mode_is_cxx,
         new_argv[ni++] = "-mabi=ibmlongdouble";
     for (i = 0; i < n_sysroot_flags; i++)
         new_argv[ni++] = sysroot_flags[i];
+    for (i = 0; i < n_msvc; i++)
+        new_argv[ni++] = msvc_args[i];
     for (i = 0; i < fi; i++)
         new_argv[ni++] = filtered[i];
     for (i = 0; i < n_force_load_extra; i++)
