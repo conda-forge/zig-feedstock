@@ -72,6 +72,13 @@ Current build status
                   <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_xtarget_osx-arm64" alt="variant">
                 </a>
               </td>
+            </tr><tr>
+              <td>osx_arm64_xtarget_win-64</td>
+              <td>
+                <a href="https://dev.azure.com/conda-forge/feedstock-builds/_build/latest?definitionId=15017&branchName=main">
+                  <img src="https://dev.azure.com/conda-forge/feedstock-builds/_apis/build/status/zig-feedstock?branchName=main&jobName=osx&configuration=osx%20osx_arm64_xtarget_win-64" alt="variant">
+                </a>
+              </td>
             </tr>
           </tbody>
         </table>

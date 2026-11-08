@@ -205,6 +205,8 @@ _zig_tr_translate_target() {
     case "$1" in
         x86_64-w64-mingw32*)   echo "x86_64-windows-gnu" ;;
         aarch64-w64-mingw32*)   echo "aarch64-windows-gnu" ;;
+        x86_64-pc-windows-msvc*)   echo "x86_64-windows-msvc" ;;
+        aarch64-pc-windows-msvc*)   echo "aarch64-windows-msvc" ;;
         *-conda-linux-gnu*)    echo "${1%%-conda-linux-gnu*}-linux-gnu" ;;
         x86_64-apple-darwin*)   echo "x86_64-macos-none" ;;
         arm64-apple-darwin*)   echo "aarch64-macos-none" ;;
