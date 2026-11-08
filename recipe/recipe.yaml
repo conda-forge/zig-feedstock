@@ -52,7 +52,7 @@ context:
   xc_nlo:        ${{ "win"   in xtarget_ and "win"   in build_platform }}
 
   # unix-hosted win-64 target, msvc ABI (mirror of clang_win-64)
-  xc_unix_w64:   ${{ xc_w64 and build_platform == target_platform and build_platform in ["linux-64", "osx-arm64"] }}
+  xc_unix_w64:   ${{ xc_w64 and build_platform == target_platform and build_platform in ["linux-64", "linux-aarch64", "osx-arm64"] }}
 
   xc_host_valid: ${{ target_platform not in ['linux-ppc64le', 'linux-riscv64', 'linux-s390x', 'win-32'] }}
   xc_valid:      ${{ (xc_lnx or xc_osx or xc_nlo or xc_unix_w64) and xc_host_valid }}
