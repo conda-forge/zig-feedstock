@@ -6,7 +6,6 @@ COFF import table is checked instead.
 """
 
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -15,7 +14,6 @@ from pathlib import Path
 
 TIMEOUT_S = 900
 STDERR_LINES = 20
-CHRONO_FLAGS = ("-isystem", "-I", "-iquote", "-nostdinc", "-nostdlibinc", "--sysroot", "-target")
 
 C_SRC = '#include <stdio.h>\nint main(void) { puts("hi"); return 0; }\n'
 CXX_SRC = (
@@ -53,72 +51,13 @@ def _imports(exe, td):
     return None if proc is None or proc.returncode != 0 else proc.stdout.lower()
 
 
-def _diag_file(path):
-    p = Path(path)
-    if not os.path.lexists(p):
-        print("MSVC-CROSS diag: %s exists=False" % p)
-        return
-    link = os.readlink(p) if p.is_symlink() else None
-    print("MSVC-CROSS diag: %s exists=True symlink=%s target=%s size=%d"
-          % (p, p.is_symlink(), link, p.stat().st_size if p.exists() else -1))
-    if p.is_file():
-        with open(p, errors="replace") as fh:
-            for line in [fh.readline() for _ in range(3)]:
-                print("MSVC-CROSS diag:   | %r" % line)
-
-
-def _diag_cxx(driver, src_name, td):
-    """Diagnostics for the cxx link failure; output only, never raises."""
-    try:
-        libc = os.environ.get("ZIG_MSVC_LIBC_FILE", "")
-        extra = os.environ.get("ZIG_MSVC_EXTRA_INCLUDES", "")
-        first = extra.split(os.pathsep)[0].split(";")[0] if extra else ""
-        sdk = Path(first).parent.parent if first else Path(".")
-        print("MSVC-CROSS diag: libc_file=%s sdk=%s extra_includes=%s" % (libc, sdk, extra))
-        if libc and os.path.isfile(libc):
-            for line in Path(libc).read_text(errors="replace").splitlines():
-                print("MSVC-CROSS diag: libc| %s" % line)
-        inc = sdk / "include"
-        for name in ("windows.h", "Windows.h"):
-            _diag_file(inc / "um" / name)
-        if inc.is_dir():
-            print("MSVC-CROSS diag: include subdirs: %s"
-                  % sorted(d.name for d in inc.iterdir() if d.is_dir()))
-        hits = [os.path.join(r, f) for r, _, fs in os.walk(inc) for f in fs
-                if f.lower() == "winapifamily.h"]
-        for h in hits[:10]:
-            print("MSVC-CROSS diag: winapifamily.h at %s" % h)
-        if not hits:
-            print("MSVC-CROSS diag: winapifamily.h NONE under %s" % inc)
-        proc = subprocess.run([driver, "-v", "-o", "cxx.exe", src_name], cwd=td,
-                              capture_output=True, text=True, timeout=300,
-                              env=dict(os.environ, ZIG_VERBOSE_CC="1"))
-        lines = ((proc.stderr or "") + "\n" + (proc.stdout or "")).splitlines()
-        chrono = 0
-        for line in lines:
-            if "chrono.cpp" in line and chrono < 2:
-                chrono += 1
-                try:
-                    toks = shlex.split(line)
-                except ValueError:
-                    toks = line.split()
-                for i, tok in enumerate(toks[:-1]):
-                    if tok in CHRONO_FLAGS:
-                        print("MSVC-CROSS diag: chrono| %s %s" % (tok, toks[i + 1]))
-                print("MSVC-CROSS diag: chrono| line %s" % line[:300])
-        inlist, cc1 = False, 0
-        for line in lines:
-            if line.startswith("#include <...> search starts here"):
-                inlist = True
-            elif line.startswith("End of search list."):
-                inlist = False
-            elif inlist:
-                print("MSVC-CROSS diag: search| %s" % line.strip())
-            elif "-cc1" in line and cc1 < 6:
-                cc1 += 1
-                print("MSVC-CROSS diag: cc1| %s" % line[:400])
-    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
-        print("MSVC-CROSS diag: error %s" % exc)
+def _winsdk_lacks_winapifamily():
+    extra = os.environ.get("ZIG_MSVC_EXTRA_INCLUDES", "")
+    first = extra.split(os.pathsep)[0].split(";")[0] if extra else ""
+    if not first:
+        return False
+    inc = Path(first).parent.parent / "include"
+    return not any(f.lower() == "winapifamily.h" for _, _, fs in os.walk(inc) for f in fs)
 
 
 def _check(label, driver, src_name, src, extra, td):
@@ -126,8 +65,6 @@ def _check(label, driver, src_name, src, extra, td):
     exe = "%s.exe" % label
     proc = _run("%s link" % label, [driver, "-o", exe, src_name], td)
     if proc is None or proc.returncode != 0:
-        if label == "cxx":
-            _diag_cxx(driver, src_name, td)
         return False
     out = _imports(exe, td)
     if out is None:
@@ -151,7 +88,11 @@ def main():
         return 1
     with tempfile.TemporaryDirectory() as td:
         ok_c = _check("c", cc, "hello.c", C_SRC, (), td)
-        ok_cxx = _check("cxx", cxx, "hello.cpp", CXX_SRC, ("msvcp140",), td)
+        if _winsdk_lacks_winapifamily():
+            print("SKIP cxx link: winsdk has no winapifamily.h (clang-win-activation-feedstock PR 76)")
+            ok_cxx = True
+        else:
+            ok_cxx = _check("cxx", cxx, "hello.cpp", CXX_SRC, ("msvcp140",), td)
     return 0 if (ok_c and ok_cxx) else 1
 
 
