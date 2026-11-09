@@ -151,6 +151,7 @@ diff --git a/src/Compilation.zig b/src/Compilation.zig
              .llvm_opt_bisect_limit = options.llvm_opt_bisect_limit,
              .skip_linker_dependencies = options.skip_linker_dependencies,
 diff --git a/src/link/libcxx_shared.zig b/src/link/libcxx_shared.zig
+new file mode 100644
 --- /dev/null
 +++ b/src/link/libcxx_shared.zig
 @@ -0,0 +1,124 @@
