@@ -38,6 +38,42 @@ if [[ "${_zml_ci}" == 0 && ! -e "${_zml_root}/.zig-lc-headers" ]]; then
             [[ -e "${_zml_lc}" ]] || ln -s "$(basename "${_zml_h}")" "${_zml_lc}"
         done < <(find "${_zml_d}" -type f -name '*[A-Z]*' \( -name '*.h' -o -name '*.H' -o -name '*.hpp' -o -name '*.inl' \) 2>/dev/null)
     done
+    # SDK headers also #include each other under a casing that differs from disk
+    # (shared/DriverSpecs.h): alias every referenced name to its real file.
+    _zml_mixed() {
+        local _zml_idx _zml_names _zml_dirs _zml_d _zml_dir _zml_tgt _zml_nm _zml_lnk
+        _zml_dirs=("${_zml_sdk}/include/ucrt" "${_zml_sdk}/include/um" "${_zml_sdk}/include/shared" "${_zml_sdk}/include/winrt" "${_zml_msvc}/include")
+        _zml_idx="$(mktemp)" || return 0
+        _zml_names="$(mktemp)" || { rm -f "${_zml_idx}"; return 0; }
+        for _zml_d in "${_zml_dirs[@]}"; do
+            [[ -d "${_zml_d}" ]] || continue
+            ( cd "${_zml_d}" && find . \( -type f -o -type l \) -print 2>/dev/null ) \
+                | sed 's|^\./||' \
+                | awk -v d="${_zml_d}" '{ print tolower($0) "\t" d "\t" $0 }' >> "${_zml_idx}"
+        done
+        grep -rhIoE '^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"][^>"]+[>"]' "${_zml_dirs[@]}" 2>/dev/null \
+            | tr -d '\r' | sed -E 's/^[^<"]*[<"]//; s/[>"]$//; s|\\|/|g' | sort -u > "${_zml_names}"
+        awk -F '\t' '
+            NR == FNR { if (!($1 in idx)) idx[$1] = $2 "\t" $3; ex[$3] = 1; next }
+            { n = $0 }
+            n == "" || n ~ /^\// || n ~ /(^|\/)\.\.(\/|$)/ || (n in ex) { next }
+            { k = tolower(n) }
+            k in idx {
+                split(idx[k], a, "\t"); up = ""; t = n
+                while ((i = index(t, "/")) > 0) { up = up "../"; t = substr(t, i + 1) }
+                print a[1] "\t" up a[2] "\t" n
+            }' "${_zml_idx}" "${_zml_names}" 2>/dev/null \
+            | while IFS=$'\t' read -r _zml_dir _zml_tgt _zml_nm; do
+                _zml_lnk="${_zml_dir}/${_zml_nm}"
+                [[ -e "${_zml_lnk}" || -L "${_zml_lnk}" ]] && continue
+                mkdir -p "$(dirname "${_zml_lnk}")" 2>/dev/null || continue
+                ln -s "${_zml_tgt}" "${_zml_lnk}" 2>/dev/null || true
+            done
+        rm -f "${_zml_idx}" "${_zml_names}"
+        return 0
+    }
+    _zml_mixed || true
+    unset -f _zml_mixed
     touch "${_zml_root}/.zig-lc-headers" 2>/dev/null || true
 fi
 

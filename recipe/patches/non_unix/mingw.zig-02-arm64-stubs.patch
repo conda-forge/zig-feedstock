@@ -25,6 +25,7 @@ Previously required wrapper injection via aarch64-w64-mingw32-zig.exe
 drop-when: zig upstream includes fpreset_arm64.c in mingw32_arm64_src
 
 diff --git a/lib/libc/mingw/crt/fpreset_arm64.c b/lib/libc/mingw/crt/fpreset_arm64.c
+new file mode 100644
 --- /dev/null
 +++ b/lib/libc/mingw/crt/fpreset_arm64.c
 @@ -0,0 +1,11 @@
