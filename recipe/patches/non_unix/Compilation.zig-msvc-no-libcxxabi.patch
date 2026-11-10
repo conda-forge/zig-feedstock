@@ -13,13 +13,13 @@ diff --git a/src/Compilation.zig b/src/Compilation.zig
 diff --git a/src/libs/libcxx.zig b/src/libs/libcxx.zig
 --- a/src/libs/libcxx.zig
 +++ b/src/libs/libcxx.zig
-@@ -511,6 +511,10 @@
+@@ -497,6 +497,10 @@
      if (target.os.tag == .linux) {
-         try cflags.append("-D_LIBCPP_HAS_TIME_ZONE_DATABASE");
+         cflags.appendAssumeCapacity("-D_LIBCPP_HAS_TIME_ZONE_DATABASE");
      }
 +    if (target.abi == .msvc) {
 +        // c++.lib is linked by path; drop __config's #pragma comment(lib, "libc++.lib").
-+        try cflags.append("-D_LIBCPP_NO_AUTO_LINK");
++        try cflags.append(arena, "-D_LIBCPP_NO_AUTO_LINK");
 +    }
      // See libcxx/include/__algorithm/pstl_backends/cpu_backends/backend.h
      // for potentially enabling some fancy features here, which would

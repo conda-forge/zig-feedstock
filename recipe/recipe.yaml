@@ -205,8 +205,6 @@ source:
       - patches/non_unix/mingw.zig-02-arm64-stubs.patch
       # See recipe/NOTES.md 1.4.
       - patches/posix.zig-dl-iterate-phdr-no-pt-phdr.patch
-      # Upstream x86 llvm_name uses '_' (icelake_server); LLVM wants '-'.
-      - patches/x86.zig-hyphenate-llvm-names.patch
       # Forward -Wl,--export-all-symbols to lld-link (-lldmingw) for DLLs.
       - patches/Lld.zig-mingw-export-all-symbols.patch
       - if: linux
