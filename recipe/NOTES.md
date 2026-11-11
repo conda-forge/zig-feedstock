@@ -96,11 +96,7 @@ into `DT_NEEDED`. Unconditional (target-keyed, identical on every host).
 Replaced the linux-only patch that forced every stub `--no-as-needed`.
 
 ### 1.8 Patch: Sema.zig-shr-exact-safety-downgrade <a id="patch-sema-shr-exact-safety-downgrade"></a>
-LLVM backend: downgrades `.shr_exact` to `.shr` when safety checks are on.
-LLVM's InstCombine folds `shl(lshr_exact(x,N),N)` to `x`, making the
-runtime back-shift comparison trivially true and silently dropping the
-panic. Affects all LLVM-backend targets (ppc64le, aarch64, riscv64, ...),
-not only ppc64le.
+Retired in 0.17.1: upstream `zirShr` now emits `.shr` when safety is on.
 
 ### 1.9 Patch: linux/build.zig-01-maxrss-raise <a id="patch-build-zig-maxrss-raise"></a>
 Raises the linux common-group `max_rss` ceiling toward a 16GB budget:
@@ -215,7 +211,7 @@ For native/cross-target: depends on `zig_impl` for the same `xtarget_`
 cross-compiler: depends on `zig_impl` for the BUILD platform instead -- an
 external package, since `pin_subpackage` only reaches same-recipe outputs
 and the cross-compiler's own `zig_impl` is a different `xtarget_`'s build.
-The `zig_` cross package runs on `zig_impl_<xc_build_platform>[version="${{ abi_version }}.*", build_number=">=3"]` to ensure the glibc --no-as-needed fix is present.
+The `zig_` cross package runs on `zig_impl_<xc_build_platform>[version="${{ abi_version }}.*"]`.
 
 ### 2.7 Tests (zig_ output): native-triplet compiler suite listing <a id="tests-native-triplet-compiler-suite-listing"></a>
 Cross-compiler builds only: alongside the target-triplet wrapper suite,
