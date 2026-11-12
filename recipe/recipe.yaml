@@ -2,9 +2,9 @@ schema_version: 1
 
 context:
   # See recipe/NOTES.md 2.1.
-  build_number: 6
+  build_number: 0
   name: zig
-  version: "0.17.0"
+  version: "0.17.1"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
   # Bootstrap = zig_impl 0.17.0 published on conda-forge main.
   bootstrap_build_ref: "2"
@@ -18,7 +18,7 @@ context:
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: false
+  bootstrap_via_upstream: true
 
   # conda-forge MinGW GCC used by the win-64 zig-cxx libstdc++ route
   mingw_gcc_version: "16.2"
@@ -174,7 +174,7 @@ recipe:
 
 source:
   - url: https://ziglang.org/download/${{ version }}/zig-${{ version }}.tar.xz
-    sha256: b6c7f1728f043700d6529bac980800792f824256a9d2f1839b3d62beed0b8abd
+    sha256: 1e89bf06610b769a8c77676c6c8d54b093a0db60f4891f2f91014829012f0e24
     patches:
       # See recipe/NOTES.md 1.1.
       - patches/Lld.zig-macho-lld-support.patch
@@ -206,8 +206,6 @@ source:
           - patches/linux/target.zig-glibc-needs-libunwind.patch
           # See recipe/NOTES.md 1.6.
           - patches/linux/target.zig-ppc64le-glibc-2.17-min.patch
-          # See recipe/NOTES.md 1.8.
-          - patches/linux/Sema.zig-shr-exact-safety-downgrade.patch
           # See recipe/NOTES.md 1.9.
           - patches/linux/build.zig-01-maxrss-raise.patch
       # See recipe/NOTES.md 1.10.
@@ -242,32 +240,32 @@ source:
       - if: build_platform == "linux-64"
         then:
           - url: https://ziglang.org/download/${{ version }}/zig-x86_64-linux-${{ version }}.tar.xz
-            sha256: 1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
+            sha256: 3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
             target_directory: zig-bootstrap
       - if: build_platform == "linux-aarch64"
         then:
           - url: https://ziglang.org/download/${{ version }}/zig-aarch64-linux-${{ version }}.tar.xz
-            sha256: 9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8
+            sha256: a1546d5646eb184437918d6635ca6b762a0e889eac09cef720ee7a1ed3fe7795
             target_directory: zig-bootstrap
       - if: build_platform == "osx-arm64"
         then:
           - url: https://ziglang.org/download/${{ version }}/zig-aarch64-macos-${{ version }}.tar.xz
-            sha256: b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a
+            sha256: 75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d
             target_directory: zig-bootstrap
       - if: build_platform == "osx-64"
         then:
           - url: https://ziglang.org/download/${{ version }}/zig-x86_64-macos-${{ version }}.tar.xz
-            sha256: 4f9a1c5269aa17ebda5e6d3c2b89d6cbf36f7d2b22a0306e9ab98f25f95529c6
+            sha256: 9af07b20319fbd0c92ee46ad23e81d6a782b1aaea2cfb8dcbff35f1d2c7ddbb7
             target_directory: zig-bootstrap
       - if: build_platform == "win-64"
         then:
           - url: https://ziglang.org/download/${{ version }}/zig-x86_64-windows-${{ version }}.zip
-            sha256: b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428
+            sha256: b03f477a1943673e02aca0f570e8030dffd536ce1f45cbc4d3326ec31159562e
             target_directory: zig-bootstrap
       - if: build_platform == "win-arm64"
         then:
           - url: https://ziglang.org/download/${{ version }}/zig-aarch64-windows-${{ version }}.zip
-            sha256: 0a59d91fa1cb40cf068e9b0954434ce973500c7a2ea749f1e01af62cdab52d26
+            sha256: 4789895bdb1e312a2ea73b2a7c0a0cc8d2ab62ba6976e834a7c54cf443377c15
             target_directory: zig-bootstrap
 
 build:
@@ -610,7 +608,7 @@ outputs:
         # See recipe/NOTES.md 2.6.
         - if: is_cross_compiler
           then:
-            - zig_impl_${{ xc_build_platform }}[version="${{ abi_version }}.*", build_number=">=3"]
+            - zig_impl_${{ xc_build_platform }}[version="${{ abi_version }}.*"]
           else:
             - ${{ pin_subpackage("zig_impl_" ~ xtarget_, exact=True) }}
         - if: xc_ppc64le
