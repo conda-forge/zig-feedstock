@@ -1,6 +1,6 @@
 --- a/src/main.zig
 +++ b/src/main.zig
-@@ -247,6 +247,7 @@
+@@ -246,6 +246,7 @@
      @"-cc1as",
  
      @"ld.lld",
@@ -8,7 +8,7 @@
      @"lld-link",
      @"wasm-ld",
  
-@@ -367,7 +368,7 @@
+@@ -362,7 +363,7 @@
              dev.check(.clang_command);
              return process.exit(try clangMain(arena, args));
          },
@@ -17,7 +17,7 @@
              dev.check(.lld_linker);
              return process.exit(try lldMain(arena, args, true));
          },
-@@ -1979,6 +1980,11 @@
+@@ -1998,6 +1999,11 @@
                          }
                      },
                      .other => {
@@ -29,7 +29,7 @@
                          try cc_argv.appendSlice(arena, it.other_args);
                      },
                      .positional => switch (file_ext orelse Compilation.classifyFileExt(mem.sliceTo(it.only_arg, 0))) {
-@@ -2953,7 +2959,13 @@
+@@ -3030,7 +3036,13 @@
                      try Io.File.stdout().writeStreamingAll(io, "zig ld " ++ build_options.version ++ "\n");
                      process.exit(0);
                  } else {
@@ -44,7 +44,7 @@
                  }
              }
  
-@@ -5191,6 +5203,7 @@
+@@ -5307,6 +5319,7 @@
  
  /// The first argument determines which backend is invoked. The options are:
  /// * `ld.lld` - ELF
@@ -52,12 +52,12 @@
  /// * `lld-link` - COFF
  /// * `wasm-ld` - WebAssembly
  pub fn lldMain(
-@@ -5229,6 +5242,8 @@
-             break :rc llvm.LinkCOFF(argc, argv.ptr, can_exit_early, false);
+@@ -5345,6 +5358,8 @@
+             break :rc libllvm.bindings.LinkCOFF(argc, argv.ptr, can_exit_early, false);
          } else if (mem.eql(u8, args[1], "wasm-ld")) {
-             break :rc llvm.LinkWasm(argc, argv.ptr, can_exit_early, false);
+             break :rc libllvm.bindings.LinkWasm(argc, argv.ptr, can_exit_early, false);
 +        } else if (mem.eql(u8, args[1], "ld64.lld")) {
-+            break :rc llvm.LinkMachO(argc, argv.ptr, can_exit_early, false);
++            break :rc libllvm.bindings.LinkMachO(argc, argv.ptr, can_exit_early, false);
          } else {
              unreachable;
          }

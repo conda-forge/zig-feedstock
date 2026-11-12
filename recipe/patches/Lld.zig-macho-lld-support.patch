@@ -1,6 +1,6 @@
---- a/src/codegen/llvm/bindings.zig
-+++ b/src/codegen/llvm/bindings.zig
-@@ -310,10 +310,12 @@
+--- a/src/codegen/llvm/lib/bindings.zig
++++ b/src/codegen/llvm/lib/bindings.zig
+@@ -311,10 +311,12 @@
  extern fn ZigLLDLinkCOFF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
  extern fn ZigLLDLinkELF(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
  extern fn ZigLLDLinkWasm(argc: c_int, argv: [*:null]const ?[*:0]const u8, can_exit_early: bool, disable_output: bool) bool;
@@ -79,7 +79,7 @@
      };
      result catch |err| switch (err) {
          error.OutOfMemory, error.AlreadyReported, error.Canceled => |e| return e,
-@@ -1627,6 +1656,177 @@
+@@ -1620,6 +1649,177 @@
      }
  }
  
@@ -94,7 +94,7 @@
 +    const full_out_path = try directory.join(arena, &[_][]const u8{base.emit.sub_path});
 +
 +    const zcu_obj_path: ?Cache.Path = if (comp.zcu) |zcu| p: {
-+        break :p try comp.resolveEmitPathFlush(arena, .temp, zcu.llvm_object.?.out_bin_basename);
++        break :p try comp.resolveEmitPathFlush(arena, .temp, zcu.llvm_object_basename.?);
 +    } else null;
 +
 +    const output_mode = comp.config.output_mode;
@@ -259,7 +259,7 @@
  
 --- a/src/link.zig
 +++ b/src/link.zig
-@@ -1293,6 +1293,7 @@
+@@ -1321,6 +1321,7 @@
                  dev.check(tag.devFeature());
                  return @as(*tag.Type(), @fieldParentPtr("base", base)).setDarwinSdkVersion(version);
              },
@@ -269,7 +269,7 @@
      }
 --- a/src/target.zig
 +++ b/src/target.zig
-@@ -278,7 +278,7 @@
+@@ -285,7 +285,7 @@
  /// The set of targets that Zig supports using LLD to link for.
  pub fn hasLldSupport(ofmt: std.Target.ObjectFormat) bool {
      return switch (ofmt) {
@@ -280,7 +280,7 @@
  }
 --- a/src/zig_llvm.cpp
 +++ b/src/zig_llvm.cpp
-@@ -518,6 +518,10 @@
+@@ -520,6 +520,10 @@
          bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
                  llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
      }
@@ -291,7 +291,7 @@
  }
  
  bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output) {
-@@ -535,6 +539,11 @@
+@@ -537,6 +541,11 @@
      return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, disable_output);
  }
  
@@ -305,7 +305,7 @@
  static_assert((FloatABI::ABIType)ZigLLVMFloatABI_Hard == FloatABI::ABIType::Hard, "");
 --- a/src/zig_llvm.h
 +++ b/src/zig_llvm.h
-@@ -120,6 +120,7 @@
+@@ -124,6 +124,7 @@
  ZIG_EXTERN_C bool ZigLLDLinkCOFF(int argc, const char **argv, bool can_exit_early, bool disable_output);
  ZIG_EXTERN_C bool ZigLLDLinkELF(int argc, const char **argv, bool can_exit_early, bool disable_output);
  ZIG_EXTERN_C bool ZigLLDLinkWasm(int argc, const char **argv, bool can_exit_early, bool disable_output);
