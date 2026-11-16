@@ -169,6 +169,16 @@ the failure surfaces as `unable to resolve dependency`. The recipe comment
 cites codeberg ziglang/zig issue 37641, but that issue text does not mention
 re-exports: the citation is UNVERIFIED.
 
+### 1.15 Patch: c.zig-fcntl64-glibc-2.28-gate (unconditional) <a id="patch-c-fcntl64-glibc-2-28-gate"></a>
+Upstream commit 1d9bc07c ("std.c: consistently use lfs64/inode64 symbols when
+available") made `lib/std/c.zig` (~:11128) select `private.fcntl64` for every
+gnu target via `lfs64 and native_abi.isGnu()`, with no glibc version gate.
+glibc only has `fcntl64` from 2.28, so with the 2.17 floor the link fails
+with `undefined symbol: fcntl64`: all 4 linux natives fail the zig self-link,
+and the riscv64 libc-linking test fails. The patch adds the file's existing
+`versionCheck(2.28)` on linux; hurd and android are unchanged. Candidate for
+upstream.
+
 ## 2. Recipe structure
 
 Output layout, context-var semantics, and test-leg purposes.
