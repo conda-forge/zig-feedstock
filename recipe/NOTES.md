@@ -141,6 +141,34 @@ other two. `gccmain-do-global-ctors-guard.patch` itself bounds zig's mingw
 crtbegin/crtend bookends, so this can occur whenever a binary composing
 `__CTOR_LIST__` from multiple objects omits one of those markers.
 
+### 1.13 Patch: Compilation.zig-macos-host-sdk-sysroot <a id="patch-compilation-macos-host-sdk-sysroot"></a>
+On a macOS host, an explicit `-target <arch>-macos` makes zig treat the build
+as non-native (the target query sets `os_tag`). `LibCDirs` then skips native
+detection (`LibCDirs.zig:40` gates on `is_native_abi`) and the
+`detectFromBuilding` darwin branch returns a null sysroot (`:162`). With no
+sysroot, `MachO.zig` resolves absolute re-exports bare. conda-forge libcxx
+23.1.5 build 1+ makes `$PREFIX/lib/libc++.1.dylib` re-export
+`/usr/lib/libc++abi.dylib`, so `zig c++ -target <host>-macos` linking the
+shared conda libc++ (via `Lld.zig-prefer-shared-libcxx`) fails with
+`unable to resolve dependency /usr/lib/libc++abi.dylib`. The fix is in
+`Compilation.zig` `create()`: when `link_libc` is set, host and target are
+both macOS and no sysroot is set, use `darwin.getSdk` (xcrun). Only the
+linker sysroot changes; `comp.sysroot` is not forwarded to clang cc argv, so
+the bundled libc headers stay. Scope is broad by decision: host-macOS +
+target-macOS, any arch, matching clang. Applied LAST in `recipe.yaml` (it was
+generated on top of all osx patches; `Lld.zig-glibc-libs-honour-no-as-needed`
+also touches `src/Compilation.zig`). Not upstreamable as-is: upstream
+deliberately keeps non-native builds hermetic.
+Test: `testing/test_libcxx_shared.py` `<host>-macos-consumer-prefix-libcxx`.
+
+### 1.14 Patch: MachO.zig-dylib-dependents-no-desync <a id="patch-macho-dylib-dependents-no-desync"></a>
+When a dylib re-export cannot be resolved, a `continue` in `MachO.zig`
+desynced the dependents list and a later `for` loop panicked with `for loop
+over objects with non-equal lengths`. The patch keeps the lists aligned, so
+the failure surfaces as `unable to resolve dependency`. The recipe comment
+cites codeberg ziglang/zig issue 37641, but that issue text does not mention
+re-exports: the citation is UNVERIFIED.
+
 ## 2. Recipe structure
 
 Output layout, context-var semantics, and test-leg purposes.

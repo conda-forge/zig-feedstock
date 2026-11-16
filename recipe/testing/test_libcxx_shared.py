@@ -874,13 +874,14 @@ def _build_arch_stub(zig: str, tgt: str, td: Path) -> Path | None:
     return d
 
 
-def _link_libcxx_lines(zig: str, tgt: str, ldir: Path, td: Path,
+def _link_libcxx_lines(zig: str, tgt: str, ldir: Path | None, td: Path,
                        label: str) -> list[str] | None:
-    """Link a C++ main against -L ldir; return otool -L lines naming libc++."""
+    """Link a C++ main (against -L ldir if given); return otool -L libc++ lines."""
     src = td / "main.cpp"
     src.write_text("int main(){return 0;}\n")
     out = td / f"a.out.{label}"
-    r = _run([zig, "c++", "-target", tgt, f"-L{ldir}", str(src), "-o", str(out)],
+    lflag = [f"-L{ldir}"] if ldir is not None else []
+    r = _run([zig, "c++", "-target", tgt, *lflag, str(src), "-o", str(out)],
              cwd=str(td), timeout=_COMPILE_TIMEOUT_S, target=_conda_triplet)
     if r.returncode != 0 or not out.exists():
         FAIL(f"libcxx-arch-select: {label}: link",
@@ -990,6 +991,30 @@ def test_libcxx_arch_select() -> None:
             if lines is None:
                 continue
             _check_mismatch_fallback(tgt, lines)
+
+        _check_consumer_prefix_libcxx(zig, td)
+
+
+def _check_consumer_prefix_libcxx(zig: str, td: Path) -> None:
+    """Consumer link (no -L, no sysroot) of $PREFIX libc++ that re-exports libc++abi."""
+    tgt = f"{'aarch64' if is_arm64 else 'x86_64'}-macos"
+    label = f"libcxx-arch-select: {tgt}-consumer-prefix-libcxx"
+    conda = Path(_prefix) / "lib" / "libc++.1.dylib"
+    if not conda.exists():
+        SKIP(label, f"{conda} is absent")
+        return
+    lines = _link_libcxx_lines(zig, tgt, None, td, "consumer")
+    if lines is None:
+        return
+    if not any("@rpath/libc++.1.dylib" in ln for ln in lines):
+        FAIL(f"{label}: shared conda libc++ not linked", f"otool libc++ lines: {lines}")
+        return
+    r = _run(["env", f"DYLD_FALLBACK_LIBRARY_PATH={_prefix}/lib", str(td / "a.out.consumer")],
+             cwd=str(td), timeout=60)
+    if r.returncode != 0:
+        FAIL(f"{label}: output failed to run", f"rc={r.returncode}\n{r.stderr[:2000]}")
+        return
+    PASS(f"{label}: links and runs against shared conda libc++")
 
 
 # ===================================================================

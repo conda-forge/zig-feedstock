@@ -1,0 +1,19 @@
+# Purpose: parseDependentDylibs skips an unresolved dependent without recording it, so the parallel dependents lists desync and the zip loop panics ("for loop over objects with non-equal lengths"); stop after the reported error instead
+# Affects: src/link/MachO.zig
+# Upstream: https://codeberg.org/ziglang/zig/issues/37641
+# Drop-when: upstream fixes parseDependentDylibs (issue 37641)
+# Last-verified: 2026-11-15
+
+--- a/src/link/MachO.zig
++++ b/src/link/MachO.zig
+@@ -1129,6 +1129,10 @@
+             dependents.appendAssumeCapacity(file_index);
+         }
+
++        // An unresolved dependent was reported and skipped above, so the two lists
++        // are no longer parallel. Move on; the error is returned after the loop.
++        if (dependents.items.len != self.getFile(dylib_index).?.dylib.dependents.items.len) continue;
++
+         const dylib = self.getFile(dylib_index).?.dylib;
+         for (dylib.dependents.items, dependents.items) |id, file_index| {
+             if (self.getFile(file_index)) |file| {

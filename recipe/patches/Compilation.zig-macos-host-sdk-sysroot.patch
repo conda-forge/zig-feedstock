@@ -1,0 +1,18 @@
+Use the xcrun SDK as sysroot when host and target are macOS and no sysroot is set. An explicit -target makes the build non-native, so LibCDirs returns a null sysroot and MachO cannot resolve absolute re-exports such as /usr/lib/libc++abi.dylib in conda libc++.
+
+diff --git a/src/Compilation.zig b/src/Compilation.zig
+index b797f039..2be97b02 100644
+--- a/src/Compilation.zig
++++ b/src/Compilation.zig
+@@ -1741,7 +1741,10 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
+             else => |e| return diag.fail(.{ .find_native_libc = e }),
+         };
+
+-        const sysroot = options.sysroot orelse libc_dirs.sysroot;
++        const sysroot = options.sysroot orelse libc_dirs.sysroot orelse sdk: {
++            if (!link_libc or builtin.os.tag != .macos or target.os.tag != .macos) break :sdk null;
++            break :sdk std.zig.system.darwin.getSdk(arena, io, target);
++        };
+
+         const compiler_rt_strat: RtStrat = s: {
+             if (options.skip_linker_dependencies) break :s .none;
