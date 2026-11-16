@@ -208,6 +208,8 @@ source:
       - patches/non_unix/mingw.zig-02-arm64-stubs.patch
       # See recipe/NOTES.md 1.4.
       - patches/posix.zig-dl-iterate-phdr-no-pt-phdr.patch
+      # See recipe/NOTES.md 1.15.
+      - patches/c.zig-fcntl64-glibc-2.28-gate.patch
       # Forward -Wl,--export-all-symbols to lld-link (-lldmingw) for DLLs.
       - patches/Lld.zig-mingw-export-all-symbols.patch
       - if: linux

@@ -1,0 +1,19 @@
+Use fcntl64 only on glibc >= 2.28. Upstream 1d9bc07c (std.c: consistently use lfs64/inode64 symbols) selects fcntl64 for every gnu target, but glibc added fcntl64 in 2.28, so links for older glibc (conda-forge targets 2.17) fail with 'undefined symbol: fcntl64'.
+
+diff --git a/lib/std/c.zig b/lib/std/c.zig
+index 1d3c75a1..64aef0e6 100644
+--- a/lib/std/c.zig
++++ b/lib/std/c.zig
+@@ -11125,7 +11125,11 @@ pub extern "c" fn sysctlbyname(name: [*:0]const u8, oldp: ?*anyopaque, oldlenp:
+ pub extern "c" fn sysctlnametomib(name: [*:0]const u8, mibp: ?*c_int, sizep: ?*usize) c_int;
+ pub extern "c" fn tcgetattr(fd: fd_t, termios_p: *termios) c_int;
+ pub extern "c" fn tcsetattr(fd: fd_t, optional_action: TCSA, termios_p: *const termios) c_int;
+-pub const fcntl = if (lfs64 and native_abi.isGnu()) private.fcntl64 else private.fcntl;
++pub const fcntl = if (lfs64 and native_abi.isGnu() and
++    (native_os != .linux or versionCheck(.{ .major = 2, .minor = 28, .patch = 0 })))
++    private.fcntl64
++else
++    private.fcntl;
+ pub extern "c" fn uname(buf: *utsname) c_int;
+
+ pub extern "c" fn gethostname(name: [*]u8, len: usize) c_int;
