@@ -18,7 +18,9 @@ function build_zig_with_zig() {
   if [[ -d "${build_dir}" ]]; then
     cd "${build_dir}" || return 1
       local rc=0
+      # --zig-lib= must be first: runner/configurer use the source std
       "${zig}" build \
+        --zig-lib="${build_dir}/lib" \
         --prefix "${install_dir}" \
         ${ZIG_MAKER_ARGS[@]+"${ZIG_MAKER_ARGS[@]}"} \
         ${ZIG_PKG_OPTS[@]+"${ZIG_PKG_OPTS[@]}"} \
