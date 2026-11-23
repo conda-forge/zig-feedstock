@@ -9,8 +9,8 @@ context:
   # Impl series we bootstrap from; lags abi_version across a minor bump.
   bootstrap_version: "0.18"
   snapshot: "1272+2ff397f75"
-  snapshot_ref: "1192"
-  build_ref: "11920"
+  snapshot_ref: "1240"
+  build_ref: "12400"
   zig_impl_pin: '[version="${{ bootstrap_version }}.*", build="*_${{ snapshot_ref }}_*", build_number=">=${{ build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
