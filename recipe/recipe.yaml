@@ -6,9 +6,9 @@ context:
   name: zig
   version: "0.17.1"
   abi_version: ${{ (version | split("."))[:2] | join(".") }}
-  # Bootstrap = zig_impl 0.17.0 published on conda-forge main.
-  bootstrap_build_ref: "2"
-  zig_impl_pin: '[version="${{ abi_version }}.*", build_number=">=${{ bootstrap_build_ref }}"]'
+  # Bootstrap = zig_impl of this version, published on conda-forge main.
+  bootstrap_build_ref: "0"
+  zig_impl_pin: '[version="==${{ version }}", build_number=">=${{ bootstrap_build_ref }}"]'
 
   # This can change with upstream versions (although not too likely)
   zig_glibc: ${{ "2.27" if xtarget_ == "linux-riscv64" else c_stdlib_version | default("2.17") }}
@@ -18,7 +18,7 @@ context:
   llvm_src_version: "22.1.6"
   llvm_version: ${{ llvm_src_version | split(".") | first }}
 
-  bootstrap_via_upstream: true
+  bootstrap_via_upstream: false
 
   # conda-forge MinGW GCC used by the win-64 zig-cxx libstdc++ route
   mingw_gcc_version: "16.2"

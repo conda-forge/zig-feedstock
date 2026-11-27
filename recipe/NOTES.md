@@ -149,21 +149,15 @@ crtbegin/crtend bookends, so this can occur whenever a binary composing
 Output layout, context-var semantics, and test-leg purposes.
 
 ### 2.1 Context: build number / build string / zig_impl_pin <a id="context-snapshot-build-number-zig-impl-pin"></a>
-Release scheme: the source is the zig 0.17.0 release tarball,
-`build_number` is 0 (increment per rebuild), and the build string is
-`${{ hash }}_${{ build_number }}` -- no snapshot segment. The former
-`snapshot`/`snapshot_ref`/`build_ref` context keys are gone, and
-`channel_targets` is removed (uploads go to conda-forge main, not zig_dev).
-Bootstrap self-hosts against the last published dev `zig_impl`:
-`bootstrap_snapshot_ref` ("2320") and `bootstrap_build_ref` ("23202") build
-`zig_impl_pin`:
-`[version="${{ abi_version }}.*", build="*_${{ bootstrap_snapshot_ref }}_*", build_number=">=${{ bootstrap_build_ref }}"]`.
-The `build=` glob keys on the snapshot field of the dev build string; the
-`>=` floor on `build_number` rejects lower revs and fails the solve loudly
-when nothing qualifies. It resolves only because `variants.yaml`
-`channel_sources` lists `conda-forge/label/zig_dev` first; that source is
-for the first release build only. Once 0.17.0 is on main, drop it and make
-the pin `abi_version.*` from main.
+Release scheme: the source is the zig release tarball, `build_number`
+starts at 0 per version (increment per rebuild), and the build string is
+`${{ hash }}_${{ build_number }}`. Uploads go to conda-forge main.
+A version bump ships build 0 with `bootstrap_via_upstream: true` (the
+previous zig_impl may not build the new source). Build 1 flips it to
+false and self-hosts against the published zig_impl of the same version:
+`zig_impl_pin` is `[version="==${{ version }}", build_number=">=${{ bootstrap_build_ref }}"]`
+with `bootstrap_build_ref` "0". The same pin is the build dep of the cross
+`zig_<target>` outputs on `zig_impl_<build_platform>`.
 
 ### 2.2 Context: target_triplet / zig_target_triplet mapping <a id="context-target-triplet-zig-target-triplet-mapping"></a>
 `target_triplet` uses the same mapping as `build_triplet` but is keyed on
